@@ -48,7 +48,8 @@ loaded with these Lua scripts at startup. No new live cold-start acceptance is c
 Independent review found the hibernation/initialization ordering issue on the
 Standards axis and the non-God staff authorization issue on the Spec axis.
 Both were reproduced with public regression fixtures before correction. The
-quest/access values themselves are unchanged from the previous initializer.
+quest/access values themselves are unchanged from the previous initializer. Both
+reviewers rechecked the corrections and reported no remaining concrete blocker.
 
 Host-specific configuration, credentials, account entitlements, databases and
 generated binaries remain deployment state. The worker and native library sources
