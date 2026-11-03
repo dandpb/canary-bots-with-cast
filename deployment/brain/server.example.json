@@ -1,5 +1,10 @@
 {
   "mode": "shadow",
-  "bots": [101, 102, 103],
-  "socket_directory": "/run/canary-brain"
+  "bots": [
+    101,
+    102,
+    103
+  ],
+  "socket_directory": "/run/canary-brain",
+  "autonomous_bot": 101
 }

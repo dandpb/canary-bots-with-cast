@@ -36,9 +36,17 @@ class Bot(Packet):
     objective_running: bool = False
 
 
+class MemberState(Packet):
+    id: int = Field(gt=0)
+    position: list[int] = Field(min_length=3, max_length=3)
+    health: int = Field(ge=0, le=100)
+    online: bool
+
+
 class Party(Packet):
     leader_id: int = Field(gt=0)
     members: list[int] = Field(max_length=20)
+    status: list[MemberState] = Field(default_factory=list, max_length=20)
 
 
 class Message(Packet):
@@ -59,6 +67,7 @@ class Observation(Packet):
     mode: Literal["shadow", "active"] = "shadow"
     bot: Bot
     party: Party | None = None
+    autonomous: bool = False
     actions: list[Candidate] = Field(min_length=1, max_length=32)
     nearby: list[dict[str, JsonValue]] = Field(default_factory=list, max_length=24)
     messages: list[Message] = Field(default_factory=list, max_length=8)

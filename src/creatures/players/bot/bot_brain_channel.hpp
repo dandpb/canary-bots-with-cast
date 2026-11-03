@@ -121,6 +121,7 @@ namespace botbrain {
 		nlohmann::json messages = nlohmann::json::array();
 		std::unordered_map<std::string, nlohmann::json> outcomes;
 		std::string lease, action = "follow", actionId;
+		std::array<uint16_t, 3> home {};
 		uint32_t leader = 0, generation = 0, script = 0, shop = 0, potions = 0;
 		uint32_t target = 0;
 		int64_t targetUntil = 0;
@@ -136,6 +137,7 @@ namespace botbrain {
 		std::unique_ptr<Channel> channel;
 		std::string mode = "disabled", world;
 		std::vector<uint32_t> roster;
+		uint32_t autonomous = 0;
 		std::unordered_map<uint32_t, Session> sessions;
 		int64_t heartbeat = 0;
 		int64_t lastHello = 0;
@@ -161,6 +163,10 @@ namespace botbrain {
 			roster = config.at("bots").get<std::vector<uint32_t>>();
 			if (roster.empty() || roster.size() > 3) {
 				throw std::runtime_error("brain supports one to three pilots");
+			}
+			autonomous = config.value("autonomous_bot", 0U);
+			if (autonomous && std::find(roster.begin(), roster.end(), autonomous) == roster.end()) {
+				throw std::runtime_error("autonomous bot must belong to the pilot roster");
 			}
 			world = std::to_string(getpid()) + "-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
 			channel = std::make_unique<Channel>(config.at("socket_directory").get<std::string>());

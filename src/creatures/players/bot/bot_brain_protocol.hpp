@@ -10,6 +10,20 @@
 
 namespace botbrain {
 
+	// Used by both the live candidate projector and the movement guard.
+	inline bool partyReady(const nlohmann::json &members, const nlohmann::json &origin) {
+		for (const auto &member : members) {
+			const auto &position = member.at("position");
+			if (!member.at("online").get<bool>() || member.at("health").get<int>() < 60
+			    || position.at(2) != origin.at(2)
+			    || std::abs(position.at(0).get<int>() - origin.at(0).get<int>()) > 6
+			    || std::abs(position.at(1).get<int>() - origin.at(1).get<int>()) > 6) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	inline std::string validate(const nlohmann::json &intent, const nlohmann::json &offered, const nlohmann::json &current, int64_t now) {
 		try {
 			if (!intent.is_object() || intent.size() != 10 || intent.at("version") != 1 || intent.at("type") != "intent") {
@@ -28,7 +42,12 @@ namespace botbrain {
 			    || intent.at("observation_sequence") != offered.at("sequence")) {
 				return "invalid_observation";
 			}
-			if (offered.at("party").at("leader_id") != current.at("party").at("leader_id")) {
+			if (offered.at("party").is_null() || current.at("party").is_null()) {
+				if (!offered.at("party").is_null() || !current.at("party").is_null()
+				    || !offered.value("autonomous", false) || !current.value("autonomous", false)) {
+					return "invalid_contract";
+				}
+			} else if (offered.at("party").at("leader_id") != current.at("party").at("leader_id")) {
 				return "authority_changed";
 			}
 			if (!current.at("bot").at("alive").get<bool>()) {

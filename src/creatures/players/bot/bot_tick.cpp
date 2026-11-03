@@ -4800,6 +4800,21 @@ void BotEngine::processBot(BotState& bot) {
 		tryOpportunisticMount(bot, player);
 	}
 
+	// One opt-in explorer executes bounded brain goals without a Party. Native
+	// combat/flee/death handling and the fixed-cadence healing loop stay in charge.
+	if (brainOwns(bot.guid) && brain_->autonomous == bot.guid && !player->getParty()
+	    && bot.state != BotAIState::COMBAT && bot.state != BotAIState::FLEEING
+	    && bot.state != BotAIState::PK_ATTACK) {
+		auto &session = brain_->sessions[bot.guid];
+		if (auto preferred = brainTarget(bot)) bot.huntTargetId = preferred->getID();
+		scanAndAttackMonster(bot);
+		const Position home(session.home[0], session.home[1], static_cast<uint8_t>(session.home[2]));
+		if (bot.huntTargetId == 0 || session.action == "hold" || session.action == "retreat") {
+			brainPartyMove(bot, home);
+		}
+		return;
+	}
+
 	// Dispatch by state
 	switch (bot.state) {
 		case BotAIState::IDLE:

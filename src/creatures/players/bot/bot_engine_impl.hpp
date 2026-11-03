@@ -4252,6 +4252,7 @@ public:
 	std::string brainCommand(const std::string &botName, const std::string &command);
 	std::shared_ptr<Creature> brainTarget(BotState &bot);
 	bool brainRetreat(uint32_t guid) const;
+	bool brainSafetyPause(BotState &bot);
 	void finishBrain(BotState &bot, const std::string &status, const std::string &reason);
 	// The destructor is the ONE point every teardown passes through: BotEngineLoader::reload()
 	// and ::unload() both funnel into destroyBotEngine() -> `delete engine`. Draining here means

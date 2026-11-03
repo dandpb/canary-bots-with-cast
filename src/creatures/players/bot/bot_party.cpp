@@ -1211,6 +1211,9 @@ void BotEngine::doPartyFollow(BotState& bot) {
 		g_game().addPlayerMana(player);
 	}
 
+	// Apply before target chasing can replace the guide movement. Healing above remains live.
+	if (brainSafetyPause(bot)) return;
+
 	uint8_t baseVoc = getBaseVocation(bot.vocationId);
 	bool chasing = false;
 

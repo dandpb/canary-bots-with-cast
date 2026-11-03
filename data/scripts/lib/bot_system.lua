@@ -1130,7 +1130,7 @@ function BotSystem.executeReload(opts)
 	-- (e.g., unexpected return type from a C++ binding) clears the re-entrancy
 	-- flag and surfaces the error instead of leaving _reloadInProgress=true
 	-- forever (which would block every future reload until canary restarts).
-	local onlineGuids, hibernatedNames
+	local onlineGuids, hibernatedNames, schedulerWasEnabled
 	local prefixOk, prefixErr = pcall(function()
 		-- 1. Detect currently-active bots (via C++ engine active flag)
 		onlineGuids = {}
@@ -1155,6 +1155,32 @@ function BotSystem.executeReload(opts)
 				end
 			end
 		end
+		-- The Player/pool views omit bots between death and respawn. The existing
+		-- registry mirror supplies their identities; confirm membership against
+		-- the OLD engine so stale asynchronous DB rows cannot create extra bots.
+		local activeSet, missingNames = {}, {}
+		for _, guid in ipairs(onlineGuids) do activeSet[guid] = true end
+		for _, name in ipairs(hibernatedNames) do missingNames[name] = true end
+		local cursor = db.storeQuery("SELECT p.`id`, p.`name` FROM `players` p "
+			.. "JOIN `bot_active_players` b ON b.`player_id` = p.`id`")
+		if cursor then
+			repeat
+				local guid = result.getNumber(cursor, "id")
+				local name = result.getString(cursor, "name")
+				if Game.botGetState(guid) >= 0 then
+					if Game.botIsActive(guid) then activeSet[guid] = true end
+					if not Player(name) and not missingNames[name] then
+						hibernatedNames[#hibernatedNames + 1] = name
+						missingNames[name] = true
+					end
+				end
+			until not result.next(cursor)
+			result.free(cursor)
+		end
+		onlineGuids = {}
+		for guid in pairs(activeSet) do onlineGuids[#onlineGuids + 1] = guid end
+		schedulerWasEnabled = not tostring(Game.botCommand("_global", "schedule status")):find("Scheduler: OFF", 1, true)
+
 		-- Debug-by-NAME only ever runs the bots you asked for; every other bot is despawned a few
 		-- lines later ("despawned 499/500 non-target bots"). Materializing them first is pure
 		-- waste, and it is SLOW waste: step 4b staggers one DB load per 100ms on purpose (to
@@ -1188,6 +1214,7 @@ function BotSystem.executeReload(opts)
 		-- 3. Reload the .so + hunt data — this destroys old hibernationPool_
 		local result = Game.botReload()
 		emit(tostring(result))
+		Game.botCommand("_global", "schedule off")
 
 		-- 4. Restart the 100ms tick loop (old cycleEvent may be stale after dlclose/dlopen)
 		Game.botStartTickLoop()
@@ -1470,6 +1497,9 @@ function BotSystem.executeReload(opts)
 			logger.error("[reload:{}] finalize error: {}", source, tostring(finalizeErr))
 			-- Surface to admin if possible (player ref may be stale by now — emit guards it)
 			emit("reload finalize FAILED: " .. tostring(finalizeErr))
+		end
+		if opts.debugCount == nil then
+			Game.botCommand("_global", schedulerWasEnabled and "schedule on" or "schedule off")
 		end
 		BotSystem._reloadInProgress = false
 	end -- finalizeReload

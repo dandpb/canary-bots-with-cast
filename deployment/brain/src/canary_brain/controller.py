@@ -53,6 +53,18 @@ class Controller:
         self.leader_message: dict[int, str] = {}
         self.world = ""
 
+    @staticmethod
+    def authority(snapshot: Observation) -> int:
+        return snapshot.party.leader_id if snapshot.party else 0
+
+    @staticmethod
+    def authorized(snapshot: Observation, player: int) -> bool:
+        return (
+            snapshot.party.leader_id == player
+            if snapshot.party
+            else snapshot.autonomous
+        )
+
     def _spawn(self, bot: int, kind: str, work: Callable[[], Any]) -> None:
         key = (bot, kind)
         if key in self.pending:
@@ -107,19 +119,36 @@ class Controller:
                 "position": snapshot.bot.position,
                 "potions": snapshot.bot.potions,
                 "health": snapshot.bot.health,
-                "leader": snapshot.party.leader_id if snapshot.party else None,
+                "leader": self.authority(snapshot) if snapshot.party else None,
+                "autonomous": snapshot.autonomous,
+                "learning": self.learning or snapshot.autonomous,
                 "eligible": [item.id for item in snapshot.actions],
             },
         )
         for message in snapshot.messages:
-            if snapshot.party and message.player_id == snapshot.party.leader_id:
+            if self.authorized(snapshot, message.player_id):
                 self.leader_message[bot] = message.id
             if message.id in self.seen or (bot, "dialogue") in self.pending:
                 continue
             self.seen.append(message.id)
             self._spawn(bot, "dialogue", partial(self._dialogue, snapshot, message))
-        if snapshot.party is None or not snapshot.bot.alive:
+        if (
+            snapshot.party is None and not snapshot.autonomous
+        ) or not snapshot.bot.alive:
             return
+        if (
+            snapshot.autonomous
+            and snapshot.party is None
+            and not snapshot.bot.objective_running
+            and len(snapshot.actions) > 1
+        ):
+            profile = self.store.get("profile", str(bot)) or {}
+            if time.time() - profile.get("last_autonomous_plan", 0) >= 600:
+                profile["last_autonomous_plan"] = time.time()
+                self.store.put("profile", str(bot), profile)
+                self._spawn(
+                    bot, "strategy", partial(self._autonomous_strategy, snapshot)
+                )
         plan = self.store.get("plan", str(bot))
         if (
             plan
@@ -128,7 +157,7 @@ class Controller:
         ):
             if (
                 plan["world"] != snapshot.world
-                or plan["leader"] != snapshot.party.leader_id
+                or plan["leader"] != self.authority(snapshot)
                 or time.time() - plan["started"] > 7200
             ):
                 self.store.delete("plan", str(bot))
@@ -137,11 +166,13 @@ class Controller:
         fingerprint = json.dumps(
             [
                 snapshot.world,
-                snapshot.party.leader_id,
+                self.authority(snapshot),
                 snapshot.objective_generation,
                 snapshot.bot.health // 25,
                 snapshot.bot.potions < 10,
                 [entity.get("id") for entity in snapshot.nearby],
+                [item.id for item in snapshot.actions],
+                snapshot.bot.objective_running,
             ]
         )
         previous_time, previous = self.last_decision.get(bot, (0, ""))
@@ -270,7 +301,12 @@ class Controller:
         memory = {
             "actions": {
                 key: value for key, value in statistics.items() if key in eligible
-            }
+            },
+            "strategy_hypothesis": self.store.get(
+                "autonomous_strategy", str(snapshot.bot.id)
+            )
+            if snapshot.autonomous
+            else None,
         }
         if snapshot.bot.objective_running:
             actions = [
@@ -286,7 +322,7 @@ class Controller:
             for item in self.latest.values()
             if item.party
             and snapshot.party
-            and item.party.leader_id == snapshot.party.leader_id
+            and item.party.leader_id == self.authority(snapshot)
         ]
         if guides and snapshot.bot.id != min(guides):
             snapshot = snapshot.model_copy(
@@ -323,7 +359,7 @@ class Controller:
         }:
             return
         selection = None
-        if self.learning and selected.startswith("hunt:"):
+        if (self.learning or snapshot.autonomous) and selected.startswith("hunt:"):
             alternatives = [
                 item.id for item in snapshot.actions if item.action == "hunt"
             ]
@@ -346,11 +382,46 @@ class Controller:
                 {"candidate": selected, "at": time.time()},
             )
 
+    async def _autonomous_strategy(self, snapshot: Observation) -> None:
+        facts = [
+            {
+                "candidate": value["candidate"],
+                "status": value["status"],
+                "metrics": value.get("metrics", {}),
+            }
+            for _, value in self.store.records("episode", 40)
+            if value.get("bot") == snapshot.bot.id and value.get("terminal")
+        ][:6]
+        proposal = await self.model.converse(
+            snapshot,
+            "You are exploring alone. Propose a prudent varied objective from the offered candidates. "
+            "Learn from observed outcomes; avoid repeating failed or monotonous activities. "
+            "Restock when necessary, preserve your life and respect level limits. This is a strategy hypothesis, not execution.",
+            True,
+            facts,
+            False,
+        )
+        latest = self.latest.get(snapshot.bot.id)
+        if (
+            latest is not None
+            and latest.world == snapshot.world
+            and latest.autonomous
+            and latest.party is None
+        ):
+            self.store.put(
+                "autonomous_strategy",
+                str(snapshot.bot.id),
+                {
+                    "kind": "model_hypothesis",
+                    "candidate": proposal.candidate_id,
+                    "text": proposal.reply[:600],
+                    "at": time.time(),
+                },
+            )
+
     async def _dialogue(self, snapshot: Observation, message: Message) -> None:
         bot = snapshot.bot.id
-        authorized = (
-            snapshot.party is not None and snapshot.party.leader_id == message.player_id
-        )
+        authorized = self.authorized(snapshot, message.player_id)
         memory_key = f"{bot}:{message.player_id}"
         memory = self.store.get("memory", memory_key) or {}
         history = (
@@ -402,7 +473,7 @@ class Controller:
                         "world": snapshot.world,
                         "bot_id": bot,
                         "message_id": message.id,
-                        "text": "Minha conversa está indisponível agora. Continuo com o comportamento normal da party.",
+                        "text": "Minha conversa está indisponível agora. Continuo com o comportamento nativo.",
                     }
                 )
             raise
@@ -434,11 +505,7 @@ class Controller:
                 )[-8:],
             },
         )
-        if (
-            not authorized
-            or latest.party is None
-            or latest.party.leader_id != message.player_id
-        ):
+        if not authorized or not self.authorized(latest, message.player_id):
             return
         if latest.objective_generation != snapshot.objective_generation:
             return
@@ -459,7 +526,7 @@ class Controller:
                     {
                         "id": message.id,
                         "world": snapshot.world,
-                        "leader": message.player_id,
+                        "leader": self.authority(snapshot),
                         "text": message.text,
                         "started": time.time(),
                         "remaining": 2,
@@ -581,12 +648,11 @@ class Controller:
         current = self.store.get("plan", str(snapshot.bot.id))
         if (
             latest is None
-            or latest.party is None
             or current is None
             or current["id"] != plan["id"]
             or self.leader_message.get(snapshot.bot.id) not in {None, plan["id"]}
             or latest.world != plan["world"]
-            or latest.party.leader_id != plan["leader"]
+            or self.authority(latest) != plan["leader"]
             or latest.objective_generation != snapshot.objective_generation
         ):
             return

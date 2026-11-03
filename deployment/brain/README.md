@@ -135,3 +135,32 @@ Opt-in real probes use the same monthly ledger and do not send game actions:
 See [EVALUATION.md](EVALUATION.md) for measured evidence, limitations and the human playtest rubric.
 
 Official references: [Decisions guide](https://developers.openai.com/api/docs/guides/decisions), [Decisions API](https://developers.openai.com/api/reference/resources/decisions/methods/create), [function calling](https://developers.openai.com/api/docs/guides/function-calling), [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna).
+
+
+### Autonomous explorer
+
+Set `autonomous_bot` in the **server** configuration to one GUID already in `bots`
+(maximum three pilots total). Omit it or use `0` to retain party-only behavior.
+This one bot stays awake, executes the same bounded hunt/shop adapters without a
+party, and uses its persistent contextual policy even if the worker's global
+`learning` gate is false. Other pilots retain that gate. This is experience-based
+selection and memory, not online model-weight training.
+
+Outside a party any real player can send `/brain <objective>` to the explorer.
+Within a party the human leader controls goals; other players can converse and
+suggest. Messages are bounded and rate limited. Newer authorized requests supersede
+older unfinished responses. The native action catalog, level, stock, leases and
+health checks constrain every proposal.
+
+GPT-6 Luna Responses provides dialogue and a strategy hypothesis at most once per
+ten minutes while idle; Decisions chooses from current safe actions. Verified
+outcomes update the persistent policy; exploration and repetition penalties apply
+to eligible hunts. The shared USD 50 monthly ledger covers both APIs and tests.
+No available alternative means the bot may repeat the only suitable hunt; it never
+unlocks an unsafe hunt just to create variety. Native healing/combat continues
+without waiting for an API. Worker failure releases its goals to native AI.
+
+Party hunt offerings require online members with at least 60% HP, within six tiles
+on the same floor. The movement guard also runs before monster chasing; it pauses
+the route while healing and existing attacks continue. Humans must still play
+actively, especially through stairs. This does not guarantee an AFK player's survival.

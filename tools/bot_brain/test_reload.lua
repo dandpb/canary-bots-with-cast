@@ -7,7 +7,7 @@ logger = {
 	warn = function() end,
 	error = function(message) errors[#errors + 1] = message end,
 }
-db = { query = function() return true end }
+db = { query = function() return true end, storeQuery = function() return false end }
 addEvent = function(callback) callback() end
 Player = function() return nil end
 
