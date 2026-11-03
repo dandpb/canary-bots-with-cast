@@ -152,6 +152,25 @@ class PackagingTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             client.package(**self.options)
 
+    def test_unquoted_ini_credentials_are_not_packaged(self):
+        self.paths["config"].write_text(
+            "[EnterGame]\naccount=fixture-user\npassword=fixture-only\n"
+        )
+        with self.assertRaises(ValueError):
+            client.package(**self.options)
+
+    def test_saved_lua_settings_are_not_packaged(self):
+        self.paths["init"].write_text(
+            self.paths["init"].read_text()
+            + "g_settings.set('password', 'fixture-only')\n"
+        )
+        with self.assertRaises(ValueError):
+            client.package(**self.options)
+
+    def test_empty_ini_credential_fields_are_allowed(self):
+        self.paths["config"].write_text("[EnterGame]\naccount=\npassword=\n")
+        client.package(**self.options)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,7 @@
 """Package a compatible OTClient Redemption browser build for a MyAAC site."""
 
 import argparse
+import configparser
 import hashlib
 import json
 import os
@@ -52,6 +53,44 @@ AddType application/octet-stream .data
 
 def digest(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def check_fresh_configuration(init_text, config_text):
+    sensitive = {
+        "account",
+        "accountname",
+        "email",
+        "login",
+        "loginemail",
+        "password",
+        "passwordhash",
+        "token",
+        "authenticatortoken",
+        "sessionkey",
+        "accesstoken",
+        "refreshtoken",
+    }
+    settings = configparser.ConfigParser(interpolation=None, allow_no_value=True)
+    try:
+        settings.read_string("[__canary_root__]\n" + config_text)
+    except (configparser.Error, AttributeError):
+        raise ValueError(
+            "provide a fresh valid config.ini, not a saved client profile"
+        ) from None
+    for section in settings.sections():
+        for key, value in settings.items(section):
+            key = re.sub(r"[^a-z0-9]", "", key.lower())
+            if key in sensitive and (value or "").strip().strip("\"'"):
+                raise ValueError(
+                    "configuration contains a nonempty saved account setting"
+                )
+    field = r"(?:account_?name|account|email|login_?email|login|password_?hash|password|authenticator_?token|token|session_?key|access_?token|refresh_?token)"
+    assignment = rf"\b{field}\s*=\s*[\"'][^\"']+"
+    saved_setting = rf"\bg_settings\.set\s*\(\s*[\"']{field}[\"']\s*,\s*[\"'][^\"']+"
+    if re.search(assignment, init_text, re.IGNORECASE) or re.search(
+        saved_setting, init_text, re.IGNORECASE
+    ):
+        raise ValueError("initialization contains a saved account setting")
 
 
 def login_adapter(host, port):
@@ -135,13 +174,7 @@ def package(
         raise ValueError("JavaScript metadata does not match its data file")
     init_text = Path(init).read_text()
     config_bytes = Path(config).read_bytes()
-    for text in (init_text, config_bytes.decode()):
-        if re.search(
-            r'\b(account|password|token|sessionkey)\s*=\s*["\'][^"\']+',
-            text,
-            re.IGNORECASE,
-        ):
-            raise ValueError("use fresh client configuration without saved credentials")
+    check_fresh_configuration(init_text, config_bytes.decode())
     init_text, changed = re.subn(r'https?://[^\s"\']+/login\.php', login_url, init_text)
     if not changed:
         raise ValueError("init.lua must contain a configured HTTP login.php service")
@@ -172,6 +205,13 @@ def package(
         overrides.update({prefix + path.name: path.read_bytes() for path in paths})
     chunks, files, seen = [], [], set()
     offset = 0
+
+    def append_file(name, payload):
+        nonlocal offset
+        chunks.append(payload)
+        files.append({"filename": name, "start": offset, "end": offset + len(payload)})
+        offset += len(payload)
+
     for entry in metadata["files"]:
         name = entry["filename"]
         if (
@@ -192,16 +232,12 @@ def package(
             raise ValueError("invalid package byte range")
         seen.add(name)
         data = overrides.get(name, old[int(bounds[0]) : int(bounds[1])])
-        chunks.append(data)
-        files.append({"filename": name, "start": offset, "end": offset + len(data)})
-        offset += len(data)
+        append_file(name, data)
     if not {"/init.lua", "/modules/client_entergame/entergame.lua"}.issubset(seen):
         raise ValueError("client package lacks required runtime files")
     for name, data in overrides.items():
         if name not in seen:
-            chunks.append(data)
-            files.append({"filename": name, "start": offset, "end": offset + len(data)})
-            offset += len(data)
+            append_file(name, data)
     data = b"".join(chunks)
     data_name = "otclient-" + digest(data)[:12] + ".data"
     meta = {
