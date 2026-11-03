@@ -1211,8 +1211,8 @@ void BotEngine::doPartyFollow(BotState& bot) {
 		g_game().addPlayerMana(player);
 	}
 
-	// Apply before target chasing can replace the guide movement. Healing above remains live.
-	if (brainSafetyPause(bot)) return;
+	// Suppress movement while preserving all role-specific healing below.
+	const bool safetyPaused = brainSafetyPause(bot);
 
 	uint8_t baseVoc = getBaseVocation(bot.vocationId);
 	bool chasing = false;
@@ -1238,7 +1238,7 @@ void BotEngine::doPartyFollow(BotState& bot) {
 	}
 	const bool thisIsFirstEk = (baseVoc == 4 && ekGuid == bot.guid);
 
-	const bool holding = brainOwns(bot.guid) && brain_->sessions.at(bot.guid).action == "hold";
+	const bool holding = safetyPaused || (brainOwns(bot.guid) && brain_->sessions.at(bot.guid).action == "hold");
 	if (!brainRetreat(bot.guid)) {
 		if (thisIsFirstEk) {
 			// ===== A1: EK TANK — exeta res + obey human target / fallback to nearest, follow human =====
@@ -1384,6 +1384,11 @@ void BotEngine::doPartyFollow(BotState& bot) {
 		if (baseVoc == 2) {
 			doPartyHealing(bot, party, leader);
 		}
+	}
+	// Role healing/attacks ran; cancel any movement a role may have queued.
+	if (safetyPaused) {
+		brainSafetyPause(bot);
+		return;
 	}
 	// 7. Follow leader (only if not chasing a target)
 	if ((!chasing || holding) && brainPartyMove(bot, leaderPos)) {

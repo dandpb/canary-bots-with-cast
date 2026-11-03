@@ -1512,22 +1512,28 @@ function BotSystem.executeReload(opts)
 		finalizeReload()
 	else
 		for i, name in ipairs(hibernatedNames) do
-			addEvent(function()
+			local attempts = 0
+			local function materialize()
+				attempts = attempts + 1
 				local ok, err = pcall(function()
 					if not Player(name) then
-						if Game.loadBotPlayer(name) then
-							materializedCount = materializedCount + 1
-						end
+						local player = Game.loadBotPlayer(name)
+						if not player then error("Player could not be loaded") end
+						materializedCount = materializedCount + 1
 					end
 				end)
+				if not ok and attempts < 3 then
+					addEvent(materialize, attempts * 500)
+					return
+				end
 				if not ok then
-					logger.error("[reload:materialize] error loading bot '" .. name .. "': " .. tostring(err))
+					logger.error("[reload:materialize] bot '" .. name .. "' was NOT restored: " .. tostring(err))
+					emit("reload incomplete: could not restore " .. name .. " after 3 attempts")
 				end
 				pendingMaterializations = pendingMaterializations - 1
-				if pendingMaterializations == 0 then
-					finalizeReload()
-				end
-			end, i * BOT_MATERIALIZE_INTERVAL_MS)
+				if pendingMaterializations == 0 then finalizeReload() end
+			end
+			addEvent(materialize, i * BOT_MATERIALIZE_INTERVAL_MS)
 		end
 	end
 

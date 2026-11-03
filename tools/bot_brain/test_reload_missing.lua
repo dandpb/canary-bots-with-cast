@@ -6,6 +6,7 @@ logger = { info = function() end, warn = function() end,
 addEvent = function(callback) callback() end
 local registered = { [51] = true, [53] = true, [54] = true }
 local active = { [51] = true, [53] = true }
+local failedOnce = false
 local scheduler = false
 local world = {}
 local function actor(guid, name)
@@ -47,6 +48,7 @@ Game = {
 	botStartTickLoop = function() end,
 	loadBotPlayer = function(name)
 		assert(not scheduler, "scheduler must pause while registrations are incomplete")
+		if name == "Respawning Companion" and not failedOnce then failedOnce = true; return nil end
 		local guid = name == "Respawning Companion" and 53 or 54
 		assert(name ~= "Stale Registry Row")
 		world[guid] = actor(guid, name)

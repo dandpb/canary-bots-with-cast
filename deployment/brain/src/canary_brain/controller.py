@@ -120,6 +120,7 @@ class Controller:
                 "potions": snapshot.bot.potions,
                 "health": snapshot.bot.health,
                 "leader": self.authority(snapshot) if snapshot.party else None,
+                "party": snapshot.party.model_dump() if snapshot.party else None,
                 "autonomous": snapshot.autonomous,
                 "learning": self.learning or snapshot.autonomous,
                 "eligible": [item.id for item in snapshot.actions],

@@ -4807,7 +4807,20 @@ void BotEngine::processBot(BotState& bot) {
 	    && bot.state != BotAIState::PK_ATTACK) {
 		auto &session = brain_->sessions[bot.guid];
 		if (auto preferred = brainTarget(bot)) bot.huntTargetId = preferred->getID();
-		scanAndAttackMonster(bot);
+		if (session.action != "retreat") {
+			// The brain owns its script separately from the ambient hunt state.
+			// Project it only for the existing native combat scanner, then restore
+			// the ambient fields so releasing ownership does not start an old hunt.
+			const auto previousScript = bot.huntScriptId;
+			const auto previousPhase = bot.huntPhase;
+			if (session.action == "hunt") {
+				bot.huntScriptId = session.script;
+				bot.huntPhase = HuntPhase::PATROLLING;
+			}
+			scanAndAttackMonster(bot);
+			bot.huntScriptId = previousScript;
+			bot.huntPhase = previousPhase;
+		}
 		const Position home(session.home[0], session.home[1], static_cast<uint8_t>(session.home[2]));
 		if (bot.huntTargetId == 0 || session.action == "hold" || session.action == "retreat") {
 			brainPartyMove(bot, home);

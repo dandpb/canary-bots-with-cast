@@ -372,11 +372,11 @@ void BotEngine::finishBrain(BotState &bot, const std::string &status, const std:
 			}
 			brainPreviousChase.erase(previous);
 		}
-		if (player && (session.action == "hunt" || session.action == "resupply" || session.action == "hold")) {
+		if (player && (session.action == "hunt" || session.action == "resupply" || session.action == "hold" || session.action == "retreat" || session.action == "follow")) {
 			player->listWalkDir.clear();
 			player->stopEventWalk();
 		}
-		if (session.action == "resupply") {
+		if (session.action == "resupply" || session.action == "retreat") {
 			clearPlannerWalk(bot.guid);
 			resetFloorChange(bot);
 		}
@@ -476,7 +476,7 @@ void BotEngine::tickBrain() {
 		}
 		auto &session = brain_->sessions[guid];
 		auto player = bot->getPlayer();
-		if (guid == brain_->autonomous && bot->active && bot->hibernated && now - session.lastPublish >= 5000) {
+		if (guid == brain_->autonomous && brainOwns(guid) && bot->active && bot->hibernated && now - session.lastPublish >= 5000) {
 			session.lastPublish = now;
 			wakeBot(guid);
 			player = bot->getPlayer();
@@ -609,13 +609,20 @@ void BotEngine::tickBrain() {
 			const auto home = town ? town->getTemplePosition() : bot->getPlayer()->getPosition();
 			session.home = { home.x, home.y, home.z };
 			session.danger = 0;
-			if (action == "hold") {
+			if (action == "hold" || action == "retreat") {
 				brainPreviousChase[guid] = bot->getPlayer()->chaseMode;
 				bot->getPlayer()->setChaseMode(false);
 				bot->getPlayer()->setFollowCreature(nullptr);
 				bot->getPlayer()->stopWalk();
 			}
 			++session.generation;
+			if (!bot->getPlayer()->getParty() && brain_->autonomous == guid) {
+				bot->getPlayer()->stopWalk();
+				bot->getPlayer()->listWalkDir.clear();
+				bot->getPlayer()->stopEventWalk();
+				bot->hasWalkTarget = false;
+				if (action == "hunt") bot->huntIgnoredMonsters.clear();
+			}
 			if (action == "hunt") {
 				session.script = static_cast<uint32_t>(std::stoul(candidate.substr(5)));
 				activeHunts_[session.script] = guid;
@@ -691,7 +698,12 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 		if (!player->listWalkDir.empty() || bot.pendingWalkPauseEventId != 0) {
 			return true;
 		}
-		if (bot.currentPos.z != leaderPosition.z) {
+		if (!player->getParty() && bot.guid == brain_->autonomous) {
+			if (now - session.lastMove >= 500) {
+				session.lastMove = now;
+				if (!planScopedWalk(bot, leaderPosition, 2)) finishBrain(bot, "failed", "return_route_unavailable");
+			}
+		} else if (bot.currentPos.z != leaderPosition.z) {
 			auto leader = player->getParty() ? player->getParty()->getLeader() : nullptr;
 			if (!leader || !tryFollowLeaderTrail(bot, leader)) {
 				finishBrain(bot, "failed", "return_route_unavailable");
