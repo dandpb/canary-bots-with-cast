@@ -1129,6 +1129,10 @@ void BotEngine::doPartyFollow(BotState& bot) {
 
 	auto leaderCreature = g_game().getCreatureByID(leaderIt->second);
 	auto leader = leaderCreature ? leaderCreature->getPlayer() : nullptr;
+	if (brainOwns(bot.guid) && party->getLeader() && !party->getLeader()->isBotPlayer()) {
+		leader = party->getLeader();
+		leaderIt->second = leader->getID();
+	}
 
 	// The stored leader must still actually BE in this bot's party. Liveness is not enough:
 	// when a human leaves, Party::leaveParty hands leadership to memberList.front() — a BOT —
@@ -1228,6 +1232,7 @@ void BotEngine::doPartyFollow(BotState& bot) {
 	}
 	const bool thisIsFirstEk = (baseVoc == 4 && ekGuid == bot.guid);
 
+	const bool holding = brainOwns(bot.guid) && brain_->sessions.at(bot.guid).action == "hold";
 	if (!brainRetreat(bot.guid)) {
 		if (thisIsFirstEk) {
 			// ===== A1: EK TANK — exeta res + obey human target / fallback to nearest, follow human =====
@@ -1267,7 +1272,9 @@ void BotEngine::doPartyFollow(BotState& bot) {
 					player->setAttackedCreature(ekTarget);
 				}
 				castSpell(bot, ekTarget);
-				chaseTarget(bot, ekTarget);
+				if (!holding) {
+					chaseTarget(bot, ekTarget);
+				}
 				chasing = true;
 				if (ekTarget != leader->getAttackedCreature()) {
 					castLog(bot, fmt::format("PARTY: [PARTYTANK] fallback target #{} (human idle)", ekTarget->getID()));
@@ -1349,7 +1356,9 @@ void BotEngine::doPartyFollow(BotState& bot) {
 						player->setAttackedCreature(leaderTarget);
 					}
 					castSpell(bot, leaderTarget);
-					chaseTarget(bot, leaderTarget);
+					if (!holding) {
+						chaseTarget(bot, leaderTarget);
+					}
 					chasing = true;
 				} else if (!leashOk && player->getAttackedCreature()) {
 					player->setAttackedCreature(nullptr);
@@ -1371,7 +1380,7 @@ void BotEngine::doPartyFollow(BotState& bot) {
 		}
 	}
 	// 7. Follow leader (only if not chasing a target)
-	if (!chasing && brainPartyMove(bot, leaderPos)) {
+	if ((!chasing || holding) && brainPartyMove(bot, leaderPos)) {
 		return;
 	}
 	if (!chasing) {

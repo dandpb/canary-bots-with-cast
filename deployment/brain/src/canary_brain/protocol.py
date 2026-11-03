@@ -6,7 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 
 class Packet(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    model_config = ConfigDict(
+        extra="forbid", strict=True, frozen=True, allow_inf_nan=False
+    )
 
 
 class Candidate(Packet):

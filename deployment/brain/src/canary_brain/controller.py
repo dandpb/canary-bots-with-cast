@@ -104,6 +104,11 @@ class Controller:
                 "objective": snapshot.bot.objective,
                 "last_observation": time.time(),
                 "sequence": snapshot.sequence,
+                "position": snapshot.bot.position,
+                "potions": snapshot.bot.potions,
+                "health": snapshot.bot.health,
+                "leader": snapshot.party.leader_id if snapshot.party else None,
+                "eligible": [item.id for item in snapshot.actions],
             },
         )
         for message in snapshot.messages:
@@ -253,6 +258,12 @@ class Controller:
             self.store.put("pending", action_id, pending)
 
     async def _decide(self, snapshot: Observation) -> None:
+        # Holding is useful only when requested; autonomous idle loops earn no work.
+        snapshot = snapshot.model_copy(
+            update={
+                "actions": [item for item in snapshot.actions if item.action != "hold"]
+            }
+        )
         context = self.context(snapshot)
         statistics = self.policy.statistics(snapshot.bot.id, context)
         eligible = {item.id for item in snapshot.actions}
@@ -296,6 +307,13 @@ class Controller:
             return
         if selected not in {item.id for item in latest.actions}:
             return
+        activity = self.store.get("activity_recent", str(snapshot.bot.id)) or {}
+        if (
+            selected in {"follow", "resupply"}
+            and activity.get("candidate") == selected
+            and time.time() - activity.get("at", 0) < 120
+        ):
+            return
         if any(
             (snapshot.bot.id, kind) in self.pending for kind in ("dialogue", "replan")
         ) and selected not in {
@@ -321,6 +339,12 @@ class Controller:
             }
         # The original tactical deadline remains authoritative despite newer observations.
         self._apply(snapshot, selected, selection)
+        if selected != "continue":
+            self.store.put(
+                "activity_recent",
+                str(snapshot.bot.id),
+                {"candidate": selected, "at": time.time()},
+            )
 
     async def _dialogue(self, snapshot: Observation, message: Message) -> None:
         bot = snapshot.bot.id
@@ -466,7 +490,7 @@ class Controller:
             reason=outcome.reason,
             metrics=outcome.metrics,
         )
-        reward = episode_reward(outcome.status, outcome.metrics)
+        reward = episode_reward(outcome.status, outcome.metrics, episode["candidate"])
         if (
             terminal
             and reward is not None
@@ -529,6 +553,15 @@ class Controller:
         )
 
     async def _replan(self, snapshot: Observation, plan: dict[str, Any]) -> None:
+        # Reserve this plan round durably before a billable call. A stale answer or
+        # provider failure must not leave a ready plan that is retried every tick.
+        plan["phase"] = "planning"
+        plan["attempts"] = plan.get("attempts", 0) + 1
+        self.store.put("plan", str(snapshot.bot.id), plan)
+        if plan["attempts"] > 3:
+            plan["phase"] = "stopped"
+            self.store.put("plan", str(snapshot.bot.id), plan)
+            return
         proposal = await self.model.converse(
             snapshot,
             "Continue this bounded leader plan only if its next step is currently offered. "

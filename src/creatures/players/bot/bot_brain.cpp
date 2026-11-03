@@ -9,6 +9,10 @@
 namespace {
 	using Json = nlohmann::json;
 	std::deque<double> brainTickMicroseconds;
+	enum SupplyPhase : uint8_t { ApproachingShop,
+		                         WaitingForGreeting,
+		                         VerifyingPurchase,
+		                         ReturningToParty };
 
 	std::vector<ShopBlock> brainSupplyItems(const std::shared_ptr<Player> &player, const std::shared_ptr<Npc> &npc) {
 		std::vector<ShopBlock> chosen;
@@ -37,21 +41,38 @@ namespace {
 	Json brainOutcome(const std::string &world, uint32_t guid, const std::string &id, const std::string &status, const std::string &reason, Json metrics = Json::object()) {
 		return { { "version", 1 }, { "type", "outcome" }, { "world", world }, { "bot_id", guid }, { "action_id", id }, { "status", status }, { "reason", reason }, { "metrics", metrics } };
 	}
+	void rememberOutcome(botbrain::Session &session, const std::string &id, const Json &outcome) {
+		if (session.outcomes.size() >= 128) {
+			Json running;
+			if (auto current = session.outcomes.find(session.actionId); current != session.outcomes.end()) {
+				running = current->second;
+			}
+			session.outcomes.clear();
+			if (!running.is_null()) {
+				session.outcomes[session.actionId] = std::move(running);
+			}
+		}
+		session.outcomes[id] = outcome;
+	}
 } // namespace
 
 uint32_t BotEngine::brainPotions(const std::shared_ptr<Player> &player) const {
 	uint32_t total = 0;
-	for (const auto &potion : botsupplies::kPotions) {
-		if (player->getLevel() < potion.level || (potion.vocMask && !(potion.vocMask & botsupplies::vocBit(player->getVocation()->getBaseId())))) {
-			continue;
+	const auto bit = botsupplies::vocBit(player->getVocation()->getBaseId());
+	for (const auto &item : player->getAllInventoryItems()) {
+		for (const auto &potion : botsupplies::kPotions) {
+			if (item->getID() == potion.id && player->getLevel() >= potion.level && (!potion.vocMask || (potion.vocMask & bit))) {
+				total += Item::countByType(item, -1);
+				break;
+			}
 		}
-		total += player->getItemTypeCount(potion.id);
 	}
 	return total;
 }
 
 bool BotEngine::brainOwns(uint32_t guid) const {
-	if (!brain_ || brain_->mode != "active" || botMonoMs() - brain_->heartbeat > 5000) {
+	if (!brain_ || brain_->mode != "active" || botMonoMs() - brain_->heartbeat > 5000
+	    || std::find(brain_->roster.begin(), brain_->roster.end(), guid) == brain_->roster.end()) {
 		return false;
 	}
 	auto session = brain_->sessions.find(guid);
@@ -200,6 +221,9 @@ Json BotEngine::observeBrain(BotState &bot) {
 	auto &session = brain_->sessions[bot.guid];
 	auto party = player->getParty();
 	auto leader = party ? party->getLeader() : nullptr;
+	if (leader && leader->getHealth() <= 0) {
+		finishBrain(bot, "failed", "party_death");
+	}
 	if (leader && (leader->isBotPlayer() || leader->isRemoved() || leader->getHealth() <= 0)) {
 		leader = nullptr;
 	}
@@ -306,11 +330,8 @@ void BotEngine::finishBrain(BotState &bot, const std::string &status, const std:
 		const auto potionDelta = player ? static_cast<int64_t>(brainPotions(player)) - session.potions : 0;
 		auto leader = player && player->getParty() ? player->getParty()->getLeader() : nullptr;
 		const double distance = player && leader ? Position::getDiagonalDistance(player->getPosition(), leader->getPosition()) : 0;
-		auto outcome = brainOutcome(brain_->world, bot.guid, session.actionId, status, reason, { { "elapsed_seconds", elapsed }, { "xp_delta", xp }, { "supply_delta", potionDelta }, { "party_distance", distance }, { "progress", status == "completed" ? 1.0 : 0.0 }, { "danger", session.danger }, { "deaths", reason == "death" ? 1.0 : 0.0 } });
-		if (session.outcomes.size() >= 128) {
-			session.outcomes.clear();
-		}
-		session.outcomes[session.actionId] = outcome;
+		auto outcome = brainOutcome(brain_->world, bot.guid, session.actionId, status, reason, { { "elapsed_seconds", elapsed }, { "level", player ? player->getLevel() : 1 }, { "party_size", player && player->getParty() ? player->getParty()->getMemberCount() + 1 : 1 }, { "xp_delta", xp }, { "supply_delta", potionDelta }, { "party_distance", distance }, { "progress", status == "completed" ? 1.0 : 0.0 }, { "danger", session.danger }, { "deaths", reason == "death" || reason == "party_death" ? 1.0 : 0.0 } });
+		rememberOutcome(session, session.actionId, outcome);
 		brain_->channel->send(outcome);
 	}
 	if (session.script != 0) {
@@ -485,7 +506,7 @@ void BotEngine::tickBrain() {
 			const auto action = selected->at("action").get<std::string>();
 			if (action == "continue") {
 				auto outcome = brainOutcome(brain_->world, guid, id, "completed", "continuing");
-				session.outcomes[id] = outcome;
+				rememberOutcome(session, id, outcome);
 				brain_->channel->send(outcome);
 				continue;
 			}
@@ -498,7 +519,7 @@ void BotEngine::tickBrain() {
 					bot->huntTargetId = target->getID();
 				}
 				auto outcome = brainOutcome(brain_->world, guid, id, "completed", "preference_applied");
-				session.outcomes[id] = outcome;
+				rememberOutcome(session, id, outcome);
 				brain_->channel->send(outcome);
 				continue;
 			}
@@ -524,11 +545,11 @@ void BotEngine::tickBrain() {
 			}
 			if (action == "resupply") {
 				session.potions = brainPotions(bot->getPlayer());
-				session.supplyStep = 0;
+				session.supplyStep = ApproachingShop;
 				session.lastMove = 0;
 			}
 			auto outcome = brainOutcome(brain_->world, guid, id, "accepted", "objective_started");
-			session.outcomes[id] = outcome;
+			rememberOutcome(session, id, outcome);
 			brain_->channel->send(outcome);
 		} catch (const std::exception &) {
 			// Malformed local messages never escape into the dispatcher.
@@ -551,9 +572,8 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 	auto player = bot.getPlayer();
 	const auto now = botMonoMs();
 	if (session.action == "hold") {
-		if (now - session.started > 30000) {
-			finishBrain(bot, "completed", "hold_finished");
-		}
+		player->listWalkDir.clear();
+		player->stopEventWalk();
 		return true;
 	}
 	if (session.action == "follow" || session.action == "retreat") {
@@ -573,7 +593,7 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 		return true;
 	}
 	if (session.action == "resupply") {
-		if (session.supplyStep == 3) {
+		if (session.supplyStep == ReturningToParty) {
 			if (bot.currentPos.z == leaderPosition.z && Position::getDiagonalDistance(bot.currentPos, leaderPosition) <= 3) {
 				finishBrain(bot, "completed", "supplies_bought_and_party_rejoined");
 				return false;
@@ -597,21 +617,25 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 				Position stand;
 				bool fallback = false;
 				if (resolveNpcApproach(bot, npc->getName(), stand, fallback)) {
-					goToWithDoors(bot, stand, 0);
+					if (Position::getDiagonalDistance(bot.currentPos, stand) <= 1) {
+						goToWithDoors(bot, npc->getPosition(), 2);
+					} else {
+						goToWithDoors(bot, stand, 0);
+					}
 				}
 			}
 			return true;
 		}
-		if (session.supplyStep == 0) {
+		if (session.supplyStep == ApproachingShop) {
 			g_game().internalCreatureSay(player, TALKTYPE_SAY, "hi", false);
-			session.supplyStep = 1;
+			session.supplyStep = WaitingForGreeting;
 			session.lastMove = now;
 			return true;
 		}
 		if (now - session.lastMove < 1500) {
 			return true;
 		}
-		if (session.supplyStep == 1) {
+		if (session.supplyStep == WaitingForGreeting) {
 			uint64_t remaining = std::min<uint64_t>(30000, player->getMoney() + player->getBankBalance());
 			for (const auto &item : brainSupplyItems(player, npc)) {
 				const uint32_t current = player->getItemTypeCount(item.itemId);
@@ -622,14 +646,14 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 					remaining -= amount * item.itemBuyPrice;
 				}
 			}
-			session.supplyStep = 2;
+			session.supplyStep = VerifyingPurchase;
 			session.lastMove = now;
 			return true;
 		}
 		const auto purchased = brainSupplyItems(player, npc);
 		const bool stocked = !purchased.empty() && std::all_of(purchased.begin(), purchased.end(), [&](const auto &item) { return player->getItemTypeCount(item.itemId) >= 20; });
 		if (stocked && brainPotions(player) > session.potions) {
-			session.supplyStep = 3;
+			session.supplyStep = ReturningToParty;
 		} else {
 			finishBrain(bot, "failed", "purchase_incomplete_or_insufficient_funds");
 		}

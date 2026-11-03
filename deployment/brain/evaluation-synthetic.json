@@ -19,14 +19,14 @@
       "mean_progress": 0.4702,
       "seed_mean_ci95": [
         0.4652,
-        0.4751
+        0.4752
       ]
     },
     "hybrid_with_learning": {
-      "mean_progress": 0.7844,
+      "mean_progress": 0.7691,
       "seed_mean_ci95": [
-        0.7759,
-        0.793
+        0.761,
+        0.7773
       ]
     }
   },

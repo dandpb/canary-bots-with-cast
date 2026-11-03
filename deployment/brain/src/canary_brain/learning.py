@@ -87,6 +87,10 @@ class Policy:
         actions = self.statistics(bot, context)
         recent = (self.store.get("recent", str(bot)) or {}).get("actions", [])[-12:]
         eligible = list(candidates)
+        last = (self.store.get("recent", str(bot)) or {}).get("last", {})
+        cooled = [item for item in eligible if time.time() - last.get(item, 0) >= 120]
+        if cooled:
+            eligible = cooled
         if len(eligible) > 1 and len(recent) >= 3 and len(set(recent[-3:])) == 1:
             eligible = [item for item in eligible if item != recent[-1]]
 
@@ -114,11 +118,25 @@ class Policy:
         probability += (1 - self.epsilon) / len(best) if selected in best else 0
         if len(eligible) == 1:
             probability = 1.0
-        self.store.put("recent", str(bot), {"actions": (recent + [selected])[-12:]})
+        last[selected] = time.time()
+        self.store.put(
+            "recent",
+            str(bot),
+            {
+                "actions": (recent + [selected])[-12:],
+                "last": {
+                    key: value
+                    for key, value in last.items()
+                    if time.time() - value < 86400
+                },
+            },
+        )
         return Selection(selected, probability, exploring)
 
 
-def episode_reward(status: str, metrics: dict[str, float]) -> float | None:
+def episode_reward(
+    status: str, metrics: dict[str, float], objective: str = ""
+) -> float | None:
     """Only authoritative, completed useful episodes can earn positive reward."""
     if status in {"cancelled", "expired", "rejected"}:
         return None
@@ -130,12 +148,29 @@ def episode_reward(status: str, metrics: dict[str, float]) -> float | None:
     if progress == 0 or metrics.get("elapsed_seconds", 0) < 5:
         return None
     danger = min(1.0, max(0.0, metrics.get("danger", 0)))
-    efficiency = min(1.0, max(0.0, metrics.get("efficiency", 0.5)))
+    elapsed = metrics["elapsed_seconds"]
+    if objective.startswith("hunt:"):
+        level = max(1, metrics.get("level", 1))
+        party = max(1, metrics.get("party_size", 1))
+        # Conservative per-level/party normalization; yield remains subordinate to survival.
+        yield_score = min(
+            1, metrics.get("xp_delta", 0) / max(1, level * level * elapsed / 60 * party)
+        )
+        supplies = max(0, -metrics.get("supply_delta", 0))
+        efficiency = yield_score / (1 + supplies / max(1, level))
+    else:
+        efficiency = 1 / (1 + elapsed / 300)
+    efficiency = min(1.0, max(0.0, metrics.get("efficiency", efficiency)))
+    cohesion = 1 / (1 + max(0, metrics.get("party_distance", 0)) / 12)
     novelty = min(1.0, max(0.0, metrics.get("novelty", 0)))
     return min(
         1.0,
         max(
             0.0,
-            0.55 * progress + 0.2 * (1 - danger) + 0.2 * efficiency + 0.05 * novelty,
+            0.5 * progress
+            + 0.3 * (1 - danger)
+            + 0.1 * cohesion
+            + 0.05 * efficiency
+            + 0.05 * novelty,
         ),
     )

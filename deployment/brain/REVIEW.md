@@ -1,0 +1,34 @@
+# Independent reviews
+
+Candidate reviewed: `6e9809f`, against `56fce151a10cc141d3a74800c3aec3a2dbf4e846`. Two independent read-only reviewers evaluated the documented standards and [issue #1](https://github.com/dandpb/canary-bots-with-cast/issues/1). Findings below refer to that candidate; the remediation notes describe subsequent changes.
+
+## Standards
+
+No unequivocal documented-standard breaches found. CONTRIBUTING requires KV persistence in the game integration; worker SQLite is separate private accounting/learning state, with no game database access or MySQL schema additions. It is not automatically a forbidden game persistence change. Tool-enforced formatting was excluded.
+
+Three heuristic findings:
+
+1. Possible duplicated code: hold completion existed in both `tickBrain` and `brainPartyMove`, with different comparison operators. Regroup movement was also repeated.
+2. Possible primitive obsession: native action strings and numbered supply phases make transitions less explicit.
+3. Possible primitive obsession: persisted Python plans use dictionaries for remaining steps, failures and phases instead of a validated plan type.
+
+Remediation: hold completion is centralized in `tickBrain`; supply phases have names. Wire action strings and the bounded persisted plan representation remain deliberate small-module tradeoffs; limits are enforced before billable replanning. Extracting a typed plan record is a future maintainability improvement, not a release correctness exception.
+
+Standards: zero confirmed hard breaches; three heuristic findings in the reviewed candidate.
+
+## Spec
+
+Six findings, with originating requirements:
+
+1. “Disabling the feature releases ownership cleanly.” Per-bot disable removed roster membership while `brainOwns` could retain ownership through another pilot's heartbeat.
+2. “Preserve attack, healing, and self-defense when holding position.” Combat chasing could run before the hold adapter and skip it entirely.
+3. “Resolve the real human leader server-side.” Observations used the current party leader, while movement could retain the former leader's cached creature ID.
+4. “Limit tool rounds, plan length, and replanning attempts.” Paid malformed/stale replans could leave a plan ready and trigger another request on each observation.
+5. “Normalize progress and efficiency for level, role, party, and requested objective.” Reward ignored recorded yield, consumables and cohesion, using a fixed efficiency default.
+6. “Track recent hunts, destinations, activities, and conversation patterns per bot.” Variety history covered hunt identifiers but lacked timed activity controls and explicit conversational variety guidance.
+
+Remediation: ownership checks roster membership; holds clear walking and suppress chasing while keeping combat/healing; controlled movement refreshes the actual human leader; each replan consumes a durable attempt before calling the provider and cannot remain ready after failure. A regression test covers malformed paid output across eight later observations. Reward now uses per-level/party yield, supplies, elapsed time and cohesion, with survival weighted above yield. Hunt repeat penalties now include cooldowns; autonomous activity repetition has a cooldown, holds require a human request, and bounded conversation history guides varied phrasing. Explicit human orders bypass exploration/cooldowns.
+
+No material unrequested scope was identified. Live validation and human usefulness remain separate from static correctness.
+
+Spec: six findings in the reviewed candidate; the worst control/lifecycle defects were disabled ownership, stale leadership and unbounded paid replanning, addressed before promotion.
