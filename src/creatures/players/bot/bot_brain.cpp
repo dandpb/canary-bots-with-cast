@@ -600,6 +600,9 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 		    && now - session.started >= 5000) {
 			finishBrain(bot, "completed", "party_rejoined");
 		}
+		if (!player->listWalkDir.empty() || bot.pendingWalkPauseEventId != 0) {
+			return true;
+		}
 		if (bot.currentPos.z != leaderPosition.z) {
 			auto leader = player->getParty() ? player->getParty()->getLeader() : nullptr;
 			if (!leader || !tryFollowLeaderTrail(bot, leader)) {
@@ -617,6 +620,9 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 				finishBrain(bot, "completed", "supplies_bought_and_party_rejoined");
 				return false;
 			}
+			if (!player->listWalkDir.empty() || bot.pendingWalkPauseEventId != 0) {
+				return true;
+			}
 			if (bot.currentPos.z != leaderPosition.z) {
 				finishBrain(bot, "failed", "return_route_unavailable");
 			} else if (now - session.lastMove >= 500) {
@@ -631,6 +637,11 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 			return false;
 		}
 		if (!npc->canInteract(bot.currentPos, 3)) {
+			// Normal walks may deliberately pause before their first step. Replacing
+			// the queued walk every publication interval can postpone it forever.
+			if (!player->listWalkDir.empty() || bot.pendingWalkPauseEventId != 0) {
+				return true;
+			}
 			if (now - session.lastMove >= 500) {
 				session.lastMove = now;
 				Position stand;
@@ -682,6 +693,11 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 		return false;
 	}
 	if (Position::getDiagonalDistance(bot.currentPos, leaderPosition) > 12 || bot.currentPos.z != leaderPosition.z) {
+		player->listWalkDir.clear();
+		player->stopEventWalk();
+		return true;
+	}
+	if (!player->listWalkDir.empty() || bot.pendingWalkPauseEventId != 0) {
 		return true;
 	}
 	if (now - session.lastMove < 500) {

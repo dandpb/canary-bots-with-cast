@@ -1230,6 +1230,17 @@ function BotSystem.executeReload(opts)
 		local count = Game.botReregisterAll()
 		emit("Re-registered " .. count .. " bots.")
 
+		-- Rebuild Lua's strong-reference cache after materialization replaced Player objects.
+		-- The no-anchor hibernation loop reads this cache; stale removed userdata otherwise
+		-- leaves every reloaded bot awake indefinitely after all humans disconnect.
+		local refreshedPlayers = {}
+		for _, player in ipairs(Game.getPlayers()) do
+			if player and player:isBotPlayer() and not player:isRemoved() then
+				refreshedPlayers[player:getGuid()] = player
+			end
+		end
+		BotPlayers = refreshedPlayers
+
 		-- 5b. Defensive orphan recovery: any bot in BotPlayers that's still not active in
 		-- the new engine (e.g., botReregisterAll missed it for some edge case reason).
 		-- With the materialize-from-DB step above, this loop normally finds 0; kept as a
