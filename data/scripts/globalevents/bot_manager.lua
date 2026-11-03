@@ -157,13 +157,27 @@ function botStartup.onStartup()
 	logger.info("[BotManager] Found " .. total .. " bots in database, loading "
 		.. #botNames .. " (stratified across level/vocation) as INACTIVE...")
 
-	-- Load bots with staggered timing to avoid startup spike (100ms per bot)
-	for i, name in ipairs(botNames) do
+	-- Load consecutive batches of 50. Schedule the next load only after this
+	-- one finishes, giving unobserved bots time to hibernate between batches.
+	local batchSize, batchPauseMs = 50, 35000
+	local loadedCount = 0
+	local function loadNextBot(i, attempt)
+		local name = botNames[i]
+		if not name then return end
 		addEvent(function()
-			local player = Game.loadBotPlayer(name)
+			local ok, player = pcall(Game.loadBotPlayer, name)
+			if not ok then
+				logger.error("[BOT_BATCH] load error for " .. name .. ": " .. tostring(player))
+				player = nil
+			end
+			if not player and (attempt or 1) < 3 then
+				addEvent(function() loadNextBot(i, (attempt or 1) + 1) end, 1000)
+				return
+			end
 			if player then
 				local guid = player:getGuid()
 				BotPlayers[guid] = player
+				loadedCount = loadedCount + 1
 
 				-- Register death handler
 				player:registerEvent("BotDeath")
@@ -413,7 +427,7 @@ function botStartup.onStartup()
 						storageCount = storageCount + 1
 					end
 					logger.info("[BotManager] Set " .. storageCount .. " bot quest/access storages (wagons, shrines, quests)")
-					logger.info("[BotManager] All " .. #botNames .. " bots loaded as INACTIVE.")
+					logger.info("[BotManager] Loaded " .. loadedCount .. "/" .. #botNames .. " bots as INACTIVE.")
 					logger.info("[BotManager] Use '/cavebot <name> active' to activate a bot at your position.")
 
 					-- Check for persisted state restore (500ms after last bot is registered)
@@ -440,8 +454,22 @@ function botStartup.onStartup()
 					end, 500)
 				end, 2000)
 			end
-		end, i * 100)
+			if i % batchSize == 0 or i == #botNames then
+				if configManager.getBoolean(configKeys.BOT_PLAYERS_SHOW_AS_ONLINE) then
+					db.botAsyncQuery("INSERT IGNORE INTO players_online (player_id) SELECT player_id FROM bot_active_players")
+				end
+				logger.info("[BOT_BATCH] completed " .. i .. "/" .. #botNames .. "; loaded=" .. loadedCount)
+			end
+			if i < #botNames then
+				if i % batchSize == 0 then
+					addEvent(function() loadNextBot(i + 1) end, batchPauseMs)
+				else
+					loadNextBot(i + 1)
+				end
+			end
+		end, 100)
 	end
+	loadNextBot(1)
 
 	return true
 end
@@ -491,7 +519,7 @@ function botManager.onThink(interval)
 				resultText = (rv and rv.message) or "reload returned nil"
 			else
 				resultText = Game.botCommand(botName, cmd) or ""
-				logger.info("[BotManager] Command '" .. cmd .. "' for '" .. botName .. "': " .. resultText)
+				logger.info("[BotManager] Command '{}' for '{}': {}", cmd, botName, resultText)
 			end
 
 			-- Persist result + timestamp (mark processed in same statement)
