@@ -294,6 +294,10 @@ class Controller:
             self.store.put("pending", action_id, pending)
 
     async def _decide(self, snapshot: Observation) -> None:
+        # A repeated retreat resets the native floor planner. Let it finish;
+        # explicit human requests can still supersede it through dialogue.
+        if snapshot.bot.objective_running and snapshot.bot.objective == "retreat":
+            return
         # Holding is useful only when requested; autonomous idle loops earn no work.
         snapshot = snapshot.model_copy(
             update={

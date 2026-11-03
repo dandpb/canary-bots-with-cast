@@ -219,3 +219,31 @@ async def test_idle_explorer_returns_from_a_floor_without_available_work(tmp_pat
     await controller.drain()
     assert any(item.get("candidate_id") == "retreat" for item in sent)
     await controller.close()
+
+
+async def test_running_retreat_is_not_reissued_while_monsters_move(tmp_path):
+    class Model:
+        async def decide(self, *args):
+            return "retreat"
+
+    sent = []
+    controller = Controller(
+        Store(tmp_path / "state.db"), Model(), sent.append, mode="active"
+    )
+    packet = observation()
+    packet.update(party=None, autonomous=True, mode="active")
+    packet["bot"].update(objective="retreat", objective_running=True, health=70)
+    packet["nearby"] = [{"id": 200, "name": "Cyclops", "position": [101, 100, 8]}]
+    packet["actions"] = [
+        packet["actions"][0],
+        {
+            "id": "retreat",
+            "action": "retreat",
+            "description": "Return home",
+            "ttl_ms": 1500,
+        },
+    ]
+    await controller.handle(packet)
+    await controller.drain()
+    assert not any(item.get("type") == "intent" for item in sent)
+    await controller.close()
