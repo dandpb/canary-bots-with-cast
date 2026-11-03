@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canary-brain"
+version = "0.1.0"
+description = "Bounded GPT-6 Luna party companions for Canary"
+requires-python = ">=3.11"
+dependencies = ["openai", "pydantic>=2"]
+
+[project.scripts]
+canary-brain = "canary_brain.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
