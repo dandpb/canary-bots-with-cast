@@ -369,17 +369,17 @@ function botStartup.onStartup()
 	-- one finishes, giving unobserved bots time to hibernate between batches.
 	local batchSize, batchPauseMs = 50, 35000
 	local loadedCount = 0
-	local function loadNextBot(i, attempt)
+	local function loadNextBot(i, attempt, delay)
 		local name = botNames[i]
 		if not name then return end
 		addEvent(function()
 			local ok, player = pcall(Game.loadBotPlayer, name)
 			if not ok then
-				logger.error("[BOT_BATCH] load error for " .. name .. ": " .. tostring(player))
+				logger.error("[BotManager] Error loading bot '{}': {}", name, tostring(player))
 				player = nil
 			end
-			if not player and (attempt or 1) < 3 then
-				addEvent(function() loadNextBot(i, (attempt or 1) + 1) end, 1000)
+			if not player and attempt < 3 then
+				loadNextBot(i, attempt + 1, 1000)
 				return
 			end
 			if player then
@@ -460,20 +460,16 @@ function botStartup.onStartup()
 			end
 			if i % batchSize == 0 or i == #botNames then
 				if configManager.getBoolean(configKeys.BOT_PLAYERS_SHOW_AS_ONLINE) then
-					db.botAsyncQuery("INSERT IGNORE INTO players_online (player_id) SELECT player_id FROM bot_active_players")
+					db.botAsyncQuery("INSERT IGNORE INTO `players_online` (`player_id`) SELECT `player_id` FROM `bot_active_players`")
 				end
 				logger.info("[BOT_BATCH] completed " .. i .. "/" .. #botNames .. "; loaded=" .. loadedCount)
 			end
 			if i < #botNames then
-				if i % batchSize == 0 then
-					addEvent(function() loadNextBot(i + 1) end, batchPauseMs)
-				else
-					loadNextBot(i + 1)
-				end
+				loadNextBot(i + 1, 1, i % batchSize == 0 and batchPauseMs or 100)
 			end
-		end, 100)
+		end, delay)
 	end
-	loadNextBot(1)
+	loadNextBot(1, 1, 100)
 
 	return true
 end
