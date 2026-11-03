@@ -228,7 +228,8 @@ Json BotEngine::observeBrain(BotState &bot) {
 	}
 	// Invitations join the Canary party before the native rendezvous finishes.
 	// Leave that travel/assembly in charge until the companion can execute PARTY goals.
-	if (leader && (leader->isBotPlayer() || leader->isRemoved() || leader->getHealth() <= 0 || bot.state != BotAIState::PARTY)) {
+	if (leader && (leader->isBotPlayer() || leader->isRemoved() || leader->getHealth() <= 0
+	               || g_game().getPlayerByID(leader->getID()) != leader || bot.state != BotAIState::PARTY)) {
 		leader = nullptr;
 	}
 	const uint32_t leaderGuid = leader ? leader->getGUID() : 0;
@@ -237,6 +238,21 @@ Json BotEngine::observeBrain(BotState &bot) {
 		session.leader = leaderGuid;
 		++session.generation;
 		session.offers.clear();
+	}
+	if (!leader && party && bot.state == BotAIState::PARTY && bot.partyHuntId == 0) {
+		const auto onlineHuman = [](const std::shared_ptr<Player> &member) {
+			return member && !member->isBotPlayer() && member->getHealth() > 0
+			    && g_game().getPlayerByID(member->getID()) == member;
+		};
+		bool humanRemains = onlineHuman(party->getLeader());
+		for (const auto &member : party->getMembers()) {
+			humanRemains = humanRemains || onlineHuman(member);
+		}
+		if (!humanRemains) {
+			// Party retains Player references after death/logout. Drain this here,
+			// before the proximity gate can skip native PARTY ticks without humans.
+			exitPartyMode(bot);
+		}
 	}
 	session.lease = brain_->world + ":" + std::to_string(bot.guid) + ":" + std::to_string(session.generation);
 	const auto position = player->getPosition();

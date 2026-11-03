@@ -1149,20 +1149,23 @@ void BotEngine::doPartyFollow(BotState& bot) {
 		}
 	}
 
-	if (!leader || leader->isRemoved() || leader->getHealth() <= 0 || !leaderInParty) {
+	if (!leader || leader->isRemoved() || leader->getHealth() <= 0 || !leaderInParty
+	    || g_game().getPlayerByID(leader->getID()) != leader) {
 		// Leader gone — check if another real player exists in the party
 		std::shared_ptr<Player> newLeader = nullptr;
 
 		// Check current party leader
 		auto partyLeader = party->getLeader();
-		if (partyLeader && !partyLeader->isBotPlayer() && partyLeader->getHealth() > 0) {
+		if (partyLeader && !partyLeader->isBotPlayer() && partyLeader->getHealth() > 0
+		    && g_game().getPlayerByID(partyLeader->getID()) == partyLeader) {
 			newLeader = partyLeader;
 		}
 
 		// Check members
 		if (!newLeader) {
 			for (const auto& member : party->getMembers()) {
-				if (member && !member->isBotPlayer() && member->getHealth() > 0) {
+				if (member && !member->isBotPlayer() && member->getHealth() > 0
+				    && g_game().getPlayerByID(member->getID()) == member) {
 					newLeader = member;
 					break;
 				}
@@ -1170,8 +1173,8 @@ void BotEngine::doPartyFollow(BotState& bot) {
 		}
 
 		if (newLeader) {
-			// Transfer leadership to real player if current leader is a bot
-			if (partyLeader && partyLeader->isBotPlayer()) {
+			// A retained offline human reference must also yield leadership.
+			if (partyLeader != newLeader) {
 				party->passPartyLeadership(newLeader);
 			}
 			// Update stored leader for this bot
