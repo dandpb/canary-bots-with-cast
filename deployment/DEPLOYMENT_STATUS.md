@@ -24,6 +24,7 @@ An upstream merge is independent of the fork's main branch.
 Run from the repository root with Lua and repeat with LuaJIT:
 
 ```sh
+lua tests/lua/bot_startup_test.lua
 lua tools/bot_brain/test_startup_batches.lua
 lua tools/bot_brain/test_startup_batches.lua data/scripts/globalevents/bot_manager.lua online
 lua tools/bot_brain/test_player_commands.lua
@@ -31,7 +32,9 @@ lua tools/bot_brain/test_reload.lua
 lua tools/bot_brain/test_reload_missing.lua
 ```
 
-The startup fixture uses a virtual event loop and 101 bot rows. It verifies batch
+The nine-scenario startup suite covers slow loads, the 997-bot/twenty-batch case,
+selection, empty populations and retries. The additional startup fixture uses
+a virtual event loop and 101 bot rows. It verifies batch
 pauses, transient exception/nil retries, continued registration after a failure,
 bounded final failure, hibernation before loading finishes, and enabled/disabled
 online visibility. The player fixture
