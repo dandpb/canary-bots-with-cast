@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-03",
+  "baseline": "56fce151a10cc141d3a74800c3aec3a2dbf4e846",
+  "automated": {
+    "python_tests_passed": 24,
+    "mypy": "passed, 9 modules",
+    "ruff": "passed",
+    "native_protocol": "passed",
+    "lua_reload": "passed with Lua and LuaJIT"
+  },
+  "provider": {
+    "model": "gpt-6-luna",
+    "responses_low_and_max": "passed live",
+    "decisions": "passed live",
+    "monthly_application_cap_usd": 50,
+    "settled_usd": 0.041065075,
+    "unresolved_reservations_usd": 0.0028885
+  },
+  "native_party": {
+    "members": 8,
+    "human_protocol_clients": 5,
+    "companions": 3,
+    "resupply_seconds": {
+      "knight": 66.57,
+      "druid": 66.181,
+      "paladin": 85.758
+    },
+    "potion_delta_each": 38,
+    "potions_retained_each_after_library_and_server_restart": 40,
+    "leader_logout_transfer": "passed",
+    "all_humans_left": "all three IDLE; no owned goals",
+    "worker_lease_release_seconds": 4.325,
+    "worker_restart": "passed"
+  },
+  "long_hunt": {
+    "result": "survival acceptance not passed",
+    "real_route_movement_combat_and_xp_observed": true,
+    "floor_changes_observed": true,
+    "native_companions_survived": 3,
+    "passive_human_fixture_deaths": 2,
+    "other_passive_clients_idle_kicked": 3,
+    "retained_offline_leader_defect": "fixed with canonical online-map identity and human-follow cleanup; subsequent logout lifecycle checks passed",
+    "learned_selection_promoted": false
+  },
+  "production": {
+    "active_bots": 997,
+    "online_bot_flags": 997,
+    "configured_llm_pilots": [
+      65001,
+      65004,
+      65003
+    ],
+    "controller_mode": "active",
+    "learned_selection": false,
+    "worker_enabled": true,
+    "qa_services": "stopped",
+    "web_client_http": 200,
+    "native_cast_login": "valid 255-entry protocol list"
+  },
+  "post_startup_resource_sample": {
+    "server_cpu_percent_one_core": 34.75,
+    "server_memory_gib": 1.762,
+    "worker_memory_bytes": 40747008,
+    "host_available_memory_approx_gib": 7,
+    "idle_bridge_tick_p95_us": 713.885
+  },
+  "limits": [
+    "A library replacement retained 996 of 997 registrations; normal startup restored all 997 in batches of 50.",
+    "The long passive-client hunt does not validate AFK safety or improved live survival. Learned selection awaits human playtests."
+  ]
+}
