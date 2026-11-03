@@ -106,3 +106,21 @@ end
 BotSystem.executeReload({ source = "repair", debugCount = "off" })
 assert(Game.botIsActive(55), "explicit full restoration must repair missing canonical registrations")
 print("PASS: explicit full restoration repairs the canonical roster")
+
+-- Refreshing helper definitions must retain live references and runtime settings.
+local runtimeNames = { "BOT_CONFIG", "BotPlayers", "BotState", "BotActive", "BotDebugPinned", "BotSystem" }
+local preserved = {}
+for _, name in ipairs(runtimeNames) do preserved[name] = _G[name] end
+BOT_CONFIG.DEBUG_MODE = true
+BotDebugPinned[51] = true
+BotState[51] = { fixturePhase = "walking" }
+BotActive[51] = true
+local fixtureState = BotState[51]
+dofile(arg[1] or "data/scripts/lib/bot_system.lua")
+for _, name in ipairs(runtimeNames) do
+	assert(_G[name] == preserved[name], "helper refresh replaced live table " .. name)
+end
+assert(BOT_CONFIG.DEBUG_MODE and BotDebugPinned[51], "helper refresh cleared debug settings")
+assert(BotState[51] == fixtureState and BotActive[51], "helper refresh cleared runtime state")
+assert(BotPlayers[51] == world[51], "helper refresh released a live Player reference")
+print("PASS: helper refresh preserves runtime tables, Player references and settings")

@@ -5,7 +5,7 @@
 -- ============================================================================
 
 -- Configuration
-BOT_CONFIG = {
+BOT_CONFIG = BOT_CONFIG or {
 	-- TEMP TEST 1 (2026-05-21): master disable for GAP_SLOW infrastructure-cause test.
 	-- When true, all bot-driven globalevents short-circuit and TARGET_ONLINE forced to 0.
 	-- Test 1 RESULT: 1 GAP_SLOW in 10 min with bots off vs ~139/hr with bots on (~23× drop).
@@ -442,16 +442,16 @@ if CustomDoorTable then
 	end
 end
 
--- Runtime state tables
-BotPlayers = {}    -- {[guid] = playerRef}
-BotState = {}      -- {[guid] = state_table}
-BotActive = {}     -- {[guid] = true/false}
+-- Retain runtime settings and strong Player references when helper definitions refresh.
+BotPlayers = BotPlayers or {}    -- {[guid] = playerRef}
+BotState = BotState or {}        -- {[guid] = state_table}
+BotActive = BotActive or {}      -- {[guid] = true/false}
 -- Debug-pinned bots: {[guid] = true}. Set by `reload debug,<names|N>`, cleared by
 -- `reload debug off`. bot_hibernation.lua refuses to hibernate these so a bot under
 -- observation stays awake indefinitely; the C++ side separately refuses to give them tasks.
-BotDebugPinned = {}
+BotDebugPinned = BotDebugPinned or {}
 
-BotSystem = {}
+BotSystem = BotSystem or {}
 
 -- Parse the argument of `reload debug,<arg>`.
 --   numeric  -> that many bots, chosen automatically (legacy behaviour)
