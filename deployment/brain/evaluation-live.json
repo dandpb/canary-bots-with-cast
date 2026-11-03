@@ -169,6 +169,13 @@
       "retreat_terminal_reason": "return_route_unavailable",
       "temple_arrival": false,
       "continuation_fix": "e9e28d7 prevents ambient reissue of an ongoing retreat"
+    },
+    "active_bridge_sample": {
+      "p95_us": 2999.781,
+      "samples": 256,
+      "initial_target_us": 2000,
+      "initial_tuning_target_met": false,
+      "not_a_full_load_guarantee": true
     }
   }
 }
