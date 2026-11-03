@@ -1,0 +1,4 @@
+*
+!Dockerfile
+!apache-canary.conf
+!php-canary.ini
