@@ -9,6 +9,7 @@ online time beyond signed INT. It introduces no new runtime persistence feature.
 From the repository root, apply the repair after the ordinary schema/import and
 before starting the game. Existing installations can apply it again; rows are
 retained. Apply it while the game is stopped because ALTER TABLE acquires locks.
+The normal `database/bots/import.sh` also includes the repair for fresh installs.
 
 ```sh
 mariadb --defaults-extra-file=/protected/database.cnf canary < database/bots/16_runtime_compatibility.sql

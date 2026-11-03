@@ -1,8 +1,11 @@
 """Opt-in MariaDB regression using an automatically removed test database."""
 
 import argparse
+import hashlib
+import os
 import re
 import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -17,6 +20,35 @@ def main():
         parser.error("invalid container name")
     root = Path(__file__).resolve().parents[1]
     database = "canary_pr_install_" + uuid.uuid4().hex[:12]
+    with tempfile.TemporaryDirectory(prefix="canary-import-fixture-") as directory:
+        temporary = Path(directory)
+        client = temporary / "mysql"
+        log = temporary / "imports.log"
+        client.write_text("""#!/usr/bin/env python3
+import hashlib, os, sys
+with open(os.environ['CANARY_IMPORT_LOG'], 'a') as output:
+    output.write(hashlib.sha256(sys.stdin.buffer.read()).hexdigest() + '\\n')
+""")
+        client.chmod(0o700)
+        subprocess.run(
+            ["bash", str(root / "database/bots/import.sh")],
+            env={
+                **os.environ,
+                "PATH": directory + os.pathsep + os.environ["PATH"],
+                "CANARY_IMPORT_LOG": str(log),
+                "DB_PASS": "",
+                "DB_USER": "fixture",
+                "DB_NAME": "fixture",
+            },
+            stdout=subprocess.DEVNULL,
+            check=True,
+        )
+        checksum = hashlib.sha256(
+            (root / "database/bots/16_runtime_compatibility.sql").read_bytes()
+        ).hexdigest()
+        assert checksum in log.read_text().splitlines(), (
+            "the normal import omitted the runtime repair"
+        )
 
     def sql(query, use_database=True, success=True):
         command = [
@@ -31,7 +63,9 @@ def main():
         ]
         if use_database:
             command.append(database)
-        result = subprocess.run(command, input=query, text=True, capture_output=True, check=False)
+        result = subprocess.run(
+            command, input=query, text=True, capture_output=True, check=False
+        )
         if success and result.returncode:
             raise RuntimeError(result.stderr)
         if not success and result.returncode == 0:
