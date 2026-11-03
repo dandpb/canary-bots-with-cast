@@ -1,0 +1,671 @@
+/**
+ * Canary - A free and open-source MMORPG server emulator
+ * License: https://github.com/opentibiabr/canary/blob/main/LICENSE
+ */
+
+#include "creatures/players/bot/bot_engine_impl.hpp"
+#include "creatures/players/bot/bot_potions.hpp"
+
+namespace {
+	using Json = nlohmann::json;
+	std::deque<double> brainTickMicroseconds;
+
+	std::vector<ShopBlock> brainSupplyItems(const std::shared_ptr<Player> &player, const std::shared_ptr<Npc> &npc) {
+		std::vector<ShopBlock> chosen;
+		bool health = false, mana = false;
+		const uint32_t bit = botsupplies::vocBit(player->getVocation()->getBaseId());
+		const auto &shop = npc->getShopItemVector(player->getGUID());
+		for (auto def = std::rbegin(botsupplies::kPotions); def != std::rend(botsupplies::kPotions); ++def) {
+			if (player->getLevel() < def->level || (def->vocMask && !(def->vocMask & bit))
+			    || !((def->heals && !health) || (def->restoresMana && !mana))) {
+				continue;
+			}
+			auto item = std::find_if(shop.begin(), shop.end(), [&](const auto &entry) { return entry.itemId == def->id && entry.itemBuyPrice > 0; });
+			if (item == shop.end()) {
+				continue;
+			}
+			chosen.push_back(*item);
+			health = health || def->heals;
+			mana = mana || def->restoresMana;
+			if (health && mana) {
+				return chosen;
+			}
+		}
+		return {};
+	}
+
+	Json brainOutcome(const std::string &world, uint32_t guid, const std::string &id, const std::string &status, const std::string &reason, Json metrics = Json::object()) {
+		return { { "version", 1 }, { "type", "outcome" }, { "world", world }, { "bot_id", guid }, { "action_id", id }, { "status", status }, { "reason", reason }, { "metrics", metrics } };
+	}
+} // namespace
+
+uint32_t BotEngine::brainPotions(const std::shared_ptr<Player> &player) const {
+	uint32_t total = 0;
+	for (const auto &potion : botsupplies::kPotions) {
+		if (player->getLevel() < potion.level || (potion.vocMask && !(potion.vocMask & botsupplies::vocBit(player->getVocation()->getBaseId())))) {
+			continue;
+		}
+		total += player->getItemTypeCount(potion.id);
+	}
+	return total;
+}
+
+bool BotEngine::brainOwns(uint32_t guid) const {
+	if (!brain_ || brain_->mode != "active" || botMonoMs() - brain_->heartbeat > 5000) {
+		return false;
+	}
+	auto session = brain_->sessions.find(guid);
+	return session != brain_->sessions.end() && session->second.leader != 0;
+}
+
+bool BotEngine::brainRetreat(uint32_t guid) const {
+	if (!brainOwns(guid)) {
+		return false;
+	}
+	const auto &session = brain_->sessions.at(guid);
+	return !session.actionId.empty() && session.action == "retreat";
+}
+
+std::shared_ptr<Creature> BotEngine::brainTarget(BotState &bot) {
+	if (!brainOwns(bot.guid)) {
+		return nullptr;
+	}
+	const auto &session = brain_->sessions.at(bot.guid);
+	if (!session.target || botMonoMs() > session.targetUntil) {
+		return nullptr;
+	}
+	auto target = g_game().getCreatureByID(session.target);
+	if (!target || !target->getMonster() || target->getHealth() <= 0 || target->getPosition().z != bot.currentPos.z
+	    || Position::getDiagonalDistance(target->getPosition(), bot.currentPos) > 6) {
+		return nullptr;
+	}
+	return target;
+}
+
+std::string BotEngine::brainCommand(const std::string &botName, const std::string &command) {
+	if (command == "reload") {
+		if (brain_) {
+			for (const auto guid : brain_->roster) {
+				if (auto bot = getBotState(guid)) {
+					finishBrain(*bot, "cancelled", "controller_reloaded");
+				}
+			}
+		}
+		brain_.reset();
+		brainConfigured_ = false;
+		return "Brain configuration will be reloaded next tick.";
+	}
+	if (!brain_ || !brain_->channel) {
+		return "Brain disabled; native behavior is active.";
+	}
+	if (command == "status") {
+		auto timings = std::vector<double>(brainTickMicroseconds.begin(), brainTickMicroseconds.end());
+		std::sort(timings.begin(), timings.end());
+		const double p95 = timings.empty() ? 0.0 : timings[std::min(timings.size() - 1, timings.size() * 95 / 100)];
+		Json sessions = Json::array();
+		for (const auto &[guid, session] : brain_->sessions) {
+			auto leader = g_game().getPlayerByGUID(session.leader, false);
+			sessions.push_back({ { "bot", guid }, { "leader", session.leader }, { "leader_creature_id", leader ? leader->getID() : 0 }, { "objective", session.action }, { "running", !session.actionId.empty() } });
+		}
+		return Json({ { "version", 1 }, { "mode", brain_->mode }, { "world", brain_->world }, { "worker_alive", botMonoMs() - brain_->heartbeat <= 5000 }, { "roster", brain_->roster }, { "sessions", sessions }, { "bridge_tick_p95_us", p95 }, { "bridge_tick_samples", timings.size() } }).dump();
+	}
+	if (command == "disable") {
+		for (const auto guid : brain_->roster) {
+			auto bot = getBotState(guid);
+			if (bot && (botName == "_global" || bot->name == botName)) {
+				finishBrain(*bot, "cancelled", "operator_disabled");
+			}
+		}
+		if (botName == "_global") {
+			brain_.reset();
+			return "Brain disabled; native behavior retained.";
+		}
+		brain_->roster.erase(std::remove_if(brain_->roster.begin(), brain_->roster.end(), [&](uint32_t guid) {
+								 auto bot = getBotState(guid);
+								 return bot && bot->name == botName;
+							 }),
+		                     brain_->roster.end());
+		return "Selected companion returned to native behavior.";
+	}
+	if (command.rfind("chat ", 0) == 0) {
+		const auto separator = command.find(' ', 5);
+		if (separator == std::string::npos || command.size() - separator > 1025) {
+			return "Mensagem invalida.";
+		}
+		try {
+			const auto sender = static_cast<uint32_t>(std::stoul(command.substr(5, separator - 5)));
+			auto player = g_game().getPlayerByID(sender);
+			if (!player || player->isBotPlayer() || !player->getParty()) {
+				return "Entre em uma party com um companheiro inteligente.";
+			}
+			for (const auto guid : brain_->roster) {
+				auto bot = getBotState(guid);
+				if (bot && bot->getPlayer() && bot->getPlayer()->getParty() == player->getParty()
+				    && brainMessage(guid, sender, command.substr(separator + 1))) {
+					return "Mensagem enviada ao companheiro.";
+				}
+			}
+			return "Nenhum companheiro inteligente disponivel na party.";
+		} catch (const std::exception &) {
+			return "Mensagem invalida.";
+		}
+	}
+	return "Brain commands: status, reload, disable.";
+}
+
+std::shared_ptr<Npc> BotEngine::brainShop(BotState &bot) {
+	auto &session = brain_->sessions[bot.guid];
+	if (session.shop) {
+		auto creature = g_game().getCreatureByID(session.shop);
+		if (creature && creature->getNpc()) {
+			return creature->getNpc();
+		}
+	}
+	if (botMonoMs() - session.lastShopScan < 30000) {
+		return nullptr;
+	}
+	session.lastShopScan = botMonoMs();
+	int32_t best = 250;
+	std::shared_ptr<Npc> chosen;
+	for (const auto &npc : g_game().getNpcs()) {
+		if (!npc || npc->getCurrency() != ITEM_GOLD_COIN || npc->getPosition().z != bot.currentPos.z) {
+			continue;
+		}
+		const int32_t distance = Position::getDiagonalDistance(bot.currentPos, npc->getPosition());
+		if (distance >= best) {
+			continue;
+		}
+		if (brainSupplyItems(bot.getPlayer(), npc).empty()) {
+			continue;
+		}
+		Position stand;
+		bool fallback = false;
+		if (!resolveNpcApproach(bot, npc->getName(), stand, fallback)) {
+			continue;
+		}
+		best = distance;
+		chosen = npc;
+	}
+	if (chosen) {
+		session.shop = chosen->getID();
+	}
+	return chosen;
+}
+
+Json BotEngine::observeBrain(BotState &bot) {
+	auto player = bot.getPlayer();
+	if (!player) {
+		return Json();
+	}
+	auto &session = brain_->sessions[bot.guid];
+	auto party = player->getParty();
+	auto leader = party ? party->getLeader() : nullptr;
+	if (leader && (leader->isBotPlayer() || leader->isRemoved() || leader->getHealth() <= 0)) {
+		leader = nullptr;
+	}
+	const uint32_t leaderGuid = leader ? leader->getGUID() : 0;
+	if (session.leader != leaderGuid) {
+		finishBrain(bot, "cancelled", "authority_changed");
+		session.leader = leaderGuid;
+		++session.generation;
+		session.offers.clear();
+	}
+	session.lease = brain_->world + ":" + std::to_string(bot.guid) + ":" + std::to_string(session.generation);
+	const auto position = player->getPosition();
+	const int health = std::clamp(100 * player->getHealth() / std::max(1, player->getMaxHealth()), 0, 100);
+	const int mana = std::clamp<int>(100 * player->getMana() / std::max<uint32_t>(1, player->getMaxMana()), 0, 100);
+	const uint32_t potions = brainPotions(player);
+	bool partyHasKnight = leader && getBaseVocation(leader->getVocationId()) == 4;
+	if (party) {
+		for (const auto &member : party->getMembers()) {
+			partyHasKnight = partyHasKnight || getBaseVocation(member->getVocationId()) == 4;
+		}
+	}
+	Json actions = Json::array();
+	auto add = [&](const std::string &id, const std::string &action, const std::string &description, int ttl = 5000) {
+		if (actions.size() >= 32) {
+			return;
+		}
+		actions.push_back({ { "id", id }, { "action", action }, { "description", description }, { "ttl_ms", ttl } });
+	};
+	add("continue", "continue", "Continue the current useful objective", 1500);
+	Json partyState = nullptr;
+	if (leader) {
+		uint32_t minimumLevel = std::min(player->getLevel(), leader->getLevel());
+		uint32_t maximumLevel = std::max(player->getLevel(), leader->getLevel());
+		Json members = Json::array({ leaderGuid });
+		for (const auto &member : party->getMembers()) {
+			minimumLevel = std::min(minimumLevel, member->getLevel());
+			maximumLevel = std::max(maximumLevel, member->getLevel());
+			if (members.size() < 20) {
+				members.push_back(member->getGUID());
+			}
+		}
+		partyState = { { "leader_id", leaderGuid }, { "members", members } };
+		add("follow", "follow", "Follow and support the human party leader");
+		add("hold", "hold", "Hold position briefly while retaining combat and healing");
+		add("retreat", "retreat", "Disengage and regroup with the human party leader", 1500);
+		if (health >= 80) {
+			if (potions < 40 && session.action != "resupply" && !player->isPzLocked() && brainShop(bot)) {
+				add("resupply", "resupply", "Walk to the town shop to replenish supplies and return");
+			}
+			if (potions >= 10) {
+				for (const auto &script : huntScripts_) {
+					if (actions.size() >= 24) {
+						break;
+					}
+					if (!script.enabled || script.isQuest || script.scriptCategory != "hunt" || script.patrolWaypoints.empty()
+					    || script.townId != bot.townId || (script.levelMin && minimumLevel < script.levelMin)
+					    || (script.levelMax && maximumLevel > script.levelMax)
+					    || (script.vocationMask && !(script.vocationMask & (1U << (getBaseVocation(bot.vocationId) - 1))))
+					    || activeHunts_.count(script.id) || (!script.spawnGroup.empty() && activeSpawnGroups_.count(script.spawnGroup))
+					    || isScriptPlayerClaimed(script.id, script.spawnGroup) || isScriptHuntRepelled(script)) {
+						continue;
+					}
+					add("hunt:" + std::to_string(script.id), "hunt", "Guide a prudent party hunt: " + script.name);
+				}
+			}
+		}
+	}
+	Json nearby = Json::array();
+	for (const auto &entity : Spectators().find<Monster>(position, false, 7, 7, 5, 5)) {
+		if (nearby.size() >= 12) {
+			break;
+		}
+		auto monster = entity->getMonster();
+		if (!monster || monster->getHealth() <= 0) {
+			continue;
+		}
+		const auto at = monster->getPosition();
+		nearby.push_back({ { "id", monster->getID() }, { "name", monster->getName() }, { "position", { at.x, at.y, at.z } } });
+		if (leader && (getBaseVocation(bot.vocationId) == 4 || !partyHasKnight) && health >= 40 && at.z == position.z && Position::getDiagonalDistance(position, at) <= 6) {
+			add("target:" + std::to_string(monster->getID()), "target", "Prioritize visible monster " + monster->getName(), 1000);
+		}
+	}
+	session.danger = std::max(session.danger, 1.0 - health / 100.0);
+	Json snapshot = { { "version", 1 }, { "type", "observation" }, { "world", brain_->world }, { "sequence", ++session.sequence }, { "captured_ms", botMonoMs() }, { "lease", session.lease }, { "objective_generation", session.generation }, { "mode", brain_->mode }, { "bot", { { "id", bot.guid }, { "name", bot.name }, { "level", player->getLevel() }, { "vocation", bot.vocationId }, { "state", botStateName(bot.state) }, { "position", { position.x, position.y, position.z } }, { "health", health }, { "mana", mana }, { "potions", potions }, { "xp", player->getExperience() }, { "alive", player->getHealth() > 0 } } }, { "party", partyState }, { "actions", actions }, { "nearby", nearby }, { "messages", session.messages } };
+	snapshot["bot"]["objective"] = session.action;
+	snapshot["bot"]["objective_running"] = !session.actionId.empty();
+	return snapshot;
+}
+
+void BotEngine::finishBrain(BotState &bot, const std::string &status, const std::string &reason) {
+	if (!brain_) {
+		return;
+	}
+	auto &session = brain_->sessions[bot.guid];
+	if (!session.actionId.empty()) {
+		auto player = bot.getPlayer();
+		if (player && (session.action == "hunt" || session.action == "resupply" || session.action == "hold")) {
+			player->listWalkDir.clear();
+			player->stopEventWalk();
+		}
+		releaseNpcApproach(bot.guid);
+		const double elapsed = std::max<int64_t>(0, botMonoMs() - session.started) / 1000.0;
+		const double xp = player && player->getExperience() >= session.xp ? player->getExperience() - session.xp : 0;
+		const auto potionDelta = player ? static_cast<int64_t>(brainPotions(player)) - session.potions : 0;
+		auto leader = player && player->getParty() ? player->getParty()->getLeader() : nullptr;
+		const double distance = player && leader ? Position::getDiagonalDistance(player->getPosition(), leader->getPosition()) : 0;
+		auto outcome = brainOutcome(brain_->world, bot.guid, session.actionId, status, reason, { { "elapsed_seconds", elapsed }, { "xp_delta", xp }, { "supply_delta", potionDelta }, { "party_distance", distance }, { "progress", status == "completed" ? 1.0 : 0.0 }, { "danger", session.danger }, { "deaths", reason == "death" ? 1.0 : 0.0 } });
+		if (session.outcomes.size() >= 128) {
+			session.outcomes.clear();
+		}
+		session.outcomes[session.actionId] = outcome;
+		brain_->channel->send(outcome);
+	}
+	if (session.script != 0) {
+		if (auto reservation = activeHunts_.find(session.script); reservation != activeHunts_.end() && reservation->second == bot.guid) {
+			activeHunts_.erase(reservation);
+		}
+		for (const auto &script : huntScripts_) {
+			if (script.id == session.script && !script.spawnGroup.empty()) {
+				auto group = activeSpawnGroups_.find(script.spawnGroup);
+				if (group != activeSpawnGroups_.end() && group->second == bot.guid) {
+					activeSpawnGroups_.erase(group);
+				}
+			}
+		}
+	}
+	session.actionId.clear();
+	session.action = "follow";
+	session.script = 0;
+	session.waypoint = 0;
+	session.skipped = 0;
+}
+
+bool BotEngine::brainMessage(uint32_t guid, uint32_t sender, const std::string &text) {
+	if (!brain_ || !brain_->channel || std::find(brain_->roster.begin(), brain_->roster.end(), guid) == brain_->roster.end()) {
+		return false;
+	}
+	auto bot = getBotState(guid);
+	auto player = g_game().getPlayerByID(sender);
+	if (!bot || !player || player->isBotPlayer() || text.empty() || text.size() > 1024) {
+		return false;
+	}
+	if (brain_->mode == "active" && botMonoMs() - brain_->heartbeat > 5000) {
+		return false;
+	}
+	if (bot->hibernated && !wakeBot(guid)) {
+		return false;
+	}
+	auto &session = brain_->sessions[guid];
+	if (botMonoMs() - session.lastMessage < 2000) {
+		return brain_->mode == "active";
+	}
+	session.lastMessage = botMonoMs();
+	if (session.messages.size() >= 8) {
+		session.messages.erase(session.messages.begin());
+	}
+	session.messages.push_back({ { "id", brain_->world + ":" + std::to_string(++brain_->messageSequence) },
+	                             { "player_id", player->getGUID() },
+	                             { "text", text },
+	                             { "channel", "pm" } });
+	return brain_->mode == "active";
+}
+
+void BotEngine::tickBrain() {
+	if (!brainConfigured_) {
+		brainConfigured_ = true;
+		try {
+			brain_ = std::make_unique<botbrain::Runtime>();
+		} catch (const std::exception &) {
+			g_logger().error("[Brain] Invalid configuration or unavailable private socket; native AI retained");
+		}
+	}
+	if (!brain_ || !brain_->channel) {
+		return;
+	}
+	const auto processingStarted = std::chrono::steady_clock::now();
+	const auto now = botMonoMs();
+	if (now - brain_->lastHello >= 1000) {
+		brain_->lastHello = now;
+		brain_->channel->send({ { "version", 1 }, { "type", "hello" }, { "world", brain_->world } });
+	}
+	for (const auto guid : brain_->roster) {
+		auto bot = getBotState(guid);
+		if (!bot) {
+			continue;
+		}
+		auto &session = brain_->sessions[guid];
+		auto player = bot->getPlayer();
+		if (!player || !bot->active || bot->hibernated || player->getHealth() <= 0) {
+			finishBrain(*bot, player && player->getHealth() <= 0 ? "failed" : "cancelled", player && player->getHealth() <= 0 ? "death" : "unavailable");
+			continue;
+		}
+		if (now - brain_->heartbeat > 5000 && !session.actionId.empty()) {
+			finishBrain(*bot, "cancelled", "worker_unavailable");
+		}
+		if (!session.actionId.empty() && session.action == "hold" && now - session.started >= 30000) {
+			finishBrain(*bot, "completed", "hold_finished");
+		}
+		if (now - session.lastPublish < 250) {
+			continue;
+		}
+		session.lastPublish = now;
+		auto snapshot = observeBrain(*bot);
+		if (session.offers.size() >= 12) {
+			session.offers.pop_front();
+		}
+		session.offers.push_back(snapshot);
+		brain_->channel->send(snapshot);
+		if (!session.actionId.empty() && now - session.started > (session.action == "hunt" ? 1800000 : 300000)) {
+			finishBrain(*bot, "failed", "objective_timeout");
+		}
+	}
+	for (const auto &packet : brain_->channel->receive()) {
+		try {
+			if (packet.value("version", 0) != 1 || packet.value("world", "") != brain_->world) {
+				continue;
+			}
+			const auto type = packet.value("type", "");
+			if (type == "heartbeat") {
+				brain_->heartbeat = now;
+				continue;
+			}
+			const auto guid = packet.at("bot_id").get<uint32_t>();
+			if (std::find(brain_->roster.begin(), brain_->roster.end(), guid) == brain_->roster.end()) {
+				continue;
+			}
+			auto bot = getBotState(guid);
+			if (!bot || !bot->active || !bot->getPlayer()) {
+				continue;
+			}
+			auto &session = brain_->sessions[guid];
+			if (type == "query") {
+				const auto id = packet.at("action_id").get<std::string>();
+				if (auto outcome = session.outcomes.find(id); outcome != session.outcomes.end()) {
+					brain_->channel->send(outcome->second);
+				} else {
+					brain_->channel->send(brainOutcome(brain_->world, guid, id, "rejected", "unknown_action"));
+				}
+				continue;
+			}
+			if (type == "reply") {
+				const auto id = packet.at("message_id").get<std::string>();
+				const auto text = packet.at("text").get<std::string>();
+				for (auto message = session.messages.begin(); message != session.messages.end(); ++message) {
+					if (message->at("id") != id) {
+						continue;
+					}
+					auto target = g_game().getPlayerByGUID(message->at("player_id").get<uint32_t>(), false);
+					if (brain_->mode == "active" && target && !text.empty() && text.size() <= 1200) {
+						target->sendPrivateMessage(bot->getPlayer(), TALKTYPE_PRIVATE_FROM, text);
+					}
+					session.messages.erase(message);
+					break;
+				}
+				continue;
+			}
+			if (type != "intent") {
+				continue;
+			}
+			const auto id = packet.at("action_id").get<std::string>();
+			if (auto old = session.outcomes.find(id); old != session.outcomes.end()) {
+				brain_->channel->send(old->second);
+				continue;
+			}
+			Json current = observeBrain(*bot);
+			auto offer = std::find_if(session.offers.begin(), session.offers.end(), [&](const Json &item) {
+				return item.at("sequence") == packet.at("observation_sequence");
+			});
+			std::string error = "invalid_observation";
+			if (offer != session.offers.end()) {
+				error = botbrain::validate(packet, *offer, current, now);
+			}
+			if (error.empty() && !brainOwns(guid)) {
+				error = "controller_unavailable";
+			}
+			if (!error.empty()) {
+				brain_->channel->send(brainOutcome(brain_->world, guid, id, "rejected", error));
+				continue;
+			}
+			const auto candidate = packet.at("candidate_id").get<std::string>();
+			const auto &actions = current.at("actions");
+			auto selected = std::find_if(actions.begin(), actions.end(), [&](const Json &item) { return item.at("id") == candidate; });
+			const auto action = selected->at("action").get<std::string>();
+			if (action == "continue") {
+				auto outcome = brainOutcome(brain_->world, guid, id, "completed", "continuing");
+				session.outcomes[id] = outcome;
+				brain_->channel->send(outcome);
+				continue;
+			}
+			if (action == "target") {
+				session.target = static_cast<uint32_t>(std::stoul(candidate.substr(7)));
+				session.targetUntil = packet.at("expires_ms").get<int64_t>();
+				auto target = g_game().getCreatureByID(static_cast<uint32_t>(std::stoul(candidate.substr(7))));
+				if (target && target->getMonster() && target->getHealth() > 0) {
+					bot->getPlayer()->setAttackedCreature(target);
+					bot->huntTargetId = target->getID();
+				}
+				auto outcome = brainOutcome(brain_->world, guid, id, "completed", "preference_applied");
+				session.outcomes[id] = outcome;
+				brain_->channel->send(outcome);
+				continue;
+			}
+			finishBrain(*bot, "cancelled", "new_objective");
+			session.actionId = id;
+			session.action = action;
+			session.started = now;
+			session.xp = bot->getPlayer()->getExperience();
+			session.potions = brainPotions(bot->getPlayer());
+			session.danger = 0;
+			if (action == "hold") {
+				bot->getPlayer()->stopWalk();
+			}
+			++session.generation;
+			if (action == "hunt") {
+				session.script = static_cast<uint32_t>(std::stoul(candidate.substr(5)));
+				activeHunts_[session.script] = guid;
+				for (const auto &script : huntScripts_) {
+					if (script.id == session.script && !script.spawnGroup.empty()) {
+						activeSpawnGroups_[script.spawnGroup] = guid;
+					}
+				}
+			}
+			if (action == "resupply") {
+				session.potions = brainPotions(bot->getPlayer());
+				session.supplyStep = 0;
+				session.lastMove = 0;
+			}
+			auto outcome = brainOutcome(brain_->world, guid, id, "accepted", "objective_started");
+			session.outcomes[id] = outcome;
+			brain_->channel->send(outcome);
+		} catch (const std::exception &) {
+			// Malformed local messages never escape into the dispatcher.
+		}
+	}
+	if (brainTickMicroseconds.size() >= 256) {
+		brainTickMicroseconds.pop_front();
+	}
+	brainTickMicroseconds.push_back(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - processingStarted).count());
+}
+
+bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
+	if (!brainOwns(bot.guid)) {
+		return false;
+	}
+	auto &session = brain_->sessions[bot.guid];
+	if (session.actionId.empty()) {
+		return false;
+	}
+	auto player = bot.getPlayer();
+	const auto now = botMonoMs();
+	if (session.action == "hold") {
+		if (now - session.started > 30000) {
+			finishBrain(bot, "completed", "hold_finished");
+		}
+		return true;
+	}
+	if (session.action == "follow" || session.action == "retreat") {
+		if (bot.currentPos.z == leaderPosition.z && Position::getDiagonalDistance(bot.currentPos, leaderPosition) <= 3
+		    && now - session.started >= 5000) {
+			finishBrain(bot, "completed", "party_rejoined");
+		}
+		if (bot.currentPos.z != leaderPosition.z) {
+			auto leader = player->getParty() ? player->getParty()->getLeader() : nullptr;
+			if (!leader || !tryFollowLeaderTrail(bot, leader)) {
+				finishBrain(bot, "failed", "return_route_unavailable");
+			}
+		} else if (now - session.lastMove >= 500) {
+			session.lastMove = now;
+			goToWithDoors(bot, leaderPosition, 2);
+		}
+		return true;
+	}
+	if (session.action == "resupply") {
+		if (session.supplyStep == 3) {
+			if (bot.currentPos.z == leaderPosition.z && Position::getDiagonalDistance(bot.currentPos, leaderPosition) <= 3) {
+				finishBrain(bot, "completed", "supplies_bought_and_party_rejoined");
+				return false;
+			}
+			if (bot.currentPos.z != leaderPosition.z) {
+				finishBrain(bot, "failed", "return_route_unavailable");
+			} else if (now - session.lastMove >= 500) {
+				session.lastMove = now;
+				goToWithDoors(bot, leaderPosition, 2);
+			}
+			return true;
+		}
+		auto npc = brainShop(bot);
+		if (!npc) {
+			finishBrain(bot, "failed", "potion_shop_unavailable");
+			return false;
+		}
+		if (!npc->canInteract(bot.currentPos, 3)) {
+			if (now - session.lastMove >= 500) {
+				session.lastMove = now;
+				Position stand;
+				bool fallback = false;
+				if (resolveNpcApproach(bot, npc->getName(), stand, fallback)) {
+					goToWithDoors(bot, stand, 0);
+				}
+			}
+			return true;
+		}
+		if (session.supplyStep == 0) {
+			g_game().internalCreatureSay(player, TALKTYPE_SAY, "hi", false);
+			session.supplyStep = 1;
+			session.lastMove = now;
+			return true;
+		}
+		if (now - session.lastMove < 1500) {
+			return true;
+		}
+		if (session.supplyStep == 1) {
+			uint64_t remaining = std::min<uint64_t>(30000, player->getMoney() + player->getBankBalance());
+			for (const auto &item : brainSupplyItems(player, npc)) {
+				const uint32_t current = player->getItemTypeCount(item.itemId);
+				const uint32_t desired = current < 20 ? 20 - current : 0;
+				const uint16_t amount = static_cast<uint16_t>(std::min<uint64_t>(desired, remaining / item.itemBuyPrice));
+				if (amount) {
+					npc->onPlayerBuyItem(player, item.itemId, 1, amount, false, false);
+					remaining -= amount * item.itemBuyPrice;
+				}
+			}
+			session.supplyStep = 2;
+			session.lastMove = now;
+			return true;
+		}
+		const auto purchased = brainSupplyItems(player, npc);
+		const bool stocked = !purchased.empty() && std::all_of(purchased.begin(), purchased.end(), [&](const auto &item) { return player->getItemTypeCount(item.itemId) >= 20; });
+		if (stocked && brainPotions(player) > session.potions) {
+			session.supplyStep = 3;
+		} else {
+			finishBrain(bot, "failed", "purchase_incomplete_or_insufficient_funds");
+		}
+		return true;
+	}
+	if (session.action != "hunt") {
+		return false;
+	}
+	if (Position::getDiagonalDistance(bot.currentPos, leaderPosition) > 12 || bot.currentPos.z != leaderPosition.z) {
+		return true;
+	}
+	if (now - session.lastMove < 500) {
+		return true;
+	}
+	session.lastMove = now;
+	for (const auto &script : huntScripts_) {
+		if (script.id != session.script) {
+			continue;
+		}
+		const bool outbound = session.waypoint < script.travelToWaypoints.size();
+		const auto &waypoints = outbound ? script.travelToWaypoints : script.patrolWaypoints;
+		size_t index = outbound ? session.waypoint : session.waypoint - script.travelToWaypoints.size();
+		if (index >= waypoints.size()) {
+			index = 0;
+		}
+		WaypointFollowConfig config;
+		config.logPrefix = "BRAIN";
+		auto result = followWaypoints(bot, waypoints, index, session.skipped, config);
+		session.waypoint = outbound ? index : script.travelToWaypoints.size() + index;
+		if (result.aborted) {
+			finishBrain(bot, "failed", "route_unavailable");
+		} else if (now - session.started > 900000 && player->getExperience() > session.xp) {
+			finishBrain(bot, "completed", "hunt_progress");
+		}
+		return true;
+	}
+	finishBrain(bot, "failed", "hunt_removed");
+	return false;
+}

@@ -29,6 +29,7 @@
  */
 
 #include "creatures/players/bot/bot_engine_interface.hpp"
+#include "creatures/players/bot/bot_brain_channel.hpp"
 #include "creatures/players/bot/bot_pathcore.hpp" // BOT_NAV_REALISM Phase 2: dependency-free A* kernel
 #include "creatures/players/bot/bot_navdump.hpp" // BOT_NAV_REALISM Phase 3: offline-sim map dump format
 #include "creatures/players/bot/bot_zcore.hpp" // TRUE MULTI-FLOOR: dependency-free portal graph + z-route planner
@@ -4238,6 +4239,20 @@ private:
 	std::unordered_map<uint32_t, MountRoll> botMountWants_;
 public:
 	BotEngine() = default;
+	// Entirely engine-local: no change to IBotEngine or the shared BotState ABI.
+	std::unique_ptr<botbrain::Runtime> brain_;
+	bool brainConfigured_ = false;
+	void tickBrain();
+	nlohmann::json observeBrain(BotState &bot);
+	bool brainMessage(uint32_t guid, uint32_t sender, const std::string &text);
+	bool brainPartyMove(BotState &bot, const Position &leaderPosition);
+	bool brainOwns(uint32_t guid) const;
+	uint32_t brainPotions(const std::shared_ptr<Player> &player) const;
+	std::shared_ptr<Npc> brainShop(BotState &bot);
+	std::string brainCommand(const std::string &botName, const std::string &command);
+	std::shared_ptr<Creature> brainTarget(BotState &bot);
+	bool brainRetreat(uint32_t guid) const;
+	void finishBrain(BotState &bot, const std::string &status, const std::string &reason);
 	// The destructor is the ONE point every teardown passes through: BotEngineLoader::reload()
 	// and ::unload() both funnel into destroyBotEngine() -> `delete engine`. Draining here means
 	// no reload path — talkaction, bot_commands queue, debug,N, debug off — can leave a scheduled

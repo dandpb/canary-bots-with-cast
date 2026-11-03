@@ -2308,6 +2308,15 @@ void BotEngine::forceDeactivateBotForReload(uint32_t guid) {
 }
 
 void BotEngine::pauseBotForDeath(uint32_t guid) {
+	if (brain_ && std::find(brain_->roster.begin(), brain_->roster.end(), guid) != brain_->roster.end()) {
+		if (auto bot = getBotState(guid)) {
+			finishBrain(*bot, "failed", "death");
+		}
+		auto &session = brain_->sessions[guid];
+		++session.generation;
+		session.leader = 0;
+		session.offers.clear();
+	}
 	auto it = guidToIndex_.find(guid);
 	if (it == guidToIndex_.end()) return;
 
@@ -3058,6 +3067,9 @@ std::string BotEngine::activityTableStatusSuffix() const {
 }
 
 void BotEngine::doActivityReroll(BotState& bot) {
+	if (brainOwns(bot.guid)) {
+		return;
+	}
 	// BOT_PARTY_INVITE_RENDEZVOUS trap #3 — a bot that is assembling for a party must never
 	// reroll. This function is not passive: for an IDLE/DWELLING bot holding a huntScriptId it
 	// ERASES the activeHunts_/activeSpawnGroups_ reservation and clears the field (the
@@ -3509,6 +3521,7 @@ void BotEngine::refreshSpectatorCacheIfStale(BotState& bot) {
 // ============================================================================
 
 void BotEngine::tick() {
+	tickBrain();
 	// JITTER DIAGNOSTIC (the jitter root-cause analysis §3.3):
 	// threshold-gated tick body + gap timing. Zero overhead at steady state.
 	static int64_t s_lastTickEnd = 0;

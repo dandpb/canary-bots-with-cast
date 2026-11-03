@@ -267,6 +267,8 @@ finish setting up the bot tables. Connect with an OTClient (protocol 13+).
 
 ## Bots at a glance
 
+Optional GPT-6 Luna party companions (Responses, Decisions, persistent contextual learning and a shared USD 50 monthly cap): see [deployment/brain](deployment/brain/README.md). Disabled by default; the initial pilot is limited to three native bots.
+
 - **How many:** `botPlayersOnline` in `config.lua` (default `500`, range `0`–~997).
 - **What they do:** idle/wander, walk to POIs (depot/temple/shops/NPCs), hunt,
   travel by boat, chat (observer-gated banter + trade ads + keyword replies),

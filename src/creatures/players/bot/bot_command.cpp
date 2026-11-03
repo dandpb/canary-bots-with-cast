@@ -24,6 +24,9 @@
 // ============================================================================
 
 std::string BotEngine::executeCommand(const std::string& botName, const std::string& command) {
+	if (command.rfind("brain ", 0) == 0) {
+		return brainCommand(botName, command.substr(6));
+	}
 	// Global commands — don't need a specific bot
 	if (command == "schedule on") {
 		schedulerEnabled_ = true;

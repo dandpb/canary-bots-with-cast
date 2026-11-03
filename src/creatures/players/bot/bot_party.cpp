@@ -1228,55 +1228,66 @@ void BotEngine::doPartyFollow(BotState& bot) {
 	}
 	const bool thisIsFirstEk = (baseVoc == 4 && ekGuid == bot.guid);
 
-	if (thisIsFirstEk) {
-		// ===== A1: EK TANK — exeta res + obey human target / fallback to nearest, follow human =====
-		const auto& challengeSpell = g_spells().getInstantSpell("exeta res");
-		if (challengeSpell
-			&& player->getLevel() >= 20
-			&& !player->hasCondition(CONDITION_SPELLCOOLDOWN, challengeSpell->getSpellId())
-			&& !player->hasCondition(CONDITION_SPELLGROUPCOOLDOWN, challengeSpell->getGroup())
-			&& player->getMana() >= 30) {
-			bool monstersNearby = false;
-			auto spectators = Spectators().find<Monster>(bot.currentPos, false, 1, 1, 1, 1);
-			for (const auto& spec : spectators) {
-				if (spec->getMonster() && spec->getHealth() > 0) { monstersNearby = true; break; }
-			}
-			if (monstersNearby) {
-				std::string words = "exeta res";
-				if (g_spells().playerSaySpell(player, words) == TALKACTION_BREAK) {
-					player->saySpell(TALKTYPE_SAY, "exeta res", false);
-					castLog(bot, "PARTY: exeta res (challenge)");
+	if (!brainRetreat(bot.guid)) {
+		if (thisIsFirstEk) {
+			// ===== A1: EK TANK — exeta res + obey human target / fallback to nearest, follow human =====
+			const auto &challengeSpell = g_spells().getInstantSpell("exeta res");
+			if (challengeSpell
+			    && player->getLevel() >= 20
+			    && !player->hasCondition(CONDITION_SPELLCOOLDOWN, challengeSpell->getSpellId())
+			    && !player->hasCondition(CONDITION_SPELLGROUPCOOLDOWN, challengeSpell->getGroup())
+			    && player->getMana() >= 30) {
+				bool monstersNearby = false;
+				auto spectators = Spectators().find<Monster>(bot.currentPos, false, 1, 1, 1, 1);
+				for (const auto &spec : spectators) {
+					if (spec->getMonster() && spec->getHealth() > 0) {
+						monstersNearby = true;
+						break;
+					}
+				}
+				if (monstersNearby) {
+					std::string words = "exeta res";
+					if (g_spells().playerSaySpell(player, words) == TALKACTION_BREAK) {
+						player->saySpell(TALKTYPE_SAY, "exeta res", false);
+						castLog(bot, "PARTY: exeta res (challenge)");
+					}
 				}
 			}
-		}
 
-		auto ekTarget = pickEkTankTarget(player, leader);
-		syncPvpSecureMode(ekTarget);
-		// Leash bound: chaseTarget has no leash of its own, so never let the chase drag the EK out of
-		// the human's leash. If we've drifted too far, drop the target and follow the human instead.
-		if (ekTarget && ekTarget->getPosition().z == bot.currentPos.z
-			&& leaderDist <= PARTY_LEASH_DIST + 3) {
-			if (player->getAttackedCreature() != ekTarget) player->setAttackedCreature(ekTarget);
-			castSpell(bot, ekTarget);
-			chaseTarget(bot, ekTarget);
-			chasing = true;
-			if (ekTarget != leader->getAttackedCreature()) {
-				castLog(bot, fmt::format("PARTY: [PARTYTANK] fallback target #{} (human idle)", ekTarget->getID()));
+			auto ekTarget = leader->getAttackedCreature() ? pickEkTankTarget(player, leader) : brainTarget(bot);
+			if (!ekTarget) {
+				ekTarget = pickEkTankTarget(player, leader);
 			}
-		} else if (player->getAttackedCreature()) {
-			player->setAttackedCreature(nullptr);
-		}
-	} else if (ekBot != nullptr) {
-		// ===== A2: support anchored to the EK bot (reuse autonomous role + cohesion) =====
-		// The role fns below mirror the EK target verbatim, so the member needs the same
-		// secure-mode state the EK has for that target or its melee/runes are refused.
-		syncPvpSecureMode(ekPlayer ? ekPlayer->getAttackedCreature() : nullptr);
-		// Guard (defensive): never run while the bot is also tracked in an autonomous hunt — the
-		// doParty() dispatcher already separates the two via partyHuntId, so this should never hit.
-		if (s_botToPartyHunt.find(bot.guid) == s_botToPartyHunt.end()) {
-			switch (baseVoc) {
-				case 1: doPartyHuntDpsMage(bot, ekBot); break;   // MS: mirror EK target + AoE
-				case 2: doPartyHuntHealer(bot, ekBot); break;    // ED: heal EK+human+party AND attack
+			syncPvpSecureMode(ekTarget);
+			// Leash bound: chaseTarget has no leash of its own, so never let the chase drag the EK out of
+			// the human's leash. If we've drifted too far, drop the target and follow the human instead.
+			if (ekTarget && ekTarget->getPosition().z == bot.currentPos.z
+			    && leaderDist <= PARTY_LEASH_DIST + 3) {
+				if (player->getAttackedCreature() != ekTarget) {
+					player->setAttackedCreature(ekTarget);
+				}
+				castSpell(bot, ekTarget);
+				chaseTarget(bot, ekTarget);
+				chasing = true;
+				if (ekTarget != leader->getAttackedCreature()) {
+					castLog(bot, fmt::format("PARTY: [PARTYTANK] fallback target #{} (human idle)", ekTarget->getID()));
+				}
+			} else if (player->getAttackedCreature()) {
+				player->setAttackedCreature(nullptr);
+			}
+		} else if (ekBot != nullptr) {
+			// ===== A2: support anchored to the EK bot (reuse autonomous role + cohesion) =====
+			// The role fns below mirror the EK target verbatim, so the member needs the same
+			// secure-mode state the EK has for that target or its melee/runes are refused.
+			syncPvpSecureMode(ekPlayer ? ekPlayer->getAttackedCreature() : nullptr);
+			// Guard (defensive): never run while the bot is also tracked in an autonomous hunt — the
+			// doParty() dispatcher already separates the two via partyHuntId, so this should never hit.
+			if (s_botToPartyHunt.find(bot.guid) == s_botToPartyHunt.end()) {
+				switch (baseVoc) {
+					case 1:
+						doPartyHuntDpsMage(bot, ekBot);
+						break; // MS: mirror EK target + AoE
+					case 2: doPartyHuntHealer(bot, ekBot); break;    // ED: heal EK+human+party AND attack
 				case 3: doPartyHuntDpsRanged(bot, ekBot); break; // RP
 				default: { // baseVoc==4: a SECOND EK — just mirror EK#1's target (melee), no fallback
 					auto t = ekPlayer->getAttackedCreature();
@@ -1287,7 +1298,7 @@ void BotEngine::doPartyFollow(BotState& bot) {
 					}
 					break;
 				}
-			}
+				}
 			// Cohesion positioning around the EK. Call it UNCONDITIONALLY and signal "already
 			// walking" through s_roleWalkedThisTick, exactly as the autonomous call site does.
 			//
@@ -1305,50 +1316,64 @@ void BotEngine::doPartyFollow(BotState& bot) {
 			if (!player->listWalkDir.empty()) {
 				s_roleWalkedThisTick.insert(bot.guid);
 			}
-			followPartyHuntLeader(bot, ekPlayer, ekBot);
-		}
+			if (!brainPartyMove(bot, leaderPos)) {
+				followPartyHuntLeader(bot, ekPlayer, ekBot);
+			}
+			}
 		chasing = true; // A2 fully owns positioning — skip the human-follow block below
-	} else {
-		// ===== A3: no EK in party — human-target mirror + druid heal =====
-		// Same two-level priority as the EK branch, via the same helper: the human's target first,
-		// else a monster standing right next to the human. Without the fallback these members would
-		// simply idle while something chewed on the leader — the A3 path had no fallback at all.
-		auto leaderTarget = leader->getAttackedCreature();
-		// No getMonster() filter here: a PvP target from the leader must survive to the mirror
-		// below, and pickEkTankTarget already vets everything (friendly fire, z, leash).
-		if (!leaderTarget || leaderTarget->getHealth() <= 0 || leaderTarget->isRemoved()) {
-			leaderTarget = pickEkTankTarget(player, leader);
-		}
-		syncPvpSecureMode(leaderTarget);
-		if (leaderTarget && leaderTarget->getHealth() > 0) {
-			auto tpos = leaderTarget->getPosition();
-
-			// Leash check: don't chase if it would take us too far from leader or break LOS
-			bool leashOk = leaderDist <= PARTY_LEASH_DIST
-				&& (bot.currentPos.z == leaderPos.z)
-				&& g_game().map.isSightClear(bot.currentPos, leaderPos, true);
-
-			if (leashOk && tpos.z == bot.currentPos.z) {
-				if (player->getAttackedCreature() != leaderTarget) {
-					player->setAttackedCreature(leaderTarget);
+		} else {
+			// ===== A3: no EK in party — human-target mirror + druid heal =====
+			// Same two-level priority as the EK branch, via the same helper: the human's target first,
+			// else a monster standing right next to the human. Without the fallback these members would
+			// simply idle while something chewed on the leader — the A3 path had no fallback at all.
+			auto leaderTarget = leader->getAttackedCreature();
+			// No getMonster() filter here: a PvP target from the leader must survive to the mirror
+			// below, and pickEkTankTarget already vets everything (friendly fire, z, leash).
+			if (!leaderTarget || leaderTarget->getHealth() <= 0 || leaderTarget->isRemoved()) {
+				leaderTarget = brainTarget(bot);
+				if (!leaderTarget) {
+					leaderTarget = pickEkTankTarget(player, leader);
 				}
-				castSpell(bot, leaderTarget);
-				chaseTarget(bot, leaderTarget);
-				chasing = true;
-			} else if (!leashOk && player->getAttackedCreature()) {
+			}
+			syncPvpSecureMode(leaderTarget);
+			if (leaderTarget && leaderTarget->getHealth() > 0) {
+				auto tpos = leaderTarget->getPosition();
+
+				// Leash check: don't chase if it would take us too far from leader or break LOS
+				bool leashOk = leaderDist <= PARTY_LEASH_DIST
+					&& (bot.currentPos.z == leaderPos.z)
+					&& g_game().map.isSightClear(bot.currentPos, leaderPos, true);
+
+				if (leashOk && tpos.z == bot.currentPos.z) {
+					if (player->getAttackedCreature() != leaderTarget) {
+						player->setAttackedCreature(leaderTarget);
+					}
+					castSpell(bot, leaderTarget);
+					chaseTarget(bot, leaderTarget);
+					chasing = true;
+				} else if (!leashOk && player->getAttackedCreature()) {
+					player->setAttackedCreature(nullptr);
+				}
+			} else if (player->getAttackedCreature()) {
 				player->setAttackedCreature(nullptr);
 			}
-		} else if (player->getAttackedCreature()) {
-			player->setAttackedCreature(nullptr);
+
+			// Druid party healing (A3 ED only — A2 ED heals via doPartyHuntHealer)
+			if (baseVoc == 2) {
+				doPartyHealing(bot, party, leader);
+			}
 		}
 
-		// Druid party healing (A3 ED only — A2 ED heals via doPartyHuntHealer)
+	} else {
+		player->setAttackedCreature(nullptr);
 		if (baseVoc == 2) {
 			doPartyHealing(bot, party, leader);
 		}
 	}
-
 	// 7. Follow leader (only if not chasing a target)
+	if (!chasing && brainPartyMove(bot, leaderPos)) {
+		return;
+	}
 	if (!chasing) {
 		bool teleported = false;
 		if (bot.currentPos.z != leaderPos.z) {
