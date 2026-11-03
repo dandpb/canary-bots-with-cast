@@ -90,3 +90,28 @@ async def test_newer_leader_message_supersedes_old_slow_order(tmp_path):
     ready.set()
     await controller.drain()
     assert not any(item["type"] == "intent" for item in sent)
+
+
+async def test_engine_restart_retries_cancelled_supply_goal_without_success_cooldown(
+    tmp_path,
+):
+    from canary_brain.controller import Controller
+    from test_protocol import observation
+
+    class Model:
+        async def decide(self, *args):
+            return "resupply"
+
+    path = tmp_path / "restart.db"
+    first_sent, next_sent = [], []
+    first = Controller(Store(path), Model(), first_sent.append, mode="active")
+    packet = observation()
+    packet["mode"] = "active"
+    await first.handle(packet)
+    await first.drain()
+    await first.close()
+    second = Controller(Store(path), Model(), next_sent.append, mode="active")
+    packet["world"] = "restarted-engine"
+    await second.handle(packet)
+    await second.drain()
+    assert any(item.get("candidate_id") == "resupply" for item in next_sent)

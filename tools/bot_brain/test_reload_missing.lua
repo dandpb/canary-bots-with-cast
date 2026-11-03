@@ -4,8 +4,8 @@ local failures = {}
 logger = { info = function() end, warn = function() end,
 	error = function(message) failures[#failures + 1] = message end }
 addEvent = function(callback) callback() end
-local registered = { [51] = true, [53] = true, [54] = true }
-local active = { [51] = true, [53] = true }
+local registered = { [51] = true, [53] = true, [54] = true, [56] = true }
+local active = { [51] = true, [53] = true, [56] = true }
 local failedOnce = false
 local scheduler = false
 local world = {}
@@ -14,7 +14,9 @@ local function actor(guid, name)
 		isRemoved = function() return false end, isBotPlayer = function() return true end }
 end
 world[51] = actor(51, "Awake Companion")
-local rows = { { id = 51, name = "Awake Companion" }, { id = 53, name = "Respawning Companion" }, { id = 54, name = "Inactive Companion" }, { id = 55, name = "Stale Registry Row" } }
+world[56] = actor(56, "Uncached Awake Companion")
+local weak = setmetatable({ [56] = world[56] }, { __mode = "v" })
+local rows = { { id = 51, name = "Awake Companion" }, { id = 53, name = "Respawning Companion" }, { id = 54, name = "Inactive Companion" }, { id = 55, name = "Stale Registry Row" }, { id = 56, name = "Uncached Awake Companion" } }
 db = {
 	query = function() return true end,
 	storeQuery = function(query)
@@ -43,7 +45,10 @@ Game = {
 	getBotHibernationStates = function()
 		return { { guid = 51, name = "Awake Companion", active = true, hibernated = false } }
 	end,
-	botForceDeactivateForReload = function(guid) active[guid] = false end,
+	botForceDeactivateForReload = function(guid)
+		active[guid] = false
+		if guid == 56 then world[56] = nil; collectgarbage("collect") end
+	end,
 	botReload = function() registered = {}; active = {}; scheduler = true; return "Reloaded" end,
 	botStartTickLoop = function() end,
 	loadBotPlayer = function(name)
@@ -63,7 +68,12 @@ Game = {
 		for guid in pairs(world) do registered[guid] = true; count = count + 1 end
 		return count
 	end,
-	botRecoverOrphanForReload = function(guid) return registered[guid] == true end,
+	botRecoverOrphanForReload = function(guid, player)
+		if guid == 56 and weak[56] and player == weak[56] then
+			world[56] = player; registered[56] = true
+		end
+		return registered[guid] == true
+	end,
 	botReactivateForReload = function(guid)
 		if not registered[guid] then return false end
 		active[guid] = true; return true
@@ -77,8 +87,22 @@ assert(#failures == 0, table.concat(failures, "; "))
 assert(Game.botGetState(53) ~= -1, "reload lost a registered bot outside the world and hibernation pool")
 assert(Game.botIsActive(53), "reload must resume a previously active bot after rematerialization")
 assert(Game.botIsActive(51), "reload must retain the awake bot")
+assert(Game.botIsActive(56), "reload must retain awake players absent from Lua cache")
 assert(Game.botGetState(54) ~= -1 and not Game.botIsActive(54), "inactive registry member must stay inactive")
 assert(not registered[55], "stale asynchronous registry rows must not create extra bots")
 assert(not scheduler, "reload must preserve scheduler OFF")
 assert(not BotSystem._reloadInProgress)
 print("PASS: reload retains registered bots between Player instances")
+-- An explicit "debug off" repairs the canonical loaded roster as well.
+local normalLoad = Game.loadBotPlayer
+Game.loadBotPlayer = function(name)
+	if name == "Stale Registry Row" then
+		world[55] = actor(55, name)
+		registered[55] = true
+		return world[55]
+	end
+	return normalLoad(name)
+end
+BotSystem.executeReload({ source = "repair", debugCount = "off" })
+assert(Game.botIsActive(55), "explicit full restoration must repair missing canonical registrations")
+print("PASS: explicit full restoration repairs the canonical roster")

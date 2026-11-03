@@ -399,12 +399,12 @@ class Controller:
                 "offered": alternatives,
             }
         # The original tactical deadline remains authoritative despite newer observations.
-        self._apply(snapshot, selected, selection)
-        if selected != "continue":
+        action_id = self._apply(snapshot, selected, selection)
+        if action_id is not None:
             self.store.put(
                 "activity_recent",
                 str(snapshot.bot.id),
-                {"candidate": selected, "at": time.time()},
+                {"candidate": selected, "at": time.time(), "action_id": action_id},
             )
 
     async def _autonomous_strategy(self, snapshot: Observation) -> None:
@@ -597,6 +597,10 @@ class Controller:
             episode["reward"] = reward
         self.store.put("episode", outcome.action_id, episode)
         if terminal:
+            if outcome.status in {"cancelled", "expired", "rejected"}:
+                recent = self.store.get("activity_recent", str(outcome.bot_id)) or {}
+                if recent.get("action_id") == outcome.action_id:
+                    self.store.delete("activity_recent", str(outcome.bot_id))
             self.store.delete("pending", outcome.action_id)
             plan = self.store.get("plan", str(outcome.bot_id))
             if plan and plan["action_id"] == outcome.action_id:

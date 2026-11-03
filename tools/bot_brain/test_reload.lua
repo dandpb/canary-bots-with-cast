@@ -34,6 +34,8 @@ Game = {
 	end,
 	getBotHibernationStates = function() return { { guid = 51, name = "Companion", hibernated = true } } end,
 	loadBotPlayer = function() return current end,
+	botForceDeactivateForReload = function() end,
+	botReactivateForReload = function() return true end,
 	botReload = function() return "Reloaded" end,
 	botStartTickLoop = function() end,
 	botReregisterAll = function() return 1 end,

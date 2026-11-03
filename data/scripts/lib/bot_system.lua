@@ -1132,6 +1132,15 @@ function BotSystem.executeReload(opts)
 	-- forever (which would block every future reload until canary restarts).
 	local onlineGuids, hibernatedNames, schedulerWasEnabled
 	local prefixOk, prefixErr = pcall(function()
+		-- Hold every live bot before force-deactivation removes Game's strong
+		-- reference. An awake player may have replaced Lua's stale userdata.
+		BotPlayers = BotPlayers or {}
+		for _, player in ipairs(Game.getPlayers()) do
+			if player and player:isBotPlayer() and not player:isRemoved() then
+				BotPlayers[player:getGuid()] = player
+			end
+		end
+
 		-- 1. Detect currently-active bots (via C++ engine active flag)
 		onlineGuids = {}
 		for guid, p in pairs(BotPlayers or {}) do
@@ -1167,7 +1176,7 @@ function BotSystem.executeReload(opts)
 			repeat
 				local guid = result.getNumber(cursor, "id")
 				local name = result.getString(cursor, "name")
-				if Game.botGetState(guid) >= 0 then
+				if Game.botGetState(guid) >= 0 or opts.debugCount == "off" then
 					if Game.botIsActive(guid) then activeSet[guid] = true end
 					if not Player(name) and not missingNames[name] then
 						hibernatedNames[#hibernatedNames + 1] = name

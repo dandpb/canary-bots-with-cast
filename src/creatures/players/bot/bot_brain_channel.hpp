@@ -22,7 +22,11 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+class Creature;
+
 namespace botbrain {
+
+	void retainTarget(uint32_t guid, const std::shared_ptr<Creature> &target);
 
 	class Channel {
 	public:

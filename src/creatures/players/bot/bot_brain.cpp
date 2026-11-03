@@ -5,6 +5,7 @@
 
 #include "creatures/players/bot/bot_engine_impl.hpp"
 #include "creatures/players/bot/bot_potions.hpp"
+#include "lua/scripts/scripts.hpp"
 
 namespace {
 	using Json = nlohmann::json;
@@ -79,6 +80,13 @@ namespace {
 	}
 } // namespace
 
+void botbrain::retainTarget(uint32_t guid, const std::shared_ptr<Creature> &target) {
+	if (auto combat = brainCombat.find(guid); combat != brainCombat.end()
+	    && target && target->getMonster() && target->getHealth() > 0) {
+		combat->second.target = target;
+	}
+}
+
 uint32_t BotEngine::brainPotions(const std::shared_ptr<Player> &player) const {
 	uint32_t total = 0;
 	const auto bit = botsupplies::vocBit(player->getVocation()->getBaseId());
@@ -127,6 +135,22 @@ std::shared_ptr<Creature> BotEngine::brainTarget(BotState &bot) {
 }
 
 std::string BotEngine::brainCommand(const std::string &botName, const std::string &command) {
+	if (command == "refresh_helpers" && botName == "_global") {
+		auto &scripts = g_scripts().getScriptInterface();
+		auto *state = scripts.getLuaState();
+		lua_getglobal(state, "BotSystem");
+		bool reloading = false;
+		if (lua_istable(state, -1)) {
+			lua_getfield(state, -1, "_reloadInProgress");
+			reloading = lua_toboolean(state, -1);
+			lua_pop(state, 1);
+		}
+		lua_pop(state, 1);
+		if (reloading) return "Wait for the bot reload to finish before refreshing its helper.";
+		return scripts.loadFile("data/scripts/lib/bot_system.lua", "bot_system.lua") == 0
+			? "Bot reload helper refreshed. No gameplay scripts or global reload settings changed."
+			: "Bot reload helper could not be refreshed.";
+	}
 	if (command == "reload") {
 		if (brain_) {
 			for (const auto guid : brain_->roster) {
@@ -613,6 +637,7 @@ void BotEngine::tickBrain() {
 				session.targetUntil = packet.at("expires_ms").get<int64_t>();
 				auto target = g_game().getCreatureByID(static_cast<uint32_t>(std::stoul(candidate.substr(7))));
 				if (target && target->getMonster() && target->getHealth() > 0) {
+					botbrain::retainTarget(guid, target);
 					bot->getPlayer()->setAttackedCreature(target);
 					bot->huntTargetId = target->getID();
 				}
@@ -646,6 +671,7 @@ void BotEngine::tickBrain() {
 				if (action == "hunt") bot->huntIgnoredMonsters.clear();
 			}
 			if (action == "hunt") {
+				brainCombat[guid] = {};
 				session.script = static_cast<uint32_t>(std::stoul(candidate.substr(5)));
 				activeHunts_[session.script] = guid;
 				for (const auto &script : huntScripts_) {
