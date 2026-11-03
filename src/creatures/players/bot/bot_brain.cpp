@@ -275,6 +275,22 @@ Json BotEngine::observeBrain(BotState &bot) {
 	if (leader && leader->getHealth() <= 0) {
 		finishBrain(bot, "failed", "party_death");
 	}
+	const auto onlineHuman = [](const std::shared_ptr<Player> &member) {
+		return member && !member->isBotPlayer() && member->getHealth() > 0
+		    && g_game().getPlayerByID(member->getID()) == member;
+	};
+	if (party && brain_->autonomous == bot.guid && brainOwns(bot.guid)) {
+		bool hasHuman = onlineHuman(leader);
+		for (const auto &member : party->getMembers()) hasHuman = hasHuman || onlineHuman(member);
+		if (!hasHuman) {
+			// A fallback/native recruitment may predate the worker lease. The
+			// explorer must regain solo ownership when that lease returns.
+			if (bot.partyHuntId) dissolvePartyHunt(bot.partyHuntId, "brain_autonomy");
+			exitPartyMode(bot);
+			party = player->getParty();
+			leader = party ? party->getLeader() : nullptr;
+		}
+	}
 	// Invitations join the Canary party before the native rendezvous finishes.
 	// Leave that travel/assembly in charge until the companion can execute PARTY goals.
 	if (leader && (leader->isBotPlayer() || leader->isRemoved() || leader->getHealth() <= 0
@@ -291,10 +307,6 @@ Json BotEngine::observeBrain(BotState &bot) {
 		session.offers.clear();
 	}
 	if (!leader && party && bot.state == BotAIState::PARTY && bot.partyHuntId == 0) {
-		const auto onlineHuman = [](const std::shared_ptr<Player> &member) {
-			return member && !member->isBotPlayer() && member->getHealth() > 0
-			    && g_game().getPlayerByID(member->getID()) == member;
-		};
 		bool humanRemains = onlineHuman(party->getLeader());
 		for (const auto &member : party->getMembers()) {
 			humanRemains = humanRemains || onlineHuman(member);
@@ -796,9 +808,23 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 				session.lastMove = now;
 				// A walkable authored stand may be behind the shop counter. Search
 				// for any reachable tile in the NPC's actual interaction range instead.
-				if (!planScopedWalk(bot, npc->getPosition(), 3)) {
-					finishBrain(bot, "failed", "shop_route_unavailable");
+				const auto shopPosition = npc->getPosition();
+				bool routed = goToWithDoors(bot, shopPosition, 3);
+				if (!routed) {
+					// The wide planner needs a walkable endpoint; the NPC's own
+					// tile (or an authored stand behind its counter) may be blocked.
+					// Try a bounded ring inside the actual interaction range.
+					const std::array<std::pair<int, int>, 8> offsets {{ { 0, -3 }, { 3, 0 }, { 0, 3 }, { -3, 0 }, { 3, -3 }, { 3, 3 }, { -3, 3 }, { -3, -3 } }};
+					for (const auto &[dx, dy] : offsets) {
+						const Position stand(shopPosition.x + dx, shopPosition.y + dy, shopPosition.z);
+						if (g_game().map.canWalkTo(player, stand) && planScopedWalk(bot, stand, 0)) {
+							routed = true;
+							break;
+						}
+					}
 				}
+				if (routed) session.skipped = 0;
+				else if (++session.skipped >= 12) finishBrain(bot, "failed", "shop_route_unavailable");
 			}
 			return true;
 		}

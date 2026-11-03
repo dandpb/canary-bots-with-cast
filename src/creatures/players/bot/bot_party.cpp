@@ -1671,6 +1671,10 @@ BotEngine::PartyRoster BotEngine::recruitPartyRoster(const BotState& initiator, 
 	PartyRoster roster;
 	std::unordered_set<uint32_t> usedGuids;
 	usedGuids.insert(initiator.guid);
+	// Reserve the configured explorer for solo work and human invitations.
+	if (brain_ && brain_->mode == "active" && std::find(brain_->roster.begin(), brain_->roster.end(), brain_->autonomous) != brain_->roster.end()) {
+		usedGuids.insert(brain_->autonomous);
+	}
 
 	const uint8_t initVoc = getBaseVocation(initiator.vocationId);
 	// The initiator occupies its own slot; recruit one of every OTHER base vocation.
