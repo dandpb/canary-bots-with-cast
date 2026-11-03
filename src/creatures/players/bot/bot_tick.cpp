@@ -2308,6 +2308,15 @@ void BotEngine::forceDeactivateBotForReload(uint32_t guid) {
 }
 
 void BotEngine::pauseBotForDeath(uint32_t guid) {
+	if (brain_ && std::find(brain_->roster.begin(), brain_->roster.end(), guid) != brain_->roster.end()) {
+		if (auto bot = getBotState(guid)) {
+			finishBrain(*bot, "failed", "death");
+		}
+		auto &session = brain_->sessions[guid];
+		++session.generation;
+		session.leader = 0;
+		session.offers.clear();
+	}
 	auto it = guidToIndex_.find(guid);
 	if (it == guidToIndex_.end()) return;
 
@@ -2552,8 +2561,9 @@ bool BotEngine::reactivateBotForReload(uint32_t guid) {
 
 	player->setFightMode(FIGHTMODE_ATTACK);
 
-	// Re-equip gear (weapon may have decayed or been lost)
-	equipBot(bot);
+	// The existing Player and inventory survive a library replacement. equipBot
+	// recreates the backpack, destroying purchased supplies and loot; reserve that
+	// loadout reset for ordinary activation instead of an administrative reload.
 
 	// Mount roll, mirroring activateBot. Note this always re-rolls rather than hitting the
 	// throttle: /cavebot reload destroys the BotEngine (destroyBotEngine before dlclose) and
@@ -3058,6 +3068,9 @@ std::string BotEngine::activityTableStatusSuffix() const {
 }
 
 void BotEngine::doActivityReroll(BotState& bot) {
+	if (brainOwns(bot.guid)) {
+		return;
+	}
 	// BOT_PARTY_INVITE_RENDEZVOUS trap #3 — a bot that is assembling for a party must never
 	// reroll. This function is not passive: for an IDLE/DWELLING bot holding a huntScriptId it
 	// ERASES the activeHunts_/activeSpawnGroups_ reservation and clears the field (the
@@ -3509,6 +3522,7 @@ void BotEngine::refreshSpectatorCacheIfStale(BotState& bot) {
 // ============================================================================
 
 void BotEngine::tick() {
+	tickBrain();
 	// JITTER DIAGNOSTIC (the jitter root-cause analysis §3.3):
 	// threshold-gated tick body + gap timing. Zero overhead at steady state.
 	static int64_t s_lastTickEnd = 0;
@@ -4784,6 +4798,34 @@ void BotEngine::processBot(BotState& bot) {
 	    && bot.state != BotAIState::PK_ATTACK
 	    && (bot.tickCounter % MOUNT_RETRY_INTERVAL_TICKS) == 0) {
 		tryOpportunisticMount(bot, player);
+	}
+
+	// One opt-in explorer executes bounded brain goals without a Party. Native
+	// combat/flee/death handling and the fixed-cadence healing loop stay in charge.
+	if (brainOwns(bot.guid) && brain_->autonomous == bot.guid && !player->getParty()
+	    && bot.state != BotAIState::COMBAT && bot.state != BotAIState::FLEEING
+	    && bot.state != BotAIState::PK_ATTACK) {
+		auto &session = brain_->sessions[bot.guid];
+		if (auto preferred = brainTarget(bot)) bot.huntTargetId = preferred->getID();
+		if (session.action != "retreat") {
+			// The brain owns its script separately from the ambient hunt state.
+			// Project it only for the existing native combat scanner, then restore
+			// the ambient fields so releasing ownership does not start an old hunt.
+			const auto previousScript = bot.huntScriptId;
+			const auto previousPhase = bot.huntPhase;
+			if (session.action == "hunt") {
+				bot.huntScriptId = session.script;
+				bot.huntPhase = HuntPhase::PATROLLING;
+			}
+			scanAndAttackMonster(bot);
+			bot.huntScriptId = previousScript;
+			bot.huntPhase = previousPhase;
+		}
+		const Position home(session.home[0], session.home[1], static_cast<uint8_t>(session.home[2]));
+		if (bot.huntTargetId == 0 || session.action == "hold" || session.action == "retreat") {
+			brainPartyMove(bot, home);
+		}
+		return;
 	}
 
 	// Dispatch by state

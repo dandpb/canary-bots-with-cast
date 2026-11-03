@@ -24,6 +24,9 @@
 // ============================================================================
 
 std::string BotEngine::executeCommand(const std::string& botName, const std::string& command) {
+	if (command.rfind("brain ", 0) == 0) {
+		return brainCommand(botName, command.substr(6));
+	}
 	// Global commands — don't need a specific bot
 	if (command == "schedule on") {
 		schedulerEnabled_ = true;
@@ -3689,6 +3692,13 @@ std::string BotEngine::executeCommand(const std::string& botName, const std::str
 // !!! otherwise it silently reopens this crash. That is exactly how the original bug happened:
 // !!! this drain loop existed and was correct, but the reload path never reached it.
 void BotEngine::cancelPendingDispatcherEvents() {
+	if (brain_) {
+		for (const auto guid : brain_->roster) {
+			if (auto bot = getBotState(guid)) {
+				finishBrain(*bot, "cancelled", "engine_unloaded");
+			}
+		}
+	}
 	uint32_t cancelled = 0;
 	for (auto& bot : bots_) {
 		if (bot.pendingWalkPauseEventId != 0) {

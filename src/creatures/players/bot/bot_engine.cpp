@@ -572,6 +572,7 @@ bool BotEngine::hibernateBot(uint32_t guid) {
 
 	auto &bot = bots_[it->second];
 	if (bot.hibernated) return false;
+	if (brainOwns(guid) && brain_->autonomous == guid) return false;
 	endIceFishSession(bot, "hibernated");
 	clearLootState(bot.guid);
 	// BOT_LURE_KITE: a hibernated bot has no Player and its virtual twin models neither

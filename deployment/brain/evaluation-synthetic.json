@@ -1,0 +1,41 @@
+{
+  "fixture": "synthetic safe eligible hunts; no live-game performance inference",
+  "seeds": 20,
+  "held_out_episodes_per_seed": 100,
+  "criteria": {
+    "progress_ci_separation": true,
+    "survival_non_regression_bound": 0.01,
+    "minimum_distinct_hunts": 4
+  },
+  "results": {
+    "fixed_rules": {
+      "mean_progress": 0.3007,
+      "seed_mean_ci95": [
+        0.2989,
+        0.3026
+      ]
+    },
+    "hybrid_without_learning": {
+      "mean_progress": 0.4702,
+      "seed_mean_ci95": [
+        0.4652,
+        0.4752
+      ]
+    },
+    "hybrid_with_learning": {
+      "mean_progress": 0.7691,
+      "seed_mean_ci95": [
+        0.761,
+        0.7773
+      ]
+    }
+  },
+  "observed_survival": 1,
+  "zero_failure_rate_upper_approx95": 0.0015,
+  "distinct_hunts_range": [
+    5,
+    5
+  ],
+  "synthetic_acceptance_passed": true,
+  "live_learning_promotion": "requires isolated hunt, survival observations and human playtest"
+}

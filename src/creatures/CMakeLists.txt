@@ -58,6 +58,7 @@ if(UNIX)
         players/bot/bot_travel.cpp   # boat/carpet travel
         players/bot/bot_party.cpp    # party + autonomous party hunt
         players/bot/bot_chat.cpp     # chat subsystem
+        players/bot/bot_brain.cpp    # optional asynchronous model controller
         players/bot/bot_liveness.cpp # hibernation/wake liveness
         players/bot/bot_command.cpp  # /cavebot admin + debug commands
         players/bot/bot_zgraph.cpp   # TRUE MULTI-FLOOR: portal graph + z-route planner

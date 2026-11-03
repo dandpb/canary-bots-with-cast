@@ -1,0 +1,181 @@
+{
+  "date": "2026-11-03",
+  "baseline": "56fce151a10cc141d3a74800c3aec3a2dbf4e846",
+  "automated": {
+    "python_tests_passed": 34,
+    "mypy": "passed, 9 modules",
+    "ruff": "passed",
+    "native_protocol": "3 tests passed",
+    "lua_reload": "both fixtures passed with Lua and LuaJIT, including helper refresh identity preservation"
+  },
+  "provider": {
+    "model": "gpt-6-luna",
+    "responses_low_and_max": "passed live",
+    "decisions": "passed live",
+    "monthly_application_cap_usd": 50,
+    "settled_usd": 0.102994175,
+    "unresolved_reservations_usd": 0.010697375,
+    "initial_settled_usd": 0.041065075,
+    "accounting_snapshot_utc": "2026-11-03T19:49:28.093453+00:00"
+  },
+  "native_party": {
+    "members": 8,
+    "human_protocol_clients": 5,
+    "companions": 3,
+    "resupply_seconds": {
+      "knight": 66.57,
+      "druid": 66.181,
+      "paladin": 85.758
+    },
+    "potion_delta_each": 38,
+    "potions_retained_each_after_library_and_server_restart": 40,
+    "leader_logout_transfer": "passed",
+    "all_humans_left": "all three IDLE; no owned goals",
+    "worker_lease_release_seconds": 4.325,
+    "worker_restart": "passed"
+  },
+  "long_hunt": {
+    "result": "survival acceptance not passed",
+    "floor_changes_observed": true,
+    "native_companions_survived": 3,
+    "passive_human_fixture_deaths": 2,
+    "other_passive_clients_idle_kicked": 3,
+    "retained_offline_leader_defect": "fixed with canonical online-map identity and human-follow cleanup; subsequent logout lifecycle checks passed",
+    "learned_selection_promoted": false,
+    "real_route_movement_and_combat_observed": true,
+    "native_xp_delta": 0,
+    "correction": "Native addExperience intentionally suppresses XP; visual experience effects were not real XP gain."
+  },
+  "production": {
+    "active_bots": 997,
+    "online_bot_flags": 997,
+    "configured_llm_pilots": [
+      65045,
+      65004,
+      65003
+    ],
+    "controller_mode": "active",
+    "learned_selection": false,
+    "worker_enabled": true,
+    "qa_services": "stopped",
+    "web_client_http": 200,
+    "native_cast_login": "valid 255-entry protocol list",
+    "autonomous_bot": 65045,
+    "autonomous_name": "Tarshaw Steelheart",
+    "autonomous_learning": true,
+    "ordinary_companion_learning": false,
+    "normal_library_reload_active_before": 997,
+    "normal_library_reload_active_after": 997,
+    "helper_refresh": "same brain world and running hunt;997/997 retained"
+  },
+  "post_startup_resource_sample": {
+    "server_cpu_percent_one_core": 34.75,
+    "server_memory_gib": 1.762,
+    "worker_memory_bytes": 40747008,
+    "host_available_memory_approx_gib": 7,
+    "idle_bridge_tick_p95_us": 713.885
+  },
+  "limits": [
+    "The initial 996/997 replacement limitation was fixed; subsequent normal reload verified997/997.",
+    "Human party survival/usefulness remains unvalidated; passive-client deaths are retained as failed acceptance.",
+    "Native bots retain fixed XP/levels by existing server design; learning uses confirmed combat outcomes.",
+    "No claim of monotonic improvement or AFK safety.",
+    "Native library reactivation retains its original random home-city spawn behavior. The cross-floor recovery test restored its initial underground position as operator fixture setup; models cannot teleport."
+  ],
+  "autonomous_follow_up": {
+    "outside_party_authority": "any real player; human leader retains authority within party",
+    "solo_soak_minutes": 16,
+    "human_or_cast_anchors": 0,
+    "injured_human_hunt_eligibility": "old projector offered; corrected projector withheld at20/245HP; healed party eligible",
+    "party_follow_check": "3minutes;8alive;paused with human leader7tiles behind;not a completed hunt",
+    "outsider_hold_acceptance_seconds": 2,
+    "qa_real_luna_hunt": {
+      "candidate": "hunt:399",
+      "reason": "hunt_progress",
+      "metrics": {
+        "danger": 0.0,
+        "deaths": 0.0,
+        "defeats_delta": 34.0,
+        "elapsed_seconds": 300.005,
+        "level": 8.0,
+        "party_distance": 0.0,
+        "party_size": 1.0,
+        "progress": 1.0,
+        "supply_delta": 0.0,
+        "xp_delta": 0.0
+      },
+      "reward": 0.9500000000000001
+    },
+    "one_hit_native_fixture": {
+      "provider": "explicit_fake",
+      "hp_one_percent": 4,
+      "confirmed_defeats": 2,
+      "health_percent": 100,
+      "qa_privileges_restored": true
+    },
+    "production_resupply": {
+      "candidate": "resupply",
+      "reason": "supplies_bought",
+      "metrics": {
+        "danger": 0.0,
+        "deaths": 0.0,
+        "defeats_delta": 0.0,
+        "elapsed_seconds": 28.091,
+        "level": 90.0,
+        "party_distance": 0.0,
+        "party_size": 1.0,
+        "progress": 1.0,
+        "supply_delta": 38.0,
+        "xp_delta": 0.0
+      },
+      "reward": 0.9457190230759149
+    },
+    "production_real_luna_hunt": {
+      "candidate": "hunt:44",
+      "reason": "hunt_progress",
+      "metrics": {
+        "danger": 0.030000000000000027,
+        "deaths": 0.0,
+        "defeats_delta": 34.0,
+        "elapsed_seconds": 300.05,
+        "level": 90.0,
+        "party_distance": 0.0,
+        "party_size": 1.0,
+        "progress": 1.0,
+        "supply_delta": 0.0,
+        "xp_delta": 0.0
+      },
+      "reward": 0.941
+    },
+    "production_potions": 40,
+    "level_equipment_funds_unchanged": true,
+    "initial_Thais_position": "operator setup only; model uses ordinary routes and NPCs",
+    "native_bot_only_party_recovery": "selected explorer excluded from native recruitment and leaves bot-only party on ownership recovery",
+    "independent_final_reviews": "Standards and Spec found helper refresh reset;fixed c7c6b28 and rechecked without remaining concrete blockers",
+    "qa_services": "stopped;provider configuration restored to openai;test account type and group restored to1",
+    "cross_floor_recovery": {
+      "operator_fixture_initial_position": [
+        32451,
+        32062,
+        8
+      ],
+      "operator_movement_after_start": false,
+      "observed_floors": [
+        8,
+        7
+      ],
+      "next_hunt": "hunt:67",
+      "retreat_terminal_status": "failed",
+      "retreat_terminal_reason": "return_route_unavailable",
+      "temple_arrival": false,
+      "continuation_fix": "e9e28d7 prevents ambient reissue of an ongoing retreat"
+    },
+    "active_bridge_sample": {
+      "p95_us": 2999.781,
+      "samples": 256,
+      "initial_target_us": 2000,
+      "initial_tuning_target_met": false,
+      "not_a_full_load_guarantee": true
+    }
+  }
+}

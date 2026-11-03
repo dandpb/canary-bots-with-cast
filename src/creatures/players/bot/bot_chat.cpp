@@ -668,6 +668,16 @@ std::string BotEngine::classifyReplyTrigger(const std::string& text, bool isPm) 
 }
 
 void BotEngine::onPlayerSayNearBots(uint32_t playerId, const Position& pos, const std::string& text) {
+	if (brain_) {
+		for (const auto guid : brain_->roster) {
+			auto bot = getBotState(guid);
+			if (bot && !bot->hibernated && bot->currentPos.z == pos.z
+			    && Position::getDiagonalDistance(bot->currentPos, pos) <= 7
+			    && brainMessage(guid, playerId, text)) {
+				return;
+			}
+		}
+	}
 	if (replyCatalog_.empty() || chatCfg_.replyChancePct <= 0) return;
 	const std::string group = classifyReplyTrigger(text, /*isPm=*/false);
 	if (group.empty()) return;
@@ -707,6 +717,9 @@ void BotEngine::onPlayerSayNearBots(uint32_t playerId, const Position& pos, cons
 }
 
 void BotEngine::onPlayerPmToBot(uint32_t botGuid, uint32_t playerId, const std::string& text) {
+	if (brainMessage(botGuid, playerId, text)) {
+		return;
+	}
 	if (replyCatalog_.empty() || chatCfg_.pmReplyChancePct <= 0) return;
 	BotState* bot = getBotState(botGuid);
 	if (!bot) return;

@@ -1109,6 +1109,8 @@ std::pair<Position, std::string> BotEngine::getTravelPosition(uint32_t townId) c
 void BotEngine::equipBot(BotState& bot) {
 	auto player = bot.getPlayer();
 	if (!player) return;
+	const bool preserveBackpack = brain_ && player->getInventoryItem(CONST_SLOT_BACKPACK)
+	    && std::find(brain_->roster.begin(), brain_->roster.end(), bot.guid) != brain_->roster.end();
 
 	auto voc = player->getVocation();
 	uint32_t baseVoc = voc ? voc->getBaseId() : 4; // default to paladin if unknown
@@ -1138,6 +1140,7 @@ void BotEngine::equipBot(BotState& bot) {
 	for (auto& s : slots) {
 		if (s.itemId == 0) continue;
 		auto existing = player->getInventoryItem(s.slot);
+		if (preserveBackpack && s.slot == CONST_SLOT_BACKPACK && existing) continue;
 		if (existing && existing->getID() == s.itemId) continue; // already correct
 
 		// Remove existing item in slot
@@ -1219,7 +1222,7 @@ void BotEngine::equipBot(BotState& bot) {
 	// Only fires from activateBot (line 2194) and the reload-reactivate path (line 4309).
 	// NOT from wakeBot — hibernation preserves the Player object as-is via the
 	// hibernationPool_ fast-path, so the bag persists across proximity/teleport wakes.
-	{
+	if (!preserveBackpack) {
 		auto bpExisting = player->getInventoryItem(CONST_SLOT_BACKPACK);
 		if (bpExisting) {
 			g_game().internalRemoveItem(bpExisting);  // destroys container + all sub-items
@@ -1303,10 +1306,9 @@ void BotEngine::equipBot(BotState& bot) {
 		// already at top level (zero new slots), leaving fish, flasks and paladin ammo — 3-4
 		// types against 6 free, each then stacking to 100.
 		//
-		// No idempotency guard by id: this whole block runs after the unconditional backpack
-		// wipe. Do NOT "fix" that with findItemOfType(player, 2854, ...) — it would match the
-		// OUTER backpack, since both are the same item.
-		if (bpContainer) {
+		// Only seed a fresh loadout. Retained pilot backpacks already contain their
+		// supplies; adding another bag would duplicate consumables on each activation.
+		if (bpContainer && !preserveBackpack) {
 			auto supplyBag = Item::CreateItem(2854, 1);
 			if (supplyBag && g_game().internalAddItem(bpContainer, supplyBag, INDEX_WHEREEVER) == RETURNVALUE_NOERROR) {
 				if (const auto& bag = supplyBag->getContainer()) {

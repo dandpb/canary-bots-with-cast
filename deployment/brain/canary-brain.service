@@ -1,0 +1,22 @@
+[Unit]
+Description=Canary GPT-6 Luna party companions
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=canary
+UMask=0077
+ExecStart=/opt/canary-brain/venv/bin/canary-brain serve --config /etc/canary-brain/worker.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/run/canary-brain /var/lib/canary-brain
+MemoryMax=384M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

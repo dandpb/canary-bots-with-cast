@@ -1462,6 +1462,7 @@ void BotEngine::chaseTarget(BotState& bot, const std::shared_ptr<Creature>& targ
 void BotEngine::castSpell(BotState& bot, const std::shared_ptr<Creature>& target) {
 	auto player = bot.getPlayer();
 	if (!player || !target) return;
+	botbrain::retainTarget(bot.guid, target);
 
 	// Same rule as a normal player: you cannot perform a hostile action while standing in a
 	// protection zone, nor against a target standing in one. Gate ALL bot spell/rune attacks on it

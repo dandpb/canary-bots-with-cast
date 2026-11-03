@@ -2048,6 +2048,7 @@ void BotEngine::scanAndAttackMonster(BotState& bot) {
 			auto zIt = s_lastZChangeTime.find(bot.guid);
 			bool inZGrace = (zIt != s_lastZChangeTime.end() && OTSYS_TIME() - zIt->second < Z_CHANGE_GRACE_MS);
 			if (!inZGrace && player->getAttackedCreature() != target) {
+				botbrain::retainTarget(bot.guid, target);
 				player->setAttackedCreature(target);
 			}
 		}
@@ -2268,7 +2269,8 @@ void BotEngine::scanAndAttackMonster(BotState& bot) {
 		bot.huntChaseFailCount = 0;
 
 		// Set attacked creature so the engine auto-attack loop fires (weapon attacks)
-		player->setAttackedCreature(bestTarget);
+		botbrain::retainTarget(bot.guid, bestTarget);
+				player->setAttackedCreature(bestTarget);
 
 		// For keepDist bots: chaseMode=true auto-sets followCreature which walks
 		// the bot to dist=0, completely overriding our keepDistance retreat logic.
