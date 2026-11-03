@@ -8,8 +8,11 @@ The deployment follow-up also versions the two earlier VPS adjustments:
   batches and at most three attempts per failed load. Processing continues after
   an exhausted failure. Final logs report actual successful registrations.
   Online-row synchronization respects `botPlayersShowAsOnline`.
+  Existing quest/access values are initialized for each loaded player before an
+  earlier batch can hibernate and leave the Lua cache.
 - Ordinary players can reach `/cavebot party`, `claim` and `release` handlers.
-  The existing access check still blocks administrative operations. `/party`
+  Administrative operations require both a God account and group access,
+  preserving the dispatcher restriction removed by public registration. `/party`
   remains the dedicated ordinary-player party command.
 
 The startup change was separately submitted to the original repository as
@@ -30,14 +33,22 @@ lua tools/bot_brain/test_reload_missing.lua
 
 The startup fixture uses a virtual event loop and 101 bot rows. It verifies batch
 pauses, transient exception/nil retries, continued registration after a failure,
-bounded final failure and enabled/disabled online visibility. The player fixture
+bounded final failure, hibernation before loading finishes, and enabled/disabled
+online visibility. The player fixture
 exercises public registration and routing, then checks that ordinary players
 cannot reach reload, status, teleport or brain administration through this action.
+An access-enabled non-God staff account is also rejected; a God retains access.
 Both new fixtures fail against the previous main branch and pass with the fixes.
 
 The same 50/35-second startup policy already restored all 997 bots on the VPS.
-The existing running server uses these player permissions. This source-parity
-follow-up does not require a game restart; no new cold-start acceptance is claimed.
+The existing running server uses public player permissions. The per-player access
+initialization and explicit God-account guard were added during review and are
+loaded with these Lua scripts at startup. No new live cold-start acceptance is claimed.
+
+Independent review found the hibernation/initialization ordering issue on the
+Standards axis and the non-God staff authorization issue on the Spec axis.
+Both were reproduced with public regression fixtures before correction. The
+quest/access values themselves are unchanged from the previous initializer.
 
 Host-specific configuration, credentials, account entitlements, databases and
 generated binaries remain deployment state. The worker and native library sources

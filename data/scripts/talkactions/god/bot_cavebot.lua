@@ -82,8 +82,8 @@ function cavebotCmd.onSay(player, words, param)
 		-- (data/scripts/talkactions/player/bot_house.lua).
 	end
 
-	-- Require God access (group >= 3)
-	if player:getGroup():getAccess() == false then
+	-- Public registration must retain the former God account gate for administration.
+	if player:getAccountType() ~= ACCOUNT_TYPE_GOD or player:getGroup():getAccess() == false then
 		player:sendTextMessage(MESSAGE_STATUS, "You need God access to use /cavebot.")
 		return true
 	end
