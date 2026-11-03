@@ -36,6 +36,7 @@
 // one bot) every bot may do any of these at any time, and nothing reserves a tile.
 // ============================================================================
 
+#include "creatures/players/bot/bot_potions.hpp"
 #include "creatures/players/bot/bot_engine_impl.hpp"
 
 #include "creatures/combat/condition.hpp" // Condition::getTicks — the food fullness pre-check
@@ -106,35 +107,10 @@ constexpr int32_t FISH_PORTAL_CANDIDATES_MAX = 4;
 // actually carry health/mana — which is what guarantees the flask the script creates is one of
 // 283/284/285. The buff potions (7439/7440/7443/49271), the mana-shield potion (35563) and the
 // transform flask (6558) have no flask field and are deliberately absent.
-struct PotionDef {
-	uint16_t id;
-	uint32_t level;
-	bool heals;
-	bool restoresMana;
-	uint32_t vocMask; // bit per base vocation id; 0 = any
-};
-constexpr uint32_t VOC_SORC = 1u << 1, VOC_DRUID = 1u << 2, VOC_PAL = 1u << 3, VOC_KNIGHT = 1u << 4;
-constexpr uint32_t VOC_ANY = 0;
-
-// Ordered weakest -> strongest so the picker can walk it backwards.
-constexpr PotionDef kPotions[] = {
-	{ 266,   0,  true,  false, VOC_ANY },                                  // health potion
-	{ 268,   0,  false, true,  VOC_ANY },                                  // mana potion
-	{ 236,  50,  true,  false, VOC_PAL | VOC_KNIGHT },                     // strong health
-	{ 237,  50,  false, true,  VOC_ANY },                                  // strong mana
-	{ 238,  80,  false, true,  VOC_SORC | VOC_DRUID | VOC_PAL },           // great mana
-	{ 239,  80,  true,  false, VOC_KNIGHT },                               // great health
-	{ 7642, 80,  true,  true,  VOC_PAL },                                  // great spirit
-	{ 7643, 130, true,  false, VOC_KNIGHT },                               // ultimate health
-	{ 23373, 130, false, true, VOC_SORC | VOC_DRUID },                     // ultimate mana
-	{ 23374, 130, true,  true, VOC_PAL },                                  // ultimate spirit
-	{ 23375, 200, true,  false, VOC_KNIGHT },                              // supreme health
-};
-
-
-uint32_t vocBit(uint8_t baseVoc) {
-	return baseVoc >= 1 && baseVoc <= 4 ? (1u << baseVoc) : 0u;
-}
+using botsupplies::PotionDef;
+using botsupplies::kPotions;
+using botsupplies::VOC_ANY;
+using botsupplies::vocBit;
 
 } // namespace
 
