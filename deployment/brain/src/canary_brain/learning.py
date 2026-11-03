@@ -19,15 +19,45 @@ class Selection:
 
 
 class Policy:
-    def __init__(self, store: Store, rng: random.Random | None = None, epsilon: float = 0.15) -> None:
+    def __init__(
+        self, store: Store, rng: random.Random | None = None, epsilon: float = 0.15
+    ) -> None:
         if not 0 <= epsilon <= 0.5:
             raise ValueError("exploration must be between zero and 0.5")
         self.store, self.rng, self.epsilon = store, rng or random.Random(), epsilon
 
+    def checkpoint(self, name: str) -> None:
+        if not name or len(name) > 64:
+            raise ValueError("checkpoint name must contain one to 64 characters")
+        with self.store.atomic():
+            self.store.put(
+                "checkpoint",
+                name,
+                {
+                    "version": VERSION,
+                    "at": time.time(),
+                    "policy": self.store.records("policy", 1000),
+                    "recent": self.store.records("recent", 1000),
+                },
+            )
+
+    def rollback(self, name: str) -> None:
+        with self.store.atomic():
+            saved = self.store.get("checkpoint", name)
+            if saved is None or saved.get("version") != VERSION:
+                raise ValueError("compatible checkpoint not found")
+            for kind in ("policy", "recent"):
+                for key, _ in self.store.records(kind, 1000):
+                    self.store.delete(kind, key)
+                for key, data in saved[kind]:
+                    self.store.put(kind, key, data)
+
     def statistics(self, bot: int, context: str) -> dict[str, Any]:
-        actions = (self.store.get("policy", f"{bot}:{context}") or {}).get("actions", {})
+        actions = (self.store.get("policy", f"{bot}:{context}") or {}).get(
+            "actions", {}
+        )
         if not isinstance(actions, dict):
-            raise ValueError("invalid stored policy")
+            raise TypeError("invalid stored policy")
         return actions
 
     def learn(self, bot: int, context: str, action: str, reward: float) -> None:
@@ -37,11 +67,21 @@ class Policy:
         previous = actions.get(action, {"count": 0, "mean": 0.5})
         count = int(previous["count"]) + 1
         # A finite effective window adapts after equipment, level, or world changes.
-        mean = float(previous["mean"]) + (reward - float(previous["mean"])) / min(count, 30)
+        mean = float(previous["mean"]) + (reward - float(previous["mean"])) / min(
+            count, 30
+        )
         actions[action] = {"count": count, "mean": mean, "updated": time.time()}
-        self.store.put("policy", f"{bot}:{context}", {"version": VERSION, "actions": actions})
+        self.store.put(
+            "policy", f"{bot}:{context}", {"version": VERSION, "actions": actions}
+        )
 
-    def choose(self, bot: int, context: str, candidates: list[str], preferred: str | None = None) -> Selection:
+    def choose(
+        self,
+        bot: int,
+        context: str,
+        candidates: list[str],
+        preferred: str | None = None,
+    ) -> Selection:
         if not candidates or len(set(candidates)) != len(candidates):
             raise ValueError("unique eligible candidates are required")
         actions = self.statistics(bot, context)
@@ -52,14 +92,24 @@ class Policy:
 
         def quality(action: str) -> tuple[float, int, int]:
             learned = actions.get(action, {})
-            value = float(learned.get("mean", 0.5)) if learned.get("count", 0) >= 3 else 0.5
-            return (value - 0.06 * recent.count(action), int(action == preferred), -recent.count(action))
+            value = (
+                float(learned.get("mean", 0.5)) if learned.get("count", 0) >= 3 else 0.5
+            )
+            return (
+                value - 0.06 * recent.count(action),
+                int(action == preferred),
+                -recent.count(action),
+            )
 
         best_quality = max(quality(action) for action in eligible)
         best = [action for action in eligible if quality(action) == best_quality]
         weights = [1.0 / (1 + recent.count(action)) for action in eligible]
         exploring = len(eligible) > 1 and self.rng.random() < self.epsilon
-        selected = self.rng.choices(eligible, weights=weights)[0] if exploring else self.rng.choice(best)
+        selected = (
+            self.rng.choices(eligible, weights=weights)[0]
+            if exploring
+            else self.rng.choice(best)
+        )
         probability = self.epsilon * weights[eligible.index(selected)] / sum(weights)
         probability += (1 - self.epsilon) / len(best) if selected in best else 0
         if len(eligible) == 1:
@@ -82,4 +132,10 @@ def episode_reward(status: str, metrics: dict[str, float]) -> float | None:
     danger = min(1.0, max(0.0, metrics.get("danger", 0)))
     efficiency = min(1.0, max(0.0, metrics.get("efficiency", 0.5)))
     novelty = min(1.0, max(0.0, metrics.get("novelty", 0)))
-    return min(1.0, max(0.0, 0.55 * progress + 0.2 * (1 - danger) + 0.2 * efficiency + 0.05 * novelty))
+    return min(
+        1.0,
+        max(
+            0.0,
+            0.55 * progress + 0.2 * (1 - danger) + 0.2 * efficiency + 0.05 * novelty,
+        ),
+    )

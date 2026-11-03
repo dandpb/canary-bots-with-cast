@@ -1,0 +1,11 @@
+{
+  "mode": "shadow",
+  "bots": [101, 102, 103],
+  "socket_directory": "/run/canary-brain",
+  "state_file": "/var/lib/canary-brain/state.sqlite3",
+  "credential_file": "/etc/canary-brain/openai.env",
+  "monthly_usd": 50,
+  "decision_timeout": 1.2,
+  "learning": false,
+  "exploration": 0.15
+}

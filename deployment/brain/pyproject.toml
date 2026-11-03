@@ -7,7 +7,7 @@ name = "canary-brain"
 version = "0.1.0"
 description = "Bounded GPT-6 Luna party companions for Canary"
 requires-python = ">=3.11"
-dependencies = ["openai", "pydantic>=2"]
+dependencies = ["openai==3.42.1", "pydantic==2.14.2"]
 
 [project.scripts]
 canary-brain = "canary_brain.cli:main"
@@ -18,6 +18,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.mypy]

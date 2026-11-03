@@ -11,7 +11,9 @@ class Packet(BaseModel):
 
 class Candidate(Packet):
     id: str = Field(min_length=1, max_length=80)
-    action: Literal["continue", "follow", "hold", "hunt", "resupply", "target", "retreat", "release"]
+    action: Literal[
+        "continue", "follow", "hold", "hunt", "resupply", "target", "retreat", "release"
+    ]
     description: str = Field(max_length=400)
     ttl_ms: int = Field(ge=100, le=30000)
 
@@ -28,6 +30,8 @@ class Bot(Packet):
     potions: int = Field(ge=0)
     xp: int = Field(ge=0)
     alive: bool
+    objective: str = "follow"
+    objective_running: bool = False
 
 
 class Party(Packet):
@@ -83,18 +87,26 @@ class Outcome(Packet):
     world: str
     action_id: str
     bot_id: int
-    status: Literal["accepted", "running", "completed", "failed", "rejected", "expired", "cancelled"]
+    status: Literal[
+        "accepted", "running", "completed", "failed", "rejected", "expired", "cancelled"
+    ]
     reason: str = ""
     metrics: dict[str, float] = Field(default_factory=dict)
 
 
 def intent_for(observation: Observation, candidate_id: str, action_id: str) -> Intent:
-    candidate = next((item for item in observation.actions if item.id == candidate_id), None)
+    candidate = next(
+        (item for item in observation.actions if item.id == candidate_id), None
+    )
     if candidate is None:
         raise ValueError("unknown candidate")
     return Intent(
-        world=observation.world, action_id=action_id, bot_id=observation.bot.id,
-        lease=observation.lease, objective_generation=observation.objective_generation,
-        observation_sequence=observation.sequence, candidate_id=candidate.id,
+        world=observation.world,
+        action_id=action_id,
+        bot_id=observation.bot.id,
+        lease=observation.lease,
+        objective_generation=observation.objective_generation,
+        observation_sequence=observation.sequence,
+        candidate_id=candidate.id,
         expires_ms=observation.captured_ms + candidate.ttl_ms,
     )
