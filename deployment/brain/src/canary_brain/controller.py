@@ -118,6 +118,8 @@ class Controller:
                 "sequence": snapshot.sequence,
                 "position": snapshot.bot.position,
                 "potions": snapshot.bot.potions,
+                "xp": snapshot.bot.xp,
+                "nearby": snapshot.nearby,
                 "health": snapshot.bot.health,
                 "leader": self.authority(snapshot) if snapshot.party else None,
                 "party": snapshot.party.model_dump() if snapshot.party else None,

@@ -40,3 +40,28 @@ The independent spec reviewer rechecked the hold fix and subsequent game-test ch
 The Lua reload fixture covers replacement of stale Player userdata and retention of unmatched references for orphan recovery. It failed before the reference-merge fix and passes under Lua and LuaJIT afterward. Game validation also found that authored NPC stands can lie behind counters; the companion approaches any reachable tile in the live NPC interaction range instead of requiring the inaccessible stand.
 
 The long-game fixture exposed retained dead/offline human Player references. Canonical online-map identity checks now guard observation authority and native fallback selection. Human-follow parties with no online humans drain before proximity gating; native autonomous parties are excluded with `partyHuntId == 0`. The independent reviewer caught and verified that exclusion. Fallback leadership now transfers to the selected real online human. A final native test verified worker lease expiry/restart, leadership transfer after logout, and all three companions leaving PARTY with no owned objectives after the last human left.
+
+
+## Autonomous explorer follow-up
+
+Reviewed delta `dcebded..5bc9d4f` on independent Standards and Spec axes.
+
+Standards: two integration findings, zero separate heuristic findings. The safety
+pause returned before druid party healing, and the solo retreat scanner could
+continue chasing monsters. Both were corrected: native role healing/attacks run
+before movement is stopped; retreat clears pursuit and bypasses acquisition.
+
+Spec: four findings. Besides those two, the solo scanner lacked the brain hunt's
+script context and disabled explorers could remain exempt from hibernation.
+The scanner now temporarily projects the selected script and restores ambient
+fields; both hibernation exemption and automatic wake require current ownership
+(roster membership, active mode and a fresh worker heartbeat). The reviewers
+rechecked the corrections and identified the wake condition in a follow-up;
+that condition was corrected before deployment.
+
+The reload regression now covers registered bots between Player instances,
+inactive bots, stale asynchronous registry rows, scheduler OFF preservation and a
+transient materialization failure. The live projector was also tested with an
+actual critically injured human: the old implementation offered a hunt, while
+the corrected implementation withheld it and restored eligibility for a healthy,
+assembled party of five humans and three bots.
