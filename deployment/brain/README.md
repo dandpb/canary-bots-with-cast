@@ -13,7 +13,7 @@ Invite a selected companion into your normal party, using the existing `/party` 
 - `/brain planeje uma hunt diferente, adequada à nossa party`
 - `/brain siga comigo`
 
-The actual human party leader sets objectives. Everyone else can converse and suggest. Leadership transfer, logout, death, floor changes, lost candidates and expired actions are checked again by the server. Raw party-channel chat is not intercepted by the hot-loadable library; use `/brain` for that channel.
+The actual human party leader sets objectives. Everyone else can converse and suggest. An optional autonomous explorer accepts objectives from any real player when outside a human party; see below. Leadership transfer, logout, death, floor changes, lost candidates and expired actions are checked again by the server. Raw party-channel chat is not intercepted by the hot-loadable library; use `/brain` for that channel.
 
 Replies describe proposals. Completion is recorded only after a matching server outcome. Long hunts use authored routes; the human leader must follow the guide. The guide waits when separated by more than six tiles. Resupply buys ordinary health/mana potions through the NPC callback, verifies increased inventory and walks back. An unavailable route, shop, funds or capacity can cause a truthful failure.
 
@@ -35,7 +35,7 @@ game outcome   → durable episode      → reward / contextual preferences
 - Multi-step requests have at most three objective steps and stop after two failures. Each step needs a terminal server result before replanning against fresh eligible candidates. One correlated `function_call_output` reflection may follow a human-requested step.
 - Learning is a contextual bandit, **not model-weight training**. Context includes level band, vocation, party size, floor and region. Counts, recency-weighted rewards, recent choices and checkpoints persist. Exploration defaults to 15%, configurable from 5% to 50%, over eligible hunts only. Three identical consecutive choices are the limit when alternatives exist. Explicit leader orders bypass exploration.
 - Policy updates use only validated terminal outcomes. Target choices, idle holds, cancellations, provider outages and hibernation cannot earn hunt rewards. Factual episodes and fallible model reflections are labelled separately.
-- `learning: false` records evidence without letting learned preferences change selection. Keep this setting until the pilot acceptance checks pass.
+- `learning: false` records evidence without letting learned preferences change selection for ordinary companions. Keep this setting until their pilot acceptance checks pass. The explicitly configured autonomous explorer has its own always-enabled learning policy.
 
 ### Storage decision
 
@@ -77,6 +77,8 @@ sudo systemctl enable --now canary-brain
 ```
 
 Start with both modes `shadow`, inspect proposed episodes, enable one pilot, then expand to three. Changing the server configuration requires the authorized operator command `/cavebot _global brain reload`. Restart the worker after changing its configuration. Do not use the unrelated general Lua `/reload scripts` operation for library deployment.
+
+The operator-only `brain refresh_helpers` command refreshes the hardcoded bot helper file while preserving live Lua tables, strong Player references and runtime settings. It refuses to run during a bot reload. A normal native library reload snapshots registered bots, including those between Player instances, pauses population scheduling while materializing them and restores the previous scheduler state. Explicit `reload debug off` also repairs missing canonical registrations. A reported incomplete restoration requires operator investigation.
 
 ## Accounting and operations
 
@@ -159,6 +161,25 @@ to eligible hunts. The shared USD 50 monthly ledger covers both APIs and tests.
 No available alternative means the bot may repeat the only suitable hunt; it never
 unlocks an unsafe hunt just to create variety. Native healing/combat continues
 without waiting for an API. Worker failure releases its goals to native AI.
+
+The explorer leaves a native bot-only party when model ownership resumes, and
+ordinary native recruitment excludes it while its model configuration is active.
+Human parties retain normal invitation and leader authority. Idle explorers prefer
+available work over an empty continuation; interrupted objectives can be retried
+after reload without being mistaken for completed activities. When no hunt or
+shop is available on the current floor, an idle explorer returns to town by the
+normal planner; a healthy bot already near the temple cannot loop that return.
+An ongoing return is allowed to finish without repeated automatic orders resetting
+its planner. Navigation can still fail and must report that outcome. Native library
+reactivation retains the engine's existing random home-city spawn behavior.
+
+Native bots deliberately receive no experience or level progression in this
+server. Hunt learning therefore also counts confirmed monster deaths: an acquired
+target is retained before the first attack so one-hit kills are observable.
+Solo hunts evaluate a five-minute window; party hunts use fifteen minutes.
+No confirmed combat progress is a failed hunt, rather than a positive reward for
+walking. Stock increases are verified before rewarding a purchase. NPC approaches
+use the actual live NPC's reachable interaction range, including shop counters.
 
 Party hunt offerings require online members with at least 60% HP, within six tiles
 on the same floor. The movement guard also runs before monster chasing; it pauses

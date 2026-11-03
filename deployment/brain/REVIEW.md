@@ -65,3 +65,39 @@ transient materialization failure. The live projector was also tested with an
 actual critically injured human: the old implementation offered a hunt, while
 the corrected implementation withheld it and restored eligibility for a healthy,
 assembled party of five humans and three bots.
+
+## Final explorer and recovery review
+
+Independent Standards and Spec reviews covered `295299a..082f513`. Both found
+that targeted helper refresh re-executed top-level Lua assignments, dropping live
+Player references and debug/runtime tables. Commit `c7c6b28` preserves those table
+identities. A public refresh regression failed before the change and passed under
+Lua and LuaJIT afterward; production refresh retained the same brain world,
+running objective and 997/997 active population. Both reviewers rechecked the fix
+and reported no remaining concrete blocker in the focused delta.
+
+Standards: no documented hard breach. One maintenance heuristic remains: target
+retention hooks span the native attack entry points, so future attack paths must
+retain acquired targets before attacking. A shared engagement helper could
+centralize this later. The real native one-hit fixture verifies the present paths.
+
+Spec: the earlier first-hit accounting race is corrected by pre-attack retention.
+Reviewed recovery also covers heartbeat-before-intent bootstrap, cancelled-goal
+cooldowns, strong references during library reload, actual NPC shop-front routes,
+and leaving native bot-only parties without disturbing human parties. One final
+lifecycle finding was resolved; no remaining focused-review blocker was reported.
+Static correctness and the measured solo success do not establish human party
+survival or usefulness; that acceptance remains a real playtest requirement.
+
+The final cycle review also checked `401edf4`: a completed hunt could leave a
+solo explorer underground with no eligible local activity. The worker now chooses
+the offered return action; the server suppresses healthy return loops near the
+town temple. The new public regression failed before the change and the full
+34-test worker suite passed afterward. Both focused reviews found no concrete blocker.
+
+Both reviewers also checked `e9e28d7`, which prevents ambient Decisions from
+reissuing an ongoing retreat and resetting its floor planner. The public
+regression failed before the fix and passes afterward. Human requests still
+supersede through the independently authorized dialogue path. No concrete blocker
+remained. The real floor recovery resumed a hunt but its full temple return failed
+with an explicit route outcome; it is not recorded as successful temple arrival.
