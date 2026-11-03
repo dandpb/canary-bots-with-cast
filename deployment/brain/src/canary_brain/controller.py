@@ -300,11 +300,12 @@ class Controller:
                 "actions": [item for item in snapshot.actions if item.action != "hold"]
             }
         )
+        has_work = any(item.action in {"hunt", "resupply"} for item in snapshot.actions)
         if (
             snapshot.autonomous
             and snapshot.party is None
             and not snapshot.bot.objective_running
-            and any(item.action in {"hunt", "resupply"} for item in snapshot.actions)
+            and (has_work or any(item.action == "retreat" for item in snapshot.actions))
         ):
             snapshot = snapshot.model_copy(
                 update={
@@ -314,6 +315,7 @@ class Controller:
                         if item.action != "continue"
                         and not (
                             item.action == "retreat"
+                            and has_work
                             and snapshot.bot.health >= 80
                             and not snapshot.nearby
                         )

@@ -353,7 +353,12 @@ Json BotEngine::observeBrain(BotState &bot) {
 		if (leader) partyState = { { "leader_id", leaderGuid }, { "members", members }, { "status", memberStatus } };
 		if (leader) add("follow", "follow", "Follow and support the human party leader");
 		add("hold", "hold", "Hold position briefly while retaining combat and healing");
-		add("retreat", "retreat", "Disengage and return to the leader or home temple", 1500);
+		const auto homeTown = solo ? g_game().map.towns.getTown(findNearestTown(position)) : nullptr;
+		const auto homePosition = homeTown ? homeTown->getTemplePosition() : position;
+		const bool awayFromHome = position.z != homePosition.z || Position::getDiagonalDistance(position, homePosition) > 3;
+		if (!solo || health < 80 || awayFromHome) {
+			add("retreat", "retreat", "Disengage and return to the leader or town temple for the next activity", 1500);
+		}
 		if (health >= 80) {
 			if (potions < 40 && session.action != "resupply" && !player->isPzLocked() && brainShop(bot)) {
 				add("resupply", "resupply", "Walk to the town shop to replenish supplies and return");

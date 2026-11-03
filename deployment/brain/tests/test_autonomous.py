@@ -181,3 +181,41 @@ async def test_first_goal_is_preceded_by_a_heartbeat_for_the_new_engine(tmp_path
     await controller.handle(packet)
     await controller.drain()
     assert [item["type"] for item in sent][:2] == ["heartbeat", "intent"]
+
+
+async def test_idle_explorer_returns_from_a_floor_without_available_work(tmp_path):
+    class Model:
+        async def decide(self, snapshot, memory):
+            return (
+                "continue"
+                if any(a.id == "continue" for a in snapshot.actions)
+                else "retreat"
+            )
+
+        async def converse(self, *args):
+            return Proposal(
+                "retreat", "Voltar à cidade para escolher outra atividade.", "low"
+            )
+
+    sent = []
+    controller = Controller(
+        Store(tmp_path / "state.db"), Model(), sent.append, mode="active"
+    )
+    packet = observation()
+    packet.update(party=None, autonomous=True, mode="active")
+    packet["bot"].update(
+        state="IDLE", objective_running=False, position=[100, 100, 8], potions=40
+    )
+    packet["actions"] = [
+        packet["actions"][0],
+        {
+            "id": "retreat",
+            "action": "retreat",
+            "description": "Return to town for the next activity",
+            "ttl_ms": 1500,
+        },
+    ]
+    await controller.handle(packet)
+    await controller.drain()
+    assert any(item.get("candidate_id") == "retreat" for item in sent)
+    await controller.close()
