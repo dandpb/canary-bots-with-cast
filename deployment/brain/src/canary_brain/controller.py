@@ -119,6 +119,7 @@ class Controller:
                 "position": snapshot.bot.position,
                 "potions": snapshot.bot.potions,
                 "xp": snapshot.bot.xp,
+                "objective_defeats": snapshot.bot.objective_defeats,
                 "nearby": snapshot.nearby,
                 "health": snapshot.bot.health,
                 "leader": self.authority(snapshot) if snapshot.party else None,
@@ -204,6 +205,7 @@ class Controller:
         self.last_decision.clear()
         self.leader_message.clear()
         self.world = world
+        self.send({"version": 1, "type": "heartbeat", "world": world})
         for action_id, pending in self.store.records("pending", 1000):
             intent = pending["intent"]
             if intent["world"] != world:
@@ -298,6 +300,26 @@ class Controller:
                 "actions": [item for item in snapshot.actions if item.action != "hold"]
             }
         )
+        if (
+            snapshot.autonomous
+            and snapshot.party is None
+            and not snapshot.bot.objective_running
+            and any(item.action in {"hunt", "resupply"} for item in snapshot.actions)
+        ):
+            snapshot = snapshot.model_copy(
+                update={
+                    "actions": [
+                        item
+                        for item in snapshot.actions
+                        if item.action != "continue"
+                        and not (
+                            item.action == "retreat"
+                            and snapshot.bot.health >= 80
+                            and not snapshot.nearby
+                        )
+                    ]
+                }
+            )
         context = self.context(snapshot)
         statistics = self.policy.statistics(snapshot.bot.id, context)
         eligible = {item.id for item in snapshot.actions}

@@ -10,6 +10,13 @@ namespace {
 	using Json = nlohmann::json;
 	std::deque<double> brainTickMicroseconds;
 	std::unordered_map<uint32_t, bool> brainPreviousChase;
+	struct BrainCombat {
+		// Retain one attacked target until the next observation so removal from
+		// Game cannot turn "out of sight" into a fabricated kill.
+		std::shared_ptr<Creature> target;
+		uint32_t defeats = 0;
+	};
+	std::unordered_map<uint32_t, BrainCombat> brainCombat;
 	enum SupplyPhase : uint8_t { ApproachingShop,
 		                         WaitingForGreeting,
 		                         VerifyingPurchase,
@@ -356,6 +363,7 @@ Json BotEngine::observeBrain(BotState &bot) {
 	Json snapshot = { { "version", 1 }, { "type", "observation" }, { "world", brain_->world }, { "sequence", ++session.sequence }, { "captured_ms", botMonoMs() }, { "lease", session.lease }, { "objective_generation", session.generation }, { "mode", brain_->mode }, { "bot", { { "id", bot.guid }, { "name", bot.name }, { "level", player->getLevel() }, { "vocation", bot.vocationId }, { "state", botStateName(bot.state) }, { "position", { position.x, position.y, position.z } }, { "health", health }, { "mana", mana }, { "potions", potions }, { "xp", player->getExperience() }, { "alive", player->getHealth() > 0 } } }, { "party", partyState }, { "autonomous", autonomous }, { "actions", actions }, { "nearby", nearby }, { "messages", session.messages } };
 	snapshot["bot"]["objective"] = session.action;
 	snapshot["bot"]["objective_running"] = !session.actionId.empty();
+	snapshot["bot"]["objective_defeats"] = brainCombat.count(bot.guid) ? brainCombat.at(bot.guid).defeats : 0;
 	return snapshot;
 }
 
@@ -386,7 +394,7 @@ void BotEngine::finishBrain(BotState &bot, const std::string &status, const std:
 		const auto potionDelta = player ? static_cast<int64_t>(brainPotions(player)) - session.potions : 0;
 		auto leader = player && player->getParty() ? player->getParty()->getLeader() : nullptr;
 		const double distance = player && leader ? Position::getDiagonalDistance(player->getPosition(), leader->getPosition()) : 0;
-		auto outcome = brainOutcome(brain_->world, bot.guid, session.actionId, status, reason, { { "elapsed_seconds", elapsed }, { "level", player ? player->getLevel() : 1 }, { "party_size", player && player->getParty() ? player->getParty()->getMemberCount() + 1 : 1 }, { "xp_delta", xp }, { "supply_delta", potionDelta }, { "party_distance", distance }, { "progress", status == "completed" ? 1.0 : 0.0 }, { "danger", session.danger }, { "deaths", reason == "death" || reason == "party_death" ? 1.0 : 0.0 } });
+		auto outcome = brainOutcome(brain_->world, bot.guid, session.actionId, status, reason, { { "elapsed_seconds", elapsed }, { "level", player ? player->getLevel() : 1 }, { "party_size", player && player->getParty() ? player->getParty()->getMemberCount() + 1 : 1 }, { "xp_delta", xp }, { "defeats_delta", brainCombat.count(bot.guid) ? brainCombat.at(bot.guid).defeats : 0 }, { "supply_delta", potionDelta }, { "party_distance", distance }, { "progress", status == "completed" ? 1.0 : 0.0 }, { "danger", session.danger }, { "deaths", reason == "death" || reason == "party_death" ? 1.0 : 0.0 } });
 		rememberOutcome(session, session.actionId, outcome);
 		brain_->channel->send(outcome);
 	}
@@ -403,6 +411,7 @@ void BotEngine::finishBrain(BotState &bot, const std::string &status, const std:
 			}
 		}
 	}
+	brainCombat.erase(bot.guid);
 	session.actionId.clear();
 	session.action = "follow";
 	session.script = 0;
@@ -484,6 +493,19 @@ void BotEngine::tickBrain() {
 		if (!player || !bot->active || bot->hibernated || player->getHealth() <= 0) {
 			finishBrain(*bot, player && player->getHealth() <= 0 ? "failed" : "cancelled", player && player->getHealth() <= 0 ? "death" : "unavailable");
 			continue;
+		}
+		if (!session.actionId.empty() && session.action == "hunt") {
+			auto &combat = brainCombat[guid];
+			if (combat.target && combat.target->getHealth() <= 0) {
+				++combat.defeats;
+				combat.target.reset();
+			}
+			auto target = player->getAttackedCreature();
+			if (target && target->getMonster() && target->getHealth() > 0) combat.target = target;
+			const auto duration = guid == brain_->autonomous && !player->getParty() ? 300000 : 900000;
+			if (now - session.started >= duration) {
+				finishBrain(*bot, combat.defeats > 0 ? "completed" : "failed", combat.defeats > 0 ? "hunt_progress" : "no_confirmed_combat_progress");
+			}
 		}
 		if (now - brain_->heartbeat > 5000 && !session.actionId.empty()) {
 			finishBrain(*bot, "cancelled", "worker_unavailable");
@@ -605,7 +627,7 @@ void BotEngine::tickBrain() {
 			session.started = now;
 			session.xp = bot->getPlayer()->getExperience();
 			session.potions = brainPotions(bot->getPlayer());
-			const auto town = bot->getPlayer()->getTown();
+			const auto town = g_game().map.towns.getTown(findNearestTown(bot->getPlayer()->getPosition()));
 			const auto home = town ? town->getTemplePosition() : bot->getPlayer()->getPosition();
 			session.home = { home.x, home.y, home.z };
 			session.danger = 0;
@@ -748,7 +770,7 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 				session.lastMove = now;
 				// A walkable authored stand may be behind the shop counter. Search
 				// for any reachable tile in the NPC's actual interaction range instead.
-				if (!goToWithDoors(bot, npc->getPosition(), 3)) {
+				if (!planScopedWalk(bot, npc->getPosition(), 3)) {
 					finishBrain(bot, "failed", "shop_route_unavailable");
 				}
 			}
@@ -824,8 +846,7 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 		session.waypoint = outbound ? index : script.travelToWaypoints.size() + index;
 		if (result.aborted) {
 			finishBrain(bot, "failed", "route_unavailable");
-		} else if (now - session.started > 900000 && player->getExperience() > session.xp) {
-			finishBrain(bot, "completed", "hunt_progress");
+
 		}
 		return true;
 	}

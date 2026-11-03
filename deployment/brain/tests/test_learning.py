@@ -44,3 +44,19 @@ def test_learning_does_not_change_another_context_and_idle_does_not_farm_rewards
         )
         == 0
     )
+
+
+def test_fixed_level_bots_learn_from_confirmed_defeats_without_xp():
+    from canary_brain.learning import episode_reward
+
+    metrics = {
+        "progress": 1.0,
+        "elapsed_seconds": 300.0,
+        "level": 8.0,
+        "party_size": 1.0,
+        "xp_delta": 0.0,
+    }
+    assert episode_reward("completed", metrics, "hunt:399") is None
+    assert (
+        episode_reward("completed", {**metrics, "defeats_delta": 5.0}, "hunt:399") > 0.8
+    )

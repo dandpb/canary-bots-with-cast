@@ -109,3 +109,75 @@ async def test_special_bot_avoids_three_identical_hunts_even_with_global_learnin
         await controller.close()
     assert len(set(selected)) == 2
     assert selected != ["hunt:399"] * 4
+
+
+async def test_idle_explorer_does_not_keep_continuing_an_empty_objective(tmp_path):
+    class Model:
+        async def decide(self, snapshot, memory):
+            return (
+                "continue"
+                if any(item.id == "continue" for item in snapshot.actions)
+                else "resupply"
+            )
+
+        async def converse(self, *args):
+            return Proposal("continue", "Reabastecer antes de explorar.", "low")
+
+    sent = []
+    controller = Controller(
+        Store(tmp_path / "state.db"), Model(), sent.append, mode="active"
+    )
+    packet = observation()
+    packet.update(party=None, autonomous=True, mode="active")
+    await controller.handle(packet)
+    await controller.drain()
+    assert any(item.get("candidate_id") == "resupply" for item in sent)
+
+
+async def test_healthy_solo_explorer_does_not_retreat_repeatedly_without_threats(
+    tmp_path,
+):
+    class Model:
+        async def decide(self, snapshot, memory):
+            return (
+                "retreat"
+                if any(item.id == "retreat" for item in snapshot.actions)
+                else "resupply"
+            )
+
+        async def converse(self, *args):
+            return Proposal("continue", "Explorar com prudência.", "low")
+
+    sent = []
+    controller = Controller(
+        Store(tmp_path / "state.db"), Model(), sent.append, mode="active"
+    )
+    packet = observation()
+    packet.update(party=None, autonomous=True, mode="active")
+    packet["actions"].append(
+        {
+            "id": "retreat",
+            "action": "retreat",
+            "description": "Return home",
+            "ttl_ms": 1500,
+        }
+    )
+    await controller.handle(packet)
+    await controller.drain()
+    assert any(item.get("candidate_id") == "resupply" for item in sent)
+
+
+async def test_first_goal_is_preceded_by_a_heartbeat_for_the_new_engine(tmp_path):
+    class Model:
+        async def decide(self, *args):
+            return "resupply"
+
+    sent = []
+    controller = Controller(
+        Store(tmp_path / "state.db"), Model(), sent.append, mode="active"
+    )
+    packet = observation()
+    packet["mode"] = "active"
+    await controller.handle(packet)
+    await controller.drain()
+    assert [item["type"] for item in sent][:2] == ["heartbeat", "intent"]

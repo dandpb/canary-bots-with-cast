@@ -34,6 +34,7 @@ class Bot(Packet):
     alive: bool
     objective: str = "follow"
     objective_running: bool = False
+    objective_defeats: int = Field(default=0, ge=0)
 
 
 class MemberState(Packet):

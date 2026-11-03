@@ -153,8 +153,18 @@ def episode_reward(
         level = max(1, metrics.get("level", 1))
         party = max(1, metrics.get("party_size", 1))
         # Conservative per-level/party normalization; yield remains subordinate to survival.
+        xp = max(0, metrics.get("xp_delta", 0))
+        defeats = max(0, metrics.get("defeats_delta", 0))
+        if xp == 0 and defeats == 0:
+            return None
+        # Native bots have fixed levels: confirmed defeated targets, rather than
+        # displayed XP animations, provide their measurable combat yield.
         yield_score = min(
-            1, metrics.get("xp_delta", 0) / max(1, level * level * elapsed / 60 * party)
+            1,
+            max(
+                xp / max(1, level * level * elapsed / 60 * party),
+                defeats / max(1, elapsed / 60 * party),
+            ),
         )
         supplies = max(0, -metrics.get("supply_delta", 0))
         efficiency = yield_score / (1 + supplies / max(1, level))
