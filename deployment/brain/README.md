@@ -15,7 +15,7 @@ Invite a selected companion into your normal party, using the existing `/party` 
 
 The actual human party leader sets objectives. Everyone else can converse and suggest. Leadership transfer, logout, death, floor changes, lost candidates and expired actions are checked again by the server. Raw party-channel chat is not intercepted by the hot-loadable library; use `/brain` for that channel.
 
-Replies describe proposals. Completion is recorded only after a matching server outcome. Long hunts use authored routes; the human leader must follow the guide. The guide waits when separated by more than twelve tiles. Resupply buys ordinary health/mana potions through the NPC callback, verifies increased inventory and walks back. An unavailable route, shop, funds or capacity can cause a truthful failure.
+Replies describe proposals. Completion is recorded only after a matching server outcome. Long hunts use authored routes; the human leader must follow the guide. The guide waits when separated by more than six tiles. Resupply buys ordinary health/mana potions through the NPC callback, verifies increased inventory and walks back. An unavailable route, shop, funds or capacity can cause a truthful failure.
 
 ## Architecture and limits
 

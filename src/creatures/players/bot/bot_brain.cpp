@@ -709,7 +709,9 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 	if (session.action != "hunt") {
 		return false;
 	}
-	if (Position::getDiagonalDistance(bot.currentPos, leaderPosition) > 12 || bot.currentPos.z != leaderPosition.z) {
+	// Keep the guide inside the human's viewport so ordinary client following
+	// does not lose its target before the cohesion guard pauses the route.
+	if (Position::getDiagonalDistance(bot.currentPos, leaderPosition) > 6 || bot.currentPos.z != leaderPosition.z) {
 		player->listWalkDir.clear();
 		player->stopEventWalk();
 		return true;
