@@ -1,0 +1,43 @@
+-- Run from the repository root: lua tools/bot_brain/test_reload.lua
+-- Exercise the public reload lifecycle with an engine/player boundary fixture.
+Position = function(x, y, z) return { x = x, y = y, z = z } end
+local errors = {}
+logger = {
+	info = function() end,
+	warn = function() end,
+	error = function(message) errors[#errors + 1] = message end,
+}
+db = { query = function() return true end }
+addEvent = function(callback) callback() end
+Player = function() return nil end
+
+local function actor(guid, removed, bot)
+	return {
+		getGuid = function() return guid end,
+		getName = function() return "Companion" end,
+		isRemoved = function() return removed end,
+		isBotPlayer = function() return bot end,
+	}
+end
+local stale = actor(51, true, true)
+local current = actor(51, false, true)
+local human = actor(9, false, false)
+Game = {
+	botCommand = function() return "OK fixture" end,
+	botIsActive = function() return true end,
+	getBotHibernationStates = function() return { { guid = 51, name = "Companion", hibernated = true } } end,
+	loadBotPlayer = function() return current end,
+	botReload = function() return "Reloaded" end,
+	botStartTickLoop = function() end,
+	botReregisterAll = function() return 1 end,
+	getPlayers = function() return { current, human } end,
+}
+
+dofile(arg[1] or "data/scripts/lib/bot_system.lua")
+BotPlayers[51] = stale
+BotSystem.executeReload({ source = "test" })
+assert(#errors == 0, table.concat(errors, "; "))
+assert(BotPlayers[51] == current, "reload must replace removed userdata with the current player")
+assert(BotPlayers[9] == nil, "humans must not enter the bot hibernation cache")
+assert(not BotSystem._reloadInProgress, "reload must finish")
+print("PASS: reload refreshes the cache used by no-anchor hibernation")
