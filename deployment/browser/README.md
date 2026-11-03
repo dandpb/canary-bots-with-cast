@@ -43,6 +43,11 @@ adjust the user/paths, then expose it through a TLS-capable reverse proxy on the
 configured gateway port, including WebSocket upgrade support. Advertise that
 gateway to the browser adapter. The game protocol remains ordinary Tibia traffic.
 
+```sh
+python3 -m venv /opt/canary-web/venv
+/opt/canary-web/venv/bin/pip install -r deployment/browser/requirements.txt
+```
+
 For reference, the earlier 4.2 browser download had SHA256
 `dcf127f52843068989c2b869cccf882d6e5aa62ac24c33dbfa2e53f5beb1f8ec`;
 the validated assets manifest was
