@@ -22,6 +22,11 @@ class FakeProvider:
     ) -> Proposal:
         candidates = {item.id for item in observation.actions}
         requested = "continue"
+        if authorized and any(word in text.lower() for word in ("hunt", "caçar")):
+            requested = next(
+                (item.id for item in observation.actions if item.action == "hunt"),
+                "continue",
+            )
         for word, candidate in (
             ("aguard", "hold"),
             ("fique", "hold"),

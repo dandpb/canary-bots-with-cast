@@ -9,6 +9,7 @@
 namespace {
 	using Json = nlohmann::json;
 	std::deque<double> brainTickMicroseconds;
+	std::unordered_map<uint32_t, bool> brainPreviousChase;
 	enum SupplyPhase : uint8_t { ApproachingShop,
 		                         WaitingForGreeting,
 		                         VerifyingPurchase,
@@ -126,7 +127,8 @@ std::string BotEngine::brainCommand(const std::string &botName, const std::strin
 		Json sessions = Json::array();
 		for (const auto &[guid, session] : brain_->sessions) {
 			auto leader = g_game().getPlayerByGUID(session.leader, false);
-			sessions.push_back({ { "bot", guid }, { "leader", session.leader }, { "leader_creature_id", leader ? leader->getID() : 0 }, { "objective", session.action }, { "running", !session.actionId.empty() } });
+			auto shop = session.shop ? g_game().getCreatureByID(session.shop) : nullptr;
+			sessions.push_back({ { "bot", guid }, { "leader", session.leader }, { "leader_creature_id", leader ? leader->getID() : 0 }, { "objective", session.action }, { "running", !session.actionId.empty() }, { "shop", shop ? shop->getName() : "" }, { "supply_phase", session.supplyStep } });
 		}
 		return Json({ { "version", 1 }, { "mode", brain_->mode }, { "world", brain_->world }, { "worker_alive", botMonoMs() - brain_->heartbeat <= 5000 }, { "roster", brain_->roster }, { "sessions", sessions }, { "bridge_tick_p95_us", p95 }, { "bridge_tick_samples", timings.size() } }).dump();
 	}
@@ -286,6 +288,10 @@ Json BotEngine::observeBrain(BotState &bot) {
 					    || isScriptPlayerClaimed(script.id, script.spawnGroup) || isScriptHuntRepelled(script)) {
 						continue;
 					}
+					const auto &entry = script.travelToWaypoints.empty() ? script.patrolWaypoints.front() : script.travelToWaypoints.front();
+					if (entry.pos.z != position.z || Position::getDiagonalDistance(entry.pos, position) > 200) {
+						continue;
+					}
 					add("hunt:" + std::to_string(script.id), "hunt", "Guide a prudent party hunt: " + script.name);
 				}
 			}
@@ -320,6 +326,12 @@ void BotEngine::finishBrain(BotState &bot, const std::string &status, const std:
 	auto &session = brain_->sessions[bot.guid];
 	if (!session.actionId.empty()) {
 		auto player = bot.getPlayer();
+		if (auto previous = brainPreviousChase.find(bot.guid); previous != brainPreviousChase.end()) {
+			if (player) {
+				player->setChaseMode(previous->second);
+			}
+			brainPreviousChase.erase(previous);
+		}
 		if (player && (session.action == "hunt" || session.action == "resupply" || session.action == "hold")) {
 			player->listWalkDir.clear();
 			player->stopEventWalk();
@@ -370,7 +382,9 @@ bool BotEngine::brainMessage(uint32_t guid, uint32_t sender, const std::string &
 		return false;
 	}
 	auto &session = brain_->sessions[guid];
-	if (botMonoMs() - session.lastMessage < 2000) {
+	auto party = player->getParty();
+	const bool leaderOrder = party && party->getLeader() == player && bot->getPlayer() && bot->getPlayer()->getParty() == party;
+	if (!leaderOrder && botMonoMs() - session.lastMessage < 2000) {
 		return brain_->mode == "active";
 	}
 	session.lastMessage = botMonoMs();
@@ -531,6 +545,9 @@ void BotEngine::tickBrain() {
 			session.potions = brainPotions(bot->getPlayer());
 			session.danger = 0;
 			if (action == "hold") {
+				brainPreviousChase[guid] = bot->getPlayer()->chaseMode;
+				bot->getPlayer()->setChaseMode(false);
+				bot->getPlayer()->setFollowCreature(nullptr);
 				bot->getPlayer()->stopWalk();
 			}
 			++session.generation;
@@ -572,6 +589,8 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 	auto player = bot.getPlayer();
 	const auto now = botMonoMs();
 	if (session.action == "hold") {
+		player->setChaseMode(false);
+		player->setFollowCreature(nullptr);
 		player->listWalkDir.clear();
 		player->stopEventWalk();
 		return true;

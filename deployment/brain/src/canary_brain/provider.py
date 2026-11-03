@@ -48,6 +48,7 @@ class Provider:
                 raise RuntimeError("provider temporarily backed off")
             self.store.reserve(request_id, upper, month_now(), endpoint)
             started = time.monotonic()
+            settled = False
             try:
                 async with asyncio.timeout(timeout):
                     resource = (
@@ -76,6 +77,7 @@ class Provider:
                 if endpoint == "responses":
                     spent += int(usage.get("output_tokens", 0)) * 500
                 self.store.settle(request_id, spent)
+                settled = True
                 self.store.put(
                     "request",
                     request_id,
@@ -90,7 +92,7 @@ class Provider:
                     raise ValueError("unexpected provider model")
                 self.backoff.pop(endpoint, None)
                 return data
-            except Exception as error:
+            except (Exception, asyncio.CancelledError) as error:
                 self.backoff[endpoint] = (
                     failures + 1,
                     time.monotonic() + min(60, 2 ** min(failures, 6)),
@@ -102,7 +104,7 @@ class Provider:
                     {
                         "endpoint": endpoint,
                         "error": type(error).__name__,
-                        "unsettled": True,
+                        "unsettled": not settled,
                         "elapsed_ms": round((time.monotonic() - started) * 1000),
                     },
                 )
