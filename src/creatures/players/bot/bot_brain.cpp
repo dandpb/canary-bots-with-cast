@@ -226,7 +226,9 @@ Json BotEngine::observeBrain(BotState &bot) {
 	if (leader && leader->getHealth() <= 0) {
 		finishBrain(bot, "failed", "party_death");
 	}
-	if (leader && (leader->isBotPlayer() || leader->isRemoved() || leader->getHealth() <= 0)) {
+	// Invitations join the Canary party before the native rendezvous finishes.
+	// Leave that travel/assembly in charge until the companion can execute PARTY goals.
+	if (leader && (leader->isBotPlayer() || leader->isRemoved() || leader->getHealth() <= 0 || bot.state != BotAIState::PARTY)) {
 		leader = nullptr;
 	}
 	const uint32_t leaderGuid = leader ? leader->getGUID() : 0;
@@ -336,6 +338,10 @@ void BotEngine::finishBrain(BotState &bot, const std::string &status, const std:
 			player->listWalkDir.clear();
 			player->stopEventWalk();
 		}
+		if (session.action == "resupply") {
+			clearPlannerWalk(bot.guid);
+			resetFloorChange(bot);
+		}
 		releaseNpcApproach(bot.guid);
 		const double elapsed = std::max<int64_t>(0, botMonoMs() - session.started) / 1000.0;
 		const double xp = player && player->getExperience() >= session.xp ? player->getExperience() - session.xp : 0;
@@ -412,6 +418,15 @@ void BotEngine::tickBrain() {
 	}
 	const auto processingStarted = std::chrono::steady_clock::now();
 	const auto now = botMonoMs();
+	const auto packets = brain_->channel->receive();
+	// Consume queued heartbeats before evaluating leases. A busy dispatcher may
+	// resume after five seconds even though the independent worker stayed alive.
+	for (const auto &packet : packets) {
+		if (packet.is_object() && packet.value("version", Json()) == 1
+		    && packet.value("world", Json()) == brain_->world && packet.value("type", Json()) == "heartbeat") {
+			brain_->heartbeat = now;
+		}
+	}
 	if (now - brain_->lastHello >= 1000) {
 		brain_->lastHello = now;
 		brain_->channel->send({ { "version", 1 }, { "type", "hello" }, { "world", brain_->world } });
@@ -447,7 +462,7 @@ void BotEngine::tickBrain() {
 			finishBrain(*bot, "failed", "objective_timeout");
 		}
 	}
-	for (const auto &packet : brain_->channel->receive()) {
+	for (const auto &packet : packets) {
 		try {
 			if (packet.value("version", 0) != 1 || packet.value("world", "") != brain_->world) {
 				continue;
@@ -458,6 +473,19 @@ void BotEngine::tickBrain() {
 				continue;
 			}
 			const auto guid = packet.at("bot_id").get<uint32_t>();
+			// A terminal acknowledgement remains queryable after a pilot becomes
+			// unavailable or is disabled; queries never apply gameplay actions.
+			if (type == "query") {
+				const auto id = packet.at("action_id").get<std::string>();
+				if (auto existing = brain_->sessions.find(guid); existing != brain_->sessions.end()) {
+					if (auto outcome = existing->second.outcomes.find(id); outcome != existing->second.outcomes.end()) {
+						brain_->channel->send(outcome->second);
+						continue;
+					}
+				}
+				brain_->channel->send(brainOutcome(brain_->world, guid, id, "rejected", "unknown_action"));
+				continue;
+			}
 			if (std::find(brain_->roster.begin(), brain_->roster.end(), guid) == brain_->roster.end()) {
 				continue;
 			}
@@ -466,15 +494,6 @@ void BotEngine::tickBrain() {
 				continue;
 			}
 			auto &session = brain_->sessions[guid];
-			if (type == "query") {
-				const auto id = packet.at("action_id").get<std::string>();
-				if (auto outcome = session.outcomes.find(id); outcome != session.outcomes.end()) {
-					brain_->channel->send(outcome->second);
-				} else {
-					brain_->channel->send(brainOutcome(brain_->world, guid, id, "rejected", "unknown_action"));
-				}
-				continue;
-			}
 			if (type == "reply") {
 				const auto id = packet.at("message_id").get<std::string>();
 				const auto text = packet.at("text").get<std::string>();
@@ -627,7 +646,9 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 				finishBrain(bot, "failed", "return_route_unavailable");
 			} else if (now - session.lastMove >= 500) {
 				session.lastMove = now;
-				goToWithDoors(bot, leaderPosition, 2);
+				if (!planScopedWalk(bot, leaderPosition, 2)) {
+					finishBrain(bot, "failed", "return_route_unavailable");
+				}
 			}
 			return true;
 		}
@@ -644,14 +665,10 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 			}
 			if (now - session.lastMove >= 500) {
 				session.lastMove = now;
-				Position stand;
-				bool fallback = false;
-				if (resolveNpcApproach(bot, npc->getName(), stand, fallback)) {
-					if (Position::getDiagonalDistance(bot.currentPos, stand) <= 1) {
-						goToWithDoors(bot, npc->getPosition(), 2);
-					} else {
-						goToWithDoors(bot, stand, 0);
-					}
+				// A walkable authored stand may be behind the shop counter. Search
+				// for any reachable tile in the NPC's actual interaction range instead.
+				if (!goToWithDoors(bot, npc->getPosition(), 3)) {
+					finishBrain(bot, "failed", "shop_route_unavailable");
 				}
 			}
 			return true;

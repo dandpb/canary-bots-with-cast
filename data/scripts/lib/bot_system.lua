@@ -1233,7 +1233,10 @@ function BotSystem.executeReload(opts)
 		-- Rebuild Lua's strong-reference cache after materialization replaced Player objects.
 		-- The no-anchor hibernation loop reads this cache; stale removed userdata otherwise
 		-- leaves every reloaded bot awake indefinitely after all humans disconnect.
-		local refreshedPlayers = {}
+		-- Keep unmatched references for the orphan recovery below; a bot removed
+		-- during reload may not yet appear in Game.getPlayers(). Replace every
+		-- matching reference with the newly materialized Player.
+		local refreshedPlayers = BotPlayers or {}
 		for _, player in ipairs(Game.getPlayers()) do
 			if player and player:isBotPlayer() and not player:isRemoved() then
 				refreshedPlayers[player:getGuid()] = player

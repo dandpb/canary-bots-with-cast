@@ -2561,8 +2561,9 @@ bool BotEngine::reactivateBotForReload(uint32_t guid) {
 
 	player->setFightMode(FIGHTMODE_ATTACK);
 
-	// Re-equip gear (weapon may have decayed or been lost)
-	equipBot(bot);
+	// The existing Player and inventory survive a library replacement. equipBot
+	// recreates the backpack, destroying purchased supplies and loot; reserve that
+	// loadout reset for ordinary activation instead of an administrative reload.
 
 	// Mount roll, mirroring activateBot. Note this always re-rolls rather than hitting the
 	// throttle: /cavebot reload destroys the BotEngine (destroyBotEngine before dlclose) and

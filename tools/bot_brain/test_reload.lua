@@ -21,10 +21,17 @@ local function actor(guid, removed, bot)
 end
 local stale = actor(51, true, true)
 local current = actor(51, false, true)
+local orphan = actor(52, true, true)
+local recoveredOrphan = false
 local human = actor(9, false, false)
 Game = {
 	botCommand = function() return "OK fixture" end,
-	botIsActive = function() return true end,
+	botIsActive = function(guid) return guid ~= 52 or recoveredOrphan end,
+	botRecoverOrphanForReload = function(guid, player)
+		assert(guid == 52 and player == orphan)
+		recoveredOrphan = true
+		return true
+	end,
 	getBotHibernationStates = function() return { { guid = 51, name = "Companion", hibernated = true } } end,
 	loadBotPlayer = function() return current end,
 	botReload = function() return "Reloaded" end,
@@ -35,9 +42,11 @@ Game = {
 
 dofile(arg[1] or "data/scripts/lib/bot_system.lua")
 BotPlayers[51] = stale
+BotPlayers[52] = orphan
 BotSystem.executeReload({ source = "test" })
 assert(#errors == 0, table.concat(errors, "; "))
 assert(BotPlayers[51] == current, "reload must replace removed userdata with the current player")
+assert(recoveredOrphan, "reload must retain unmatched references for orphan recovery")
 assert(BotPlayers[9] == nil, "humans must not enter the bot hibernation cache")
 assert(not BotSystem._reloadInProgress, "reload must finish")
 print("PASS: reload refreshes the cache used by no-anchor hibernation")

@@ -32,3 +32,9 @@ Remediation: ownership checks roster membership; holds clear walking and suppres
 No material unrequested scope was identified. Live validation and human usefulness remain separate from static correctness.
 
 Spec: six findings in the reviewed candidate; the worst control/lifecycle defects were disabled ownership, stale leadership and unbounded paid replanning, addressed before promotion.
+
+## Follow-up lifecycle review
+
+The independent spec reviewer rechecked the hold fix and subsequent game-test changes. Additional findings were a resupply floor-hop surviving cancellation, and duplicate supply-bag seeding after backpack preservation. Closing a resupply goal now clears its planner and floor-change state. Retained pilot backpacks skip destructive replacement and fresh supply-bag seeding. Queued heartbeats are consumed before lease evaluation, terminal acknowledgements remain queryable after disable/unavailability, and native party rendezvous completes before model objective ownership.
+
+The Lua reload fixture covers replacement of stale Player userdata and retention of unmatched references for orphan recovery. It failed before the reference-merge fix and passes under Lua and LuaJIT afterward. Game validation also found that authored NPC stands can lie behind counters; the companion approaches any reachable tile in the live NPC interaction range instead of requiring the inaccessible stand.

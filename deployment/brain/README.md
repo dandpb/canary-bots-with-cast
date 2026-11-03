@@ -30,7 +30,7 @@ game outcome   → durable episode      → reward / contextual preferences
 - At most one Decisions request per bot and one Responses request globally. Threat/action changes trigger decisions; unchanged states have a sixty-second interval. Useful ongoing objectives suppress ambient replacement.
 - Local bridge reads drain at most twelve datagrams per tick, each at most 32 KiB. The server never waits for the network, SQLite or a provider.
 - Tactical answers retain the original server deadline. Target preferences last at most one second. Native combat remains available when the answer arrives too late.
-- A five-second worker lease releases objective ownership on failure. Stable action identifiers support bounded retransmission and outcome queries; they do not restart an acknowledged objective.
+- A five-second worker lease releases objective ownership on failure. Invited companions finish the native rendezvous before acquiring model objective ownership. Stable action identifiers support bounded retransmission and outcome queries; they do not restart an acknowledged objective.
 - Responses uses `low` effort for routine requests; explicit planning/strategy requests may use `max`, with a ten-minute per-bot cooldown, 4,096 output-token allowance and 45-second request deadline. Planning cannot occupy Decisions slots.
 - Multi-step requests have at most three objective steps and stop after two failures. Each step needs a terminal server result before replanning against fresh eligible candidates. One correlated `function_call_output` reflection may follow a human-requested step.
 - Learning is a contextual bandit, **not model-weight training**. Context includes level band, vocation, party size, floor and region. Counts, recency-weighted rewards, recent choices and checkpoints persist. Exploration defaults to 15%, configurable from 5% to 50%, over eligible hunts only. Three identical consecutive choices are the limit when alternatives exist. Explicit leader orders bypass exploration.
@@ -54,7 +54,7 @@ python3 -m venv /opt/canary-brain/venv
 /opt/canary-brain/venv/bin/pip install --no-deps ./deployment/brain
 ```
 
-Use `server.example.json`, `worker.example.json` and `canary-brain.service` as templates. Replace the sample GUIDs with existing bot character GUIDs; configurations must select the same bots and mode. Install the Lua `/brain` action with the ordinary scripts deployment.
+Use `server.example.json`, `worker.example.json` and `canary-brain.service` as templates. Replace the sample GUIDs with existing bot character GUIDs; configurations must select the same bots and mode. Install the Lua `/brain` action and the updated `bot_system.lua` reload helper with the ordinary scripts deployment. Existing inventory is retained across library replacement. Configured pilots also retain their backpacks during ordinary activation, including purchases and loot, without seeding duplicate supply bags; the rest of the population keeps its original loadout rules.
 
 Run game and worker under the same Unix identity. A root game process can also share its socket with the owner of the private runtime directory. Create the runtime/state directories with mode `0700`, and the credential file with `0600`; use a protected file containing `OPENAI_API_KEY=...`. Configure only its path. The key is never passed to the game, clients, prompts or logs.
 
@@ -116,6 +116,8 @@ python3 -m venv .venv
 .venv/bin/python -m pytest deployment/brain
 g++ -std=c++20 -Isrc tests/unit/players/bot_brain_protocol_test.cpp -lgtest_main -lgtest -pthread -o /tmp/brain-protocol-test
 /tmp/brain-protocol-test
+lua tools/bot_brain/test_reload.lua
+luajit tools/bot_brain/test_reload.lua
 .venv/bin/python deployment/brain/tools/evaluate.py --output /tmp/brain-evaluation.json
 ```
 
