@@ -30,6 +30,9 @@ public:
 	void scheduleAll();
 
 	bool savePlayer(std::shared_ptr<Player> player);
+	// Reuse unsaved bot state instead of loading older progression from the database.
+	std::shared_ptr<Player> getPendingBotPlayer(uint32_t guid) const;
+	std::shared_ptr<Player> getPendingBotPlayer(const std::string &name) const;
 	void saveGuild(std::shared_ptr<Guild> guild);
 
 private:

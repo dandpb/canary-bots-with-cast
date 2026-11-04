@@ -4332,6 +4332,8 @@ public:
 	size_t getHibernatedBotCount() const override;
 
 private:
+	void checkpointBotProgression(BotState &bot, const std::shared_ptr<Player> &player);
+
 	// Materialize Player from DB and place in world (shared by activateBot reload-from-offline
 	// and wakeBot). Returns shared_ptr<Player> on success, nullptr on failure.
 	std::shared_ptr<Player> materializePlayerFromDb(BotState &bot);
