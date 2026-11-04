@@ -24,3 +24,7 @@ tools/cfg_importer/cfg_manifest.csv text eol=lf
 # checkout there fails with "bad interpreter: /usr/bin/env bash^M", which reads as a broken script
 # rather than a line-ending problem. Same narrow-scope reasoning as the CSV rule above.
 tools/botperf/*.sh text eol=lf
+
+# Deployment entrypoints and the public SQL importer run under Linux bash.
+database/bots/import.sh text eol=lf
+deployment/wsl/*.sh text eol=lf
