@@ -165,6 +165,8 @@ class Store:
                 ("reflection", 500),
                 ("plan_history", 500),
                 ("memory", 500),
+                ("operator_event", 1000),
+                ("guidance", 300),
             ):
                 db.execute(
                     "DELETE FROM records WHERE kind=? AND rowid NOT IN "

@@ -1,4 +1,4 @@
-"""Private local IPC and process lifecycle. No public listener is created."""
+"""Private local IPC, optional local operator console and process lifecycle."""
 
 import asyncio
 import fcntl
@@ -15,6 +15,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
 from .controller import Controller
+from .operator_http import OperatorServer
 from .provider import Provider
 from .store import USD, Store
 from .testing import FakeProvider
@@ -33,6 +34,8 @@ class Configuration(BaseModel):
     decision_timeout: float = Field(default=1.2, ge=0.1, le=3)
     learning: bool = False
     exploration: float = Field(default=0.15, ge=0.05, le=0.5)
+    operator_port: int | None = Field(default=None, ge=1024, le=65535)
+    operator_host: Literal["127.0.0.1", "0.0.0.0"] = "127.0.0.1"
 
 
 def read_credential(path: Path) -> str:
@@ -84,6 +87,7 @@ async def run(configuration: Configuration) -> None:
     transport: asyncio.DatagramTransport | None = None
     controller: Controller | None = None
     client: AsyncOpenAI | None = None
+    operator: OperatorServer | None = None
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if endpoint.is_symlink() or (
@@ -134,6 +138,9 @@ async def run(configuration: Configuration) -> None:
             family=socket.AF_UNIX,
             local_addr=str(endpoint),
         )
+        if configuration.operator_port:
+            operator = OperatorServer(controller.supervisor, configuration.operator_port)
+            await operator.start(configuration.operator_host)
         stopped = asyncio.Event()
         last_maintenance = time.monotonic()
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -153,6 +160,8 @@ async def run(configuration: Configuration) -> None:
                 pass
         await asyncio.gather(*protocol.tasks, return_exceptions=True)
     finally:
+        if operator is not None:
+            await operator.close()
         if controller is not None:
             await controller.close()
         if transport is not None:

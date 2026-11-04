@@ -1,0 +1,9 @@
+.git
+build
+vcpkg_installed
+.venv
+.env*
+**/__pycache__
+deployment/wsl/runtime
+deployment/wsl/initdb
+deployment/wsl/*.log

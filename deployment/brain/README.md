@@ -66,7 +66,73 @@ volumes:
   - /etc/canary-brain/server.json:/canary/data/bot/brain.json:ro
 ```
 
-The worker has no TCP listener and requires no Tailscale/Internet inbound port. Existing client and cast ports are independent.
+By default the worker has no TCP listener. The optional operator console binds
+to loopback; Docker deployments may bind inside the container with a
+loopback-only published port. No Internet inbound port is required. Existing
+client and cast ports are independent.
+
+## Live supervision and conversation
+
+The WSL deployment exposes the local console at **http://127.0.0.1:8091/**.
+It monitors the autonomous explorer and controls it through the existing
+server-offered actions. Installing or updating the console requires replacing
+only the Python worker; the game process and casts can remain connected.
+After installation, advice, route exclusions, pause/resume and recovery take
+effect without rebuilding or restarting either process.
+
+- **Conversar** answers questions using recent state, confirmed outcomes and
+  conversation history. It cannot change the objective.
+- **Orientar e agir** can propose an eligible objective. A changed world,
+  objective generation, operator intervention or unavailable candidate prevents
+  an old reply from issuing an order. The timeline reports native acceptance
+  and completion separately from the model's words.
+- **Guardar orientação** stores labelled operator advice in the worker's
+  SQLite state, includes it in future decisions/conversation/strategy, and
+  allows removal. It is contextual memory, not model-weight training or a
+  fabricated reward. Native terminal results remain the only policy rewards.
+- **Evitar rota atual** excludes the active hunt for 30 minutes. It affects
+  future selection; use **Recuperar rota** to leave the current task. Exclusions
+  expire automatically and may be removed early with **Liberar**.
+- **Pausar** sends a normal hold and renews it while paused. Native combat and
+  emergency healing stay available. **Retomar** selects fresh eligible work.
+- **Recuperar rota** cancels the blocked objective via a normal hold, waits for
+  native acknowledgement and a new observation, then chooses another allowed
+  hunt, resupply or retreat. The previous hunt is avoided temporarily. There
+  are no teleports, Lua snippets, arbitrary coordinates or administrative
+  commands in this interface.
+- Automatic recovery requires five minutes without actual movement, XP or new
+  defeats during a task that requires progress. It does not interrupt nearby
+  combat or a character below 80% HP blindly. It waits at least ten minutes
+  between recoveries and attempts at most two per hour. A missing acknowledgement
+  stops recovery and leaves an explicit failure for operator review.
+  A hunt that the native server fails after five minutes with no XP or defeats
+  is also excluded temporarily, so the next decision does not immediately
+  retry it. This is a confirmed unsuccessful hunt, not proof of a movement stall.
+
+Controls require a live autonomous bot outside a human party, active mode and
+an observation no older than three seconds. Human party authority is unchanged.
+The chart shows **live Player XP**, not necessarily the latest saved database
+row. Objective defeat counters reset between tasks. The existing technical
+monitor and native `brain status` still expose the route/waypoint diagnostics;
+the console displays only telemetry available through the worker protocol.
+
+The optional worker configuration is `operator_port: 8091` and
+`operator_host: "127.0.0.1"`. WSL uses `operator_host: "0.0.0.0"` inside the
+container with Compose publishing **127.0.0.1:8091:8091**. Preserve that host-side
+binding. The console checks Host, Origin and a per-process same-origin request
+token, has no CORS permission, and exposes no credentials. The worker still
+has no game database credentials.
+
+Automation clients may GET `/api/state`, then POST JSON to `/api/command` with
+the returned `token` in `X-Operator-Token` and the matching local `Origin`.
+Commands contain `bot`, `operation`, and only the operation's inputs:
+`chat` (`text`, `act`), `note` (`text`), `forget_note` (`id`), `automatic`
+(`enabled`), `allow_route` (`candidate`), or `pause`, `resume`, `recover`,
+`retreat`, `avoid`. This console's token is not an OpenAI credential.
+
+This mechanism can recover objectives and change learned preferences while
+running. It cannot repair a defect in the native pathfinding implementation
+or edit an authored route; those still need their normal code/data workflow.
 
 Install and start the service after editing its user and paths:
 
@@ -173,8 +239,10 @@ An ongoing return is allowed to finish without repeated automatic orders resetti
 its planner. Navigation can still fail and must report that outcome. Native library
 reactivation retains the engine's existing random home-city spawn behavior.
 
-Native bots deliberately receive no experience or level progression in this
-server. Hunt learning therefore also counts confirmed monster deaths: an acquired
+Native bots earn real experience and advance through the normal Player rules,
+independently of whether the brain is enabled. Lifecycle checkpoints retain
+progression through hibernation, reconnects and failed-save retries. Hunt learning
+also counts confirmed monster deaths: an acquired
 target is retained before the first attack so one-hit kills are observable.
 Solo hunts evaluate a five-minute window; party hunts use fifteen minutes.
 No confirmed combat progress is a failed hunt, rather than a positive reward for

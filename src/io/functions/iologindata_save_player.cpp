@@ -8,6 +8,7 @@
  */
 
 #include "io/functions/iologindata_save_player.hpp"
+#include "io/functions/player_online_time.hpp"
 
 #include "config/configmanager.hpp"
 #include "creatures/players/animus_mastery/animus_mastery.hpp"
@@ -317,9 +318,11 @@ bool IOLoginDataSave::savePlayerFirst(const std::shared_ptr<Player> &player) {
 	query << "`quickloot_fallback` = " << (player->quickLootFallbackToMainContainer ? 1 : 0) << ",";
 
 	if (!player->isOffline()) {
-		auto now = std::chrono::system_clock::now();
-		auto lastLoginSaved = std::chrono::system_clock::from_time_t(player->lastLoginSaved);
-		query << "`onlinetime` = `onlinetime` + " << std::chrono::duration_cast<std::chrono::seconds>(now - lastLoginSaved).count() << ",";
+		const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+		const auto elapsed = player_persistence::onlineSeconds(player->lastLoginSaved, now);
+		if (elapsed > 0) {
+			query << "`onlinetime` = `onlinetime` + " << elapsed << ",";
+		}
 	}
 
 	for (int i = 1; i <= 8; i++) {

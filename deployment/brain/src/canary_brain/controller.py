@@ -13,6 +13,7 @@ from .learning import Policy, episode_reward
 from .protocol import Message, Observation, Outcome, intent_for
 from .provider import Proposal
 from .store import Store
+from .supervision import Supervisor
 
 
 class Model(Protocol):
@@ -52,6 +53,7 @@ class Controller:
         self.last_decision: dict[int, tuple[float, str]] = {}
         self.leader_message: dict[int, str] = {}
         self.world = ""
+        self.supervisor = Supervisor(self)
 
     @staticmethod
     def authority(snapshot: Observation) -> int:
@@ -112,6 +114,7 @@ class Controller:
             {
                 "mode": self.mode,
                 "name": snapshot.bot.name,
+                "level": snapshot.bot.level,
                 "state": snapshot.bot.state,
                 "objective": snapshot.bot.objective,
                 "last_observation": time.time(),
@@ -129,6 +132,9 @@ class Controller:
                 "eligible": [item.id for item in snapshot.actions],
             },
         )
+        self.supervisor.observe(snapshot)
+        if self.supervisor.managed(bot) and snapshot.autonomous and snapshot.party is None:
+            return
         for message in snapshot.messages:
             if self.authorized(snapshot, message.player_id):
                 self.leader_message[bot] = message.id
@@ -228,9 +234,16 @@ class Controller:
         candidate: str,
         selection: dict[str, Any] | None = None,
         tool_call: dict[str, Any] | None = None,
+        *,
+        operator: bool = False,
     ) -> str | None:
         if candidate == "continue":
             return None
+        if snapshot.autonomous and snapshot.party is None:
+            if candidate in self.supervisor.blocked(snapshot.bot.id):
+                return None
+            if not operator and self.supervisor.managed(snapshot.bot.id):
+                return None
         if len(self.store.records("pending", 25)) >= 24:
             return None
         intent = intent_for(snapshot, candidate, uuid.uuid4().hex)
@@ -294,6 +307,7 @@ class Controller:
             self.store.put("pending", action_id, pending)
 
     async def _decide(self, snapshot: Observation) -> None:
+        snapshot = self.supervisor.offers(snapshot)
         # A repeated retreat resets the native floor planner. Let it finish;
         # explicit human requests can still supersede it through dialogue.
         if snapshot.bot.objective_running and snapshot.bot.objective == "retreat":
@@ -330,6 +344,7 @@ class Controller:
         statistics = self.policy.statistics(snapshot.bot.id, context)
         eligible = {item.id for item in snapshot.actions}
         memory = {
+            "operator_advice": self.supervisor.advice(snapshot.bot.id),
             "actions": {
                 key: value for key, value in statistics.items() if key in eligible
             },
@@ -414,6 +429,7 @@ class Controller:
             )
 
     async def _autonomous_strategy(self, snapshot: Observation) -> None:
+        snapshot = self.supervisor.offers(snapshot)
         facts = [
             {
                 "candidate": value["candidate"],
@@ -429,7 +445,7 @@ class Controller:
             "Learn from observed outcomes; avoid repeating failed or monotonous activities. "
             "Restock when necessary, preserve your life and respect level limits. This is a strategy hypothesis, not execution.",
             True,
-            facts,
+            facts + self.supervisor.advice(snapshot.bot.id),
             False,
         )
         latest = self.latest.get(snapshot.bot.id)
@@ -451,6 +467,7 @@ class Controller:
             )
 
     async def _dialogue(self, snapshot: Observation, message: Message) -> None:
+        snapshot = self.supervisor.offers(snapshot)
         bot = snapshot.bot.id
         authorized = self.authorized(snapshot, message.player_id)
         memory_key = f"{bot}:{message.player_id}"
@@ -493,7 +510,8 @@ class Controller:
         ][:2]
         try:
             proposal = await self.model.converse(
-                snapshot, message.text, authorized, history + facts + hypotheses, deep
+                snapshot, message.text, authorized,
+                history + facts + hypotheses + self.supervisor.advice(bot), deep
             )
         except Exception:
             if self.mode == "active" and snapshot.mode == "active":
@@ -602,6 +620,7 @@ class Controller:
             )
             episode["reward"] = reward
         self.store.put("episode", outcome.action_id, episode)
+        self.supervisor.outcome(outcome)
         if terminal:
             if outcome.status in {"cancelled", "expired", "rejected"}:
                 recent = self.store.get("activity_recent", str(outcome.bot_id)) or {}
@@ -655,6 +674,7 @@ class Controller:
         )
 
     async def _replan(self, snapshot: Observation, plan: dict[str, Any]) -> None:
+        snapshot = self.supervisor.offers(snapshot)
         # Reserve this plan round durably before a billable call. A stale answer or
         # provider failure must not leave a ready plan that is retried every tick.
         plan["phase"] = "planning"
