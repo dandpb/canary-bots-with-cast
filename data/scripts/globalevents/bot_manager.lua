@@ -411,7 +411,7 @@ function botStartup.onStartup()
 	end
 
 	logger.info("[BotManager] Found " .. total .. " bots in database, loading "
-		.. #botNames .. " (stratified across level/vocation) as INACTIVE...")
+		.. #botNames .. (nearestMode and " (nearest reference levels)" or " (stratified across level/vocation)") .. " as INACTIVE...")
 
 	-- Load consecutive batches of 50. Schedule the next load only after this
 	-- one finishes, giving unobserved bots time to hibernate between batches.
