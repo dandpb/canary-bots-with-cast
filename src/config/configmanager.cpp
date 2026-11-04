@@ -63,6 +63,7 @@ bool ConfigManager::load() {
 		loadFloatConfig(L, BOT_DENSITY_CAP_OUTER_LIMIT_PCT, "botDensityCapOuterLimitPct", 3.0);
 		loadIntConfig(L, BOT_DENSITY_CAP_OUTER_RADIUS, "botDensityCapOuterRadius", 100);
 		loadIntConfig(L, BOT_PLAYERS_ONLINE, "botPlayersOnline", 200);
+		loadStringConfig(L, BOT_POPULATION_REFERENCE_BOTS, "botPopulationReferenceBots", "");
 
 		// ---- Bot Liveness Pack (see BOT_SYSTEM_DOCS.md) ----
 		// POI weights — relative weight when bots roll which POI to walk to.

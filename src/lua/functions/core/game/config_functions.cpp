@@ -33,6 +33,8 @@ void ConfigFunctions::init(lua_State* L) {
 		}
 	}
 #undef registerMagicEnumIn
+	// Appended beyond magic_enum's range to preserve existing bot config ordinals.
+	Lua::registerVariable(L, "configKeys", "BOT_POPULATION_REFERENCE_BOTS", BOT_POPULATION_REFERENCE_BOTS);
 }
 
 int ConfigFunctions::luaConfigManagerGetString(lua_State* L) {

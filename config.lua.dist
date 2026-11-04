@@ -830,6 +830,10 @@ botDepotLockerPct = 40
 -- Number of bot players to load on startup. Default 200 (matches pre-997 behavior).
 -- Stratified-pick by level/voc/town from the bot pool (account_id=65000, currently 997 bots).
 botPlayersOnline = 500
+-- Optional comma-separated bot character GUIDs. Include these bots and fill the
+-- population with the closest levels, using current database levels at startup.
+-- Empty keeps the default stratified selection across the whole level range.
+botPopulationReferenceBots = ""
 -- Nav jitter mask (bitfield) — de-trains routes so bots do not walk identical lanes.
 botNavJitterMask = 3
 -- Lane reservation: bots claim the tile they are stepping into, so a queue forms

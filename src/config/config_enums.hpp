@@ -448,7 +448,8 @@ enum ConfigKey_t : uint16_t {
 	// alphabetical list above: the hot-reloaded libbot_engine.so reads the BOT_* keys
 	// by ordinal, so an insertion higher up shifts every one of them and a binary/.so
 	// deploy skew then silently misreads all bot config. Appending here cannot shift
-	// anything. Note this ordinal is past MAGIC_ENUM_RANGE_MAX (src/pch.hpp, 500), so
-	// the key is NOT registered in Lua's `configKeys` table — it is read from C++ only.
+	// anything. These ordinals are past MAGIC_ENUM_RANGE_MAX (src/pch.hpp, 500), so
+	// Lua consumers need explicit registration in ConfigFunctions::init.
 	FORCE_LOGOUT_ON_CONNECTION_LOSS,
+	BOT_POPULATION_REFERENCE_BOTS,
 };
