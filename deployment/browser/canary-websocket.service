@@ -1,0 +1,17 @@
+[Unit]
+Description=Canary browser WebSocket bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=canary
+WorkingDirectory=/opt/canary-web
+ExecStart=/opt/canary-web/venv/bin/websockify 127.0.0.1:8765 127.0.0.1:7172
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

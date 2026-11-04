@@ -1,0 +1,15 @@
+name: canary-web
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ${MYAAC_ROOT:?Set the absolute path of the prepared MyAAC site}:/var/www/html
+    ports:
+      - "${CANARY_WEB_BIND_IP:-127.0.0.1}:${CANARY_WEB_PORT:-8080}:80"
+    networks:
+      - canary
+networks:
+  canary:
+    external: true
+    name: ${CANARY_NETWORK:-canary-arm64_default}
