@@ -1,0 +1,32 @@
+name: canary-arm64
+services:
+  database:
+    image: mariadb:11.4
+    restart: unless-stopped
+    env_file: ${CANARY_DATABASE_ENV_FILE:?Set an absolute protected database env-file path}
+    environment:
+      MARIADB_DATABASE: canary
+      MARIADB_USER: canary
+    volumes:
+      - canary-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  server:
+    image: ubuntu:24.04
+    platform: linux/amd64
+    restart: unless-stopped
+    working_dir: /canary
+    volumes:
+      - ..:/canary
+    entrypoint: ["/canary/canary"]
+    ports:
+      - "${CANARY_BIND_IP:-127.0.0.1}:7171:7171"
+      - "${CANARY_BIND_IP:-127.0.0.1}:7172:7172"
+    depends_on:
+      database:
+        condition: service_healthy
+volumes:
+  canary-db:

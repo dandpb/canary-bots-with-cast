@@ -44,9 +44,14 @@ Run the files in this exact order (foreign-key / dependency order):
 | 11 | `11_bot_market_item_prices.sql` | market price reference (see header) |
 | 14 | `14_houses.sql` | house ownership + metadata (bots own 794 of 993 houses) |
 | 15 | `15_tile_store.sql` | house furniture/items (per-house serialized tile blobs) |
+| 16 | `16_runtime_compatibility.sql` | existing runtime state/config/navigation contracts and safe counter widths |
 
 The numbering has gaps because the files that filled them seeded the old
 hunt/route/equipment tables. Those are CSV now, and the tables are gone.
+
+The automatic importer includes step 16. Existing installations can apply only
+that repeatable repair without importing bot/player rows again; see
+[installation compatibility](../../deployment/INSTALLATION_COMPATIBILITY.md).
 
 Then bump the auto-increment so new registrations don't collide with the seeded
 bot id range:
