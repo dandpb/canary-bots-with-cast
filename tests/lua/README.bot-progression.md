@@ -28,6 +28,14 @@ a native bot fails with `earned XP was discarded` after the 100-XP grant.
 Also check the lifecycle through the game API, checking both immediate reconnection and a fresh database load after saves
 finish:
 
+```lua
+local check = dofile("tests/lua/bot_progression_lifecycle_test.lua")
+check("Fixture Name", "hibernate")
+check("Fixture Name", "reconnect")
+check("Fixture Name", "force")
+check("Fixture Name", "named")
+```
+
 1. Hibernate the progressed bot using `Game.botHibernate(guid)`, then wake it
    using the administrative `wake` bot command. Verify level 11 and XP 13000.
 2. Deactivate it using `Game.botDeactivate(guid)`, release the QA script's player

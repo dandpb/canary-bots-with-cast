@@ -17,6 +17,7 @@
 #include "kv/kv.hpp"
 #include "lib/di/container.hpp"
 #include "creatures/players/player.hpp"
+#include "utils/tools.hpp"
 
 namespace {
 	struct PendingBotSave {
@@ -35,9 +36,10 @@ std::shared_ptr<Player> SaveManager::getPendingBotPlayer(uint32_t guid) const {
 }
 
 std::shared_ptr<Player> SaveManager::getPendingBotPlayer(const std::string &name) const {
+	const auto normalizedName = asLowerCaseString(name);
 	std::lock_guard lock(pendingBotMutex);
 	for (const auto &[_, pending] : pendingBotPlayers) {
-		if (pending.player->getName() == name) {
+		if (asLowerCaseString(pending.player->getName()) == normalizedName) {
 			return pending.player;
 		}
 	}
