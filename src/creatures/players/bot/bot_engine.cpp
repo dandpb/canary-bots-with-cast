@@ -105,10 +105,11 @@ static std::unordered_map<uint32_t, uint64_t> s_botExperienceCheckpoint;
 void BotEngine::checkpointBotProgression(BotState &bot, const std::shared_ptr<Player> &player) {
 	auto &experience = s_botExperienceCheckpoint[bot.guid];
 	bot.cachedLevel = player->getLevel();
-	if (player->getExperience() != experience) {
+	if (player->getExperience() != experience || g_saveManager().getPendingBotPlayer(bot.guid)) {
 		player->loginPosition = player->getPosition();
-		g_saveManager().savePlayer(player);
-		experience = player->getExperience();
+		if (g_saveManager().savePlayer(player)) {
+			experience = player->getExperience();
+		}
 	}
 }
 
@@ -255,16 +256,24 @@ void BotEngine::unregisterBot(uint32_t guid) {
 // activateBot (true-offline reload path) and wakeBot (hibernation wake path).
 // On success, bot.playerRef is updated and the new Player is returned.
 std::shared_ptr<Player> BotEngine::materializePlayerFromDb(BotState &bot) {
-	if (bot.name.empty()) return nullptr;
-
-	auto newPlayer = std::make_shared<Player>(nullptr);
-	// Same reason as Game.loadBotPlayer: flag before the load so the badge/title/cyclopedia
-	// skip applies. This is the hibernation-pool-miss path, which is the HOT one -- it runs on
-	// every wake that cannot be served from the pool.
-	newPlayer->setBotPlayer(true);
-	if (!IOLoginData::loadPlayerByName(newPlayer, bot.name, false)) {
-		g_logger().warn("[BotEngine] materializePlayerFromDb: failed to reload '{}' from DB", bot.name);
+	if (bot.name.empty()) {
 		return nullptr;
+	}
+
+	auto newPlayer = g_saveManager().getPendingBotPlayer(bot.guid);
+	if (newPlayer) {
+		// A queued or failed save still owns the authoritative progression. Reuse it
+		// just as the hibernation pool does, instead of racing an older database row.
+		newPlayer->setNotRemoved();
+		newPlayer->clearTileParent();
+	} else {
+		newPlayer = std::make_shared<Player>(nullptr);
+		// Flag before load to skip bot-irrelevant badge/title/cyclopedia work.
+		newPlayer->setBotPlayer(true);
+		if (!IOLoginData::loadPlayerByName(newPlayer, bot.name, false)) {
+			g_logger().warn("[BotEngine] materializePlayerFromDb: failed to reload '{}' from DB", bot.name);
+			return nullptr;
+		}
 	}
 	newPlayer->setBotPlayer(true);
 	newPlayer->setOnline(true);

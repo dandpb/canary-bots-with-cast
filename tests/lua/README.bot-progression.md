@@ -25,25 +25,32 @@ an exact level threshold, multiple levels in one grant, vocation health/mana/
 capacity increments, and health/mana restoration on advance. On the old server,
 a native bot fails with `earned XP was discarded` after the 100-XP grant.
 
-Also check the lifecycle through the game API, allowing asynchronous saves to
-finish between disconnecting and loading a fresh character:
+Also check the lifecycle through the game API, checking both immediate reconnection and a fresh database load after saves
+finish:
 
 1. Hibernate the progressed bot using `Game.botHibernate(guid)`, then wake it
    using the administrative `wake` bot command. Verify level 11 and XP 13000.
 2. Deactivate it using `Game.botDeactivate(guid)`, release the QA script's player
    reference, then activate it again. Verify the same level, XP and maximum stats
    after a fresh database load. Repeat with `Game.botForceDeactivate(guid)`.
+   Deliberately hold the isolated database save queue and repeat immediate
+   deactivation/activation: the pending Player must be reused without losing XP.
 3. Restart the isolated server after the bot hibernates and verify progression
    after activation. Repeat an engine reload after earning XP, before hibernating.
-4. Keep an unchanged bot as a control: repeated wake/hibernate cycles should not
+4. Fail a progression save in the isolated database, then reconnect without
+   awarding more XP. Restore the database, hibernate again and verify the same
+   progress is retried and saved. Offline pending bots must also be retried by
+   the regular server save.
+5. Keep an unchanged bot as a control: repeated wake/hibernate cycles should not
    add a full player save unless its experience changed.
-5. Resume a solo bot in a real hunt and confirm a monster kill increases its XP.
+6. Resume a solo bot in a real hunt and confirm a monster kill increases its XP.
    In an eligible party, confirm shared XP reaches both native bots and humans;
    ordinary party eligibility and XP multipliers must still apply.
 
 The lifecycle checkpoint uses the existing player save manager and player
 columns. It retains a queued bot until saving finishes, including a true logout
-that releases the last game reference. No progression is minted by the virtual
+that releases the last game reference. Reconnection reuses pending state, and a
+failed save keeps that state available for a later lifecycle or server-save retry. No progression is minted by the virtual
 hibernation simulator, and no additional model requests are needed. As with
 ordinary asynchronous saves, a process crash before the queued save completes
 can lose the most recent unsaved progress.

@@ -18,6 +18,32 @@
 #include "lib/di/container.hpp"
 #include "creatures/players/player.hpp"
 
+namespace {
+	struct PendingBotSave {
+		std::shared_ptr<Player> player;
+		std::chrono::steady_clock::time_point scheduledAt;
+	};
+	// Owned by the save manager, so pending state survives bot-engine reloads.
+	std::mutex pendingBotMutex;
+	std::unordered_map<uint32_t, PendingBotSave> pendingBotPlayers;
+} // namespace
+
+std::shared_ptr<Player> SaveManager::getPendingBotPlayer(uint32_t guid) const {
+	std::lock_guard lock(pendingBotMutex);
+	const auto it = pendingBotPlayers.find(guid);
+	return it == pendingBotPlayers.end() ? nullptr : it->second.player;
+}
+
+std::shared_ptr<Player> SaveManager::getPendingBotPlayer(const std::string &name) const {
+	std::lock_guard lock(pendingBotMutex);
+	for (const auto &[_, pending] : pendingBotPlayers) {
+		if (pending.player->getName() == name) {
+			return pending.player;
+		}
+	}
+	return nullptr;
+}
+
 SaveManager::SaveManager(ThreadPool &threadPool, KVStore &kvStore, Logger &logger, Game &game) :
 	threadPool(threadPool), kv(kvStore), logger(logger), game(game) { }
 
@@ -29,7 +55,16 @@ void SaveManager::saveAll() {
 	Benchmark bm_saveAll;
 	logger.info("Saving server...");
 	Benchmark bm_players;
-	const auto &players = game.getPlayers();
+	std::unordered_map<uint32_t, std::shared_ptr<Player>> players;
+	for (const auto &[_, player] : game.getPlayers()) {
+		players[player->getGUID()] = player;
+	}
+	{
+		std::lock_guard lock(pendingBotMutex);
+		for (const auto &[guid, pending] : pendingBotPlayers) {
+			players.try_emplace(guid, pending.player);
+		}
+	}
 	std::vector<std::pair<std::future<void>, std::string>> pending;
 	const auto asyncSave = g_configManager().getBoolean(TOGGLE_SAVE_ASYNC);
 	logger.info("Saving {} players... (Async: {})", players.size(), asyncSave ? "Enabled" : "Disabled");
@@ -135,6 +170,10 @@ void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
 	// Bot deactivation can release the last game reference before this task runs.
 	// Retain bots until their queued save completes, including progression saves.
 	auto botToSave = forceBotAsync ? playerToSave : nullptr;
+	if (botToSave) {
+		std::lock_guard lock(pendingBotMutex);
+		pendingBotPlayers[botToSave->getGUID()] = { botToSave, scheduledAt };
+	}
 	threadPool.detach_task([this, playerPtr, botToSave, scheduledAt]() {
 		auto player = botToSave ? botToSave : playerPtr.lock();
 		if (!player) {
@@ -162,7 +201,23 @@ bool SaveManager::doSavePlayer(std::shared_ptr<Player> player) {
 		logger.debug("Saving player {}.", player->getName());
 	}
 
+	const auto experience = player->getExperience();
+	std::optional<PendingBotSave> pending;
+	if (player->isBotPlayer()) {
+		std::lock_guard pendingLock(pendingBotMutex);
+		const auto it = pendingBotPlayers.find(player->getGUID());
+		if (it != pendingBotPlayers.end()) {
+			pending = it->second;
+		}
+	}
 	bool saveSuccess = IOLoginData::savePlayer(player);
+	if (saveSuccess && pending && player->getExperience() == experience) {
+		std::lock_guard pendingLock(pendingBotMutex);
+		const auto it = pendingBotPlayers.find(player->getGUID());
+		if (it != pendingBotPlayers.end() && it->second.player == player && it->second.scheduledAt == pending->scheduledAt) {
+			pendingBotPlayers.erase(it);
+		}
+	}
 	if (!saveSuccess) {
 		logger.error("Failed to save player {}.", player->getName());
 	}

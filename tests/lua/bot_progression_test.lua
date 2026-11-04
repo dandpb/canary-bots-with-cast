@@ -28,7 +28,7 @@ return function(player)
 	assert(player:getExperience() == 6400 and player:getLevel() == 9, "exact threshold did not advance")
 	assert(player:getMaxHealth() == hp + gain.hp, "incorrect vocation health gain")
 	assert(player:getMaxMana() == mana + gain.mana, "incorrect vocation mana gain")
-	assert(player:getCapacity() == capacity + gain.cap, "incorrect vocation capacity gain")
+	assert(player:getCapacity() == capacity + 100 * gain.cap, "incorrect vocation capacity gain")
 	assert(player:getHealth() == player:getMaxHealth(), "level-up did not restore health")
 	assert(player:getMana() == player:getMaxMana(), "level-up did not restore mana")
 
@@ -36,6 +36,6 @@ return function(player)
 	assert(player:getExperience() == 13000 and player:getLevel() == 11, "multiple level-ups were lost")
 	assert(player:getMaxHealth() == hp + 3 * gain.hp, "multiple health gains were lost")
 	assert(player:getMaxMana() == mana + 3 * gain.mana, "multiple mana gains were lost")
-	assert(player:getCapacity() == capacity + 3 * gain.cap, "multiple capacity gains were lost")
+	assert(player:getCapacity() == capacity + 300 * gain.cap, "multiple capacity gains were lost")
 	return { name = player:getName(), experience = 13000, level = 11 }
 end

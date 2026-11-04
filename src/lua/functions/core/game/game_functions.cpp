@@ -16,8 +16,9 @@
 #include "creatures/players/player.hpp"
 #include "game/functions/game_reload.hpp"
 #include "game/game.hpp"
+#include "game/scheduling/save_manager.hpp"
 #include "game/scheduling/dispatcher.hpp"
-#include "utils/tools.hpp"  // JITTER DIAGNOSTIC: OTSYS_TIME for luaGameMonotonicMs
+#include "utils/tools.hpp" // JITTER DIAGNOSTIC: OTSYS_TIME for luaGameMonotonicMs
 #include "io/io_bosstiary.hpp"
 #include "io/iobestiary.hpp"
 #include "io/iologindata.hpp"
@@ -849,19 +850,23 @@ int GameFunctions::luaGameLoadBotPlayer(lua_State* L) {
 		return 1;
 	}
 
-	// Create player with no client connection
-	auto player = std::make_shared<Player>(nullptr);
-	// Flag BEFORE the load, not after: loadPlayerInitializeSystem runs inside loadPlayerByName
-	// and skips client-only subsystems for bots. Setting it afterwards (as this used to) left
-	// isBotPlayer() false for the whole load and the skip never fired.
-	player->setBotPlayer(true);
-	if (!IOLoginData::loadPlayerByName(player, name, false)) {
-		g_logger().warn("[Game.loadBotPlayer] Failed to load bot '{}' from database", name);
-		lua_pushnil(L);
-		return 1;
+	// A reload can arrive while the prior Player's progression is still saving.
+	auto player = g_saveManager().getPendingBotPlayer(name);
+	if (player) {
+		player->setNotRemoved();
+		player->clearTileParent();
+	} else {
+		player = std::make_shared<Player>(nullptr);
+		// Flag before load to skip bot-irrelevant badge/title/cyclopedia work.
+		player->setBotPlayer(true);
+		if (!IOLoginData::loadPlayerByName(player, name, false)) {
+			g_logger().warn("[Game.loadBotPlayer] Failed to load bot '{}' from database", name);
+			lua_pushnil(L);
+			return 1;
+		}
 	}
 
-	g_logger().info("[Game.loadBotPlayer] Loaded '{}' from DB (level {}, vocation {})", name, player->getLevel(), player->getVocationId());
+	g_logger().info("[Game.loadBotPlayer] Loaded '{}' (level {}, vocation {})", name, player->getLevel(), player->getVocationId());
 
 	player->setBotPlayer(true);
 	player->setOnline(true);
