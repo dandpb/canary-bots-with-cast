@@ -15,6 +15,9 @@ canary-brain = "canary_brain.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+canary_brain = ["dashboard/*.html", "dashboard/*.css", "dashboard/*.js"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 asyncio_mode = "auto"

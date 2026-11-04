@@ -3452,8 +3452,8 @@ void Player::addExperience(const std::shared_ptr<Creature> &target, uint64_t exp
 		exp *= animusMasteryMultiplier;
 	}
 
-	// Bot players show the experience animation but never actually gain XP or level up
-	if (!isBotPlayer()) {
+	// Ambient bots retain their authored level; autonomous explorers may progress.
+	if (canGainExperience()) {
 		experience += exp;
 	}
 
@@ -3487,9 +3487,9 @@ void Player::addExperience(const std::shared_ptr<Creature> &target, uint64_t exp
 		}
 	}
 
-	// Bot players never level up — skip the entire level-up block
+	// Use the same progression gate for XP and the normal level/stat advancement.
 	const uint32_t prevLevel = level;
-	if (!isBotPlayer()) {
+	if (canGainExperience()) {
 		while (experience >= nextLevelExp) {
 			++level;
 			// Player stats gain for vocations level <= 8

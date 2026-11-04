@@ -512,6 +512,12 @@ public:
 	void setBotPlayer(bool v) {
 		botPlayer = v;
 	}
+	bool canGainExperience() const {
+		return !botPlayer || botExperienceEnabled;
+	}
+	void setBotExperienceEnabled(bool enabled) {
+		botExperienceEnabled = enabled;
+	}
 	bool isBotAllowFcPos(const Position &pos) const {
 		return botAllowFcPos == pos;
 	}
@@ -1822,6 +1828,7 @@ private:
 	bool wasMounted = false;
 	bool ghostMode = false;
 	bool botPlayer = false;
+	bool botExperienceEnabled = false; // Transient opt-in from the autonomous brain roster
 	Position botAllowFcPos = {}; // Transient: when set, A* can path onto the FC/teleport tile at this exact position only
 	bool pzLocked = false;
 	bool isConnecting = false;

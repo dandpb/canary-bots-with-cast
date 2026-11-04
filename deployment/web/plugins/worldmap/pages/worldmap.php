@@ -94,9 +94,11 @@ if (!$hasOverview) {
 	$defaultLayer = 'floors';
 }
 
+// Keep requests on the page's origin, including when localhost and 127.0.0.1 coexist.
+$basePath = rtrim(parse_url(BASE_URL, PHP_URL_PATH) ?: '/', '/') . '/';
 $cfg = [
-	'dataUrl'      => BASE_URL . 'index.php/worldmap?data=1',
-	'assets'       => BASE_URL . 'plugins/worldmap/static/',
+	'dataUrl'      => $basePath . 'index.php/worldmap?data=1',
+	'assets'       => $basePath . 'plugins/worldmap/static/',
 	'pollMs'       => (int)($wmCfg['poll_ms'] ?? 30000),
 	'defaultFloor' => (int)($wmCfg['default_floor'] ?? 7),
 	'defaultLayer' => $defaultLayer,
@@ -106,8 +108,8 @@ $cfg = [
 	'vocations'    => $vocations,
 ];
 ?>
-<link rel="stylesheet" href="<?php echo BASE_URL; ?>plugins/worldmap/static/leaflet.css"/>
-<link rel="stylesheet" href="<?php echo BASE_URL; ?>plugins/worldmap/static/worldmap.css"/>
+<link rel="stylesheet" href="<?php echo $basePath; ?>plugins/worldmap/static/leaflet.css"/>
+<link rel="stylesheet" href="<?php echo $basePath; ?>plugins/worldmap/static/worldmap.css"/>
 
 <div id="worldmap-wrap">
 	<div id="worldmap-bar">
@@ -150,5 +152,5 @@ $cfg = [
 </div>
 
 <script>window.WORLDMAP_CFG = <?php echo json_encode($cfg); ?>;</script>
-<script src="<?php echo BASE_URL; ?>plugins/worldmap/static/leaflet.js"></script>
-<script src="<?php echo BASE_URL; ?>plugins/worldmap/static/worldmap.js"></script>
+<script src="<?php echo $basePath; ?>plugins/worldmap/static/leaflet.js"></script>
+<script src="<?php echo $basePath; ?>plugins/worldmap/static/worldmap.js"></script>

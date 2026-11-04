@@ -1,0 +1,109 @@
+name: canary-bots-wsl
+services:
+  database:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: canary
+      MARIADB_USER: canary
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?local database password is required}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?local root password is required}
+    volumes:
+      - database:/var/lib/mysql
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
+  game:
+    image: canary-bots-wsl-game:local
+    build:
+      context: ../..
+      dockerfile: deployment/wsl/Dockerfile
+      target: game
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
+    restart: unless-stopped
+    environment:
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      GAME_PUBLIC_IP: ${GAME_PUBLIC_IP:-127.0.0.1}
+      BOT_PLAYERS_ONLINE: ${BOT_PLAYERS_ONLINE:-997}
+      CANARY_BRAIN_CONFIG: /etc/canary-brain/server.json
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:7171:7171
+      - 127.0.0.1:7172:7172
+      - 127.0.0.1:7173:7173
+    volumes:
+      - ./runtime/config:/etc/canary-brain:ro
+      - brain-socket:/run/canary-brain-wsl
+      - ./runtime/world/otservbr.otbm:/canary/data-otservbr-global/world/otservbr.otbm:ro
+      - game-logs:/canary/logs
+      - authored-data:/canary/data/bot/authored
+    healthcheck:
+      test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1',7173),2).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 600s
+  brain:
+    profiles: [ai]
+    image: canary-bots-wsl-brain:local
+    build:
+      context: ../..
+      dockerfile: deployment/wsl/Dockerfile
+      target: brain
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:8091:8091
+    depends_on:
+      game:
+        condition: service_healthy
+    volumes:
+      - ./runtime/config/worker.json:/etc/canary-brain/worker.json:ro
+      - ./runtime/secrets/openai.env:/etc/canary-brain/openai.env:ro
+      - brain-socket:/run/canary-brain-wsl
+      - brain-state:/var/lib/canary-brain
+  web:
+    image: canary-bots-wsl-web:local
+    build:
+      context: ../..
+      dockerfile: deployment/wsl/Web.Dockerfile
+    restart: unless-stopped
+    environment:
+      CANARY_DB_HOST: database
+      CANARY_DB_NAME: canary
+      CANARY_DB_USER: canary
+      CANARY_DB_PASSWORD: ${MARIADB_PASSWORD}
+      CANARY_SERVER_NAME: Canary bots with cast - WSL
+      CANARY_SERVER_IP: ${GAME_PUBLIC_IP:-127.0.0.1}
+      CANARY_STATUS_PORT: 7173
+      MYAAC_CLIENT_VERSION: 1500
+      MYAAC_SITE_URL: http://127.0.0.1:8080
+    ports:
+      - 127.0.0.1:8080:80
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - website-cache:/var/www/html/system/cache
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1/]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+volumes:
+  database:
+    name: canary-bots-wsl_database-seeded
+  brain-socket:
+  game-logs:
+  authored-data:
+  brain-state:
+  website-cache:

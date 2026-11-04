@@ -4261,6 +4261,9 @@ public:
 	// failed before: the correct loop existed in deactivateAll(), which nothing ever called.
 	~BotEngine() override {
 		cancelPendingDispatcherEvents();
+		for (const auto &bot : bots_) {
+			if (auto player = bot.getPlayer()) player->setBotExperienceEnabled(false);
+		}
 	}
 
 	// Public because bot_zgraph.cpp's anonymous-namespace flood-fill predicate needs it, and a

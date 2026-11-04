@@ -155,6 +155,7 @@ std::string BotEngine::brainCommand(const std::string &botName, const std::strin
 		if (brain_) {
 			for (const auto guid : brain_->roster) {
 				if (auto bot = getBotState(guid)) {
+					if (auto player = bot->getPlayer()) player->setBotExperienceEnabled(false);
 					finishBrain(*bot, "cancelled", "controller_reloaded");
 				}
 			}
@@ -174,7 +175,13 @@ std::string BotEngine::brainCommand(const std::string &botName, const std::strin
 		for (const auto &[guid, session] : brain_->sessions) {
 			auto leader = g_game().getPlayerByGUID(session.leader, false);
 			auto shop = session.shop ? g_game().getCreatureByID(session.shop) : nullptr;
-			sessions.push_back({ { "bot", guid }, { "leader", session.leader }, { "leader_creature_id", leader ? leader->getID() : 0 }, { "objective", session.action }, { "running", !session.actionId.empty() }, { "shop", shop ? shop->getName() : "" }, { "supply_phase", session.supplyStep } });
+			auto bot = getBotState(guid);
+			auto player = bot ? bot->getPlayer() : nullptr;
+			sessions.push_back({ { "bot", guid }, { "leader", session.leader }, { "leader_creature_id", leader ? leader->getID() : 0 },
+				{ "objective", session.action }, { "running", !session.actionId.empty() }, { "script", session.script }, { "waypoint", session.waypoint },
+				{ "shop", shop ? shop->getName() : "" }, { "supply_phase", session.supplyStep }, { "home", session.home },
+				{ "walk_queue", player ? player->listWalkDir.size() : 0 }, { "pending_walk_pause", bot ? bot->pendingWalkPauseEventId : 0 },
+				{ "floor_change", bot ? static_cast<int>(bot->fcState) : 0 } });
 		}
 		return Json({ { "version", 1 }, { "mode", brain_->mode }, { "world", brain_->world }, { "worker_alive", botMonoMs() - brain_->heartbeat <= 5000 }, { "roster", brain_->roster }, { "sessions", sessions }, { "bridge_tick_p95_us", p95 }, { "bridge_tick_samples", timings.size() } }).dump();
 	}
@@ -182,6 +189,7 @@ std::string BotEngine::brainCommand(const std::string &botName, const std::strin
 		for (const auto guid : brain_->roster) {
 			auto bot = getBotState(guid);
 			if (bot && (botName == "_global" || bot->name == botName)) {
+				if (auto player = bot->getPlayer()) player->setBotExperienceEnabled(false);
 				finishBrain(*bot, "cancelled", "operator_disabled");
 			}
 		}
@@ -425,7 +433,7 @@ void BotEngine::finishBrain(BotState &bot, const std::string &status, const std:
 			player->listWalkDir.clear();
 			player->stopEventWalk();
 		}
-		if (session.action == "resupply" || session.action == "retreat") {
+		if (session.action == "resupply" || session.action == "retreat" || session.action == "hunt") {
 			clearPlannerWalk(bot.guid);
 			resetFloorChange(bot);
 		}
@@ -531,10 +539,12 @@ void BotEngine::tickBrain() {
 			wakeBot(guid);
 			player = bot->getPlayer();
 		}
+		if (player) player->setBotExperienceEnabled(brain_->mode == "active" && guid == brain_->autonomous);
 		if (!player || !bot->active || bot->hibernated || player->getHealth() <= 0) {
 			finishBrain(*bot, player && player->getHealth() <= 0 ? "failed" : "cancelled", player && player->getHealth() <= 0 ? "death" : "unavailable");
 			continue;
 		}
+		bot->cachedLevel = player->getLevel();
 		if (!session.actionId.empty() && session.action == "hunt") {
 			auto &combat = brainCombat[guid];
 			if (combat.target && combat.target->getHealth() <= 0) {
@@ -755,10 +765,17 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 		player->stopEventWalk();
 		return true;
 	}
+	// Autonomous goals bypass doIdle, including its walk-stall watchdog. Observe
+	// the queue before the wait gates below so a blocked step can be replanned.
+	if (!player->listWalkDir.empty() && plannerWalkBlocked(bot, player)) {
+		castLog(bot, "BRAIN: blocked walk; replanning route");
+		plannerReplan(bot, player);
+	}
 	if (session.action == "follow" || session.action == "retreat") {
 		if (bot.currentPos.z == leaderPosition.z && Position::getDiagonalDistance(bot.currentPos, leaderPosition) <= 3
 		    && now - session.started >= 5000) {
 			finishBrain(bot, "completed", "party_rejoined");
+			return true;
 		}
 		if (!player->listWalkDir.empty() || bot.pendingWalkPauseEventId != 0) {
 			return true;
@@ -897,6 +914,19 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 		if (index >= waypoints.size()) {
 			index = 0;
 		}
+		// Authored travel can end on a closed shovel hole. Reaching that tile
+		// does not mean the transition happened: the patrol may still be below us.
+		// The generic follower skips mismatched floors, so let the portal planner
+		// execute the tool/stair transition without consuming this waypoint.
+		// Walk-on portals must reach the follower first: a different z can be
+		// the successful arrival it is waiting to acknowledge, not a detour.
+		if (bot.currentPos.z != waypoints[index].pos.z && !waypoints[index].isWalkOnFc) {
+			if (!planScopedWalk(bot, waypoints[index].pos, 1)) {
+				finishBrain(bot, "failed", "floor_route_unavailable");
+			}
+			return true;
+		}
+		clearPlannerWalk(bot.guid);
 		WaypointFollowConfig config;
 		config.logPrefix = "BRAIN";
 		auto result = followWaypoints(bot, waypoints, index, session.skipped, config);

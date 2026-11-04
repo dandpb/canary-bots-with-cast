@@ -108,6 +108,7 @@ void BotEngine::registerBot(const std::shared_ptr<Player>& player) {
 	// Every registration path funnels through here, so clearing it here closes that leak for
 	// good. The harness re-arms its probes explicitly after a reload.
 	player->setSyntheticCastViewers(0);
+	player->setBotExperienceEnabled(false);
 
 	uint32_t guid = player->getGUID();
 	auto it = guidToIndex_.find(guid);
@@ -201,8 +202,10 @@ void BotEngine::unregisterBot(uint32_t guid) {
 	// visible on /cavebot reload (500 bots unregistered → 500 leaked Player refs in
 	// channels 3 + 5 + cast + any others). Bounded but accumulates across reload cycles.
 	if (auto player = it != guidToIndex_.end() ? bots_[it->second].playerRef.lock() : nullptr) {
+		player->setBotExperienceEnabled(false);
 		g_chat().removeUserFromAllChannels(player);
 	} else if (auto pooled = hibernationPool_.find(guid); pooled != hibernationPool_.end() && pooled->second) {
+		pooled->second->setBotExperienceEnabled(false);
 		g_chat().removeUserFromAllChannels(pooled->second);
 	}
 

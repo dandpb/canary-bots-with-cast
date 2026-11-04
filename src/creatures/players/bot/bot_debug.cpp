@@ -76,6 +76,23 @@ std::string BotEngine::buildStatusDetail(BotState& bot) {
 		int32_t remaining = static_cast<int32_t>((bot.deathPauseUntil - now) / 1000);
 		return fmt::format("IDLE (death pause) -- {}s remaining", remaining);
 	}
+	if (brainOwns(bot.guid)) {
+		const auto &session = brain_->sessions.at(bot.guid);
+		std::string route;
+		for (const auto &script : huntScripts_) {
+			if (script.id != session.script) continue;
+			const bool outbound = session.waypoint < script.travelToWaypoints.size();
+			const auto &waypoints = outbound ? script.travelToWaypoints : script.patrolWaypoints;
+			const size_t index = outbound ? session.waypoint : session.waypoint - script.travelToWaypoints.size();
+			route = fmt::format(" '{}' {} wp {}/{}", script.name, outbound ? "TRAVEL_TO" : "PATROLLING",
+				std::min(index + 1, waypoints.size()), waypoints.size());
+			break;
+		}
+		auto player = bot.getPlayer();
+		return fmt::format("BRAIN {}{} {} -- level {} XP {}", session.action, route,
+			session.actionId.empty() ? "waiting" : "running", player ? player->getLevel() : 0,
+			player ? player->getExperience() : 0);
+	}
 
 	// Adventurer's Stone trip overrides bot.state for status text since the trip
 	// handler short-circuits state dispatch — bot.state stays at IDLE during the trip
