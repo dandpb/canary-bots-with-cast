@@ -4,7 +4,9 @@
 `Player:addExperience` API. It changes a disposable character from level 8 to
 level 11. Never run it on a player's account or on the production database.
 
-Build the server and `libbot_engine.so` from this branch. The XP and level-up
+Build the server and `libbot_engine.so` from this branch using the repository's
+CMake configuration (C++23). Custom validation libraries must use the same C++
+standard and dependency versions as the executable, including its thread pool. The XP and level-up
 guards were in `Player::addExperience` in the executable, so replacing only the
 bot library does not enable progression in an old server binary.
 
