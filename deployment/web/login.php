@@ -55,6 +55,7 @@ switch ($action) {
 			'playersonline' => $playersonline,
 			'twitchstreams' => 0,
 			'twitchviewer' => 0,
+			'discord_online' => 0,
 			'gamingyoutubestreams' => 0,
 			'gamingyoutubeviewer' => 0
 		]));
