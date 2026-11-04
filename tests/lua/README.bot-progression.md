@@ -57,6 +57,20 @@ check("Fixture Name", "named")
    In an eligible party, confirm shared XP reaches both native bots and humans;
    ordinary party eligibility and XP multipliers must still apply.
 
+`bot_progression_combat_test.lua` also provides a deterministic combat-credit
+fixture. With native bots on adjacent walkable tiles outside a protection zone,
+invoke it first without a member, then with an eligible native member:
+
+```lua
+local check = dofile("tests/lua/bot_progression_combat_test.lua")(bot, member)
+addEvent(check, 1000)
+```
+
+It kills an ordinary Wolf through the combat API and checks actual kill XP;
+it never grants experience directly. The optional member checks native shared
+XP. Forced placement on a wall is deliberately avoided because combat correctly
+rejects attacks against such a fixture.
+
 The lifecycle checkpoint uses the existing player save manager and player
 columns. It retains a queued bot until saving finishes, including a true logout
 that releases the last game reference. Reconnection reuses pending state, and a
