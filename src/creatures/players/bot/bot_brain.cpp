@@ -155,7 +155,6 @@ std::string BotEngine::brainCommand(const std::string &botName, const std::strin
 		if (brain_) {
 			for (const auto guid : brain_->roster) {
 				if (auto bot = getBotState(guid)) {
-					if (auto player = bot->getPlayer()) player->setBotExperienceEnabled(false);
 					finishBrain(*bot, "cancelled", "controller_reloaded");
 				}
 			}
@@ -189,7 +188,6 @@ std::string BotEngine::brainCommand(const std::string &botName, const std::strin
 		for (const auto guid : brain_->roster) {
 			auto bot = getBotState(guid);
 			if (bot && (botName == "_global" || bot->name == botName)) {
-				if (auto player = bot->getPlayer()) player->setBotExperienceEnabled(false);
 				finishBrain(*bot, "cancelled", "operator_disabled");
 			}
 		}
@@ -539,7 +537,6 @@ void BotEngine::tickBrain() {
 			wakeBot(guid);
 			player = bot->getPlayer();
 		}
-		if (player) player->setBotExperienceEnabled(brain_->mode == "active" && guid == brain_->autonomous);
 		if (!player || !bot->active || bot->hibernated || player->getHealth() <= 0) {
 			finishBrain(*bot, player && player->getHealth() <= 0 ? "failed" : "cancelled", player && player->getHealth() <= 0 ? "death" : "unavailable");
 			continue;

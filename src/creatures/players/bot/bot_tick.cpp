@@ -2179,6 +2179,7 @@ void BotEngine::forceDeactivateBot(uint32_t guid) {
 		player->setCastBroadcasting(false);
 		// JITTER FIX: async DELETE (was sync executeQuery — see hibernateBot fix).
 		g_botDatabaseTasks().execute(fmt::format("DELETE FROM `cast_broadcasters` WHERE `player_id` = {}", guid));
+		checkpointBotProgression(bot, player);
 		g_game().removeCreature(player, false);
 		g_game().removePlayer(player);
 		player->setOnline(false);
@@ -2193,6 +2194,7 @@ void BotEngine::forceDeactivateBot(uint32_t guid) {
 		auto poolPlayer = poolIt->second;
 		hibernationPool_.erase(poolIt);
 		if (poolPlayer) {
+			checkpointBotProgression(bot, poolPlayer);
 			poolPlayer->setOnline(false);
 			// Save position for next-boot DB load (pool is in-memory only, lost on restart)
 			auto pos = poolPlayer->getPosition();
@@ -2293,6 +2295,10 @@ void BotEngine::forceDeactivateBotForReload(uint32_t guid) {
 	s_pendingInvites.erase(guid);
 	s_inviteDebugKeepAlive.erase(guid);
 	dropAssemblyMember(guid, "reload");
+
+	if (auto player = bot.getPlayer()) {
+		checkpointBotProgression(bot, player);
+	}
 
 	// NOTE: Do NOT touch cast broadcasting or teleport — bot stays in place
 	// Cast viewers remain connected through the .so reload
@@ -4342,6 +4348,9 @@ void BotEngine::processBot(BotState& bot) {
 		bot.state = BotAIState::INACTIVE;
 		return;
 	}
+
+	// Level-gated hunts, chat and party matching must see live progression.
+	bot.cachedLevel = player->getLevel();
 
 	// Sync position
 	bot.lastPos = bot.currentPos;

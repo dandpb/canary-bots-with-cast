@@ -125,12 +125,12 @@ Suspeita de travamento exige cinco minutos sem movimento, avanço ou novos
 abates durante uma tarefa que deveria progredir. Combate parado e espera
 precisam ser avaliados junto com o objetivo.
 
-Por padrão, os bots de população mantêm o nível original. O bot configurado
-como `autonomous_bot` no brain ativo recebe XP e sobe de nível pelo mesmo fluxo
-dos jogadores, incluindo os aumentos normais de atributos. O opt-in é refeito
-no carregamento da configuração; nível e experiência são carregados e salvos
-pelos registros normais do personagem. Desabilitar a IA revoga o opt-in sem
-remover a experiência já conquistada. O Grizzle começou no nível 8 com 4.200 XP.
+Todos os bots nativos recebem XP real e sobem de nível pelo mesmo fluxo dos
+jogadores, incluindo os aumentos normais de atributos, mesmo sem o brain ativo.
+Nível e experiência são carregados e salvos pelos registros normais do personagem.
+Os checkpoints preservam o progresso durante hibernação e reconexão; gravações
+pendentes ou com falha retêm o Player para reutilização e nova tentativa de save.
+A simulação de hibernação não fabrica XP. O Grizzle começou no nível 8 com 4.200 XP.
 O cast e o monitor mostram o objetivo e waypoint da IA para evitar confusão com
 o estado ambiente anterior `City Walk`.
 

@@ -239,8 +239,10 @@ An ongoing return is allowed to finish without repeated automatic orders resetti
 its planner. Navigation can still fail and must report that outcome. Native library
 reactivation retains the engine's existing random home-city spawn behavior.
 
-Native bots deliberately receive no experience or level progression in this
-server. Hunt learning therefore also counts confirmed monster deaths: an acquired
+Native bots earn real experience and advance through the normal Player rules,
+independently of whether the brain is enabled. Lifecycle checkpoints retain
+progression through hibernation, reconnects and failed-save retries. Hunt learning
+also counts confirmed monster deaths: an acquired
 target is retained before the first attack so one-hit kills are observable.
 Solo hunts evaluate a five-minute window; party hunts use fifteen minutes.
 No confirmed combat progress is a failed hunt, rather than a positive reward for

@@ -4261,9 +4261,6 @@ public:
 	// failed before: the correct loop existed in deactivateAll(), which nothing ever called.
 	~BotEngine() override {
 		cancelPendingDispatcherEvents();
-		for (const auto &bot : bots_) {
-			if (auto player = bot.getPlayer()) player->setBotExperienceEnabled(false);
-		}
 	}
 
 	// Public because bot_zgraph.cpp's anonymous-namespace flood-fill predicate needs it, and a
@@ -4335,6 +4332,8 @@ public:
 	size_t getHibernatedBotCount() const override;
 
 private:
+	void checkpointBotProgression(BotState &bot, const std::shared_ptr<Player> &player);
+
 	// Materialize Player from DB and place in world (shared by activateBot reload-from-offline
 	// and wakeBot). Returns shared_ptr<Player> on success, nullptr on failure.
 	std::shared_ptr<Player> materializePlayerFromDb(BotState &bot);

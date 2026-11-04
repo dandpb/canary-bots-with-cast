@@ -3452,10 +3452,8 @@ void Player::addExperience(const std::shared_ptr<Creature> &target, uint64_t exp
 		exp *= animusMasteryMultiplier;
 	}
 
-	// Ambient bots retain their authored level; autonomous explorers may progress.
-	if (canGainExperience()) {
-		experience += exp;
-	}
+	// Native bots use the same experience and level progression as other players.
+	experience += exp;
 
 	if (sendText) {
 		std::string expString = fmt::format("{} experience point{}.", exp, (exp != 1 ? "s" : ""));
@@ -3487,56 +3485,53 @@ void Player::addExperience(const std::shared_ptr<Creature> &target, uint64_t exp
 		}
 	}
 
-	// Use the same progression gate for XP and the normal level/stat advancement.
 	const uint32_t prevLevel = level;
-	if (canGainExperience()) {
-		while (experience >= nextLevelExp) {
-			++level;
-			// Player stats gain for vocations level <= 8
-			if (vocation->getId() != VOCATION_NONE && level <= 8) {
-				const auto &noneVocation = g_vocations().getVocation(VOCATION_NONE);
-				healthMax += noneVocation->getHPGain();
-				health += noneVocation->getHPGain();
-				manaMax += noneVocation->getManaGain();
-				mana += noneVocation->getManaGain();
-				capacity += noneVocation->getCapGain();
-			} else {
-				healthMax += vocation->getHPGain();
-				health += vocation->getHPGain();
-				manaMax += vocation->getManaGain();
-				mana += vocation->getManaGain();
-				capacity += vocation->getCapGain();
-			}
-
-			currLevelExp = nextLevelExp;
-			nextLevelExp = getExpForLevel(level + 1);
-			if (currLevelExp >= nextLevelExp) {
-				// player has reached max level
-				break;
-			}
+	while (experience >= nextLevelExp) {
+		++level;
+		// Player stats gain for vocations level <= 8
+		if (vocation->getId() != VOCATION_NONE && level <= 8) {
+			const auto &noneVocation = g_vocations().getVocation(VOCATION_NONE);
+			healthMax += noneVocation->getHPGain();
+			health += noneVocation->getHPGain();
+			manaMax += noneVocation->getManaGain();
+			mana += noneVocation->getManaGain();
+			capacity += noneVocation->getCapGain();
+		} else {
+			healthMax += vocation->getHPGain();
+			health += vocation->getHPGain();
+			manaMax += vocation->getManaGain();
+			mana += vocation->getManaGain();
+			capacity += vocation->getCapGain();
 		}
 
-		if (prevLevel != level) {
-			health = healthMax;
-			mana = manaMax;
-
-			updateBaseSpeed();
-			setBaseSpeed(getBaseSpeed());
-			g_game().changeSpeed(static_self_cast<Player>(), 0);
-			g_game().addCreatureHealth(static_self_cast<Player>());
-			g_game().addPlayerMana(static_self_cast<Player>());
-
-			if (m_party) {
-				m_party->updateSharedExperience();
-			}
-
-			g_creatureEvents().playerAdvance(static_self_cast<Player>(), SKILL_LEVEL, prevLevel, level);
-
-			std::ostringstream ss;
-			ss << "You advanced from Level " << prevLevel << " to Level " << level << '.';
-			sendTextMessage(MESSAGE_EVENT_ADVANCE, ss.str());
-			sendTakeScreenshot(SCREENSHOT_TYPE_LEVELUP);
+		currLevelExp = nextLevelExp;
+		nextLevelExp = getExpForLevel(level + 1);
+		if (currLevelExp >= nextLevelExp) {
+			// player has reached max level
+			break;
 		}
+	}
+
+	if (prevLevel != level) {
+		health = healthMax;
+		mana = manaMax;
+
+		updateBaseSpeed();
+		setBaseSpeed(getBaseSpeed());
+		g_game().changeSpeed(static_self_cast<Player>(), 0);
+		g_game().addCreatureHealth(static_self_cast<Player>());
+		g_game().addPlayerMana(static_self_cast<Player>());
+
+		if (m_party) {
+			m_party->updateSharedExperience();
+		}
+
+		g_creatureEvents().playerAdvance(static_self_cast<Player>(), SKILL_LEVEL, prevLevel, level);
+
+		std::ostringstream ss;
+		ss << "You advanced from Level " << prevLevel << " to Level " << level << '.';
+		sendTextMessage(MESSAGE_EVENT_ADVANCE, ss.str());
+		sendTakeScreenshot(SCREENSHOT_TYPE_LEVELUP);
 	}
 
 	if (nextLevelExp > currLevelExp) {
