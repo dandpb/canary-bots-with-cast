@@ -27,7 +27,9 @@ return [
 	'default_floor' => 7,
 
 	// Layer shown on load: 'overview' or 'floors'. If 'overview' is chosen but
-	// static/map_big.jpg is absent, the page falls back to 'floors' on its own.
+	// The configured overview image is relative to static/. If absent, the page
+	// falls back to 'floors'. Deployments may use e.g. 'floors/floor-07.png'.
+	'overview_image' => 'map_big.jpg',
 	'default_layer' => 'overview',
 
 	// ---- Geometry -----------------------------------------------------------
