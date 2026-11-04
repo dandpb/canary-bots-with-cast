@@ -132,8 +132,11 @@ void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
 	logger.debug("Scheduling player {} for saving.", playerToSave->getName());
 	auto scheduledAt = std::chrono::steady_clock::now();
 	m_playerMap[playerToSave->getGUID()] = scheduledAt;
-	threadPool.detach_task([this, playerPtr, scheduledAt]() {
-		auto player = playerPtr.lock();
+	// Bot deactivation can release the last game reference before this task runs.
+	// Retain bots until their queued save completes, including progression saves.
+	auto botToSave = forceBotAsync ? playerToSave : nullptr;
+	threadPool.detach_task([this, playerPtr, botToSave, scheduledAt]() {
+		auto player = botToSave ? botToSave : playerPtr.lock();
 		if (!player) {
 			logger.debug("Skipping save for player because player is no longer online.");
 			return;

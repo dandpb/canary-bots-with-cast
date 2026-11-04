@@ -44,6 +44,8 @@ character (including bots) without an account.
 
 **Combat & PvP**
 - Vocation-appropriate spell ladders, healing, support spells and runes.
+- Native bots earn real experience and levels from combat, using the server's normal XP rates, stamina and party-sharing rules. Level-ups grant vocation health, mana, capacity and speed; this also applies to the autonomous LLM bot without a party. Hibernation simulates movement and activities, not monster kills or XP.
+- Earned progression is saved asynchronously before hibernation, logout or engine reload, and the AI refreshes its cached level for hunt and party selection. Deploying this feature requires rebuilding the server executable as well as the bot library; an engine-only reload cannot enable XP in an older executable. See [progression validation](tests/lua/README.bot-progression.md).
 - Self-defense, retaliation, and a party that joins its leader's fight.
 - Occasional **gang raids** and random PK, all observer-gated and rate-limited.
 
