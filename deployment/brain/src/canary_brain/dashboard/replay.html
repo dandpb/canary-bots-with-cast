@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="pt-BR">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1" />
+		<title>A vida em jogo · Canary</title>
+		<link rel="stylesheet" href="/replay.css" />
+		<script src="/replay.js" defer></script>
+	</head>
+	<body>
+		<header class="top">
+			<a href="/">Canary <span>laboratório de bots</span></a
+			><span class="badge">Histórico · somente leitura</span>
+		</header>
+		<main>
+			<section class="intro">
+				<div>
+					<p class="eyebrow">REPLAY / BENCHMARK</p>
+					<h1>A vida em jogo.</h1>
+					<p class="lead">
+						Siga cada jornada. Compare as escolhas, o progresso e o custo de
+						jogar sozinho.
+					</p>
+				</div>
+				<p class="scope">
+					Observações registradas pelo servidor.<br />O replay não executa ações
+					nem chama modelos.
+				</p>
+			</section>
+			<section class="selection">
+				<div>
+					<h2>Escolha as jornadas</h2>
+					<p>
+						Até quatro runs independentes. Resultados reais e simulações
+						aparecem identificados.
+					</p>
+				</div>
+				<button id="refresh" type="button">Atualizar lista</button>
+				<div id="runs" class="run-list" aria-label="Jornadas disponíveis"></div>
+			</section>
+			<p id="notice" role="status" aria-live="polite">Carregando gravações…</p>
+			<section class="transport" aria-label="Reprodução">
+				<button id="play" type="button" aria-label="Reproduzir">
+					▶ Reproduzir</button
+				><output id="clock">00:00</output
+				><input
+					id="scrub"
+					type="range"
+					min="0"
+					max="1"
+					value="0"
+					aria-label="Tempo da jornada"
+				/><label
+					>Velocidade
+					<select id="speed">
+						<option>1</option>
+						<option>5</option>
+						<option selected>20</option>
+						<option>100</option>
+						<option>1000</option></select
+					>×</label
+				><label
+					>Alinhar por
+					<select id="alignment">
+						<option value="time">tempo decorrido</option>
+						<option value="level">primeiro nível ganho</option>
+					</select></label
+				>
+			</section>
+			<section
+				id="arena"
+				class="arena"
+				aria-label="Comparação de jornadas"
+			></section>
+			<footer>
+				Trajetórias amostradas · espaços sem observação permanecem visíveis · XP
+				é ganho real, não recompensa interna da política.
+			</footer>
+		</main>
+		<template id="card"
+			><article class="journey">
+				<header>
+					<div>
+						<p class="eyebrow participant"></p>
+						<h2 class="name"></h2>
+					</div>
+					<span class="badge status"></span>
+				</header>
+				<p class="provenance"></p>
+				<div class="map-wrap">
+					<canvas
+						class="map"
+						width="700"
+						height="420"
+						aria-label="Trajetória observada por andar"
+					></canvas>
+					<div class="map-label">
+						Grade de coordenadas · <span class="floor"></span>
+					</div>
+				</div>
+				<div class="stats"></div>
+				<canvas
+					class="chart"
+					width="700"
+					height="120"
+					aria-label="XP ao longo da jornada"
+				></canvas>
+				<p class="position"></p>
+				<div class="highlights"></div>
+				<details open>
+					<summary>Decisões e acontecimentos</summary>
+					<div class="timeline"></div>
+				</details>
+				<details>
+					<summary>Configuração e limites da evidência</summary>
+					<pre class="manifest"></pre>
+				</details></article
+		></template>
+	</body>
+</html>
