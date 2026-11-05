@@ -43,6 +43,47 @@ def test_failed_docker_diagnostics_are_retained_with_credentials_redacted(
     assert "[redacted]" in diagnostics and private_value not in diagnostics
 
 
+def test_service_logs_are_redacted_and_retained_before_container_teardown(
+    tmp_path, monkeypatch
+):
+    config = experiment(tmp_path)
+    harness = DockerFixture(config, config.output / "native-0", "qa-only")
+    harness.prepare(config.participants[0])
+    private_value = harness.env_file.read_text().splitlines()[0].split("=", 1)[1]
+    calls = []
+
+    def command(*args, **kwargs):
+        calls.append(args)
+        return "database failure " + private_value
+
+    monkeypatch.setattr(harness, "command", command)
+    harness.started = True
+    harness.close()
+    logs = (harness.directory / "services.log").read_text()
+    assert "[redacted]" in logs and private_value not in logs
+    assert calls[0][0] == "logs" and calls[1][0] == "down"
+
+
+def test_teardown_still_runs_when_diagnostic_storage_fails(tmp_path, monkeypatch):
+    config = experiment(tmp_path)
+    harness = DockerFixture(config, config.output / "native-0", "qa-only")
+    harness.prepare(config.participants[0])
+    calls = []
+
+    def command(*args, **kwargs):
+        calls.append(args)
+        return "logs"
+
+    def fail(*args):
+        raise OSError("isolated full disk")
+
+    monkeypatch.setattr(harness, "command", command)
+    monkeypatch.setattr(harness, "diagnostics", fail)
+    harness.started = True
+    harness.close()
+    assert calls[-1][0] == "down"
+
+
 def experiment(tmp_path):
     fixture = tmp_path / "fixture"
     fixture.mkdir()
