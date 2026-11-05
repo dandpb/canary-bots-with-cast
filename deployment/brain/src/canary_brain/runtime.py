@@ -319,7 +319,13 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 reason = benchmark_stops.check(now)
                 if benchmark_stops.start is None and now - launched > 240:
                     reason = "startup_timeout"
-                if store.get("budget_stop", str(configuration.bots[0])):
+                if reason in {
+                    None,
+                    "completed",
+                    "deaths_limit",
+                    "stalled",
+                    "proposal_timeout",
+                } and store.get("budget_stop", str(configuration.bots[0])):
                     reason = "budget_stop"
                 if recorder:
                     failure = recording_failure(recorder)

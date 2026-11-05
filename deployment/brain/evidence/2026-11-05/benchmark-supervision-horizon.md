@@ -83,6 +83,20 @@ ledger remain governed by the existing preflight and reservation controls.
 
 ## Validation and scope
 
+The subsequent integrated review found two remaining startup/priority cases:
+SIGINT during `character()` could still create a worker; a signal during socket
+readiness or blocking `start_game()` did not reach that worker until the startup
+await returned. It also reproduced a budget marker replacing a critical stale,
+world-change or startup reason. Nine directed cases failed before correction.
+The campaign now checks after character restoration and while waiting for the
+socket, and relays operator interruption concurrently into the worker's stop
+event while awaiting blocking startup. Cleanup waits for the owned startup
+operation to return before closing its stack. Financial stop can replace only
+completion or ordinary gameplay reasons, preserving critical infrastructure
+causes. Twenty-six targeted startup, financial priority, abort and horizon cases
+passed after the correction, including both SIGINT and SIGTERM. All use fake
+harness/worker or native-only isolated SQLite; no paid/provider request occurs.
+
 **182 Python tests passed in 168.72 s**, using a short owned pytest base directory
 to respect Unix socket path limits. This includes twelve policy tests, two
 orchestrator horizon cases, campaign-abort/shutdown race cases, a filtered-choice regression and eleven real supervised CLI
