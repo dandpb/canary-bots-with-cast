@@ -371,9 +371,12 @@ async def exercise(
     recorder.close()
     events = list(ReplayReader(root / "replay.db").all_events(manifest.run_id))
     requests: dict[str, dict[str, Any]] = {}
+    failed_events: list[dict[str, Any]] = []
     for event in events:
         if event["kind"] == "request":
             requests.setdefault(event["data"]["request_id"], {}).update(event["data"])
+            if event["data"].get("phase") == "failed":
+                failed_events.append(event["data"])
     metrics = summarize(events, manifest.model_dump())
     with sqlite3.connect(root / "budget.db") as db:
         ledger_rows = db.execute("SELECT reserved, spent FROM requests").fetchall()
@@ -429,7 +432,11 @@ async def exercise(
         "failed_events_classified_as_timeout": all(
             r.get("error") == "TimeoutError" for r in failed
         ),
-        "failed_events_carry_applied_deadline": all("deadline_ms" in r for r in failed),
+        # Checked on each failed event alone, not merged with its reserved event.
+        "failed_events_carry_applied_deadline": sorted(
+            e.get("deadline_ms", -1) for e in failed_events
+        )
+        == sorted(round(r["applied_deadline_s"] * 1000) for r in timeouts),
     }
     return {
         "litellm": "1.108.0",

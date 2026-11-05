@@ -44,6 +44,7 @@ async def test_deadline_miss_is_recorded_as_timeout_and_keeps_its_liability(
     reserved, failed = events
     assert reserved["deadline_ms"] == 50
     assert failed["phase"] == "failed" and failed["error"] == "TimeoutError"
+    assert failed["deadline_ms"] == 50
     assert failed["reserved_nanousd"] == reserved["reserved_nanousd"]
     # A late answer is discarded: its upper bound stays an unknown liability.
     assert store.budget()["spent"] == 0

@@ -228,6 +228,7 @@ class Provider:
                     {
                         "phase": "failed",
                         "error": failure,
+                        "deadline_ms": round(timeout * 1000),
                         "reserved_nanousd": 0 if settled else upper,
                         "unsettled": not settled,
                         "elapsed_ms": round((time.monotonic() - started) * 1000),

@@ -13,8 +13,9 @@ PYTHONPATH=deployment/brain/src python deployment/brain/tools/deadline_smoke.py 
 
 Grid: configured `decision_timeout` 1.2 s (runtime default), 2.5 s, 10 s
 (Experiment default) × catalogs with server TTLs 5000 ms (hunt/resupply),
-1500 ms (retreat/continue) and 1000 ms (target) × delays 0.5/1.19/1.21/1.85/3 s.
-Result: [smoke-result.json](smoke-result.json), all 14 checks true.
+1500 ms (retreat/continue) and 1000 ms (target) × delays 0.5/1.19/1.21/1.85/3 s,
+that is 45 measured cases. One unmeasured warm-up call (no delay, 30 s deadline)
+runs first so the first case is not a cold gateway. Result: [smoke-result.json](smoke-result.json), all 14 checks true.
 
 ## What the deadline really is
 
@@ -30,21 +31,26 @@ Result: [smoke-result.json](smoke-result.json), all 14 checks true.
 With a 1.85 s upstream delay (about 2.0 s end to end; Luna's real 1,854 ms was
 already end to end) only the 5000 ms catalog succeeds, and only with a configured
 value above the end-to-end time. Gateway plus adapter overhead
-over the injected delay was 144-198 ms, so the 1.19 s case also times out at 1.2 s.
-The deadline fired 35-62 ms late on this host.
+over the injected delay was 140-223 ms, so the 1.19 s case also times out at 1.2 s.
+The deadline fired 35-71 ms late on this host.
 
 ## Failure and money accounting
 
-- 25/45 cases timed out; each raised `TimeoutError`, recorded one `failed` request
-  event, counted in replay `provider_failures`, settled nothing and kept its full
+- Of the 45 measured cases, 25 timed out and 20 succeeded. Each timeout raised `TimeoutError`, recorded one `failed` request
+  event carrying its own `error` and `deadline_ms`, counted in replay
+  `provider_failures`, settled nothing and kept its full
   upper-bound reservation (about 0.81 mUSD versus 0.05 mUSD actual usage).
 - Every late answer still completed at the upstream (a provider would bill it);
   none settled afterwards. Ledger reserved = unsettled rows = replay
-  `reserved_nanousd` = 20,334,750 nanodollars; spent = 21 successes x 50,000.
+  `reserved_nanousd` = 20,334,750 nanodollars (25 timeouts). Ledger spent =
+  1,050,000 nanodollars = 21 settled calls x 50,000: the 20 measured successes
+  plus the warm-up. The ledger therefore has 46 rows (45 cases + warm-up), and
+  the replay latency percentiles also include the warm-up.
 - Before this branch, every deadline miss was recorded as `CancelledError`
   (the outer `asyncio.timeout` cancels the transmission first), indistinguishable
   from world-change or shutdown cancellation. Now it is `TimeoutError` with
-  `deadline_ms`; an external cancellation stays `CancelledError`.
+  `deadline_ms` on both the `reserved` and the `failed` event; an external
+cancellation stays `CancelledError`.
 
 ## Limits
 
