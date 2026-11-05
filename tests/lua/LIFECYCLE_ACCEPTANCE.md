@@ -104,8 +104,14 @@ also runs when bots are disabled.
 The first shared-connection implementation blocked a dispatcher SELECT behind a
 two-second DELETE (2049 ms). Two private cast DB workers reduced the same
 control-inclusive probe to 201–204 ms. Hibernated bot listings/wake were also
-exercised. Standalone #16+#20 build/runtime evidence is recorded separately; the
-integrated result alone is not claimed as proof of branch independence.
+exercised. A separate Release server/library build at #20 head `af2b8b57a` (over
+#16, without #17/#18/#19) also passed the actual human release/disconnect/reconnect,
+delayed DELETE, prolonged failure/retry, logout and death flow. Its dispatcher
+probe measured 228 ms (265 ms on the preceding run) during a two-second DELETE.
+The standalone runtime separately listed the hibernated bot through HTTP and TCP;
+selecting its cast woke the same runtime Player with one viewer. Normal shutdowns
+returned exit 0. The test-only cast bridge was compiled against that branch's own
+headers, without the reload/persistence fixture interfaces.
 
 ## Replay/party and remaining gates
 

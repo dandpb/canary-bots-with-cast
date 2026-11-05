@@ -120,6 +120,18 @@ int roster(lua_State* state) {
 
 int cast(lua_State* state) {
 	const std::string action = luaL_checkstring(state, 1);
+	if (action == "botState") {
+		if (!BotEngineLoader::getInstance().isLoaded()) return luaL_error(state, "engine unavailable");
+		auto& engine = BotEngineLoader::getInstance().getEngine();
+		auto* bot = engine.getBotState(65001);
+		const auto player = bot ? (bot->hibernated ? engine.getHibernatedBotPlayer(65001) : bot->playerRef.lock()) : nullptr;
+		if (!player) return luaL_error(state, "loaded bot fixture required");
+		lua_newtable(state);
+		lua_pushinteger(state, player->getID()); lua_setfield(state, -2, "runtimeId");
+		lua_pushboolean(state, bot->hibernated); lua_setfield(state, -2, "hibernated");
+		lua_pushinteger(state, (player.get()->*member(ViewerCount{}))()); lua_setfield(state, -2, "viewers");
+		return 1;
+	}
 	if (action == "watchBot") {
 		viewer = protocol();
 		viewer->castViewerLogin("Grizzle Alyronia");

@@ -3,7 +3,9 @@
 import json
 import sys
 import time
+
 import lifecycle_qa as q
+
 
 def sql(query):
     q.verify(q.PREFIX+'-db')

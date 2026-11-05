@@ -129,9 +129,11 @@ event:register()
     for _ in range(120):
         if docker("exec", database, "healthcheck.sh", "--connect", "--innodb_initialized", check=False) == "":
             state = docker("exec", database, "mariadb", "-uroot", "-plifecycle-qa-only", "-N", "-e", "SELECT 1", check=False)
-            if state == "1": break
+            if state == "1":
+                break
         time.sleep(1)
-    else: raise TimeoutError("disposable database did not initialize")
+    else:
+        raise TimeoutError("disposable database did not initialize")
     seed_human()
     docker("start", game)
     print(json.dumps({"game": game, "database": database, "network": PREFIX, "work": str(work)}))

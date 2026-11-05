@@ -110,6 +110,21 @@ def run():
     wait_listed(False)
     print("PASS actual human death removes HTTP publication", flush=True)
 
+    qa.command("load")
+    before = cast("botState")
+    qa.command("hibernate")
+    assert cast("botState")["hibernated"]
+    deadline = time.monotonic() + 5
+    while "Grizzle Alyronia" not in listed():
+        assert time.monotonic() < deadline, "hibernated bot missing from HTTP casts"
+        time.sleep(.1)
+    assert "Grizzle Alyronia".encode().hex() in cast("list")
+    cast("watchBot")
+    after = cast("botState")
+    assert not after["hibernated"] and after["viewers"] == 1, after
+    assert before["runtimeId"] == after["runtimeId"], (before, after)
+    print("PASS hibernated bot listed in HTTP/TCP and same Player awakened by viewer", flush=True)
+
 
 if __name__ == "__main__":
     run()
