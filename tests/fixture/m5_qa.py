@@ -21,7 +21,11 @@ IMAGE = "canary-m5-free-qa:20261105a"
 
 def command(*args, timeout=300):
     value = subprocess.run(
-        list(map(str, args)), capture_output=True, text=True, timeout=timeout
+        list(map(str, args)),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
     )
     if value.returncode:
         raise RuntimeError(value.stderr[-2000:] + value.stdout[-1000:])
@@ -126,6 +130,9 @@ def prepare():
         "botDwellRerollMaxSec": 5,
         "botHuntTimeMinSec": 600,
         "botHuntTimeMaxSec": 600,
+        "loginProtocolPort": 7171,
+        "gameProtocolPort": 7172,
+        "statusProtocolPort": 7173,
     }
     (build / "overrides.json").write_text(json.dumps(overrides))
     entry = "import json,os,shutil\nfrom pathlib import Path\nv=json.loads(Path('/m5-overrides.json').read_text());v['mysqlPass']=os.environ['MARIADB_PASSWORD']\nc=Path('config.lua.dist').read_text()+'\\n'+'\\n'.join(k+'='+json.dumps(x) for k,x in v.items())+'\\n'\nPath('config.lua').write_text(c)\nshutil.copyfile('/etc/canary-brain/server.json','data/bot/brain.json')\nos.execv('/canary/canary',['/canary/canary'])\n"
@@ -153,7 +160,7 @@ event:interval(1000);event:register()
 """
     (build / "scripts/globalevents/aaa_m5_free_qa.lua").write_text(audit)
     (build / "Dockerfile").write_text(
-        'FROM canary-party-qa:local\nCOPY scripts/ /canary/data/scripts/\nCOPY entry.py /m5-entry.py\nCOPY overrides.json /m5-overrides.json\nENTRYPOINT ["python3","/m5-entry.py"]\n'
+        'FROM canary-party-qa:local\nCOPY scripts/ /canary/data/scripts/\nRUN mv /canary/data/scripts/globalevents/bot_market_funding.lua /canary/qa-disabled-market-funding.lua && mv /canary/data/scripts/globalevents/bot_market.lua /canary/qa-disabled-market.lua\nCOPY entry.py /m5-entry.py\nCOPY overrides.json /m5-overrides.json\nENTRYPOINT ["python3","/m5-entry.py"]\n'
     )
     command("docker", "build", "-t", IMAGE, build)
     manifest = {
@@ -218,7 +225,11 @@ def run(mode):
         source_revision=manifest["source_revision"],
         expected_initial_sha256=manifest["fixture_sha256"],
     )
-    harness = DockerFixture(experiment, directory, "m5free-" + mode + "-" + WORK.name)
+    harness = DockerFixture(
+        experiment,
+        directory,
+        hashlib.sha256((WORK.name + ":" + mode).encode()).hexdigest(),
+    )
     harness.prepare(Participant(name="native", kind="native"))
     server = directory / "config/server.json"
     value = json.loads(server.read_text())
