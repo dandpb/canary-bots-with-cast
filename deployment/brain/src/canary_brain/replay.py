@@ -17,6 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from .protocol import Bot
 from .recording import Manifest, RecordingStore, ReplayReader, canonical, public_data
 
+METRICS_VERSION = 2
+
 
 class ArchivedEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
@@ -214,7 +216,10 @@ def summarize(
         else None
     )
     wall_ms = (
-        max(0, int((last["wall"] - first["wall"]) * 1000)) if first and last else 0
+        max(0, last["t_ms"] - first["t_ms"]) if first and last else 0
+    )
+    calendar_elapsed_ms = (
+        int((last["wall"] - first["wall"]) * 1000) if first and last else None
     )
     spent = sum(int(r.get("spent_nanousd", 0)) for r in requests.values())
     reserved = sum(int(r.get("reserved_nanousd", 0)) for r in requests.values())
@@ -224,6 +229,7 @@ def summarize(
     if native_samples:
         active_ms = native_active_ms
     return {
+        "version": METRICS_VERSION,
         "xp_delta": xp,
         "xp_per_wall_hour": xp * 3600000 / wall_ms
         if xp is not None and wall_ms
@@ -233,6 +239,7 @@ def summarize(
         else None,
         "active_ms": active_ms,
         "wall_ms": wall_ms,
+        "calendar_elapsed_ms": calendar_elapsed_ms,
         "duration_ms": end,
         "deaths": sum(value - death_baselines[world] for world, value in deaths.items())
         if native_samples
@@ -271,6 +278,7 @@ def summarize(
         "confirmed_objective_defeats": defeats,
         "limitations": [
             "Sampled observations; hidden events are not reconstructed.",
+            "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
             "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero.",
         ],
     }
