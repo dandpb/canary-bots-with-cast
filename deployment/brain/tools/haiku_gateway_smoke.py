@@ -261,6 +261,14 @@ def main():
                             "enum"
                         ] == ["continue", "resupply"], tool
                         native_strict = tool.get("strict") is True
+                        assert set(tool) <= {
+                            "name",
+                            "input_schema",
+                            "strict",
+                            "type",
+                            "description",
+                        }, tool
+                        assert tool["input_schema"]["additionalProperties"] is False
                         usage = observed[-1]["usage"]
                         assert (
                             usage["input_tokens"] == 15 and usage["output_tokens"] == 2

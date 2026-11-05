@@ -55,3 +55,40 @@ Review a LiteLLM configuration or version change and reproduce the strict flag
 on the captured native wire, retaining all accounting and single-call checks.
 Do not weaken the scored contract, silently substitute another model, bypass
 LiteLLM, or start paid requests to investigate this finding.
+
+## Follow-up: cause and adapter fix (same day)
+
+Cause, in LiteLLM 1.108.0 itself (no configuration key involved):
+
+- The Responses bridge keeps `strict` when it turns the `function` tool into a
+  Chat Completions tool
+  (`litellm/responses/litellm_completion_transformation/transformation.py:2497`).
+- `AnthropicConfig._map_tool_helper`
+  (`litellm/llms/anthropic/chat/transformation.py:941-972`) then builds the
+  Messages tool from `name`, `input_schema` and `type: "custom"` only, so
+  `function.strict` is dropped. `drop_params`, `additional_drop_params` and the
+  map's `supports_native_structured_output: true` do not change this.
+- Same result offline with 1.100.0, 1.104.8, 1.106.7 and 1.108.0 (latest on
+  PyPI on 2026-11-05); `_map_tool_helper` has no `strict` in tags v1.70 to
+  v1.108.0 nor on LiteLLM `main` (`aa7917a3`, 2026-11-05).
+
+Fix: for `provider == "anthropic"`, `GatewayProvider` now sends the choice
+tool already in Messages shape (`name`, `input_schema`, `strict: true`, no
+`type`). The Responses bridge passes an unknown-type tool through (`:2530`) and
+`_map_tools` forwards a tool with `input_schema` as is
+(`litellm/llms/anthropic/chat/transformation.py:1257`). Other providers keep
+the OpenAI function tool unchanged.
+
+Result with the fix: [haiku-native-tool-result.json](haiku-native-tool-result.json),
+exit 0. Compared with the pinned run, the upstream decision request is the
+same except inside the tool: `strict: true` is added and the defaults
+`type: "custom"` and `description: ""` are no longer sent. The enum, forced
+tool, `disable_parallel_tool_use`, `max_tokens: 256`, one upstream call per
+decision, usage 15/2/17, 124 mock nanodollars and retained liability on
+missing usage/HTTP 500 are unchanged (3 upstream calls in total).
+
+This run used `litellm==1.108.0`, `openai==3.46.0` from
+`gateway/requirements.lock` in a local venv (`--inside`, loopback only), not
+the image digest, which was not available. `contract_qualified: true` is only
+the wire gate: whether the real Haiku endpoint accepts `strict` without a
+beta header, account access, prices and paid approval remain unverified.
