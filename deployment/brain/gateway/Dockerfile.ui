@@ -1,0 +1,5 @@
+FROM ghcr.io/berriai/litellm:v1.108.0
+WORKDIR /app
+COPY deployment/brain/src/canary_brain/gateway_policy.py /app/gateway_policy.py
+ENV PYTHONPATH=/app LITELLM_LOCAL_MODEL_COST_MAP=true CANARY_GATEWAY_CONFIG=/app/gateway.yaml
+CMD ["--config", "/app/gateway.yaml", "--host", "0.0.0.0", "--port", "4000"]

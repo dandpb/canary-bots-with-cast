@@ -29,3 +29,37 @@ async def test_missing_or_invalid_key_returns_401_without_extra_gateway_packages
     with pytest.raises(HTTPException) as rejected:
         await gateway_policy.authenticate(request, key)
     assert rejected.value.status_code == 401
+
+
+@pytest.mark.parametrize("status", [400, 403, 409, 500])
+async def test_recognized_worker_failure_cannot_fall_through_to_native_auth(
+    monkeypatch, status
+):
+    class HTTPException(Exception):
+        def __init__(self, status_code, detail):
+            self.status_code, self.detail = status_code, detail
+
+    class ProxyException(Exception):
+        def __init__(self, *, message, type, param, code):
+            self.code = code
+
+    dependencies = {
+        "fastapi": SimpleNamespace(HTTPException=HTTPException),
+        "litellm.proxy._types": SimpleNamespace(ProxyException=ProxyException),
+    }
+    monkeypatch.setattr(
+        gateway_policy.importlib, "import_module", dependencies.__getitem__
+    )
+    monkeypatch.setenv("LITELLM_WORKER_KEY", "private-unit-fixture")
+
+    async def deny(*args):
+        if status == 500:
+            raise OSError("unreadable policy")
+        raise HTTPException(status, "denied policy")
+
+    monkeypatch.setattr(gateway_policy, "_authenticate_worker", deny)
+    # The pinned LiteLLM enterprise_custom_auth(mode=auto) rethrows this type;
+    # ordinary HTTPException would instead attempt native/database auth.
+    with pytest.raises(ProxyException) as rejected:
+        await gateway_policy.authenticate(object(), "private-unit-fixture")
+    assert rejected.value.code == status

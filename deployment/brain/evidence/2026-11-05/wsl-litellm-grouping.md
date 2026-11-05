@@ -63,3 +63,51 @@ runtime services and cleaning temporary containers after use.
 Deployment backup/verification is retained privately under
 `/home/daniel/canary-maintenance/litellm-grouping-20261105T205514Z`.
 No runtime env, internal key or provider credential is included in this change.
+
+## Dashboard database and authentication
+
+The operator then reproduced `Authentication Error, Not connected to DB!`.
+An actual form login with the existing local admin credentials returned400
+before the change. The minimal API image had no Prisma client and the gateway
+had no database connection. Credentials alone could not enable the dashboard.
+
+Added `litellm-db`, a dedicated PostgreSQL16 service/volume within the same
+Compose project, with no host port. `Dockerfile.ui` inherits the official
+LiteLLM1.108.0 image and its migration entrypoint. Preparation now creates
+dedicated DB/UI env files, including a persistent salt, and preserves the
+existing internal master/worker keys. Runtime env files have mode0600.
+The username remains `admin`; the existing master key is the fallback password.
+
+The first successful login issued a valid proxy_admin session but dashboard
+requests still returned403 because the custom worker policy handled every key.
+The WSL policy now selects native-auth fallback for non-worker credentials.
+Recognized worker policy failures use LiteLLM's ProxyException, which the pinned
+auto-mode dispatcher explicitly rethrows, preventing administrative fallback.
+Unexpected worker-policy failures also fail closed. Sessions and unknown keys
+are validated by LiteLLM's database-backed auth rather than by a custom JWT check.
+
+Actual local HTTP verification, without upstream/model calls:
+
+- form login303 to `/ui`, with a proxy_admin session cookie;
+- dashboard-session `/user/info`200 and `/model/info`200;
+- worker credential `/user/info`403;
+- worker inference request without manifest headers409;
+- unknown credential `/user/info`401.
+
+Eighteen gateway/auth/setup regressions passed, including worker-policy
+failures400/403/409/500 and preservation of existing keys, DB password and salt.
+Ruff lint/format passed; mypy passed. Existing game, worker,
+MariaDB and web IDs/StartedAt values remained unchanged. Both new gateway
+services are healthy; seven active containers remain including ai-memory.
+No provider credentials were read and no paid calls were made.
+
+Private migration audits:
+`/home/daniel/canary-maintenance/litellm-ui-20261105T211033Z` and
+`/home/daniel/canary-maintenance/litellm-dashboard-auth-20261105T211457Z`.
+The PostgreSQL image used was
+`sha256:e0e53cfa0884f3cc216a621033e4f38dceb49e52218ac77facc8e48f02973093`.
+
+References checked on2026-11-05:
+[LiteLLM UI](https://docs.litellm.ai/docs/proxy/ui),
+[deployment/database](https://docs.litellm.ai/docs/proxy/deploy),
+[custom authentication](https://docs.litellm.ai/docs/proxy/custom_auth).

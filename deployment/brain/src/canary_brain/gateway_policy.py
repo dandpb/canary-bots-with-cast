@@ -70,6 +70,38 @@ def validate_policy(config: dict[str, Any]) -> set[str]:
 
 
 async def authenticate(request: Any, api_key: str | None) -> Any:
+    """Delegate dashboard keys to native auth; worker failures never fall through."""
+    HTTPException = importlib.import_module("fastapi").HTTPException
+    expected = os.environ.get("LITELLM_WORKER_KEY", "")
+    if (
+        not isinstance(api_key, str)
+        or not expected
+        or not hmac.compare_digest(api_key.removeprefix("Bearer "), expected)
+    ):
+        # With custom_auth_settings.mode=auto, LiteLLM validates admin/session
+        # keys using its normal database auth. Unknown keys are still rejected.
+        raise HTTPException(status_code=401, detail="invalid worker credential")
+    ProxyException = importlib.import_module("litellm.proxy._types").ProxyException
+    try:
+        return await _authenticate_worker(request, api_key)
+    except HTTPException as error:
+        # Auto mode explicitly rethrows ProxyException instead of falling back.
+        raise ProxyException(
+            message=error.detail,
+            type="auth_error",
+            param=None,
+            code=error.status_code,
+        ) from None
+    except Exception:  # noqa: BLE001 - all worker failures must block native auth fallback
+        raise ProxyException(
+            message="worker gateway policy could not be validated",
+            type="auth_error",
+            param=None,
+            code=500,
+        ) from None
+
+
+async def _authenticate_worker(request: Any, api_key: str) -> Any:
     # Imported only inside LiteLLM; the worker and offline tests do not need its SDK.
     yaml = importlib.import_module("yaml")
     HTTPException = importlib.import_module("fastapi").HTTPException
@@ -80,13 +112,6 @@ async def authenticate(request: Any, api_key: str | None) -> Any:
         raise HTTPException(
             status_code=403, detail="worker credential cannot administer gateway"
         )
-    expected = os.environ.get("LITELLM_WORKER_KEY", "")
-    if (
-        not isinstance(api_key, str)
-        or not expected
-        or not hmac.compare_digest(api_key.removeprefix("Bearer "), expected)
-    ):
-        raise HTTPException(status_code=401, detail="invalid worker credential")
     raw = Path(
         os.environ.get("CANARY_GATEWAY_CONFIG", "/app/gateway.yaml")
     ).read_bytes()
