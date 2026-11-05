@@ -172,17 +172,19 @@ bool IOLoginDataSave::savePlayerFirst(const std::shared_ptr<Player> &player, std
 	Database &db = Database::getInstance();
 
 	std::ostringstream query;
-	query << "SELECT `save` FROM `players` WHERE `id` = " << player->getGUID();
-	DBResult_ptr result = db.storeQuery(query.str());
-	if (!result) {
-		g_logger().warn("[IOLoginData::savePlayer] - Error for select result query from player: {}", player->getName());
-		return false;
-	}
+	if (!db.isCapturingStatements()) {
+		query << "SELECT `save` FROM `players` WHERE `id` = " << player->getGUID();
+		DBResult_ptr result = db.storeQuery(query.str());
+		if (!result) {
+			g_logger().warn("[IOLoginData::savePlayer] - Error for select result query from player: {}", player->getName());
+			return false;
+		}
 
-	if (result->getNumber<uint16_t>("save") == 0) {
-		query.str("");
-		query << "UPDATE `players` SET `lastlogin` = " << player->lastLoginSaved << ", `lastip` = " << player->lastIP << " WHERE `id` = " << player->getGUID();
-		return db.executeQuery(query.str());
+		if (result->getNumber<uint16_t>("save") == 0) {
+			query.str("");
+			query << "UPDATE `players` SET `lastlogin` = " << player->lastLoginSaved << ", `lastip` = " << player->lastIP << " WHERE `id` = " << player->getGUID();
+			return db.executeQuery(query.str());
+		}
 	}
 
 	// First, an UPDATE query to write the player itself

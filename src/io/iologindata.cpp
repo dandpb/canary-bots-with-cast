@@ -191,6 +191,40 @@ void IOLoginData::loadOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &pla
 	IOLoginDataLoad::loadPlayerUpdateSystem(player);
 }
 
+PlayerSaveSnapshot IOLoginData::capturePlayerSave(const std::shared_ptr<Player>& player, const Position& position) {
+	PlayerSaveSnapshot snapshot;
+	snapshot.guid = player->getGUID();
+	snapshot.onlineSystems = !player->isOffline();
+	snapshot.loginOnly = fmt::format("UPDATE `players` SET `lastlogin`={}, `lastip`={} WHERE `id`={}",
+		player->lastLoginSaved, player->lastIP, snapshot.guid);
+	Database sink;
+	sink.collectStatements(snapshot.statements);
+	Database::ScopedConnection route(sink);
+	savePlayerGuard(player, position, &snapshot.storage);
+	if (snapshot.onlineSystems) snapshot.forge = player->forgeHistory().pending();
+	return snapshot;
+}
+
+bool IOLoginData::persistPlayerSave(const PlayerSaveSnapshot& snapshot) {
+	return DBTransaction::executeWithinTransaction([&snapshot] {
+		auto& db = Database::getInstance();
+		auto row = db.storeQuery(fmt::format("SELECT `save` FROM `players` WHERE `id`={}", snapshot.guid));
+		if (!row || snapshot.statements.empty()) throw DatabaseException("Checkpoint player is unavailable");
+		const bool full = row->getNumber<uint16_t>("save") != 0;
+		for (size_t i = 0; i < snapshot.statements.size(); ++i) {
+			const auto& query = i == 0 && !full ? snapshot.loginOnly : snapshot.statements[i];
+			if (!db.executeQuery(query)) throw DatabaseException("Checkpoint statement failed");
+		}
+		return true;
+	});
+}
+
+void IOLoginData::acknowledgePlayerSave(const std::shared_ptr<Player>& player, const PlayerSaveSnapshot& snapshot) {
+	if (!snapshot.onlineSystems) return;
+	player->storage().acknowledge(snapshot.storage);
+	player->forgeHistory().acknowledge(snapshot.forge);
+}
+
 bool IOLoginData::savePlayer(const std::shared_ptr<Player> &player, std::optional<Position> position) {
 	if (!player) return false;
 	PlayerStorage::PlayerStorageDelta storageDelta;
