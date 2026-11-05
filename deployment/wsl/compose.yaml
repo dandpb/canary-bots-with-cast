@@ -1,5 +1,24 @@
 name: canary-bots-wsl
 services:
+  litellm:
+    profiles: [gateway]
+    image: canary-litellm:1.108.0
+    build:
+      context: ../..
+      dockerfile: deployment/brain/gateway/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./runtime/secrets/litellm-provider.env
+      - ./runtime/secrets/litellm-worker.env
+    volumes:
+      - ./runtime/config/litellm.yaml:/app/gateway.yaml:ro
+    ports:
+      - 127.0.0.1:4000:4000
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/readiness',timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
   database:
     image: mariadb:11.4
     restart: unless-stopped

@@ -43,6 +43,33 @@ A limpeza por inatividade e a cobrança automática de aluguel ficam desativadas
 neste ambiente local. Os seeds têm datas antigas; os padrões de produção
 retomariam as casas e transfeririam a decoração antes da ativação dos bots.
 
+## Gateway LiteLLM no mesmo projeto
+
+O serviço opcional `litellm` pertence ao projeto `canary-bots-wsl`, junto de
+database/game/brain/web. Prepare os arquivos sem substituir configurações ou
+credenciais existentes e inicie somente esse serviço:
+
+```bash
+cd /home/daniel/canary-bots-wsl/deployment/wsl
+python3 setup-gateway.py
+docker compose --profile gateway up -d --no-deps --build litellm
+docker compose --profile gateway ps litellm
+```
+
+O endpoint local é `http://127.0.0.1:4000/v1`; outros serviços deste Compose podem
+usar `http://litellm:4000/v1`. A preparação inicial deixa a lista de modelos vazia:
+o container pode ficar saudável, mas as chamadas de inferência permanecem
+bloqueadas até configurar modelos e credenciais autorizados. Isso não muda o
+provider do worker existente nem inicia testes pagos.
+
+Os arquivos locais são `runtime/config/litellm.yaml`,
+`runtime/secrets/litellm-provider.env` e `runtime/secrets/litellm-worker.env`.
+Configure ali os aliases explícitos de OpenAI/Gemini conforme
+`deployment/brain/gateway/gateway.example.yaml`, mantendo a política do gateway.
+Após alterar a configuração, recrie somente `litellm` e revalide sua identidade.
+Use o serviço deste Compose para a implantação WSL; o Compose independente em
+`deployment/brain/gateway/` fica disponível para outros ambientes isolados.
+
 ## Worker de IA
 
 A imagem `canary-bots-wsl-brain:local` contém a implementação desta branch.
