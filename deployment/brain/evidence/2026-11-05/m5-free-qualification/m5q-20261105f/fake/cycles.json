@@ -1,0 +1,41 @@
+{
+  "read_only_status_transitions": [],
+  "first_live_audit": {
+    "level": 20,
+    "money": 0,
+    "bank": 10000,
+    "position": [
+      32369,
+      32241,
+      7
+    ],
+    "at": 1793890336881,
+    "hp": 365,
+    "hpmax": 365,
+    "manamax": 95,
+    "xp": 98800,
+    "mana": 95,
+    "potions": 2
+  },
+  "last_live_audit": {
+    "level": 20,
+    "money": 0,
+    "bank": 7986,
+    "position": [
+      32371,
+      32238,
+      7
+    ],
+    "at": 1793890397393,
+    "hp": 365,
+    "hpmax": 365,
+    "manamax": 95,
+    "xp": 98800,
+    "mana": 95,
+    "potions": 40
+  },
+  "audit_samples": 73,
+  "bank_debit": 2014,
+  "potions_gained": 38,
+  "limits": "Status starts after 540 observed seconds and samples every 10 seconds; unobserved transitions are not reconstructed. Hunt phase RESUPPLYING alone does not prove a purchase."
+}

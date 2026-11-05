@@ -1,0 +1,32 @@
+{
+  "mode": "fake",
+  "fixture_sha256": "1d6e3ca67ee5dd36ff8566395a35701255c2622ee2d9f244ce63fb84634a9b6d",
+  "project": "canary-bench-e1d5221933ecae9ff1d1",
+  "phase": "finished",
+  "initial_character": {
+    "id": 65001,
+    "level": 20,
+    "experience": 98800,
+    "posx": 32369,
+    "posy": 32241,
+    "posz": 7
+  },
+  "stop": {
+    "monotonic": 76358.676357423,
+    "start": 76302.864861017,
+    "elapsed": 55.81149640599324,
+    "last": 76358.485784373,
+    "deaths": 0,
+    "opportunity": null,
+    "reason": "supply_goal_completed",
+    "finished": 76358.689186771
+  },
+  "saved_character": {
+    "id": 65001,
+    "level": 20,
+    "experience": 98800,
+    "posx": 32371,
+    "posy": 32238,
+    "posz": 7
+  }
+}

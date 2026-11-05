@@ -1,0 +1,46 @@
+{
+  "read_only_status_transitions": [
+    {
+      "elapsed": 540.2879076700046,
+      "status": "Bot 'Grizzle Alyronia': state=IDLE pos=(32335,32080,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=65/95 hunt=[none] target=no fc=0 travel=none"
+    }
+  ],
+  "first_live_audit": {
+    "money": 0,
+    "level": 20,
+    "bank": 10000,
+    "position": [
+      32369,
+      32241,
+      7
+    ],
+    "hp": 365,
+    "mana": 95,
+    "at": 1793887887317,
+    "potions": 40,
+    "hpmax": 365,
+    "manamax": 95,
+    "xp": 98800
+  },
+  "last_live_audit": {
+    "money": 0,
+    "level": 20,
+    "bank": 10000,
+    "position": [
+      32314,
+      32106,
+      7
+    ],
+    "hp": 365,
+    "mana": 65,
+    "at": 1793889827317,
+    "potions": 40,
+    "hpmax": 365,
+    "manamax": 95,
+    "xp": 103165
+  },
+  "audit_samples": 1954,
+  "bank_debit": 0,
+  "potions_gained": 0,
+  "limits": "Status starts after 540 observed seconds and samples every 10 seconds; unobserved transitions are not reconstructed. Hunt phase RESUPPLYING alone does not prove a purchase."
+}

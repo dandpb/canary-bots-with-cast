@@ -1,0 +1,45 @@
+{
+  "verified_file_hashes": 89,
+  "verified_replay_imports": [
+    {
+      "run_id": "m5q-20261105b:native",
+      "status": "failed",
+      "incomplete": false
+    },
+    {
+      "run_id": "m5q-20261105d:fake",
+      "status": "completed",
+      "incomplete": false
+    },
+    {
+      "run_id": "m5q-20261105d:native",
+      "status": "completed",
+      "incomplete": false
+    },
+    {
+      "run_id": "m5q-20261105e:fake",
+      "status": "failed",
+      "incomplete": false
+    },
+    {
+      "run_id": "m5q-20261105f:fake",
+      "status": "completed",
+      "incomplete": false
+    },
+    {
+      "run_id": "m5-runner-free-smoke:native:0",
+      "status": "completed",
+      "incomplete": false
+    }
+  ],
+  "owned_projects_removed": [
+    "canary-bench-0180acc26d7f29920e4d",
+    "canary-bench-236279fe83bd2fc6986b",
+    "canary-bench-d8971825225cf21faf4d",
+    "canary-bench-e1d5221933ecae9ff1d1",
+    "canary-bench-f67bbd1402f5a3fc9c9d",
+    "canary-bench-fcbcf17253aa0d334868"
+  ],
+  "provider_credentials_included": false,
+  "scope": "Only allowlisted exported artifacts; database.env and provider credential paths are excluded by the exporters."
+}
