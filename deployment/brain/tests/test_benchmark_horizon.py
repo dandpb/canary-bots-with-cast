@@ -7,8 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 from test_benchmark import experiment
+from test_protocol import observation
 
 from canary_brain import benchmark
+from canary_brain.recording import RecordingStore
 from canary_brain.store import Store
 
 
@@ -62,8 +64,24 @@ async def test_runner_waits_for_the_workers_observed_horizon(
             state.put(
                 "run_stop",
                 "end",
-                {"reason": "completed", "elapsed_seconds": elapsed[-1]},
+                {
+                    "reason": "completed",
+                    "elapsed_seconds": elapsed[-1],
+                    "observed_seconds": elapsed[-1],
+                },
             )
+            for index, seconds in enumerate([0, elapsed[-1]]):
+                RecordingStore(configuration.recording.path).append(
+                    {
+                        "run": configuration.recording.manifests[0].run_id,
+                        "key": str(index),
+                        "segment": "fixture",
+                        "t_ms": int(seconds * 1000),
+                        "wall": time.time(),
+                        "kind": "sample",
+                        "data": observation(),
+                    }
+                )
 
     monkeypatch.setattr(benchmark, "DockerFixture", Harness)
     monkeypatch.setattr(benchmark, "run", worker)
@@ -80,6 +98,7 @@ async def test_runner_waits_for_the_workers_observed_horizon(
             Event=asyncio.Event,
             gather=asyncio.gather,
             CancelledError=asyncio.CancelledError,
+            get_running_loop=asyncio.get_running_loop,
         ),
     )
     if premature:

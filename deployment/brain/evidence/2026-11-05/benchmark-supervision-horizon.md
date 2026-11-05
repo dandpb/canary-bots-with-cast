@@ -39,10 +39,22 @@ with continuous observations and invalid choices, which stops correctly.
 
 ## Resulting behavior
 
+Independent review of `07e1bb7` identified four further shutdown races, which
+were not covered by the earlier 174-test pass. New regressions reproduce a gap
+coincident with completion, a gap committed during recorder close, a budget marker
+written just as the worker finishes, and SIGINT while the second trial provisions
+its database. The first two and the observed-coverage test failed before the fixes.
+The signal regression additionally caught asynchronous signal delivery starting
+the second worker; campaign interruption now marks its event synchronously and
+wakes the loop, then lets the current provisioning operation finish before
+teardown. It never starts that second provider worker.
+
 The campaign enables an opt-in single-bot policy in the production worker. Valid
 observation/telemetry and locally validated choice events feed the same policy
 logic exercised in the free qualification. Completion starts at the first valid
-observation. The orchestrator waits for `run_stop` and verifies elapsed evidence;
+observation and requires fresh observations covering the full horizon. The final
+actual observation is sampled explicitly. The orchestrator waits for `run_stop`
+and verifies both observed elapsed time and first-to-last recorded sample span;
 it no longer treats its own startup deadline as successful gameplay.
 
 The policy bounds death, observation loss, lack of observed progress, model-choice
@@ -52,6 +64,18 @@ Gameplay stops are failed trial outcomes; operator stop interrupts the campaign
 and critical infrastructure stops abort it before a subsequent trial. No stop
 releases an unknown financial liability or permits an automatic replacement run.
 
+Recorder errors and persistent gaps override completion and ordinary gameplay
+stops. A generation change remains a critical stop even if it also creates a gap.
+After all worker/provider tasks and the recorder drain, both worker and runner
+revalidate durable evidence. The runner rereads the financial marker at that
+point before accepting completion. Unknown stop reasons abort rather than become
+another failed gameplay trial. Campaign signals remain active during provisioning
+and between trials; explicitly hosted workers do not replace those handlers.
+Standalone worker handlers are removed/restored on exit. A bounded 30-second
+shutdown allowance covers drain without being counted as observed gameplay.
+Duplicate/out-of-order observations cannot refresh benchmark liveness or progress.
+This filtering is confined to supervised benchmarks.
+
 This does not change direct production-worker behavior by default. Supervision
 requires an explicit flag, one recorded bot and a timed horizon. The existing
 benchmark command supplies the flag. Its models, prices, gateway and monthly
@@ -59,21 +83,21 @@ ledger remain governed by the existing preflight and reservation controls.
 
 ## Validation and scope
 
-**174 Python tests passed in 162.69 s**, using a short owned pytest base directory
+**182 Python tests passed in 168.72 s**, using a short owned pytest base directory
 to respect Unix socket path limits. This includes twelve policy tests, two
-orchestrator horizon cases, six campaign-abort cases, a filtered-choice regression and eleven real supervised CLI
+orchestrator horizon cases, campaign-abort/shutdown race cases, a filtered-choice regression and eleven real supervised CLI
 worker cases. The CLI cases use only a local synthetic Unix datagram peer and
 native/fake providers: normal completion after a delayed first observation,
 death limit, generation change, observation loss and critical recording gap.
 They assert correct reason, worker exit, socket removal and zero request rows.
 
 ```sh
-python -m pytest -q --basetemp=/tmp/m5-su-qa-c
+python -m pytest -q --basetemp=/tmp/m5-su-final-f
 ruff check src/canary_brain/benchmark_stops.py src/canary_brain/controller.py \
   src/canary_brain/runtime.py src/canary_brain/benchmark.py \
   tests/test_benchmark_horizon.py tests/test_benchmark_stops.py \
   tests/test_benchmark_worker.py tests/test_benchmark_abort.py \
-  tests/test_benchmark_choice_window.py
+  tests/test_benchmark_choice_window.py tests/test_benchmark_finalize.py
 mypy src
 ```
 

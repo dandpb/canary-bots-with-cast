@@ -170,6 +170,14 @@ class Controller:
         if self.roster is not None and bot not in self.roster:
             return
         self._world(snapshot.world)
+        previous_observation = self.latest.get(bot)
+        if (
+            self.benchmark_stops
+            and previous_observation
+            and previous_observation.world == snapshot.world
+            and snapshot.sequence <= previous_observation.sequence
+        ):
+            return
         if len(self.latest) >= 3 and bot not in self.latest:
             return
         self.latest[bot] = snapshot

@@ -100,17 +100,26 @@ def exercise_supervised_worker(provider, reason):
                     elapsed = time.monotonic() - started
                     if reason == "recording_gap" and elapsed > 0.3 and not injected:
                         run = ReplayReader(work / "replay.db").runs()[0]["id"]
-                        RecordingStore(work / "replay.db").append(
-                            {
-                                "run": run,
-                                "key": "injected-gap",
-                                "segment": "test",
-                                "t_ms": 100,
-                                "wall": time.time(),
-                                "kind": "gap",
-                                "data": {"reason": "storage_limit"},
-                            }
-                        )
+                        # The real writer may be committing concurrently. Retry
+                        # only SQLite contention, within a bounded test window.
+                        for attempt in range(20):
+                            try:
+                                RecordingStore(work / "replay.db").append(
+                                    {
+                                        "run": run,
+                                        "key": "injected-gap",
+                                        "segment": "test",
+                                        "t_ms": 100,
+                                        "wall": time.time(),
+                                        "kind": "gap",
+                                        "data": {"reason": "storage_limit"},
+                                    }
+                                )
+                                break
+                            except sqlite3.OperationalError as error:
+                                if "locked" not in str(error) or attempt == 19:
+                                    raise
+                                time.sleep(0.05)
                         injected = True
                     if reason != "observation_stale" or elapsed < 0.4:
                         packet["sequence"] += 1
@@ -139,6 +148,10 @@ def exercise_supervised_worker(provider, reason):
                                 json.dumps(telemetry).encode(),
                                 str(work / "worker.sock"),
                             )
+                        except BlockingIOError:
+                            # Saturation is a dropped synthetic packet, not a
+                            # worker failure; the next loop retries fresh data.
+                            pass
                         except (FileNotFoundError, ConnectionRefusedError):
                             break
                     try:

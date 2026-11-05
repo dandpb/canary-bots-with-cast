@@ -46,6 +46,8 @@ async def test_a_choice_removed_from_the_sent_catalog_does_not_close_the_window(
         pass
     assert not any(e.get("phase") == "selected" for e in events), events
     assert stops.opportunity is not None
-    stops.observe(snapshot.model_dump(), stops.opportunity + 31)
+    fresh = snapshot.model_dump()
+    fresh["sequence"] += 1
+    stops.observe(fresh, stops.opportunity + 31)
     assert stops.check(stops.opportunity + 31) == "proposal_timeout"
     assert sent == []

@@ -1,6 +1,6 @@
 """Monotonic stop policy for timed, recorded single-bot benchmark runs."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -21,11 +21,18 @@ class Stops:
     deaths_base: int | None = None
     deaths: int = 0
     reason: str | None = None
+    sequences: dict[str, int] = field(default_factory=dict)
 
     def observe(self, packet: dict[str, Any], now: float) -> None:
         if self.world is not None and packet["world"] != self.world:
             self.reason = "world_changed"
         self.world = packet["world"]
+        kind = packet["type"]
+        if "sequence" in packet:
+            sequence = packet["sequence"]
+            if sequence <= self.sequences.get(kind, -1):
+                return
+            self.sequences[kind] = sequence
         if packet["type"] == "telemetry":
             value = packet["deaths"]
             if self.deaths_base is None:
@@ -86,6 +93,6 @@ class Stops:
             and now - self.opportunity > self.proposal_seconds
         ):
             return "proposal_timeout"
-        if now - self.start >= self.horizon:
+        if self.last is not None and self.last - self.start >= self.horizon:
             return "completed"
         return None
