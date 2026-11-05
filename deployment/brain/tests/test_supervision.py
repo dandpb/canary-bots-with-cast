@@ -2,14 +2,13 @@ import asyncio
 import json
 
 import pytest
-from test_protocol import observation
-
 from canary_brain.controller import Controller
 from canary_brain.operator_http import OperatorServer
 from canary_brain.protocol import Observation, Outcome
 from canary_brain.provider import Proposal
 from canary_brain.store import Store
 from canary_brain.testing import FakeProvider
+from test_protocol import observation
 
 
 def console(tmp_path, monkeypatch):
@@ -282,18 +281,20 @@ async def test_http_console_rejects_cross_origin_and_arbitrary_commands(
     tmp_path, monkeypatch
 ):
     c, _snapshot, sent, _clock = console(tmp_path, monkeypatch)
-    api = OperatorServer(c.supervisor, 8091)
+    api = OperatorServer(c.supervisor, 0)
     await api.start("127.0.0.1")
 
     async def request(
         method,
         path,
-        host="localhost:8091",
-        origin="http://localhost:8091",
+        host=None,
+        origin=None,
         token=None,
         body=None,
     ):
-        reader, writer = await asyncio.open_connection("127.0.0.1", 8091)
+        host = host or f"localhost:{api.port}"
+        origin = origin or f"http://localhost:{api.port}"
+        reader, writer = await asyncio.open_connection("127.0.0.1", api.port)
         payload = json.dumps(body).encode() if body else b""
         headers = f"{method} {path} HTTP/1.1\r\nHost: {host}\r\nOrigin: {origin}\r\nContent-Type: application/json\r\nContent-Length: {len(payload)}\r\nX-Operator-Token: {token or ''}\r\n\r\n"
         writer.write(headers.encode() + payload)

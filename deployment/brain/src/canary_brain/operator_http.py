@@ -5,22 +5,32 @@ import json
 import secrets
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
+from .recording import ReplayReader
+from .replay import summary
 from .supervision import Supervisor
 
 
 class OperatorServer:
-    def __init__(self, supervisor: Supervisor, port: int) -> None:
+    def __init__(
+        self,
+        supervisor: Supervisor | None,
+        port: int,
+        replay: ReplayReader | None = None,
+    ) -> None:
         self.supervisor, self.port = supervisor, port
         self.token = secrets.token_urlsafe(32)
         self.server: asyncio.Server | None = None
         self.busy: set[int] = set()
         self.connections = 0
+        self.replay = replay
 
     async def start(self, host: str = "127.0.0.1") -> None:
         self.server = await asyncio.start_server(
             self.handle, host, self.port, limit=8192
         )
+        self.port = int(self.server.sockets[0].getsockname()[1])
 
     async def close(self) -> None:
         if self.server:
@@ -84,7 +94,12 @@ class OperatorServer:
         if "transfer-encoding" in headers:
             raise ValueError("chunked requests not supported")
         if method == "GET":
-            if path == "/api/state":
+            parsed = urlsplit(path)
+            if path == "/favicon.ico":
+                await self.respond(writer, 204, b"", "image/x-icon")
+            elif parsed.path.startswith("/api/replay"):
+                await self.replay_request(writer, parsed.path, parse_qs(parsed.query))
+            elif path == "/api/state" and self.supervisor is not None:
                 await self.respond(
                     writer,
                     200,
@@ -94,19 +109,37 @@ class OperatorServer:
                         "chat_busy": sorted(self.busy),
                     },
                 )
-            elif path in {"/", "/app.js", "/style.css"}:
-                filename = "index.html" if path == "/" else path[1:]
+            elif path in {
+                "/",
+                "/app.js",
+                "/style.css",
+                "/replay",
+                "/replay.js",
+                "/replay.css",
+            }:
+                if path == "/" and self.supervisor is None:
+                    path = "/replay"
+                filename = (
+                    "index.html"
+                    if path == "/"
+                    else "replay.html"
+                    if path == "/replay"
+                    else path[1:]
+                )
                 body = (Path(__file__).parent / "dashboard" / filename).read_bytes()
                 content_type = {
                     "/": "text/html",
                     "/app.js": "text/javascript",
                     "/style.css": "text/css",
+                    "/replay": "text/html",
+                    "/replay.js": "text/javascript",
+                    "/replay.css": "text/css",
                 }[path]
                 await self.respond(writer, 200, body, content_type)
             else:
                 await self.respond(writer, 404, {"error": "Página não encontrada."})
             return
-        if method != "POST" or path != "/api/command":
+        if method != "POST" or path != "/api/command" or self.supervisor is None:
             await self.respond(writer, 405, {"error": "Método não permitido."})
             return
         origins = {f"http://{host}" for host in hosts}
@@ -154,6 +187,57 @@ class OperatorServer:
             await self.respond(writer, 200, result)
         except ValueError as error:
             await self.respond(writer, 409, {"error": str(error)})
+
+    async def replay_request(
+        self, writer: asyncio.StreamWriter, path: str, query: dict[str, list[str]]
+    ) -> None:
+        if self.replay is None:
+            await self.respond(writer, 404, {"error": "Gravação não habilitada."})
+            return
+
+        def value(name: str, default: str = "") -> str:
+            values = query.get(name, [default])
+            if len(values) != 1 or len(values[0]) > 128:
+                raise ValueError("invalid replay query")
+            return values[0]
+
+        reader = self.replay
+        try:
+            if path == "/api/replays":
+                result: Any = await asyncio.to_thread(
+                    reader.runs, int(value("limit", "100"))
+                )
+            else:
+                run = value("run")
+                if path == "/api/replay":
+                    result = await asyncio.to_thread(reader.run, run)
+                elif path == "/api/replay/events":
+                    result = await asyncio.to_thread(
+                        reader.events,
+                        run,
+                        int(value("after", "0")),
+                        int(value("limit", "500")),
+                    )
+                elif path == "/api/replay/seek":
+                    result = await asyncio.to_thread(
+                        reader.seek, run, int(value("at", "0"))
+                    )
+                elif path == "/api/replay/track":
+                    result = await asyncio.to_thread(reader.track, run)
+                elif path == "/api/replay/timeline":
+                    result = await asyncio.to_thread(
+                        reader.timeline, run, int(value("at", "0"))
+                    )
+                elif path == "/api/replay/summary":
+                    result = await asyncio.to_thread(summary, reader, run)
+                else:
+                    await self.respond(writer, 404, {"error": "Página não encontrada."})
+                    return
+            await self.respond(writer, 200, {"data": result})
+        except ValueError:
+            await self.respond(
+                writer, 400, {"error": "Gravação ou intervalo inválido."}
+            )
 
     async def respond(
         self,
