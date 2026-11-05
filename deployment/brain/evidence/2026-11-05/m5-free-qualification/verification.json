@@ -1,5 +1,6 @@
 {
   "verified_file_hashes": 89,
+  "verified_committed_file_hashes": 89,
   "verified_replay_imports": [
     {
       "run_id": "m5q-20261105b:native",

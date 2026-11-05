@@ -9,10 +9,8 @@ from pathlib import Path
 from canary_brain.recording import ReplayReader
 from canary_brain.replay import import_archive
 
-root = (
-    Path(__file__).resolve().parents[2]
-    / "deployment/brain/evidence/2026-11-05/m5-free-qualification"
-)
+repository = Path(__file__).resolve().parents[2]
+root = repository / "deployment/brain/evidence/2026-11-05/m5-free-qualification"
 checked = 0
 archives = []
 projects = []
@@ -22,6 +20,20 @@ for checksums in sorted(root.rglob("checksums.json")):
         assert (
             hashlib.sha256((directory / name).read_bytes()).hexdigest() == expected
         ), (directory, name)
+        committed = subprocess.check_output(
+            [
+                "git",
+                "-C",
+                str(repository),
+                "show",
+                "HEAD:" + (directory / name).relative_to(repository).as_posix(),
+            ]
+        )
+        assert hashlib.sha256(committed).hexdigest() == expected, (
+            directory,
+            name,
+            "committed blob",
+        )
         checked += 1
     with tempfile.TemporaryDirectory(prefix="m5import-") as temporary:
         destination = Path(temporary) / "replay.db"
@@ -57,6 +69,7 @@ assert len(archives) == 6
 assert all(not a["incomplete"] for a in archives)
 result = {
     "verified_file_hashes": checked,
+    "verified_committed_file_hashes": checked,
     "verified_replay_imports": archives,
     "owned_projects_removed": sorted(set(projects)),
     "provider_credentials_included": False,
