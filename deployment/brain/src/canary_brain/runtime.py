@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import socket
+import sqlite3
 import stat
 import time
 from pathlib import Path
@@ -14,11 +15,19 @@ from typing import Any, Literal
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .benchmark_stops import Stops
 from .controller import Controller
 from .gateway import GatewayConfiguration, GatewayProvider
 from .operator_http import OperatorServer
 from .provider import Provider
-from .recording import Manifest, Recorder, RecordingConfiguration, ReplayReader, digest
+from .recording import (
+    Manifest,
+    Recorder,
+    RecordingConfiguration,
+    RecordingStore,
+    ReplayReader,
+    digest,
+)
 from .store import USD, Store
 from .testing import FakeProvider
 
@@ -44,9 +53,16 @@ class Configuration(BaseModel):
     policy_seed: int = 0
     run_cap_nanousd: int | None = Field(default=None, gt=0)
     run_seconds: int | None = Field(default=None, ge=10, le=86400)
+    benchmark_supervision: bool = False
 
     @model_validator(mode="after")
     def isolated_recording(self) -> "Configuration":
+        if self.benchmark_supervision and (
+            self.run_seconds is None or self.recording is None or len(self.bots) != 1
+        ):
+            raise ValueError(
+                "benchmark supervision requires a timed, recorded single-bot run"
+            )
         if self.provider != "litellm" and self.decision_timeout > 3:
             raise ValueError("legacy decision timeout must not exceed three seconds")
         if self.provider == "litellm" and self.gateway is None:
@@ -115,6 +131,20 @@ class DatagramProtocol(asyncio.DatagramProtocol):
         task.add_done_callback(self.tasks.discard)
 
 
+def recording_failure(recorder: Recorder) -> str | None:
+    if recorder.errors or recorder.dropped:
+        return "recorder_error"
+    try:
+        if any(
+            ReplayReader(recorder.config.path).run(m.run_id)["incomplete"]
+            for m in recorder.manifests.values()
+        ):
+            return "recording_gap"
+    except (sqlite3.Error, OSError, ValueError):
+        return "recorder_error"
+    return None
+
+
 async def run(configuration: Configuration, stop: asyncio.Event | None = None) -> None:
     os.umask(0o077)
     directory = configuration.socket_directory
@@ -130,6 +160,8 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
     client: AsyncOpenAI | None = None
     operator: OperatorServer | None = None
     recorder: Recorder | None = None
+    benchmark_stops: Stops | None = None
+    previous_signals: dict[signal.Signals, Any] = {}
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if endpoint.is_symlink() or (
@@ -228,6 +260,14 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             if transport is not None and len(encoded) <= 32768:
                 transport.sendto(encoded, server)
 
+        benchmark_stops = (
+            Stops(
+                horizon=configuration.run_seconds or 1800,
+                model=configuration.provider != "native",
+            )
+            if configuration.benchmark_supervision
+            else None
+        )
         active_controller = Controller(
             store,
             provider,
@@ -243,6 +283,7 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 configuration.recording
                 and any(m.experiment for m in configuration.recording.manifests)
             ),
+            benchmark_stops=benchmark_stops,
         )
         if configuration.memory_mode != "existing":
             import random
@@ -266,11 +307,56 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             await operator.start(configuration.operator_host)
         stopped = stop or asyncio.Event()
         last_maintenance = time.monotonic()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, stopped.set)
+        launched = last_maintenance
+        if stop is None:
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                previous_signals[sig] = signal.getsignal(sig)
+                loop.add_signal_handler(sig, stopped.set)
         while not stopped.is_set():
             remaining = 1.0
-            if configuration.run_seconds is not None:
+            if benchmark_stops:
+                now = time.monotonic()
+                reason = benchmark_stops.check(now)
+                if benchmark_stops.start is None and now - launched > 240:
+                    reason = "startup_timeout"
+                if store.get("budget_stop", str(configuration.bots[0])):
+                    reason = "budget_stop"
+                if recorder:
+                    failure = recording_failure(recorder)
+                    if failure and not (
+                        failure == "recording_gap" and reason == "world_changed"
+                    ):
+                        reason = failure
+                if reason:
+                    details = {
+                        "reason": reason,
+                        "elapsed_seconds": now - benchmark_stops.start
+                        if benchmark_stops.start is not None
+                        else None,
+                        "observed_seconds": benchmark_stops.last - benchmark_stops.start
+                        if benchmark_stops.last is not None
+                        and benchmark_stops.start is not None
+                        else None,
+                    }
+                    if reason == "completed" and recorder:
+                        snapshot = active_controller.latest.get(configuration.bots[0])
+                        if snapshot:
+                            recorder.emit(
+                                snapshot.bot.id,
+                                "sample",
+                                snapshot.model_dump(exclude={"lease", "messages"}),
+                                "horizon-final-sample",
+                            )
+                    store.put("run_stop", "end", details)
+                    if recorder:
+                        recorder.emit(
+                            configuration.bots[0],
+                            "lifecycle",
+                            {"phase": "run_supervisor_stop", **details},
+                        )
+                    stopped.set()
+                    break
+            if configuration.run_seconds is not None and benchmark_stops is None:
                 clock = store.get("run_clock", "start")
                 if clock is not None:
                     remaining = configuration.run_seconds - (
@@ -291,8 +377,18 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 await asyncio.wait_for(stopped.wait(), timeout=min(1, remaining))
             except TimeoutError:
                 pass
+        if benchmark_stops and store.get("run_stop", "end") is None:
+            reason = (
+                "budget_stop"
+                if store.get("budget_stop", str(configuration.bots[0]))
+                else "operator_stop"
+            )
+            store.put("run_stop", "end", {"reason": reason})
         await asyncio.gather(*protocol.tasks, return_exceptions=True)
     finally:
+        for sig, previous in previous_signals.items():
+            asyncio.get_running_loop().remove_signal_handler(sig)
+            signal.signal(sig, previous)
         if operator is not None:
             await operator.close()
         if controller is not None:
@@ -304,4 +400,33 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             await client.close()
         if recorder is not None:
             await asyncio.to_thread(recorder.close)
+            if benchmark_stops:
+                failure = recording_failure(recorder)
+                if failure:
+                    ending = store.get("run_stop", "end") or {}
+                    if (
+                        failure == "recording_gap"
+                        and ending.get("reason") == "world_changed"
+                    ):
+                        failure = "world_changed"
+                    store.put("run_stop", "end", {**ending, "reason": failure})
+                    for manifest in recorder.manifests.values():
+                        end = ReplayReader(recorder.config.path).run(manifest.run_id)[
+                            "duration_ms"
+                        ]
+                        RecordingStore(recorder.config.path).append(
+                            {
+                                "run": manifest.run_id,
+                                "key": "supervisor-final-validation",
+                                "segment": "supervisor",
+                                "t_ms": end + 1,
+                                "wall": time.time(),
+                                "kind": "lifecycle",
+                                "data": {
+                                    "phase": "run_supervisor_stop",
+                                    "reason": failure,
+                                    "after_flush": True,
+                                },
+                            }
+                        )
         os.close(descriptor)

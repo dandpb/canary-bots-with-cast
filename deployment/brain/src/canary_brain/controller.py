@@ -9,6 +9,7 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any, Protocol
 
+from .benchmark_stops import Stops
 from .learning import Policy, episode_reward
 from .protocol import Message, Observation, Outcome, Telemetry, intent_for
 from .provider import Proposal
@@ -45,6 +46,7 @@ class Controller:
         memory_mode: str = "existing",
         observe_only: bool = False,
         require_benchmark_bridge: bool = False,
+        benchmark_stops: Stops | None = None,
     ) -> None:
         if mode not in {"shadow", "active"}:
             raise ValueError("controller mode must be shadow or active")
@@ -59,6 +61,7 @@ class Controller:
         )
         self.require_benchmark_bridge = require_benchmark_bridge
         self.bridge_ready = not require_benchmark_bridge
+        self.benchmark_stops = benchmark_stops
         self.latest: dict[int, Observation] = {}
         self.pending: dict[tuple[int, str], asyncio.Task[None]] = {}
         self.seen: deque[str] = deque(maxlen=512)
@@ -72,6 +75,8 @@ class Controller:
     ) -> None:
         if self.recorder:
             self.recorder.emit(bot, kind, data, key)
+        if self.benchmark_stops and kind == "decision":
+            self.benchmark_stops.decision(data, time.monotonic())
 
     @staticmethod
     def authority(snapshot: Observation) -> int:
@@ -116,6 +121,10 @@ class Controller:
     async def handle(self, packet: dict[str, Any]) -> None:
         if packet.get("type") == "telemetry":
             telemetry = Telemetry.model_validate(packet)
+            if self.benchmark_stops and (
+                self.roster is None or telemetry.bot_id in self.roster
+            ):
+                self.benchmark_stops.observe(telemetry.model_dump(), time.monotonic())
             if self.recorder and (
                 self.roster is None or telemetry.bot_id in self.roster
             ):
@@ -161,9 +170,19 @@ class Controller:
         if self.roster is not None and bot not in self.roster:
             return
         self._world(snapshot.world)
+        previous_observation = self.latest.get(bot)
+        if (
+            self.benchmark_stops
+            and previous_observation
+            and previous_observation.world == snapshot.world
+            and snapshot.sequence <= previous_observation.sequence
+        ):
+            return
         if len(self.latest) >= 3 and bot not in self.latest:
             return
         self.latest[bot] = snapshot
+        if self.benchmark_stops:
+            self.benchmark_stops.observe(snapshot.model_dump(), time.monotonic())
         if self.store.get("run_clock", "start") is None:
             self.store.put(
                 "run_clock",
@@ -496,6 +515,9 @@ class Controller:
                 else "model",
             },
         )
+        # Raw observations may still contain options removed from this request.
+        if selected not in {item.id for item in snapshot.actions}:
+            return
         latest = self.latest.get(snapshot.bot.id)
         if (
             latest is None
