@@ -134,7 +134,10 @@ canary-brain replay video --recording /path/to/recording.sqlite3 --run RUN_ID \
 ```
 
 The renderer uses only recorded coordinates, floor, XP, health, mana, supplies,
-settled/reserved cost and event phases. It streams a pinned read-only snapshot;
+settled/reserved cost and event phases. It first copies a consistent read-only
+SQLite snapshot to a private temporary database, with a ten-second copy deadline.
+The live source is closed before frame rendering or ffmpeg/ffprobe begins, so a
+long video export does not pin the recorder's WAL. It streams the private copy;
 no game, provider, browser, tile service or credentials are needed. It requires
 local `ffmpeg` with `librsvg`/`libx264`, plus `ffprobe`. It draws a sparse coordinate
 map, not the original client's terrain, sprites or attack animation. The video
@@ -146,6 +149,10 @@ MP4 is 1280×720. Export is bounded to 14,400 frames/600 seconds; increase speed
 select chapters for longer histories. A JSON sidecar records the source manifest,
 snapshot hash, time window, requested/effective speed, actual frame count/duration
 and MP4 hash. The encoded artifact is checked with ffprobe before publication.
+`source_events_sha256` covers the chronological event prefix through `end_ms`;
+`source_snapshot_sha256` covers that digest, its ending time and the captured
+`source_metadata`, including the manifest, status and incomplete flag. It is an
+export-evidence hash, not a checksum of unused events or SQLite file bytes.
 Output and sidecar paths must be new; existing artifacts are not overwritten.
 The renderer streams history and bounds its displayed trail to recent samples.
 

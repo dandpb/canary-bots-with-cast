@@ -6,18 +6,38 @@ import hashlib
 import json
 import math
 import shutil
+import sqlite3
 import subprocess
 import tempfile
+import time
 from collections import deque
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape
 
 from .protocol import Bot
-from .recording import ReplayReader, canonical
+from .recording import ReplayReader, canonical, digest
 
 WIDTH, HEIGHT = 1280, 720
 MAX_FRAMES = 14400
+
+
+@contextmanager
+def materialized_snapshot(reader: ReplayReader) -> Iterator[ReplayReader]:
+    """Release the live database before rendering or waiting for the encoder."""
+    with tempfile.TemporaryDirectory(prefix="canary-video-source-") as directory:
+        path = Path(directory) / "recording.sqlite3"
+        started = time.monotonic()
+
+        def progress(status: int, remaining: int, total: int) -> None:
+            if time.monotonic() - started > 10:
+                raise TimeoutError("video source snapshot exceeded ten seconds")
+
+        with reader.connect() as source, closing(sqlite3.connect(path)) as target:
+            source.backup(target, pages=256, progress=progress)
+        yield ReplayReader(path)
 
 
 def clock(milliseconds: int) -> str:
@@ -226,7 +246,7 @@ def export_video(
         raise ValueError(
             "video export requires ffmpeg with librsvg/libx264 and ffprobe"
         )
-    with reader.snapshot() as snapshot:
+    with materialized_snapshot(reader) as snapshot:
         metadata = snapshot.run(run)
         end = metadata["duration_ms"] if end_ms is None else end_ms
         if not 0 <= start_ms <= end <= metadata["duration_ms"]:
@@ -355,7 +375,15 @@ def export_video(
                 "run": run,
                 "manifest": metadata["manifest"],
                 "source_status": metadata["status"],
-                "source_snapshot_sha256": checksum.hexdigest(),
+                "source_metadata": metadata,
+                "source_events_sha256": checksum.hexdigest(),
+                "source_snapshot_sha256": digest(
+                    {
+                        "metadata": metadata,
+                        "events_sha256": checksum.hexdigest(),
+                        "events_until_ms": end,
+                    }
+                ),
                 "source_events": event_count,
                 "start_ms": start_ms,
                 "end_ms": end,
