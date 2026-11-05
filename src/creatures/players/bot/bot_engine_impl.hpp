@@ -4274,6 +4274,10 @@ public:
 
 	// IBotEngine overrides
 	void registerBot(const std::shared_ptr<Player>& player) override;
+	std::vector<BotPlayerSnapshot> capturePersistentPlayers() const override;
+	BotReloadSnapshot captureReloadState() const override;
+	void quiesceForReload() override;
+	void restoreReloadState(const BotReloadSnapshot& snapshot) override;
 	void unregisterBot(uint32_t guid) override;
 	bool activateBot(uint32_t guid) override;
 	bool deactivateBot(uint32_t guid) override;
@@ -4292,6 +4296,7 @@ public:
 	BotState* getBotState(uint32_t guid) override;
 	std::string getStatusText(uint32_t guid) override;
 	void loadHuntData() override;
+	bool prepareAuthoredData(std::string& error);
 	std::string executeCommand(const std::string& botName, const std::string& command) override;
 
 	void saveAllStates() override;
@@ -4332,7 +4337,7 @@ public:
 	size_t getHibernatedBotCount() const override;
 
 private:
-	void checkpointBotProgression(BotState &bot, const std::shared_ptr<Player> &player);
+	void checkpointBotPersistentState(BotState &bot, const std::shared_ptr<Player> &player);
 
 	// Materialize Player from DB and place in world (shared by activateBot reload-from-offline
 	// and wakeBot). Returns shared_ptr<Player> on success, nullptr on failure.
@@ -6406,7 +6411,8 @@ private:
 	// force parameter: every call site constructs a fresh engine (BotEngineLoader::reload
 	// destroys the old one first), so there is no previous data to fall back to and no
 	// old container to shrink-guard against.
-	std::string reloadBotData();
+	bool authoredDataPrepared_ = false;
+	std::string reloadBotData(bool prepareOnly = false);
 	uint32_t loadMetaCsv();
 	void loadHuntScriptsCsv(std::vector<HuntScript>& out, uint32_t nextScriptId);
 	// Rebuilt after the commit, from the world / live registries / config.

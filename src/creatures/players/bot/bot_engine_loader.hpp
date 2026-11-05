@@ -15,11 +15,19 @@ public:
 
 	// Load the shared library for the first time
 	bool load(const std::string& soPath = "./libbot_engine.so");
+	bool initialize();
 
-	// Hot-reload: destroy engine, dlclose, dlopen new .so, create engine
+	bool prepareReload();
+	bool commitReload(uint64_t ticket);
+	void cancelReload(uint64_t ticket);
+	uint64_t preparedTicket() const { return preparedTicket_; }
+	const std::string& lastError() const { return lastError_; }
+	const std::string& phase() const { return phase_; }
+	IBotEngine* tryGetEngine() const;
+	// Convenience for native callers: prepare, then commit the same candidate.
 	bool reload();
 
-	// Get the active engine instance (asserts loaded)
+	// Internal reference accessor; optional consumers must use tryGetEngine()
 	IBotEngine& getEngine();
 
 	// Check if .so is loaded and engine is valid
@@ -32,18 +40,18 @@ public:
 	BotEngineLoader& operator=(const BotEngineLoader&) = delete;
 
 private:
-	BotEngineLoader() = default;
+	struct Module;
+	BotEngineLoader();
 	~BotEngineLoader();
 
-	void* soHandle_ = nullptr;
-	IBotEngine* engine_ = nullptr;
-	std::string soPath_;
-	std::string loadedCopyPath_; // temp copy path used during hot-reload (unique inode)
-
-	// Factory function types exported by the .so
-	using CreateFunc = IBotEngine* (*)();
-	using DestroyFunc = void (*)(IBotEngine*);
-
-	CreateFunc createFunc_ = nullptr;
-	DestroyFunc destroyFunc_ = nullptr;
+	std::unique_ptr<Module> prepare(const std::string& path);
+	bool fail(const std::string& phase, const std::string& message);
+	std::unique_ptr<Module> active_;
+	std::unique_ptr<Module> prepared_;
+	std::string soPath_ = "./libbot_engine.so";
+	std::string lastError_;
+	std::string phase_ = "idle";
+	uint64_t nextTicket_ = 0;
+	uint64_t preparedTicket_ = 0;
+	std::optional<BotReloadSnapshot> retained_;
 };

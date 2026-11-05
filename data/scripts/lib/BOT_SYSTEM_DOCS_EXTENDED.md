@@ -1378,6 +1378,7 @@ actual-vs-expected fire time exceeds 100ms. No setup needed — runs continuousl
 Plain reload would lose all hibernated bots (their `Player` shared_ptrs live in the engine's
 `hibernationPool_` which dies with the .so dlclose). The reload sequence:
 
+0. `Game.botPrepareReload()` validates an immutable candidate, ABI and authored data before changing bots. Abort on `ok=false`.
 1. Snapshot **all** bot guids: awake from `BotPlayers` + hibernated names from
    `Game.getBotHibernationStates()` **BEFORE** force-deactivate / dlclose.
 2. Force-deactivate awake bots in old engine; preserves cast streams.
@@ -2334,19 +2335,20 @@ Reloads the bot engine shared library (`libbot_engine.so`) without restarting th
 This is the primary development workflow for `bot_engine.cpp` changes (~90% of iterations).
 
 **Reload sequence:**
-1. Collects all currently active bot GUIDs (via `Game.botIsActive(guid)` on each registered bot)
-2. Force-deactivates all active bots in the old engine
-3. Calls `Game.botReload()` which:
-   a. Destroys the old engine instance (`destroyBotEngine()`)
-   b. `dlclose` the old `.so`
-   c. Copies `./libbot_engine.so` to a unique temp path (e.g., `./libbot_engine.so.12345.tmp`) — **this is critical**: Linux caches `dlopen` by inode, so re-opening the same path after `dlclose` returns the old (deleted) mapping instead of the new file. The temp copy forces a fresh inode.
-   d. `dlopen` the temp copy
-   e. Creates a new engine instance (`createBotEngine()`)
-   f. Calls `loadHuntData()` on the new engine
-   g. Cleans up the previous temp copy (if any)
-4. Calls `Game.botStartTickLoop()` — creates a fresh 100ms cycleEvent for the tick loop
-5. Calls `Game.botReregisterAll()` — re-registers all online bot players with the new engine
-6. Re-activates previously active bots, teleporting each to their town temple (clean start)
+1. `Game.botPrepareReload()` snapshots and opens the candidate, checks ABI and exports,
+   constructs it and parses authored data into candidate-owned containers. Failure leaves the
+   active engine intact. Successful preparation returns a ticket.
+2. Collect active GUIDs and hibernated identities, then force-deactivate awake bots.
+3. `Game.botReload(ticket)` destroys the old instance, closes its handle, consumes the
+   exact candidate and initializes derived world tables. It does not reread the CSVs.
+4. Stop on structured failure; clear the Lua reload guard and cancel any unused candidate.
+5. On success, restart the single tick owner, re-register and restore the population.
+
+Build server, library and Lua files together for the ABI/preparation transition.
+See [the reload contract](../../../tools/bot_brain/README.reload.md) for commands,
+compatibility checks and remaining #11/#12B acceptance. Full Player handoff and
+state-preserving gameplay reload are still pending; this initial protection does not
+establish that guarantee.
 
 **Development workflow:**
 ```bash

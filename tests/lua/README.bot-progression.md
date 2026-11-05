@@ -51,8 +51,10 @@ check("Fixture Name", "named")
    awarding more XP. Restore the database, hibernate again and verify the same
    progress is retried and saved. Offline pending bots must also be retried by
    the regular server save.
-5. Keep an unchanged bot as a control: repeated wake/hibernate cycles should not
-   add a full player save unless its experience changed.
+5. Keep XP constant while training, consuming item charges and changing storage.
+   Every lifecycle boundary requests a full character save, including unchanged XP.
+   Repeated requests coalesce per GUID; only confirmed successful writes release
+   pending state. Reducing these saves requires complete dirty revision coverage.
 6. Resume a solo bot in a real hunt and confirm a monster kill increases its XP.
    In an eligible party, confirm shared XP reaches both native bots and humans;
    ordinary party eligibility and XP multipliers must still apply.
@@ -78,3 +80,92 @@ failed save keeps that state available for a later lifecycle or server-save retr
 hibernation simulator, and no additional model requests are needed. As with
 ordinary asynchronous saves, a process crash before the queued save completes
 can lose the most recent unsaved progress.
+
+
+## Complete character checkpoints at constant XP (#11)
+
+`bot_persistence_no_xp_test.lua` and `tools/bot_brain/lifecycle_qa.py` exercise a
+labelled, private Docker stack with its own database and no published ports.
+The adapter refuses any server name other than `Canary lifecycle QA`. Its command
+file exists only in that test container; normal game deployments do not load it.
+Provide a copied/read-only OTBM and a QA build container containing matching
+`/build/bin/canary` and `libbot_engine.so`. The harness never reads provider keys
+or starts a model worker.
+
+```sh
+python3 tools/bot_brain/lifecycle_qa.py --create --world /path/to/copied-world.otbm
+python3 tools/bot_brain/lifecycle_qa.py --action load
+python3 tools/bot_brain/lifecycle_qa.py --action mutate
+python3 tools/bot_brain/lifecycle_qa.py --action train
+# Allow the real exercise-training timer to run, then inspect and stop it.
+python3 tools/bot_brain/lifecycle_qa.py --action stop
+python3 tools/bot_brain/lifecycle_qa.py --action hibernate
+python3 tools/bot_brain/lifecycle_qa.py --action shutdown
+```
+
+Check fresh database rows, wait for process exit, start a new process and compare
+skill tries, mana spent, storage and item charges via the Player APIs. Repeat with
+normal/forced deactivation and reload. An existing backpack must survive activation;
+bootstrap supplies apply to a missing bag. Native equipment selection for worn slots
+is otherwise unchanged.
+
+The conservative checkpoint saves the complete character at lifecycle boundaries,
+not only when XP changes. A per-GUID serialized queue coalesces generations and
+retains failed Players for reconnection and a later server-save retry. Four dedicated
+workers use separate database connections, so long bot transactions do not monopolize
+the dispatcher's connection or the general AI worker pool. `savePlayer` acknowledges
+queueing only. Global/shutdown saves await captured completion results and report
+failed characters instead of claiming a fully successful player save.
+
+Global save captures and deduplicates online, engine-owned (including hibernated and
+dying) and pending Players on the dispatcher. SQL workers receive strong references
+and a position value; they never query an engine that can be unloaded. Position-only
+virtual updates use the same per-GUID ordering as full saves. A hibernated character's
+virtual login position must not be replaced with its stale physical tile. Storage
+changes are acknowledged after COMMIT against the exact written delta; newer values
+and failed writes remain dirty.
+
+For failure/concurrency acceptance, install an UPDATE failure/delay trigger only in
+the labelled disposable database, trigger two checkpoints with different storage and
+charge values, verify immediate reactivation from the pending Player, remove the
+trigger and run a global save. Compare a fresh database read and a new process.
+Record save counts, capture/queue durations, dispatcher gaps and DB/CPU load for the
+population being measured. A small fixture does not establish 997-bot overhead.
+The full hot-reload Player handoff consumes this contract in #12/B.
+
+## Integrated cast acceptance (#13)
+
+`tools/bot_brain/test_cast_lifecycle.py` uses the labelled lifecycle stack and a
+labelled `canary-lifecycle-qa-web` container on its private network, aliased `web`.
+The web service must use only the disposable database and dummy credentials.
+No host ports, provider keys or model workers are needed. `seed_human()` creates
+an ordinary account/character (`Lifecycle Human`), separate from bot account 65000;
+death/logout scripts intentionally treat the bot account differently.
+
+The test-only bridge invokes real protocol login, Connection::close, release,
+replacement/late release, Player broadcasting and viewer initialization. Connected
+loopback sockets keep the genuine connection-loss guard active; a private test I/O
+context controls their lifetime. Member access lives entirely in the fixture; no
+product control API or authentication bypass is installed. The character-list probe
+executes the native TCP serializer and reads its bytes over a loopback connection;
+it does not replace a full client authentication/playtest.
+
+```sh
+python3 tools/bot_brain/test_cast_lifecycle.py
+```
+
+In the integrated Release build, all 30 selected native tests and 16 Lua startup
+tests passed. Actual disconnect/release, late old release, viewer teardown, normal
+logout, human death and recovery beyond the immediate retry limit converged in
+the real HTTP login list. A delayed DELETE followed by a new start retained the
+new publication. The shared-connection implementation blocked a dispatcher DB probe
+for 2049 ms behind a 2000 ms DELETE; dedicated cast connections reduced the same
+probe to about 200 ms, including the Docker/control round trip. This is a small
+fixture measurement, not production throughput.
+
+Additional #12 integration: initial missing library allowed normal human teleport,
+speech, offline PM, administrative bot calls, native TCP cast listing/viewing and
+actual XML/binary status requests with bot population reporting both off and on.
+Restoring the matching library allowed explicit reload without process restart.
+Selecting a hibernated bot's cast woke the same Player; a following reload retained
+its runtime ID and connected viewer. These probes preserve production data.

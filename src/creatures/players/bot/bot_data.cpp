@@ -30,6 +30,13 @@ static uint8_t botForgeTierForLevel(uint32_t lv);
 // ============================================================================
 
 void BotEngine::loadHuntData() {
+	if (authoredDataPrepared_) {
+		authoredDataPrepared_ = false;
+		rebuildDerivedTables();
+		lastGoodDataLoadMs_ = OTSYS_TIME();
+		g_logger().info("[BOT_DATA_RELOAD] initialized prepared authored data scripts={}", huntScripts_.size());
+		return;
+	}
 	// Closed-loop verification line: fires at startup + every /cavebot reload so
 	// journalctl shows the effective whole-bot limits computed from the pct keys.
 	g_logger().info("[BotEngine] pct caps: density inner={} mid={} outer={}, advstone chest+dummy={} (of botPlayersOnline={})",
@@ -48,7 +55,19 @@ void BotEngine::loadHuntData() {
 	reloadBotData();
 }
 
-std::string BotEngine::reloadBotData() {
+bool BotEngine::prepareAuthoredData(std::string& error) {
+	// Only candidate-owned authored containers change; world-derived work waits
+	// until the candidate is active. Do not reread CSVs at the commit boundary.
+	reloadBotData(true);
+	if (dataPoisoned_) {
+		error = dataPoisonReason_;
+		return false;
+	}
+	authoredDataPrepared_ = true;
+	return true;
+}
+
+std::string BotEngine::reloadBotData(bool prepareOnly) {
 	const int64_t t0 = botMonoMs();
 
 	// ---- 1. parse EVERYTHING into temporaries; any BotCsvError -> zero mutation ----
@@ -114,33 +133,13 @@ std::string BotEngine::reloadBotData() {
 	std::swap(travelTownNames_, newTravelNames);
 	std::swap(equipmentData_, newEquip);
 	nextScriptId_ = nextId;
+	if (prepareOnly) {
+		dataPoisoned_ = false;
+		dataPoisonReason_.clear();
+		return "prepared";
+	}
 
-	// ---- 3. derived builders — the same set and order as the old loadHuntData tail.
-	// Nothing holds raw pointers into these; buildZPortalGraph is a cache hit when the
-	// map is unchanged. In-flight huntScriptIds are NOT revalidated here: every lookup
-	// is a linear scan and the existing "script vanished -> abort/reroll" branches
-	// handle staleness (audited — see bot_reloaddata_and_panicreset.md A.3).
-	// BOT_ROUTE_SPLICE: clear then rebuild against the routes just swapped in. reloadBotData only
-	// ever runs on a freshly constructed engine, so these are already empty -- this is insurance
-	// against anyone adding an in-place reload path later, the same reasoning as the currentPOI
-	// sweep above.
-	routeSpliceCache_.clear();
-	routeSpliceClean_.clear();
-	s_routeSpliceRoutes = 0;
-	s_routeSpliceWpsSaved = 0;
-	buildTravelDestinationsCache();
-	buildNpcApproachAnchors();
-	buildZPortalGraph();
-	// AFTER buildZPortalGraph on purpose: that builder sweeps the map in this same function, which
-	// is the proof the map is loaded and the splice gates can query real tiles here.
-	spliceCityRoutesAtLoad();
-	buildTravelArriveTargets();
-	buildSpellTables();
-	buildConjureTables();
-	buildSupportSpellTables();
-	buildBotHouseIndex();
-	rebuildFidgetItemPool();
-	loadBotChatPhrases();
+	rebuildDerivedTables();
 
 	dataPoisoned_ = false;
 	dataPoisonReason_.clear();
@@ -775,37 +774,33 @@ void BotEngine::loadEquipmentCsv(std::unordered_map<uint32_t, BotEquipment>& out
 // Nothing here holds a raw pointer into the authored containers, and buildZPortalGraph is a
 // cache hit whenever the map file is unchanged.
 void BotEngine::rebuildDerivedTables() {
-	// Reload drops every in-flight ice-fishing session; the waypoint data behind them was
-	// just replaced.
-	iceFishing_.clear();
-
-	// BOT_NAV_REALISM Phase 8: derive NPC approach tiles from the live world. Must run AFTER
-	// the POI/route swap (it reuses the town gate + temple positions).
+	// ---- 3. derived builders — the same set and order as the old loadHuntData tail.
+	// Nothing holds raw pointers into these; buildZPortalGraph is a cache hit when the
+	// map is unchanged. In-flight huntScriptIds are NOT revalidated here: every lookup
+	// is a linear scan and the existing "script vanished -> abort/reroll" branches
+	// handle staleness (audited — see bot_reloaddata_and_panicreset.md A.3).
+	// BOT_ROUTE_SPLICE: clear then rebuild against the routes just swapped in. reloadBotData only
+	// ever runs on a freshly constructed engine, so these are already empty -- this is insurance
+	// against anyone adding an in-place reload path later, the same reasoning as the currentPOI
+	// sweep above.
+	routeSpliceCache_.clear();
+	routeSpliceClean_.clear();
+	s_routeSpliceRoutes = 0;
+	s_routeSpliceWpsSaved = 0;
+	buildTravelDestinationsCache();
 	buildNpcApproachAnchors();
-
-	// TRUE MULTI-FLOOR: whole-map portal graph for the cross-z route planner. Sector-cache
-	// sweep, idempotent; emits [ZGRAPH] portals=N ... built in T ms.
 	buildZPortalGraph();
-
-	// Build dynamic spell tables from server registry + Lua file parsing
+	// AFTER buildZPortalGraph on purpose: that builder sweeps the map in this same function, which
+	// is the proof the map is loaded and the splice gates can query real tiles here.
+	spliceCityRoutesAtLoad();
+	buildTravelArriveTargets();
 	buildSpellTables();
-
-	// BOT_SUPPLY_REALISM: rune/ammo conjure spells, parsed from the shipped Lua the same way
-	// the attack-rune tables are. Must run AFTER the spell registry is available.
 	buildConjureTables();
-
-	// Ambient support spells (haste/light/shield/heals/cures). Same ordering requirement as
-	// buildConjureTables, and it additionally cross-references getHealSpells().
 	buildSupportSpellTables();
-
-	// BOT_HOUSE_VISIT: which houses belong to bots, by town. Rebuilt every load to pick up
-	// ownership changes.
 	buildBotHouseIndex();
-
 	rebuildFidgetItemPool();
-
-	// BOT_LIVENESS_PACK Phase C.2 + D: load chat phrase corpus.
 	loadBotChatPhrases();
+
 }
 
 void BotEngine::rebuildFidgetItemPool() {
@@ -1109,8 +1104,7 @@ std::pair<Position, std::string> BotEngine::getTravelPosition(uint32_t townId) c
 void BotEngine::equipBot(BotState& bot) {
 	auto player = bot.getPlayer();
 	if (!player) return;
-	const bool preserveBackpack = brain_ && player->getInventoryItem(CONST_SLOT_BACKPACK)
-	    && std::find(brain_->roster.begin(), brain_->roster.end(), bot.guid) != brain_->roster.end();
+	const bool preserveBackpack = player->getInventoryItem(CONST_SLOT_BACKPACK) != nullptr;
 
 	auto voc = player->getVocation();
 	uint32_t baseVoc = voc ? voc->getBaseId() : 4; // default to paladin if unknown
@@ -1213,15 +1207,8 @@ void BotEngine::equipBot(BotState& bot) {
 		}
 	}
 
-	// Wipe the backpack to clear accumulated junk (quest items like Ewer with Holy
-	// Water from Lion's Rock, looted clutter, etc.) so the seed blocks below produce
-	// a deterministic loadout every activation. Bots use bank balance for shop
-	// purchases (set to 100000 in bot_players_setup.sql), so destroying the bag's
-	// gold/loot is fine. Runes re-seed immediately below (empty() guard now satisfied),
-	// exercise weapons re-seed at max 14400 charges via the per-id findItemOfType guard.
-	// Only fires from activateBot (line 2194) and the reload-reactivate path (line 4309).
-	// NOT from wakeBot — hibernation preserves the Player object as-is via the
-	// hibernationPool_ fast-path, so the bag persists across proximity/teleport wakes.
+	// Activation must not discard persisted loot or reset training charges. Keep a
+	// loaded backpack and bootstrap one only when the character has none.
 	if (!preserveBackpack) {
 		auto bpExisting = player->getInventoryItem(CONST_SLOT_BACKPACK);
 		if (bpExisting) {

@@ -98,19 +98,118 @@ static constexpr uint16_t PICKAXE_ITEM_ID = 3456;
 // Bot registration and lifecycle
 // ============================================================================
 
-// Hibernated players are absent from the normal online-player save set.
-// Only bots with changed experience need a full asynchronous progression save.
-static std::unordered_map<uint32_t, uint64_t> s_botExperienceCheckpoint;
-
-void BotEngine::checkpointBotProgression(BotState &bot, const std::shared_ptr<Player> &player) {
-	auto &experience = s_botExperienceCheckpoint[bot.guid];
+void BotEngine::checkpointBotPersistentState(BotState &bot, const std::shared_ptr<Player> &player) {
+	if (!player) return;
 	bot.cachedLevel = player->getLevel();
-	if (player->getExperience() != experience || g_saveManager().getPendingBotPlayer(bot.guid)) {
-		player->loginPosition = player->getPosition();
-		if (g_saveManager().savePlayer(player)) {
-			experience = player->getExperience();
+	const auto position = bot.hibernated ? bot.currentPos : player->getPosition();
+	g_saveManager().savePlayer(player, position);
+}
+
+std::vector<BotPlayerSnapshot> BotEngine::capturePersistentPlayers() const {
+	std::vector<BotPlayerSnapshot> result;
+	for (const auto& bot : bots_) {
+		auto player = bot.getPlayer();
+		if (!player) {
+			const auto pool = hibernationPool_.find(bot.guid);
+			if (pool != hibernationPool_.end()) player = pool->second;
+		}
+		if (!player) {
+			const auto dying = dyingBots_.find(bot.guid);
+			if (dying != dyingBots_.end()) player = dying->second;
+		}
+		if (player) {
+			const auto position = bot.hibernated ? bot.currentPos :
+				(dyingBots_.contains(bot.guid) ? player->getLoginPosition() : player->getPosition());
+			result.push_back({player, position});
 		}
 	}
+	return result;
+}
+
+BotReloadSnapshot BotEngine::captureReloadState() const {
+	BotReloadSnapshot snapshot;
+	snapshot.schedulerEnabled = schedulerEnabled_;
+	std::unordered_map<uint32_t, BotPlayerSnapshot> characters;
+	for (const auto& character : capturePersistentPlayers()) characters[character.player->getGUID()] = character;
+	for (const auto& bot : bots_) {
+		BotReloadEntry entry;
+		entry.guid = bot.guid; entry.name = bot.name;
+		const auto found = characters.find(bot.guid);
+		if (found != characters.end()) {
+			entry.player = found->second.player;
+			entry.position = found->second.loginPosition;
+		} else entry.position = bot.currentPos;
+		entry.active = bot.active; entry.hibernated = bot.hibernated;
+		entry.dying = dyingBots_.contains(bot.guid); entry.aiPaused = bot.aiPaused;
+		entry.state = bot.state; entry.townId = bot.townId; entry.townName = bot.townName;
+		entry.level = bot.cachedLevel; entry.vocation = bot.vocationId; entry.personality = bot.personalitySeed;
+		entry.huntId = bot.huntScriptId; entry.huntPhase = bot.huntPhase;
+		entry.waypoint = bot.huntWaypointIdx; entry.kills = bot.huntKillCount;
+		entry.travelTown = bot.travelDestTownId; entry.deathPause = bot.deathPauseUntil;
+		entry.lastVirtualSave = bot.lastVirtualPosSave;
+		entry.huntStarted = bot.huntStartTime; entry.huntEnds = bot.huntEndTime;
+		entry.travelPhase = bot.travelPhase; entry.travelBoat = bot.travelBoatPos; entry.travelSource = bot.travelSrcBoatPos;
+		snapshot.entries.push_back(std::move(entry));
+	}
+	return snapshot;
+}
+
+void BotEngine::quiesceForReload() {
+	schedulerEnabled_ = false;
+	cancelPendingDispatcherEvents();
+	std::vector<uint32_t> guids;
+	for (const auto& bot : bots_) guids.push_back(bot.guid);
+	for (const auto guid : guids) {
+		if (auto* bot = getBotState(guid)) {
+			if (auto player = bot->getPlayer()) player->stopWalk();
+		}
+		forceDeactivateBotForReload(guid);
+		reclaimStaleCanaryParty(guid, "reload");
+	}
+}
+
+void BotEngine::restoreReloadState(const BotReloadSnapshot& snapshot) {
+	for (const auto& entry : snapshot.entries) {
+		if (entry.player) registerBot(entry.player);
+		else {
+			guidToIndex_[entry.guid] = bots_.size();
+			bots_.emplace_back();
+		}
+		auto& bot = bots_[guidToIndex_.at(entry.guid)];
+		bot.guid = entry.guid; bot.name = entry.name;
+		bot.active = entry.active; bot.hibernated = entry.hibernated; bot.aiPaused = entry.aiPaused;
+		bot.currentPos = entry.position; bot.lastPos = entry.position;
+		bot.townId = entry.townId; bot.townName = entry.townName;
+		bot.cachedLevel = entry.level; bot.vocationId = entry.vocation; bot.personalitySeed = entry.personality;
+		bot.state = entry.state; bot.tickCounter = botInitialTickPhase(entry.guid);
+		bot.deathPauseUntil = entry.deathPause; bot.lastVirtualPosSave = entry.lastVirtualSave;
+		bot.travelDestTownId = entry.travelTown; bot.travelPhase = entry.travelPhase;
+		bot.travelBoatPos = entry.travelBoat; bot.travelSrcBoatPos = entry.travelSource;
+		if (entry.player && entry.hibernated) {
+			hibernationPool_[entry.guid] = entry.player;
+			bot.playerRef.reset();
+		} else if (entry.player && entry.dying) dyingBots_[entry.guid] = entry.player;
+		// World-owned combat/party sessions are cancelled; no stale references cross.
+		if (bot.state == BotAIState::COMBAT || bot.state == BotAIState::FLEEING ||
+			bot.state == BotAIState::PK_ATTACK || bot.state == BotAIState::PARTY) bot.state = BotAIState::IDLE;
+		if (entry.huntId) {
+			auto script = std::find_if(huntScripts_.begin(), huntScripts_.end(), [&](const auto& value) { return value.id == entry.huntId; });
+			if (script != huntScripts_.end() && !activeHunts_.contains(entry.huntId)) {
+				bot.huntScriptId = entry.huntId; bot.huntPhase = entry.huntPhase;
+				const auto size = entry.huntPhase == HuntPhase::PATROLLING ? script->patrolWaypoints.size() :
+					(entry.huntPhase == HuntPhase::TRAVEL_TO ? script->travelToWaypoints.size() : script->travelFromWaypoints.size());
+				bot.huntWaypointIdx = size ? std::min(entry.waypoint, size - 1) : 0;
+				bot.huntKillCount = entry.kills; bot.huntStartTime = entry.huntStarted; bot.huntEndTime = entry.huntEnds;
+				activeHunts_[entry.huntId] = entry.guid;
+				if (!script->spawnGroup.empty()) activeSpawnGroups_[script->spawnGroup] = entry.guid;
+			} else {
+				bot.state = BotAIState::IDLE;
+				g_logger().warn("[BotEngine] reload cancelled unavailable/conflicting hunt {} for {}", entry.huntId, entry.name);
+			}
+		}
+	}
+	schedulerEnabled_ = snapshot.schedulerEnabled;
+	g_logger().info("[BotEngine] restored {} roster entries without DB rematerialization", snapshot.entries.size());
 }
 
 void BotEngine::registerBot(const std::shared_ptr<Player> &player) {
@@ -140,7 +239,6 @@ void BotEngine::registerBot(const std::shared_ptr<Player> &player) {
 	bot.state = BotAIState::INACTIVE;
 	bot.vocationId = static_cast<uint8_t>(player->getVocationId());
 	bot.cachedLevel = static_cast<uint32_t>(player->getLevel());
-	s_botExperienceCheckpoint[bot.guid] = player->getExperience();
 	bot.townId = 0;
 
 	// BOT_LIVENESS_PACK Phase B: derive 16-bit personality seed from a proper hash
@@ -206,6 +304,10 @@ void BotEngine::registerBot(const std::shared_ptr<Player> &player) {
 void BotEngine::unregisterBot(uint32_t guid) {
 	auto it = guidToIndex_.find(guid);
 	if (it == guidToIndex_.end()) return;
+	if (auto& event = bots_[it->second].pendingWalkPauseEventId; event != 0) {
+		g_dispatcher().stopEvent(event);
+		event = 0;
+	}
 
 	// BOT_LURE_KITE hygiene. Correctness does NOT depend on this — both features
 	// re-validate their own gate every tick and self-clear (beginHuntPhase is
@@ -218,9 +320,10 @@ void BotEngine::unregisterBot(uint32_t guid) {
 	// visible on /cavebot reload (500 bots unregistered → 500 leaked Player refs in
 	// channels 3 + 5 + cast + any others). Bounded but accumulates across reload cycles.
 	if (auto player = it != guidToIndex_.end() ? bots_[it->second].playerRef.lock() : nullptr) {
-		checkpointBotProgression(bots_[it->second], player);
+		checkpointBotPersistentState(bots_[it->second], player);
 		g_chat().removeUserFromAllChannels(player);
 	} else if (auto pooled = hibernationPool_.find(guid); pooled != hibernationPool_.end() && pooled->second) {
+		checkpointBotPersistentState(bots_[it->second], pooled->second);
 		g_chat().removeUserFromAllChannels(pooled->second);
 	}
 
@@ -235,7 +338,6 @@ void BotEngine::unregisterBot(uint32_t guid) {
 	}
 	bots_.pop_back();
 	guidToIndex_.erase(it);
-	s_botExperienceCheckpoint.erase(guid);
 
 	// The mid-walk pause lambda keys off guidToIndex_, which we just dropped — it will
 	// early-return without erasing walkPauseInfo_, so clean it up here to avoid a leak
@@ -267,7 +369,7 @@ std::shared_ptr<Player> BotEngine::materializePlayerFromDb(BotState &bot) {
 		newPlayer->setNotRemoved();
 		newPlayer->clearTileParent();
 	} else {
-		newPlayer = std::make_shared<Player>(nullptr);
+		newPlayer = Player::createNativeBot();
 		// Flag before load to skip bot-irrelevant badge/title/cyclopedia work.
 		newPlayer->setBotPlayer(true);
 		if (!IOLoginData::loadPlayerByName(newPlayer, bot.name, false)) {
@@ -346,7 +448,6 @@ bool BotEngine::activateBot(uint32_t guid) {
 	bot.state = BotAIState::IDLE;
 	bot.tickCounter = botInitialTickPhase(bot.guid); // guid-phased (Phase 1) — not 0
 	bot.cachedLevel = static_cast<uint32_t>(player->getLevel()); // refresh for v2 virtual reroll
-	s_botExperienceCheckpoint[bot.guid] = player->getExperience();
 	// Share of bots eligible for quest scripts. Deterministic per guid so a bot keeps its
 	// role across reconnects. Was hardcoded (guid % 20 == 0); the %100 form is what makes an
 	// arbitrary percentage expressible, and at the default 5 it selects a same-sized but
@@ -522,12 +623,11 @@ bool BotEngine::deactivateBot(uint32_t guid) {
 	auto& db = Database::getInstance();
 
 	auto player = bot.getPlayer();
+	if (!player) {
+		auto pooled = hibernationPool_.find(guid);
+		if (pooled != hibernationPool_.end()) player = pooled->second;
+	}
 	if (player) {
-		// Save current position to players table before removing from world
-		auto pos = player->getPosition();
-		g_botDatabaseTasks().execute(fmt::format(
-			"UPDATE `players` SET `posx`={}, `posy`={}, `posz`={} WHERE `id`={}",
-			pos.x, pos.y, pos.z, guid));
 
 		// True offline: remove bot from game world (like a player disconnect)
 		player->setCastBroadcasting(false);
@@ -536,9 +636,11 @@ bool BotEngine::deactivateBot(uint32_t guid) {
 		// in-memory setCastBroadcasting(false) already disconnects viewers; DB cleanup
 		// is non-critical and can be async.
 		g_botDatabaseTasks().execute(fmt::format("DELETE FROM `cast_broadcasters` WHERE `player_id` = {}", guid));
-		checkpointBotProgression(bot, player);
-		g_game().removeCreature(player, false);
-		g_game().removePlayer(player);
+		checkpointBotPersistentState(bot, player);
+		if (!bot.hibernated) {
+			g_game().removeCreature(player, false);
+			g_game().removePlayer(player);
+		}
 		player->setOnline(false);
 		bot.playerRef = std::weak_ptr<Player>(); // release reference
 	}
@@ -575,6 +677,8 @@ bool BotEngine::deactivateBot(uint32_t guid) {
 	clearDepotBlacklist(guid);
 	s_tpRewindBudget.erase(guid);
 
+	hibernationPool_.erase(guid);
+	bot.hibernated = false;
 	bot.active = false;
 	bot.state = BotAIState::INACTIVE;
 	bot.activatedAt = 0;
@@ -869,7 +973,7 @@ bool BotEngine::hibernateBot(uint32_t guid) {
 		hibernationPool_[guid] = player;
 
 		// removeCreature with isLogout=false skips Lua onLogout and normal player saves.
-		checkpointBotProgression(bot, player);
+		checkpointBotPersistentState(bot, player);
 		g_game().removeCreature(player, false);
 		g_game().removePlayer(player);
 		player->setOnline(false);
@@ -1249,7 +1353,6 @@ bool BotEngine::wakeBot(uint32_t guid) {
 	bot.currentPos = player->getPosition();
 	bot.lastPos = bot.currentPos;
 	bot.cachedLevel = static_cast<uint32_t>(player->getLevel()); // refresh on wake (level may have grown)
-	s_botExperienceCheckpoint[bot.guid] = player->getExperience();
 	// Don't reset tickCounter — preserves heal cadence alignment
 
 	// BOT_LIVENESS (2026-06-13): login sparkle for proximity wakes that landed ON a
@@ -2656,7 +2759,29 @@ void BotEngine::restoreAllStates() {
 // Shared library factory functions — called by BotEngineLoader via dlsym
 // ============================================================================
 
+#include "creatures/players/bot/bot_engine_abi.hpp"
+
 extern "C" {
+	const char* botEngineAbiTag() { return BOT_ENGINE_ABI_TAG; }
+
+	bool prepareBotEngine(IBotEngine* engine, char* error, size_t size) {
+		std::string message;
+		bool success = false;
+		try {
+			success = static_cast<BotEngine*>(engine)->prepareAuthoredData(message);
+		} catch (const std::exception& exception) {
+			message = exception.what();
+		} catch (...) {
+			message = "unexpected exception parsing candidate authored data";
+		}
+		if (error && size > 0) {
+			const auto count = std::min(size - 1, message.size());
+			std::memcpy(error, message.data(), count);
+			error[count] = '\0';
+		}
+		return success;
+	}
+
 	IBotEngine* createBotEngine() {
 		// A fresh engine starts with an empty s_probeBots, but the probe flag itself lives on
 		// the Player, which SURVIVES a reload. Clearing it is therefore registerBot's job, not

@@ -143,6 +143,7 @@ public:
 	explicit Player();
 
 	explicit Player(std::shared_ptr<ProtocolGame> p);
+	static std::shared_ptr<Player> createNativeBot();
 	~Player() override;
 
 	// non-copyable

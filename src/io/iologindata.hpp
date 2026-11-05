@@ -8,6 +8,9 @@
  */
 
 #pragma once
+#include "game/movement/position.hpp"
+#include <optional>
+#include "creatures/players/components/player_storage.hpp"
 
 class Player;
 class Item;
@@ -40,7 +43,7 @@ public:
 	 */
 	static void loadOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &player, const std::shared_ptr<DBResult> &result);
 
-	static bool savePlayer(const std::shared_ptr<Player> &player);
+	static bool savePlayer(const std::shared_ptr<Player> &player, std::optional<Position> position = std::nullopt);
 
 	/**
 	 * @brief Saves data components that are only relevant when the player is online.
@@ -57,7 +60,7 @@ public:
 	 *
 	 * @param player A shared pointer to the Player instance. Must not be nullptr.
 	 */
-	static void saveOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &player);
+	static void saveOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &player, PlayerStorage::PlayerStorageDelta* persisted = nullptr);
 	static uint32_t getGuidByName(const std::string &name);
 	static bool getGuidByNameEx(uint32_t &guid, bool &specialVip, std::string &name);
 	static std::string getNameByGuid(uint32_t guid);
@@ -77,5 +80,5 @@ public:
 	static void removeGuidVIPGroupEntry(uint32_t accountId, uint32_t guid);
 
 private:
-	static bool savePlayerGuard(const std::shared_ptr<Player> &player);
+	static bool savePlayerGuard(const std::shared_ptr<Player> &player, std::optional<Position> position = std::nullopt, PlayerStorage::PlayerStorageDelta* persisted = nullptr);
 };

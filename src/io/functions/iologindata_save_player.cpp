@@ -157,7 +157,7 @@ bool IOLoginDataSave::saveItems(const std::shared_ptr<Player> &player, const Ite
 	return true;
 }
 
-bool IOLoginDataSave::savePlayerFirst(const std::shared_ptr<Player> &player) {
+bool IOLoginDataSave::savePlayerFirst(const std::shared_ptr<Player> &player, std::optional<Position> position) {
 	if (!player) {
 		g_logger().warn("[IOLoginData::savePlayer] - Player nullptr: {}", __FUNCTION__);
 		return false;
@@ -216,7 +216,7 @@ bool IOLoginDataSave::savePlayerFirst(const std::shared_ptr<Player> &player) {
 		query << "`town_id` = " << player->town->getID() << ",";
 	}
 
-	const Position &loginPosition = player->getLoginPosition();
+	const Position loginPosition = position.value_or(player->getLoginPosition());
 	query << "`posx` = " << loginPosition.getX() << ",";
 	query << "`posy` = " << loginPosition.getY() << ",";
 	query << "`posz` = " << loginPosition.getZ() << ",";
@@ -768,7 +768,7 @@ bool IOLoginDataSave::savePlayerBosstiary(const std::shared_ptr<Player> &player)
 	return true;
 }
 
-bool IOLoginDataSave::savePlayerStorage(const std::shared_ptr<Player> &player) {
+bool IOLoginDataSave::savePlayerStorage(const std::shared_ptr<Player> &player, PlayerStorage::PlayerStorageDelta* persisted) {
 	if (!player) {
 		g_logger().warn("[{}] - Player nullptr", __FUNCTION__);
 		return false;
@@ -788,7 +788,8 @@ bool IOLoginDataSave::savePlayerStorage(const std::shared_ptr<Player> &player) {
 		return false;
 	}
 
-	storage.clearDirty();
+	// Acknowledge this exact written delta only after the enclosing transaction commits.
+	if (persisted) *persisted = std::move(delta);
 	return true;
 }
 

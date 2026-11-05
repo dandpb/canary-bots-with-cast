@@ -1070,492 +1070,149 @@ end
 --   debugBotName = nil | <name>                 -- explicit bot to debug (overrides "first online")
 -- }
 -- Returns { ok = bool, message = string, lines = { ... } }
--- Re-entrancy guard: reload is async (step 4b stagger), so a second invocation
--- arriving mid-materialization would corrupt counter state. Module-level flag
--- blocks entry until finalizeReload clears it.
+-- Only explicit repair of missing registrations is asynchronous. Keep the guard
+-- until that repair finishes so another reload cannot replace its engine.
 BotSystem._reloadInProgress = BotSystem._reloadInProgress or false
 
 function BotSystem.executeReload(opts)
 	opts = opts or {}
-	local source = opts.source or "?"
-	local lines = {}
-	local function emit(msg)
-		lines[#lines + 1] = msg
-		-- Guard isRemoved — async window is wider than before; talkaction player
-		-- could log out between when the reload starts and when finalizeReload fires.
-		if opts.player and not opts.player:isRemoved() then
-			opts.player:sendTextMessage(MESSAGE_STATUS, "[cavebot] " .. msg)
-		end
-		logger.info("[reload:{}] {}", source, msg)
+	local lines, candidate = {}, nil
+	local outcome = { ok = false, pending = false, phase = "prepare", lines = lines }
+	local function emit(message)
+		lines[#lines + 1] = message
+		if opts.player then pcall(function()
+			if not opts.player:isRemoved() then opts.player:sendTextMessage(MESSAGE_STATUS, "[cavebot] " .. message) end
+		end) end
+		logger.info("[reload:{}] {}", opts.source or "?", message)
 	end
-
-	if BotSystem._reloadInProgress then
-		emit("reload already in progress — ignoring concurrent request")
-		return { ok = false, message = "reload already in progress", lines = lines }
-	end
-
-	-- BOT_CSV pre-flight. Authored data lives in data/bot/authored/*.csv, and
-	-- Game.botReload() DESTROYS the engine before the new one parses those files —
-	-- so a malformed CSV has nothing to fall back to. It poisons the fresh engine and
-	-- every bot refuses to activate until a human fixes the file.
-	--
-	-- Asking the still-live engine to parse-check first turns that outage into a
-	-- refused reload with the population untouched. Runs BEFORE _reloadInProgress is
-	-- set and before anything is deactivated, so an abort leaves zero residue.
-	--
-	-- Caveat: this validates with the CURRENTLY LOADED .so. If the .so is also
-	-- changing in this deploy, the check uses the old parser — it is a sanity check,
-	-- not a proof. tools/bot_csv/validate.py is the real gate and runs pre-deploy.
-	do
-		local ok, csvResult = pcall(Game.botCommand, "_global", "csvcheck")
-		if ok and type(csvResult) == "string" and csvResult ~= "" then
-			if csvResult:sub(1, 2) ~= "OK" then
-				emit("reload ABORTED — authored CSV failed to parse, nothing was touched:")
-				emit("  " .. csvResult)
-				emit("  Fix the file (or: git checkout -- data/bot/authored) and reload again.")
-				return { ok = false, message = "csv pre-flight failed: " .. csvResult, lines = lines }
-			end
-			logger.info("[reload:{}] csv pre-flight {}", source, csvResult)
-		else
-			-- Older .so without csvcheck, or an unexpected return: do not block the
-			-- reload on a missing diagnostic. Say so, so it is visible rather than
-			-- silently skipped.
-			logger.warn("[reload:{}] csv pre-flight unavailable — proceeding without it", source)
-		end
-	end
-
+	if BotSystem._reloadInProgress then return { ok = false, message = "reload already in progress", lines = lines } end
 	BotSystem._reloadInProgress = true
-
-	-- Steps 1-4 are synchronous; wrap in pcall so a Lua error in the prefix
-	-- (e.g., unexpected return type from a C++ binding) clears the re-entrancy
-	-- flag and surfaces the error instead of leaving _reloadInProgress=true
-	-- forever (which would block every future reload until canary restarts).
-	local onlineGuids, hibernatedNames, schedulerWasEnabled
-	local prefixOk, prefixErr = pcall(function()
-		-- Hold every live bot before force-deactivation removes Game's strong
-		-- reference. An awake player may have replaced Lua's stale userdata.
-		BotPlayers = BotPlayers or {}
-		for _, player in ipairs(Game.getPlayers()) do
-			if player and player:isBotPlayer() and not player:isRemoved() then
-				BotPlayers[player:getGuid()] = player
-			end
-		end
-
-		-- 1. Detect currently-active bots (via C++ engine active flag)
-		onlineGuids = {}
-		for guid, p in pairs(BotPlayers or {}) do
-			if p and not p:isRemoved() and Game.botIsActive(guid) then
-				onlineGuids[#onlineGuids + 1] = guid
-			end
-		end
-		emit("Found " .. #onlineGuids .. " online bots to preserve")
-
-		-- 1b. Snapshot hibernated bot names from OLD engine BEFORE force-deactivate / dlclose.
-		-- The hibernationPool_ (in the .so) holds the only strong refs to hibernated Player
-		-- objects; those refs die with the .so unload. We re-materialize them from DB after
-		-- the reload via Game.loadBotPlayer(name) — same path as startup.
-		hibernatedNames = {}
-		local hibStates = Game.getBotHibernationStates()
-		if hibStates then
-			for i = 1, #hibStates do
-				local b = hibStates[i]
-				if b.hibernated then
-					hibernatedNames[#hibernatedNames + 1] = b.name
-				end
-			end
-		end
-		-- The Player/pool views omit bots between death and respawn. The existing
-		-- registry mirror supplies their identities; confirm membership against
-		-- the OLD engine so stale asynchronous DB rows cannot create extra bots.
-		local activeSet, missingNames = {}, {}
-		for _, guid in ipairs(onlineGuids) do activeSet[guid] = true end
-		for _, name in ipairs(hibernatedNames) do missingNames[name] = true end
-		local cursor = db.storeQuery("SELECT p.`id`, p.`name` FROM `players` p "
-			.. "JOIN `bot_active_players` b ON b.`player_id` = p.`id`")
-		if cursor then
-			repeat
-				local guid = result.getNumber(cursor, "id")
-				local name = result.getString(cursor, "name")
-				if Game.botGetState(guid) >= 0 or opts.debugCount == "off" then
-					if Game.botIsActive(guid) then activeSet[guid] = true end
-					if not Player(name) and not missingNames[name] then
-						hibernatedNames[#hibernatedNames + 1] = name
-						missingNames[name] = true
-					end
-				end
-			until not result.next(cursor)
-			result.free(cursor)
-		end
-		onlineGuids = {}
-		for guid in pairs(activeSet) do onlineGuids[#onlineGuids + 1] = guid end
-		schedulerWasEnabled = not tostring(Game.botCommand("_global", "schedule status")):find("Scheduler: OFF", 1, true)
-
-		-- Debug-by-NAME only ever runs the bots you asked for; every other bot is despawned a few
-		-- lines later ("despawned 499/500 non-target bots"). Materializing them first is pure
-		-- waste, and it is SLOW waste: step 4b staggers one DB load per 100ms on purpose (to
-		-- avoid the dispatcher freeze that ping-timeouts real players), so 467 bots cost ~67s of
-		-- wall clock before the reload finalizes. Load only the targets.
-		if opts.debugBotNames and #opts.debugBotNames > 0 then
-			local wanted = {}
-			for _, n in ipairs(opts.debugBotNames) do
-				wanted[n:lower()] = true
-			end
-			local filtered = {}
-			for _, n in ipairs(hibernatedNames) do
-				if wanted[n:lower()] then
-					filtered[#filtered + 1] = n
-				end
-			end
-			local skipped = #hibernatedNames - #filtered
-			hibernatedNames = filtered
-			if skipped > 0 then
-				emit("debug mode: skipping re-materialization of " .. skipped
-					.. " non-target hibernated bot(s) (~" .. math.floor(skipped * 0.1) .. "s saved)")
-			end
-		end
-		emit("Found " .. #hibernatedNames .. " hibernated bots to re-load from DB")
-
-		-- 2. Force-deactivate all online bots in OLD engine (clears hunt reservations, preserves cast streams)
-		for _, guid in ipairs(onlineGuids) do
-			Game.botForceDeactivateForReload(guid)
-		end
-
-		-- 3. Reload the .so + hunt data — this destroys old hibernationPool_
-		local result = Game.botReload()
-		emit(tostring(result))
+	local function fail(message)
+		BotSystem._reloadInProgress = false
+		if type(candidate) == "table" then pcall(Game.botCancelReload, candidate.ticket) end
+		outcome.ok, outcome.pending, outcome.message = false, false, tostring(message)
+		BotSystem._lastReloadResult = outcome
+		logger.error("[reload:{}] phase={} failed: {}", opts.source or "?", outcome.phase, outcome.message)
+		return outcome
+	end
+	local ok, failure = pcall(function()
+		candidate = Game.botPrepareReload()
+		assert(type(candidate) == "table" and candidate.ok == true, type(candidate) == "table" and candidate.message or "preparation failed")
+		assert(candidate.native_handoff == true, "deploy matching native handoff bindings and Lua scripts")
+		assert(type(candidate.ticket) == "number" and candidate.ticket > 0, "invalid candidate ticket")
+		outcome.phase = "commit"
+		local committed = Game.botReload(candidate.ticket)
+		if type(committed) == "table" and not committed.ok then outcome.phase = committed.phase or outcome.phase end
+		assert(type(committed) == "table" and committed.ok == true and committed.state_restored == true,
+			type(committed) == "table" and committed.message or "native handoff failed")
+		local roster = assert(committed.bots, "native handoff did not return its roster")
+		emit(committed.message)
+		local scheduler = not tostring(Game.botCommand("_global", "schedule status")):find("Scheduler: OFF", 1, true)
 		Game.botCommand("_global", "schedule off")
-
-		-- 4. Restart the 100ms tick loop (old cycleEvent may be stale after dlclose/dlopen)
-		Game.botStartTickLoop()
-	end)
-	if not prefixOk then
-		BotSystem._reloadInProgress = false
-		logger.error("[reload:{}] prefix error: {}", source, tostring(prefixErr))
-		return { ok = false, message = "reload prefix failed: " .. tostring(prefixErr), lines = lines }
-	end
-
-	-- 4b. Re-materialize hibernated bots from DB asynchronously.
-	-- luaAddEvent clamps delay to min 100ms (global_functions.cpp:702), so passing no
-	-- delay puts all N callbacks at the same T+100ms deadline → all fire in one
-	-- dispatcher sweep → ~150ms × N freeze → real-player ping-timeout kicks at
-	-- N>=500. We index-stagger so each bot lands on its own dispatcher iteration.
-	-- After the last materialization completes, finalizeReload runs steps 5-9.
-	local BOT_MATERIALIZE_INTERVAL_MS = 100
-	local materializedCount = 0
-	local pendingMaterializations = #hibernatedNames
-
-	-- All post-materialization steps live inside finalizeReload so they wait for
-	-- step 4b to complete. Captured locals: opts, lines, emit, onlineGuids, source.
-	-- Defensive double-call guard + pcall wrapper: if finalizeReload errors out
-	-- partway through, we MUST still clear _reloadInProgress, otherwise the
-	-- re-entrancy guard locks out all future reloads. The `finalized` flag
-	-- prevents accidental re-entry if some future change calls it twice.
-	local finalized = false
-	local function finalizeReload()
-		if finalized then
-			logger.warn("[reload:{}] finalizeReload called twice — skipping", source)
-			return
-		end
-		finalized = true
-		local finalizeOk, finalizeErr = pcall(function()
-		if materializedCount > 0 then
-			emit("Re-materialized " .. materializedCount .. " hibernated bots from DB")
-		end
-
-		-- 5. Re-register all bot players with the new engine (awake survivors + freshly materialized)
-		local count = Game.botReregisterAll()
-		emit("Re-registered " .. count .. " bots.")
-
-		-- Rebuild Lua's strong-reference cache after materialization replaced Player objects.
-		-- The no-anchor hibernation loop reads this cache; stale removed userdata otherwise
-		-- leaves every reloaded bot awake indefinitely after all humans disconnect.
-		-- Keep unmatched references for the orphan recovery below; a bot removed
-		-- during reload may not yet appear in Game.getPlayers(). Replace every
-		-- matching reference with the newly materialized Player.
-		local refreshedPlayers = BotPlayers or {}
-		for _, player in ipairs(Game.getPlayers()) do
-			if player and player:isBotPlayer() and not player:isRemoved() then
-				refreshedPlayers[player:getGuid()] = player
-			end
-		end
-		BotPlayers = refreshedPlayers
-
-		-- 5b. Defensive orphan recovery: any bot in BotPlayers that's still not active in
-		-- the new engine (e.g., botReregisterAll missed it for some edge case reason).
-		-- With the materialize-from-DB step above, this loop normally finds 0; kept as a
-		-- safety net.
-		local orphanCount = 0
-		for guid, p in pairs(BotPlayers or {}) do
-			if p and not Game.botIsActive(guid) then
-				if Game.botRecoverOrphanForReload(guid, p) then
-					orphanCount = orphanCount + 1
+		assert(Game.botStartTickLoop() ~= false, "cannot restart tick owner")
+		outcome.phase = "finalize"
+		local byGuid = {}
+		for _, entry in ipairs(roster) do byGuid[entry.guid] = entry end
+		BotPlayers, BotActive, BotDebugPinned = BotPlayers or {}, BotActive or {}, BotDebugPinned or {}
+		local function refresh()
+			for guid in pairs(BotPlayers) do if not byGuid[guid] then BotPlayers[guid] = nil end end
+			for _, player in ipairs(Game.getPlayers()) do
+				if player:isBotPlayer() and not player:isRemoved() and byGuid[player:getGuid()] then
+					BotPlayers[player:getGuid()] = player
 				end
 			end
 		end
-		if orphanCount > 0 then
-			emit("Recovered " .. orphanCount .. " orphan bot(s)")
-		end
-
-		-- 6. Determine target set for re-activation based on debugCount
-		local debugCount = opts.debugCount
-		local activateGuids = {}
-		local debugTargets = {}
-		local debugTargetNames = {}  -- guid -> name; survives async materialization
-
-		if debugCount == "off" then
-			-- Clear persisted debug mode, re-activate everything
-			db.query("INSERT INTO `bot_startup_config` (`config_key`, `config_value`) "
-				.. "VALUES ('debug_active_count', '0') "
-				.. "ON DUPLICATE KEY UPDATE `config_value` = '0'")
-			-- Re-enable C++ population scheduler so it can manage normal active counts
-			Game.botCommand("_global", "schedule on")
-			emit("scheduler ON")
-			for guid, _ in pairs(BotPlayers or {}) do
-				activateGuids[#activateGuids + 1] = guid
+		local function activate(entry)
+			if entry.hibernated then Game.botCommand(entry.name, "wake"); entry.hibernated = false end
+			if not Game.botIsActive(entry.guid) then
+				local player = Player(entry.name) or Game.loadBotPlayer(entry.name)
+				assert(player and Game.botActivate(entry.guid), "activation failed for " .. entry.name)
 			end
-			emit("debug mode OFF — activating ALL " .. #activateGuids .. " registered bots")
-		elseif type(debugCount) == "number" and debugCount > 0 then
-			-- Persist new debug count
-			db.query("INSERT INTO `bot_startup_config` (`config_key`, `config_value`) "
-				.. "VALUES ('debug_active_count', '" .. debugCount .. "') "
-				.. "ON DUPLICATE KEY UPDATE `config_value` = '" .. debugCount .. "'")
-			-- Disable C++ population scheduler — otherwise it re-activates the 199 we just turned off
-			Game.botCommand("_global", "schedule off")
-			emit("scheduler OFF (debug mode controls active set)")
-
-			-- Pick which bots to debug.
-			-- Priority: explicit NAME LIST (reload debug,<Name>[;<Name2>]) > opts.debugBotName >
-			-- BOT_CONFIG.DEBUG_BOT_NAME > first N from onlineGuids > first N from BotPlayers.
-			local picked = {}
-			if opts.debugBotNames then
-				-- Resolve names against the REGISTERED bot map, not Player(name): during a
-				-- reload the pool is re-materialized asynchronously, so Player(name) can still
-				-- return nil for a bot that is perfectly well registered. Match case-insensitively
-				-- so the operator does not have to reproduce display casing exactly.
-				local byName = {}
-				for g, ref in pairs(BotPlayers or {}) do
-					if ref and not ref:isRemoved() then
-						byName[ref:getName():lower()] = g
+			entry.active = true
+		end
+		local function finish()
+			local finishOk, finishError = pcall(function()
+				local count = opts.debugCount
+				if count == "off" then
+					for _, entry in ipairs(roster) do
+						activate(entry)
+						Game.botCommand(entry.name, "debug off")
+						Game.botCommand(entry.name, "pin off")
+						BotDebugPinned[entry.guid] = nil
 					end
-				end
-				for _, wanted in ipairs(opts.debugBotNames) do
-					local g = byName[wanted:lower()]
-					if not g then
-						local p = Player(wanted) -- fallback for bots not yet in BotPlayers
-						if p then g = p:getGuid() end
-					end
-					if g then
-						if not picked[g] then
-							picked[g] = true
-							activateGuids[#activateGuids + 1] = g
-							debugTargetNames[g] = wanted
+					scheduler = true
+					db.query("INSERT INTO bot_startup_config (config_key,config_value) VALUES ('debug_active_count','0') ON DUPLICATE KEY UPDATE config_value='0'")
+				elseif type(count) == "number" and count > 0 then
+					assert(count % 1 == 0, "debug count must be an integer")
+					local named = {}
+					local names = opts.debugBotNames or { opts.debugBotName or BOT_CONFIG.DEBUG_BOT_NAME }
+					for _, name in ipairs(names) do if name and name ~= "" then named[name:lower()] = true end end
+					table.sort(roster, function(a, b)
+						local pa = named[a.name:lower()] and 0 or (a.active and not a.hibernated and 1 or 2)
+						local pb = named[b.name:lower()] and 0 or (b.active and not b.hibernated and 1 or 2)
+						return pa == pb and a.guid < b.guid or pa < pb
+					end)
+					local picked = 0
+					for _, entry in ipairs(roster) do
+						if picked < count and (next(named) == nil or named[entry.name:lower()]) then
+							activate(entry); picked = picked + 1
+							Game.botCommand(entry.name, "debug on"); Game.botCommand(entry.name, "pin on")
+							BotDebugPinned[entry.guid] = true
+						else
+							Game.botForceDeactivate(entry.guid)
+							entry.active, entry.hibernated = false, false
+							BotPlayers[entry.guid], BotDebugPinned[entry.guid] = nil, nil
 						end
-					else
-						emit("debug: bot '" .. wanted .. "' not found/registered — skipped")
 					end
+					assert(picked > 0, "no requested debug bot is registered")
+					scheduler = false
+					db.query("INSERT INTO bot_startup_config (config_key,config_value) VALUES ('debug_active_count','" .. count .. "') ON DUPLICATE KEY UPDATE config_value='" .. count .. "'")
 				end
-			end
-
-			local preferredName = opts.debugBotName
-			if not preferredName and BOT_CONFIG.DEBUG_BOT_NAME and BOT_CONFIG.DEBUG_BOT_NAME ~= "" then
-				preferredName = BOT_CONFIG.DEBUG_BOT_NAME
-			end
-
-			if preferredName and not opts.debugBotNames then
-				local prefP = Player(preferredName)
-				if prefP then
-					local prefGuid = prefP:getGuid()
-					if BotPlayers[prefGuid] then
-						picked[prefGuid] = true
-						activateGuids[#activateGuids + 1] = prefGuid
-					end
-				end
-			end
-
-			-- Fill remaining slots from onlineGuids (preserves "previously online" preference)
-			for _, guid in ipairs(onlineGuids) do
-				if #activateGuids >= debugCount then break end
-				if not picked[guid] then
-					picked[guid] = true
-					activateGuids[#activateGuids + 1] = guid
-				end
-			end
-
-			-- Still not enough? Fall back to any registered bot
-			if #activateGuids < debugCount then
-				for guid, _ in pairs(BotPlayers or {}) do
-					if #activateGuids >= debugCount then break end
-					if not picked[guid] then
-						picked[guid] = true
-						activateGuids[#activateGuids + 1] = guid
-					end
-				end
-			end
-
-			-- These are the debug targets — debug stream will be enabled on them.
-			-- Record the NAME too: step 8 runs while the pool may still be materializing, so
-			-- BotPlayers[guid] can be nil for a perfectly valid target. Game.botCommand resolves
-			-- against the engine's own registry by name, so a name is enough.
-			for _, guid in ipairs(activateGuids) do
-				debugTargets[guid] = true
-				if not debugTargetNames[guid] then
-					local ref = (BotPlayers or {})[guid]
-					if ref and not ref:isRemoved() then
-						debugTargetNames[guid] = ref:getName()
-					end
-				end
-			end
-			emit("debug mode ON — activating " .. #activateGuids .. " bot(s); rest stay offline")
-		else
-			-- No debug change: preserve previously-online set
-			activateGuids = onlineGuids
+				refresh()
+				for _, entry in ipairs(roster) do BotActive[entry.guid] = entry.active end
+				Game.botCommand("_global", scheduler and "schedule on" or "schedule off")
+				outcome.ok, outcome.pending, outcome.phase = true, false, "complete"
+				outcome.message = "reload complete; preserved " .. #roster .. " roster entries"
+				emit(outcome.message)
+				BotSystem._reloadInProgress = false
+				BotSystem._lastReloadResult = outcome
+			end)
+			if not finishOk then fail(finishError) end
 		end
-
-		-- 7. Re-activate selected bots
-		-- Primary path: botReactivateForReload preserves state for bots that were active before the reload.
-		-- Fallback: botActivate is the canonical fresh-activation path (teleport to temple, state=IDLE) for
-		-- bots that weren't in a preserved state — e.g., during "debug off" we want to bring back bots that
-		-- may have been INACTIVE before the debug session started.
-		local reactivated = 0
-		local fallbackActivated = 0
-		for _, guid in ipairs(activateGuids) do
-			if Game.botReactivateForReload(guid) then
-				reactivated = reactivated + 1
-			elseif Game.botActivate(guid) then
-				reactivated = reactivated + 1
-				fallbackActivated = fallbackActivated + 1
+		local missing = {}
+		if opts.debugCount == "off" then
+			-- Explicit repair only. Registered/hibernated Players already crossed in memory.
+			local cursor = db.storeQuery("SELECT p.id,p.name FROM players p JOIN bot_active_players b ON b.player_id=p.id")
+			if cursor then
+				repeat
+					local guid, name = result.getNumber(cursor, "id"), result.getString(cursor, "name")
+					if not byGuid[guid] then missing[#missing + 1] = { guid = guid, name = name } end
+				until not result.next(cursor)
+				result.free(cursor)
 			end
 		end
-		if fallbackActivated > 0 then
-			emit("Re-activated " .. reactivated .. "/" .. #activateGuids .. " bots ("
-				.. fallbackActivated .. " via fresh-activate fallback).")
-		else
-			emit("Re-activated " .. reactivated .. "/" .. #activateGuids .. " bots.")
-		end
-
-		-- 7b. Debug mode: REMOVE every non-target bot from the world.
-		-- "rest stay offline" only ever cleared the AI flag; the reload had already
-		-- re-materialized all 500 as live Player objects, so 499 of them stayed standing in
-		-- the world as motionless statues. That defeats the entire point of debug mode (and is
-		-- what an operator sees in-game as "why are there still bots everywhere?").
-		-- botForceDeactivateForReload despawns them, leaving exactly the debug targets.
-		if type(debugCount) == "number" and debugCount > 0 then
-			-- Iterate the ENGINE's registry, not BotPlayers: materialization is async, so
-			-- BotPlayers held only ~10 entries here and the first attempt despawned 9 of 500.
-			-- getBotHibernationStates is the same authoritative list the hibernation loop uses.
-			local despawned = 0
-			local all = Game.getBotHibernationStates() or {}
-			for i = 1, #all do
-				local guid = all[i].guid
-				if guid and not debugTargets[guid] then
-					if Game.botForceDeactivateForReload(guid) then
-						despawned = despawned + 1
-					end
-					if BotActive ~= nil then BotActive[guid] = false end
-					if BotPlayers ~= nil then BotPlayers[guid] = nil end
+		if #missing == 0 then finish(); return end
+		outcome.ok, outcome.pending, outcome.phase = true, true, "repair"
+		outcome.message = "native handoff complete; repairing " .. #missing .. " missing registrations"
+		BotSystem._lastReloadResult = outcome
+		local function repair(index, attempt)
+			local repairOk, repairError = pcall(function()
+				local entry = missing[index]
+				local player = Game.loadBotPlayer(entry.name)
+				if not player then
+					assert(attempt < 3, "cannot repair " .. entry.name)
+					addEvent(function() repair(index, attempt + 1) end, 500); return
 				end
-			end
-			emit("debug mode: despawned " .. despawned .. "/" .. #all .. " non-target bot(s) from the world")
+				roster[#roster + 1], byGuid[entry.guid] = entry, entry
+				if index == #missing then finish()
+				else addEvent(function() repair(index + 1, 1) end, 100) end
+			end)
+			if not repairOk then fail(repairError) end
 		end
-
-		-- 8. Toggle debug stream on the chosen targets (one per active bot in debug mode)
-		if debugCount == "off" then
-			-- Best-effort: turn off debug for all bots that might have had it on, and UNPIN
-			-- everything so the normal AI resumes (a leftover pin would freeze a bot forever).
-			for guid, _ in pairs(BotPlayers or {}) do
-				local p = BotPlayers[guid]
-				if p and not p:isRemoved() then
-					Game.botCommand(p:getName(), "debug off")
-					Game.botCommand(p:getName(), "pin off")
-				end
-			end
-			BotDebugPinned = {}
-		elseif type(debugCount) == "number" and debugCount > 0 then
-			for guid, _ in pairs(debugTargets) do
-				local p = BotPlayers[guid]
-				local nm = debugTargetNames[guid] or (p and not p:isRemoved() and p:getName()) or nil
-				if nm then
-					local r = Game.botCommand(nm, "debug on")
-					-- PIN the debug bot: no self-assigned tasks (the C++ activity reroll returns
-					-- early) and no hibernation (BotDebugPinned is checked by bot_hibernation).
-					-- Without this the bot picks a hunt mid-observation and any manual `goto` is
-					-- silently overwritten, which is exactly what made debug mode unusable for
-					-- watching one bot do one thing.
-					Game.botCommand(nm, "pin on")
-					BotDebugPinned[guid] = true
-					emit("debug stream + PIN enabled on '" .. nm .. "' — " .. tostring(r))
-				end
-			end
-		end
-
-		-- 9. Show git commit info so admin knows what version is running (talkaction-only — slow popen)
-		if opts.source == "talkaction" then
-			local handle = io.popen("git log -1 --pretty=format:'%h %s' 2>/dev/null")
-			if handle then
-				local gitInfo = handle:read("*a")
-				handle:close()
-				if gitInfo and gitInfo ~= "" then
-					emit("Rev: " .. gitInfo)
-				end
-			end
-		end
-
-		emit("reload finalized; active=" .. reactivated .. " debug=" .. (debugCount and tostring(debugCount) or "preserve"))
-		end) -- pcall wrap of finalize body
-		if not finalizeOk then
-			logger.error("[reload:{}] finalize error: {}", source, tostring(finalizeErr))
-			-- Surface to admin if possible (player ref may be stale by now — emit guards it)
-			emit("reload finalize FAILED: " .. tostring(finalizeErr))
-		end
-		if opts.debugCount == nil then
-			Game.botCommand("_global", schedulerWasEnabled and "schedule on" or "schedule off")
-		end
-		BotSystem._reloadInProgress = false
-	end -- finalizeReload
-
-	-- Dispatch step 4b: stagger each loadBotPlayer onto its own dispatcher iteration.
-	-- pcall guards per-bot failures so the counter still decrements even if one bot
-	-- errors out — otherwise pendingMaterializations would never hit 0 and the reload
-	-- would stay "in progress" forever, blocking future reloads (re-entrancy guard).
-	if pendingMaterializations == 0 then
-		finalizeReload()
-	else
-		for i, name in ipairs(hibernatedNames) do
-			local attempts = 0
-			local function materialize()
-				attempts = attempts + 1
-				local ok, err = pcall(function()
-					if not Player(name) then
-						local player = Game.loadBotPlayer(name)
-						if not player then error("Player could not be loaded") end
-						materializedCount = materializedCount + 1
-					end
-				end)
-				if not ok and attempts < 3 then
-					addEvent(materialize, attempts * 500)
-					return
-				end
-				if not ok then
-					logger.error("[reload:materialize] bot '" .. name .. "' was NOT restored: " .. tostring(err))
-					emit("reload incomplete: could not restore " .. name .. " after 3 attempts")
-				end
-				pendingMaterializations = pendingMaterializations - 1
-				if pendingMaterializations == 0 then finalizeReload() end
-			end
-			addEvent(materialize, i * BOT_MATERIALIZE_INTERVAL_MS)
-		end
-	end
-
-	-- Sync return: caller (bot_commands queue) gets an "in progress" message.
-	-- Final state lands in the journal via emit() inside finalizeReload.
-	return {
-		ok = true,
-		message = (#hibernatedNames > 0)
-			and ("reload started; materializing " .. #hibernatedNames .. " hibernated bots async (~"
-				 .. math.ceil(#hibernatedNames * BOT_MATERIALIZE_INTERVAL_MS / 1000) .. "s)")
-			or "reload started; no hibernated bots to materialize",
-		lines = lines,
-	}
+		addEvent(function() repair(1, 1) end, 100)
+	end)
+	if not ok then return fail(failure) end
+	return outcome
 end
 
 -- ============================================================================

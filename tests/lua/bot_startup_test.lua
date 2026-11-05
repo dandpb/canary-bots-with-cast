@@ -10,14 +10,14 @@ end
 
 local function startup(options)
 	options = options or {}
-	local state = { now = 0, events = {}, calls = {}, attempts = {}, queries = {}, logs = {}, finalizers = {}, maxPending = 0 }
+	local state = { now = 0, events = {}, calls = {}, attempts = {}, queries = {}, syncQueries = {}, logs = {}, finalizers = {}, maxPending = 0 }
 	local names = {}
 	for i = 1, options.rows and #options.rows or options.pool or options.target or 1 do
 		names[i] = options.rows and options.rows[i].name or "Bot " .. i
 	end
 	local current = 1
 	local startupEvent
-	BOT_CONFIG = { TARGET_ONLINE = options.target or #names, BOT_ACCOUNT_ID = 65000 }
+	BOT_CONFIG = { TARGET_ONLINE = options.target or #names, BOT_ACCOUNT_ID = 65000, MASTER_DISABLE = options.masterDisable }
 	BotPlayers = {}
 	configKeys = { BOT_PERSONALITY_REROLL_ON_RESTART = "reroll", BOT_PLAYERS_SHOW_AS_ONLINE = "online", BOT_POPULATION_REFERENCE_BOTS = "references" }
 	configManager = { getString = function() return options.references or "" end, getBoolean = function(key)
@@ -32,7 +32,10 @@ local function startup(options)
 	end
 	Position = function(...) return { ... } end
 	db = {
-		query = function() return true end,
+		query = function(query)
+			state.syncQueries[#state.syncQueries + 1] = query
+			return true
+		end,
 		storeQuery = function() return #names > 0 and 1 or nil end,
 		botAsyncQuery = function(query) state.queries[#state.queries + 1] = query end,
 	}
@@ -226,6 +229,26 @@ end)
 test("duplicate references do not consume extra population slots", function()
 	local s = startup({ target = 1, pool = 10, references = "4,4" })
 	check(#s.calls == 1 and s.calls[1].name == "Bot 4", "duplicate references changed the selection")
+end)
+
+local function clearsCasts(s)
+	for _, query in ipairs(s.syncQueries) do
+		if query == "DELETE FROM `cast_broadcasters`" then
+			return true
+		end
+	end
+	return false
+end
+
+test("stale casts are cleared at startup", function()
+	local s = startup({ target = 1 })
+	check(clearsCasts(s), "startup kept stale cast_broadcasters rows")
+end)
+
+test("stale casts are cleared at startup even with bots disabled", function()
+	local s = startup({ target = 1, masterDisable = true })
+	check(#s.calls == 0, "MASTER_DISABLE loaded bots")
+	check(clearsCasts(s), "MASTER_DISABLE kept stale cast_broadcasters rows")
 end)
 
 print(passed .. " startup tests passed")

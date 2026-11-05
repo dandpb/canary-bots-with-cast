@@ -32,6 +32,16 @@ public:
 	Database &operator=(const Database &) = delete;
 
 	static Database &getInstance();
+	// Route helpers in one transaction to an executable-owned worker connection.
+	class ScopedConnection {
+	public:
+		explicit ScopedConnection(Database& connection);
+		~ScopedConnection();
+		ScopedConnection(const ScopedConnection&) = delete;
+		ScopedConnection& operator=(const ScopedConnection&) = delete;
+	private:
+		Database* previous_;
+	};
 
 	bool connect();
 
