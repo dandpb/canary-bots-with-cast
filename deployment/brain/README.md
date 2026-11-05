@@ -175,6 +175,10 @@ Disable releases owned goals and hunt reservations while retaining native gamepl
 
 ## Verification
 
+The loader now requires matching ABI/preparation exports. Build the executable and
+library together for this transition and deploy the matching Lua files. See the
+[reload contract and remaining acceptance](../../tools/bot_brain/README.reload.md).
+
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -r deployment/brain/requirements-dev.lock
