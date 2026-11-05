@@ -127,6 +127,13 @@ Prepare a local fixture directory containing:
 
 The map is referenced separately, read-only, and included in the initial hash. A restored database is not a deterministic whole-world simulator: live RNG, scheduling and later encounters can diverge. No production character is reset by these commands.
 
+`database_image` selects the database image for every participant. Before any
+provider credential is read, campaigns with a LiteLLM participant require both
+`game_image` and `database_image` to be immutable content IDs (`sha256:...` or
+`repository@sha256:...`). Mutable tags are rejected. The selected references are
+part of the campaign configuration fingerprint and generated Compose file. This
+does not retroactively attest an image missing from an older recording.
+
 ```sh
 canary-brain benchmark hash --fixture /home/daniel/benchmark-fixture \
   --world-map /home/daniel/maps/otservbr.otbm
