@@ -68,7 +68,7 @@ death limit, generation change, observation loss and critical recording gap.
 They assert correct reason, worker exit, socket removal and zero request rows.
 
 ```sh
-python -m pytest -q --basetemp=/tmp/m5-su-qa-b
+python -m pytest -q --basetemp=/tmp/m5-su-qa-c
 ruff check src/canary_brain/benchmark_stops.py src/canary_brain/controller.py \
   src/canary_brain/runtime.py src/canary_brain/benchmark.py \
   tests/test_benchmark_horizon.py tests/test_benchmark_stops.py \
