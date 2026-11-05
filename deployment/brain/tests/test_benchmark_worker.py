@@ -16,18 +16,7 @@ from test_protocol import observation
 from canary_brain.recording import RecordingStore, ReplayReader
 
 
-@pytest.mark.parametrize("provider", ["native", "fake"])
-@pytest.mark.parametrize(
-    "reason",
-    [
-        "completed",
-        "deaths_limit",
-        "world_changed",
-        "observation_stale",
-        "recording_gap",
-    ],
-)
-def test_supervised_worker_stops_and_closes_ipc_without_inference(provider, reason):
+def exercise_supervised_worker(provider, reason):
     with tempfile.TemporaryDirectory(prefix="bench-stop-") as temporary:
         work = Path(temporary)
         peer = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
@@ -40,7 +29,7 @@ def test_supervised_worker_stops_and_closes_ipc_without_inference(provider, reas
             "state_file": str(work / "state.db"),
             "bots": [7],
             "memory_mode": "frozen",
-            "run_seconds": 10,
+            "run_seconds": 60 if reason == "proposal_timeout" else 10,
             "benchmark_supervision": True,
             "recording": {"path": str(work / "replay.db"), "namespace": "stops"},
         }
@@ -87,10 +76,27 @@ def test_supervised_worker_stops_and_closes_ipc_without_inference(provider, reas
                         "ttl_ms": 1500,
                     }
                 ]
+                if reason == "proposal_timeout":
+                    packet["actions"] += [
+                        {
+                            "id": "resupply",
+                            "action": "resupply",
+                            "description": "resupply",
+                            "ttl_ms": 5000,
+                        },
+                        {
+                            "id": "hunt:399",
+                            "action": "hunt",
+                            "description": "hunt",
+                            "ttl_ms": 5000,
+                        },
+                    ]
                 started = time.monotonic()
                 telemetry_sequence = 0
                 injected = False
-                while process.poll() is None and time.monotonic() - started < 14:
+                while process.poll() is None and time.monotonic() - started < (
+                    36 if reason == "proposal_timeout" else 14
+                ):
                     elapsed = time.monotonic() - started
                     if reason == "recording_gap" and elapsed > 0.3 and not injected:
                         run = ReplayReader(work / "replay.db").runs()[0]["id"]
@@ -152,6 +158,8 @@ def test_supervised_worker_stops_and_closes_ipc_without_inference(provider, reas
                         db.execute("SELECT COUNT(*) FROM requests").fetchone()[0] == 0
                     )
                 assert stopped["reason"] == reason, stopped
+                if reason == "proposal_timeout":
+                    assert 30 < stopped["elapsed_seconds"] <= 32.2
                 assert not (work / "worker.sock").exists()
                 if reason == "completed":
                     assert 10 <= stopped["elapsed_seconds"] <= 11.2
@@ -168,3 +176,22 @@ def test_supervised_worker_stops_and_closes_ipc_without_inference(provider, reas
                     process.terminate()
                     process.wait(timeout=4)
                 peer.close()
+
+
+@pytest.mark.parametrize("provider", ["native", "fake"])
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "completed",
+        "deaths_limit",
+        "world_changed",
+        "observation_stale",
+        "recording_gap",
+    ],
+)
+def test_supervised_worker_stops_and_closes_ipc_without_inference(provider, reason):
+    exercise_supervised_worker(provider, reason)
+
+
+def test_invalid_fake_choices_do_not_reset_the_real_proposal_deadline():
+    exercise_supervised_worker("fake", "proposal_timeout")

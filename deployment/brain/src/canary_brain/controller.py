@@ -507,6 +507,9 @@ class Controller:
                 else "model",
             },
         )
+        # Raw observations may still contain options removed from this request.
+        if selected not in {item.id for item in snapshot.actions}:
+            return
         latest = self.latest.get(snapshot.bot.id)
         if (
             latest is None

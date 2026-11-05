@@ -29,6 +29,14 @@ completed. The two `recording_gap` regressions failed before the persistent-gap
 check and passed afterward. They insert the same stored loss marker as a
 storage-limit failure; they do not simulate physical disk exhaustion.
 
+The real proposal-timeout test also exposed an attribution problem: `continue`
+could be removed from the actual autonomous-work request but still exist in the
+raw latest observation. An invalid fake choice was then marked `selected`, closing
+the timeout window before intent validation failed. A regression reproduced that
+marker; selection now validates against the filtered request before it can reset
+the window. An eleven-case CLI IPC suite includes a real thirty-second window
+with continuous observations and invalid choices, which stops correctly.
+
 ## Resulting behavior
 
 The campaign enables an opt-in single-bot policy in the production worker. Valid
@@ -51,9 +59,9 @@ ledger remain governed by the existing preflight and reservation controls.
 
 ## Validation and scope
 
-**172 Python tests passed in 117.82 s**, using a short owned pytest base directory
+**174 Python tests passed in 162.69 s**, using a short owned pytest base directory
 to respect Unix socket path limits. This includes twelve policy tests, two
-orchestrator horizon cases, six campaign-abort cases and ten real supervised CLI
+orchestrator horizon cases, six campaign-abort cases, a filtered-choice regression and eleven real supervised CLI
 worker cases. The CLI cases use only a local synthetic Unix datagram peer and
 native/fake providers: normal completion after a delayed first observation,
 death limit, generation change, observation loss and critical recording gap.
@@ -64,7 +72,8 @@ python -m pytest -q --basetemp=/tmp/m5-su-qa-b
 ruff check src/canary_brain/benchmark_stops.py src/canary_brain/controller.py \
   src/canary_brain/runtime.py src/canary_brain/benchmark.py \
   tests/test_benchmark_horizon.py tests/test_benchmark_stops.py \
-  tests/test_benchmark_worker.py tests/test_benchmark_abort.py
+  tests/test_benchmark_worker.py tests/test_benchmark_abort.py \
+  tests/test_benchmark_choice_window.py
 mypy src
 ```
 
