@@ -44,9 +44,10 @@ end
 function qa.run(command)
 	local name = command.name or "Grizzle Alyronia"
 	if command.action == "virtual" or command.action == "unregister" or command.action == "pending"
-		or command.action == "arm" or command.action == "counts" then
+		or command.action == "arm" or command.action == "counts" or command.action == "roster" then
 		qa.native = qa.native or assert(package.loadlib("/qa/lifecycle_bridge.so", "luaopen_lifecycle_bridge"))()
 		local guid = command.guid or 65001
+		if command.action == "roster" then return qa.native.roster() end
 		if command.action == "virtual" then
 			qa.native.setVirtual(guid, command.x, command.y, command.z)
 			saveServer()

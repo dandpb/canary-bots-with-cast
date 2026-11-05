@@ -18,7 +18,7 @@ local function fixture()
 			prepared = prepared + 1
 			if mode == "prepare-throw" then error("invalid library") end
 			if mode == "prepare-fail" then return { ok = false, phase = "data", message = "bad CSV" } end
-			return { ok = true, ticket = 41 }
+			return { ok = true, ticket = 41, native_handoff = true }
 		end,
 		botCancelReload = function(ticket) assert(ticket == 41); cancelled = cancelled + 1 end,
 		getPlayers = function()
@@ -36,7 +36,7 @@ local function fixture()
 		botReload = function(ticket)
 			assert(ticket == 41)
 			committed = committed + 1
-			return { ok = mode ~= "commit-fail", message = "fixture commit result" }
+			return { ok = mode ~= "commit-fail", state_restored = mode ~= "commit-fail", message = "fixture commit result", bots = {} }
 		end,
 		botStartTickLoop = function() ticks = ticks + 1; return true end,
 		botReregisterAll = function() restored = restored + 1; return 0 end,
@@ -51,11 +51,11 @@ for _, failure in ipairs({ "prepare-fail", "prepare-throw" }) do
 end
 mode = "prefix-throw"; fixture()
 assert(not BotSystem.executeReload({ source = mode }).ok)
-assert(cancelled == 1 and committed == 0 and not BotSystem._reloadInProgress)
+assert(cancelled == 1 and committed == 1 and not BotSystem._reloadInProgress)
 mode = "commit-fail"; fixture()
 assert(not BotSystem.executeReload({ source = mode }).ok)
 assert(committed == 1 and cancelled == 1 and ticks == 0 and restored == 0 and not BotSystem._reloadInProgress)
 mode = "success"; fixture()
 BotSystem.executeReload({ source = "retry" })
-assert(committed == 1 and restored == 1 and ticks == 1 and not BotSystem._reloadInProgress)
+assert(committed == 1 and restored == 0 and ticks == 1 and not BotSystem._reloadInProgress)
 print("PASS: preparation/commit failures stop safely, release reload state and permit retry")

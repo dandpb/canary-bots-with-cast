@@ -5,6 +5,10 @@
 #include <fstream>
 #include <iostream>
 
+// This loader-only fixture has no game/DB or Players. Live handoff is covered
+// by lifecycle_qa; reject any attempt to substitute nonempty persistence here.
+void checkpointBotReloadPlayers(const BotReloadSnapshot& snapshot) { assert(snapshot.entries.empty()); }
+
 int main(int argc, char** argv) {
 	assert(argc == 2);
 	namespace fs = std::filesystem;
@@ -55,7 +59,8 @@ int main(int argc, char** argv) {
 	assert(loader.tryGetEngine() != original && loader.getEngine().countActiveBots() == 7);
 	std::cout << "PASS: commit uses the exact prepared snapshot\n";
 	replace("throwinit");
-	assert(loader.reload());
+	assert(loader.prepareReload());
+	assert(loader.commitReload(loader.preparedTicket()));
 	assert(!loader.initialize());
 	assert(!loader.isLoaded() && loader.phase() == "initialize");
 	std::cout << "PASS: initialization exception leaves an explicit unavailable state\n";
