@@ -62,6 +62,32 @@ All providers use the same LiteLLM-facing application adapter. Additional models
 
 The experiment's common decision timeout defaults to ten seconds for macro objectives and is capped further by the shortest offered server deadline. Native combat/healing continues independently; slow planning has a separate concurrency lane. Frozen runs disable policy updates, policy overrides and autonomous reflection/strategy-memory updates. Independent runs start from the same seed records and learn separately. The timed horizon begins with the worker's first valid observation, not database/container provisioning.
 
+The benchmark runner enables single-bot supervision in the worker. Its monotonic
+clock is authoritative: a delayed roster activation after service readiness must
+not shorten the observed window. The orchestrator waits for a supervised result
+and verifies elapsed time before accepting `completed`; a second deadline based
+on service startup cannot declare a short run complete. Direct workers retain
+their existing behavior unless `benchmark_supervision` is explicitly enabled,
+which requires one bot, recording, and `run_seconds`.
+
+Supervision stops after three new observed deaths, five seconds without valid
+observations, ten minutes without observed position/XP/supply/defeat progress,
+a world-generation change, recorder errors/critical recorded gaps, or more than
+thirty seconds without a locally validated selection in an open model-choice
+window. The latter begins at an actual decision request with multiple filtered
+options; repeated requests do not restart it. A `selected` decision closes it,
+while a mere proposal does not. Native work in progress, death, loss of choices,
+or a single-candidate decision closes the opportunity. Native baseline has no
+model-proposal timeout. Local selection validity remains distinct from later
+native acceptance; record rejections and deadline misses separately.
+
+The worker stores the stop reason and emits a lifecycle marker. Per-run gameplay
+stops are retained as failed outcomes. Operator stop interrupts the campaign;
+world/observation/recording/startup failures abort it before the next trial. They
+do not silently become successful runs or initiate new provider requests.
+Reservations already transmitted remain subject to ordinary reconciliation.
+Observed movement here is a liveness signal, not proof that circling is useful.
+
 LiteLLM may return the configured alias in the response's model field. The recorder distinguishes that observation from an upstream model name and resolves the configured upstream through the exact policy hash and deployment ID. A mutable upstream alias is not proof of an immutable provider model revision.
 
 Offline gateway conformance uses the real pinned proxy and a local fake upstream, inside a Docker container with external networking disabled:
