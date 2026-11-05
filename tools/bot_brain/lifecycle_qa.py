@@ -22,6 +22,23 @@ def verify(name):
     assert label == "lifecycle", "refusing to mutate an unlabelled container"
 
 
+def seed_human():
+    database = PREFIX + "-db"
+    verify(database)
+    sql = """
+INSERT IGNORE INTO accounts(id,name,password,email,premdays,type)
+VALUES(64999,'LifecycleQA','disabled','qa@example.invalid',3650,1);
+CREATE TEMPORARY TABLE qa_human LIKE players;
+INSERT INTO qa_human SELECT * FROM players WHERE id=65004;
+UPDATE qa_human SET id=64999, name='Lifecycle Human', account_id=64999,
+ level=8,experience=4200,health=healthmax,mana=manamax,conditions='',
+ town_id=1,posx=32069,posy=31901,posz=6;
+INSERT IGNORE INTO players SELECT * FROM qa_human;
+DROP TEMPORARY TABLE qa_human;
+"""
+    docker("exec", "-i", database, "mariadb", "-uroot", "-plifecycle-qa-only", "canary", input=sql)
+
+
 def command(action, **values):
     game = PREFIX + "-game"
     verify(game)
@@ -46,7 +63,7 @@ def command(action, **values):
 
 
 def create(world, build):
-    assert build.startswith(("canary-state-qa", "canary-reload-a")), "QA build container required"
+    assert build.startswith(("canary-state-qa", "canary-reload-", "canary-cast-")), "QA build container required"
     work = Path("/tmp") / PREFIX
     work.mkdir(exist_ok=True)
     init = work / "initdb"
@@ -113,6 +130,7 @@ event:register()
             if state == "1": break
         time.sleep(1)
     else: raise TimeoutError("disposable database did not initialize")
+    seed_human()
     docker("start", game)
     print(json.dumps({"game": game, "database": database, "network": PREFIX, "work": str(work)}))
 

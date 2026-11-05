@@ -43,6 +43,34 @@ end
 
 function qa.run(command)
 	local name = command.name or "Grizzle Alyronia"
+	if command.action == "dbprobe" then
+		local cursor = assert(db.storeQuery("SELECT 1 AS value"))
+		result.free(cursor)
+		return { completed = true }
+	end
+	if command.action == "cast" then
+		qa.native = qa.native or assert(package.loadlib("/qa/lifecycle_bridge.so", "luaopen_lifecycle_bridge"))()
+		return qa.native.cast(command.operation or "status")
+	end
+	if command.action == "optional" then
+		assert(Game.loadBotPlayer(name) == nil)
+		assert(Game.botCountActive() == 0)
+		assert(Game.botActivate(65001) == false)
+		assert(Game.botHibernate(65001) == false)
+		assert(Game.botGetState(65001) == -1)
+		assert(Game.botCommand("_global", "schedule status"):find("unavailable"))
+		assert(Game.botReregisterAll() == 0)
+		return { safe = true }
+	end
+	if command.action == "config" then
+		assert(Game.reload(RELOAD_TYPE_CONFIG))
+		return { showBots = configManager.getBoolean(configKeys.BOT_PLAYERS_SHOW_AS_ONLINE) }
+	end
+	if command.action == "death" then
+		local player = assert(Player("Lifecycle Human"))
+		player:addHealth(-player:getHealth())
+		return { health = player:getHealth() }
+	end
 	if command.action == "virtual" or command.action == "unregister" or command.action == "pending"
 		or command.action == "arm" or command.action == "counts" or command.action == "roster" then
 		qa.native = qa.native or assert(package.loadlib("/qa/lifecycle_bridge.so", "luaopen_lifecycle_bridge"))()
