@@ -1,0 +1,37 @@
+{
+  "source": "81ac51592 immutable checkpoint + registered producer relay",
+  "trials": [
+    {
+      "population": 996,
+      "capture_ms": 59.705,
+      "save_ms": 2240.837,
+      "queue_control_ms": 413.68826299731154,
+      "db_probe_control_ms": 425.6124120001914,
+      "window_seconds": 2.6889209159999155,
+      "game_cpu_seconds": 1.9762050000000002,
+      "database_cpu_seconds": 3.5942640000000097
+    },
+    {
+      "population": 996,
+      "capture_ms": 50.496,
+      "save_ms": 2465.955,
+      "queue_control_ms": 438.9711530020577,
+      "db_probe_control_ms": 268.6464920043363,
+      "window_seconds": 2.869218706000538,
+      "game_cpu_seconds": 2.1020809999999983,
+      "database_cpu_seconds": 4.019245999999981
+    },
+    {
+      "population": 996,
+      "capture_ms": 43.576,
+      "save_ms": 2374.37,
+      "queue_control_ms": 421.50932799995644,
+      "db_probe_control_ms": 262.933347003127,
+      "window_seconds": 2.849456160001864,
+      "game_cpu_seconds": 2.015637999999999,
+      "database_cpu_seconds": 3.7973550000000103
+    }
+  ],
+  "reload_ms": 420.7591059966944,
+  "identities_preserved": 996
+}
