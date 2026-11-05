@@ -28,7 +28,7 @@ def gateway():
     )
 
 
-def client(model="model-a", deployment="deployment-a"):
+def client(model="model-a", deployment="deployment-a", *, usage=None):
     calls = []
 
     class Raw:
@@ -42,7 +42,9 @@ def client(model="model-a", deployment="deployment-a"):
             data = {
                 "id": "upstream",
                 "model": model,
-                "usage": {"input_tokens": 10, "output_tokens": 2},
+                "usage": usage
+                if usage is not None
+                else {"input_tokens": 10, "output_tokens": 2},
                 "output": [
                     {
                         "type": "function_call",
@@ -99,6 +101,24 @@ async def test_gateway_identity_mismatch_is_paid_but_never_used_or_retried(
     assert len(calls) == 1
     assert store.budget()["spent"] == 14
     assert store.budget()["reserved"] == 0
+
+
+@pytest.mark.parametrize("output_tokens", [0, 2])
+async def test_gateway_zero_input_usage_retains_unknown_liability_after_restart(
+    tmp_path, output_tokens
+):
+    path = tmp_path / "budget.db"
+    c, calls = client(usage={"input_tokens": 0, "output_tokens": output_tokens})
+    provider = GatewayProvider(Store(path), c, gateway=gateway())
+    with pytest.raises(TypeError, match="usage"):
+        await provider._request(
+            "responses", {"input": "hello", "max_output_tokens": 4}, 10
+        )
+    assert len(calls) == 1
+    reopened = Store(path)
+    assert reopened.budget()["spent"] == 0
+    assert reopened.budget()["reserved"] > 0
+    assert reopened.budget()["available"] < reopened.budget()["cap"]
 
 
 def test_run_and_monthly_limits_share_one_transactional_ledger(tmp_path):

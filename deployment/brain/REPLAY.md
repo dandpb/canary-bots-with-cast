@@ -72,6 +72,22 @@ python deployment/brain/tools/gateway_smoke.py
 
 This checks a successful accounted request and an upstream failure: exactly one upstream call per attempt, no fallback, and retained unresolved liability after failure. No real model credential is used.
 
+Usage qualification also exercises both native Responses and the pinned
+Responses-to-chat bridge. A missing upstream usage object must never become a
+settled free request:
+
+```sh
+python deployment/brain/tools/gateway_smoke.py --bridge-usage
+python deployment/brain/tools/gateway_usage_smoke.py
+```
+
+The first command sends local HTTP requests through the actual proxy to a fake
+chat upstream. The second isolates the pinned usage conversion and the real
+worker ledger. Both run with Docker networking disabled. For the nonempty prompts
+this worker transmits, zero input tokens are untrustworthy: reject the result and
+retain the reservation for reconciliation, including after restart. Valid positive
+usage still settles normally. These checks do not qualify a real provider account.
+
 ## Prepare an isolated experiment
 
 The live runner uses a new `canary-bench-*` Compose project for each attempt, private bind directories, no host game/database ports and no production volumes. It starts the worker socket before starting the game. Each trial restores the same declared fixture. Native control uses no inference; frozen-policy and independent-learning runs are separate modes.

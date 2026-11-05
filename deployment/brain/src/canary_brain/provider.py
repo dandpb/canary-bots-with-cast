@@ -133,7 +133,10 @@ class Provider:
                 if (
                     not isinstance(usage, dict)
                     or type(usage.get("input_tokens")) is not int
-                    or usage["input_tokens"] < 0
+                    # Our transmitted prompts are nonempty. LiteLLM's Responses
+                    # bridge can synthesize zero counters when upstream usage is
+                    # absent; those counters cannot release an unknown charge.
+                    or usage["input_tokens"] <= 0
                 ):
                     raise TypeError("provider response has no trustworthy usage")
                 details = usage.get("input_tokens_details") or {}
