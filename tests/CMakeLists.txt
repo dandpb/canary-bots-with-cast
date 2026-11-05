@@ -122,3 +122,20 @@ endfunction()
 
 add_subdirectory(unit)
 add_subdirectory(integration)
+
+if(UNIX AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME bot_engine_loader_regression
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/bot_brain/test_engine_loader.py)
+    set_tests_properties(bot_engine_loader_regression PROPERTIES
+        ENVIRONMENT "BOT_TEST_CXX=${CMAKE_CXX_COMPILER};BOT_TEST_INCLUDES=${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
+        TIMEOUT 180)
+    find_program(BOT_TEST_LUAJIT luajit HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/luajit")
+    if(BOT_TEST_LUAJIT)
+        foreach(BOT_RELOAD_TEST test_reload test_reload_missing test_reload_failures)
+            add_test(NAME ${BOT_RELOAD_TEST}
+                COMMAND ${BOT_TEST_LUAJIT} tools/bot_brain/${BOT_RELOAD_TEST}.lua)
+            set_tests_properties(${BOT_RELOAD_TEST} PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        endforeach()
+    endif()
+endif()
