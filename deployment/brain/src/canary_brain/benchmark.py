@@ -547,6 +547,14 @@ async def _run_campaign(
             )
             worker: asyncio.Task[None] | None = None
             stopped = asyncio.Event()
+
+            async def forward_operator_stop(
+                stop_event: asyncio.Event = stopped,
+            ) -> None:
+                await operator_stop.wait()
+                stop_event.set()
+
+            stop_relay = asyncio.create_task(forward_operator_stop())
             status = "failed"
             try:
                 await asyncio.to_thread(harness.prepare, participant)
@@ -556,6 +564,8 @@ async def _run_campaign(
                 if operator_stop.is_set():
                     raise asyncio.CancelledError("campaign stopped by operator")
                 initial = await asyncio.to_thread(harness.character)
+                if operator_stop.is_set():
+                    raise asyncio.CancelledError("campaign stopped by operator")
                 if initial != check["character"]:
                     raise ValueError(
                         "restored character differs from the declared initial fixture"
@@ -600,6 +610,8 @@ async def _run_campaign(
                 worker = asyncio.create_task(run(configuration, stopped))
                 ready_until = time.monotonic() + 10
                 while not (directory / "socket" / "worker.sock").exists():
+                    if operator_stop.is_set():
+                        raise asyncio.CancelledError("campaign stopped by operator")
                     if worker.done():
                         await worker
                         raise RuntimeError(
@@ -608,6 +620,8 @@ async def _run_campaign(
                     if time.monotonic() > ready_until:
                         raise TimeoutError("experiment worker did not become ready")
                     await asyncio.sleep(0.02)
+                if operator_stop.is_set():
+                    raise asyncio.CancelledError("campaign stopped by operator")
                 await asyncio.to_thread(harness.start_game)
                 started = time.monotonic()
                 while True:
@@ -724,6 +738,8 @@ async def _run_campaign(
                 raise
             finally:
                 stopped.set()
+                stop_relay.cancel()
+                await asyncio.gather(stop_relay, return_exceptions=True)
                 try:
                     if worker:
                         await asyncio.gather(worker, return_exceptions=True)
