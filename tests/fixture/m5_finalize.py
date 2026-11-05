@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 
 from canary_brain.recording import RecordingStore
-
 from m5_report import report
 
 work = Path(sys.argv[1])
@@ -26,7 +25,7 @@ data["checks"] = {
 }
 data["attempt"] = result
 data["timed_gate_passed"] = all(data["checks"].values())
-status = "completed" if finished and duration_ok else "failed"
+status = "completed" if data["timed_gate_passed"] else "failed"
 RecordingStore(work / "recording.sqlite3").finish(data["run_id"], status)
 data["recording_status"] = status
 with (work / "analysis.json").open("x") as stream:
@@ -42,3 +41,5 @@ print(
         indent=2,
     )
 )
+if not data["timed_gate_passed"]:
+    raise SystemExit(1)

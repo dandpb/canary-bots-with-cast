@@ -1,5 +1,8 @@
 # Free M5 qualification
 
+Results, exported replays, hashes and remaining gates are in
+[the dated evidence](../../deployment/brain/evidence/2026-11-05/m5-free-qualification/README.md).
+
 This harness runs only `native` and a declared deterministic `fake` choice policy.
 It uses a fresh public-seed database, one knight GUID 65001, an internal Docker
 network, no published game/database ports, and no production volumes. The worker
@@ -11,6 +14,9 @@ matching `canary-party-qa:local` image/artifacts from the #22 native validation,
 the compatible `/tmp/canary-lifecycle-qa-world.otbm` world, and the existing Python
 environment `/tmp/canary-replay-venv`. The map and binaries are not redistributed.
 The preparation manifest captures their hashes and the actual derived image ID.
+Current preparation also pins the database image ID and checks native hashes
+inside the game image before either participant. Legacy D did not capture native
+DB identity before teardown; its limitation is explicit in the dated evidence.
 The reused native artifacts have base revision `33c6a578`; the preparation check
 found no bot-core source difference through main `a2bbf1c0`. Private timing
 instrumentation from #22 remains in these QA binaries and is not a production
@@ -76,7 +82,10 @@ the native logs; they are not silently counted as model choices or human rescue.
 After the harness has stopped and saved its database, `m5_finalize.py RUN_DIR`
 checks the recorded duration, XP persistence, gaps and zero inference before
 updating recording metadata. It refuses an active run and writes a new analysis
-file exclusively. A completed horizon is distinct from a completed supply cycle;
+file exclusively. The current harness invokes this finalizer automatically and
+returns nonzero if any evidence gate fails; `phase=finished` only means the
+infrastructure was saved/closed. An early runtime exit is `runtime_ended`.
+A completed horizon is distinct from a completed supply cycle;
 stock/bank and native outcome evidence must still establish a purchase.
 
 The monotonic horizon begins at the first valid observation, not provisioning or
@@ -106,7 +115,9 @@ The IPC tests use a private synthetic datagram peer, not a game server. They cov
 native/fake deaths, world change and observation loss, fake proposal blocking
 with a real30s interval, and fake stall with a scaled1.2s threshold. No paid
 request is permitted; process exits, socket cleanup and zero ledger rows are
-asserted. The separate two real-game1800s windows validate the actual horizon.
+asserted. They also reject an early runtime return. The separate real-game
+windows validate the declared ±5s tolerance; canonical PR26 now uses a stricter
+exact-horizon rule and has a separate real-game10s integration smoke.
 
 Qualification requires1,795–1,805s between recorded first/last samples, authoritative
 XP and saved DB agreement, observed hunt/return/supplies evidence, alternative

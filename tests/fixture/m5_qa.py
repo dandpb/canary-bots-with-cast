@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -197,6 +198,28 @@ event:interval(1000);event:register()
             for n in ["m5_qa.py", "m5_worker.py", "m5_stop.py"]
         },
     }
+    manifest["database_image_id"] = command(
+        "docker", "image", "inspect", "mariadb:11.4", "--format", "{{.Id}}"
+    )
+    actual = command(
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--entrypoint",
+        "sha256sum",
+        manifest["image_id"],
+        "/canary/canary",
+        "/canary/libbot_engine.so",
+    )
+    assert {
+        Path(path).name: digest
+        for digest, path in (line.split() for line in actual.splitlines())
+    } == manifest["binary_sha256"]
+    manifest["binary_attestation"] = (
+        "sha256sum inside the pinned image before either participant"
+    )
     (WORK / "manifest.json").write_text(json.dumps(manifest, indent=2))
     print(
         json.dumps(
@@ -211,6 +234,9 @@ event:interval(1000);event:register()
 def run(mode):
     assert mode in {"native", "fake"}
     manifest = json.loads((WORK / "manifest.json").read_text())
+    assert manifest.get("database_image_id"), (
+        "prepare a fresh fixture with a frozen database image"
+    )
     supply_only = manifest.get("purpose", "").startswith("supply-only")
     assert not supply_only or mode == "fake"
     assert fixture_hash(WORK / "fixture", WORLD) == manifest["fixture_sha256"]
@@ -240,9 +266,7 @@ def run(mode):
     value["mode"] = "shadow" if mode == "native" else "active"
     server.write_text(json.dumps(value))
     compose = json.loads(harness.compose.read_text())
-    compose["services"]["database"]["image"] = manifest.get(
-        "database_image_id"
-    ) or command("docker", "image", "inspect", "mariadb:11.4", "--format", "{{.Id}}")
+    compose["services"]["database"]["image"] = manifest["database_image_id"]
     compose["networks"] = {"default": {"internal": True}}
     compose["services"]["game"]["volumes"].append(f"{directory}:/m5")
     harness.compose.write_text(json.dumps(compose))
@@ -354,6 +378,10 @@ def run(mode):
         harness.close()
         (directory / "result.json").write_text(json.dumps(result, indent=2))
         print(json.dumps(result))
+    # "finished" only describes saved/closed infrastructure. Qualification is a
+    # distinct fail-closed command after all writers and the game have stopped.
+    finalizer = "m5_supply_finalize.py" if supply_only else "m5_finalize.py"
+    print(command(sys.executable, ROOT / "tests/fixture" / finalizer, directory))
 
 
 if __name__ == "__main__":

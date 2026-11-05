@@ -144,6 +144,8 @@ async def main():
                 break
             await asyncio.sleep(1)
         await task
+        if not value["reason"]:
+            value["reason"] = "runtime_ended"
     finally:
         stop.set()
         await asyncio.gather(task, return_exceptions=True)

@@ -14,6 +14,46 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class WorkerStopTests(unittest.TestCase):
+    def test_early_runtime_exit_is_not_a_completed_horizon(self):
+        for mode in ["native", "fake"]:
+            with (
+                self.subTest(mode=mode),
+                tempfile.TemporaryDirectory(prefix="m5early-") as temporary,
+            ):
+                work = Path(temporary)
+                (work / "worker.json").write_text(
+                    json.dumps(
+                        {
+                            "provider": mode,
+                            "mode": "shadow" if mode == "native" else "active",
+                            "socket_directory": str(work / "socket"),
+                            "state_file": str(work / "state.db"),
+                            "bots": [65001],
+                        }
+                    )
+                )
+                script = str(ROOT / "tests/fixture/m5_worker.py")
+                inject = (
+                    "import runpy,sys;from canary_brain import runtime;sys.path.insert(0,"
+                    + repr(str(ROOT / "tests/fixture"))
+                    + ")\nasync def early(*a,**kw): return None\nruntime.run=early\nsys.argv="
+                    + repr([script, str(work), mode])
+                    + ";runpy.run_path(sys.argv[0],run_name='__main__')"
+                )
+                subprocess.run(
+                    [os.sys.executable, "-c", inject],
+                    env={
+                        **os.environ,
+                        "PYTHONPATH": str(ROOT / "deployment/brain/src"),
+                    },
+                    check=True,
+                    timeout=10,
+                )
+                self.assertEqual(
+                    json.loads((work / "stop.json").read_text())["reason"],
+                    "runtime_ended",
+                )
+
     def exercise(self, mode, fault):
         with tempfile.TemporaryDirectory(prefix="m5stop-") as temporary:
             work = Path(temporary)
