@@ -233,20 +233,22 @@ class DockerFixture:
             check=False,
         )
         if result.returncode:
-            details = result.stdout + "\n" + result.stderr
-            if self.env_file.exists():
-                for line in self.env_file.read_text().splitlines():
-                    _name, separator, value = line.partition("=")
-                    if separator and value:
-                        details = details.replace(value, "[redacted]")
-            log = self.directory / "command-errors.log"
-            with log.open("a", encoding="utf-8") as target:
-                os.chmod(log, 0o600)
-                target.write(str(public_data(details)) + "\n")
+            self.diagnostics("command-errors.log", result.stdout + "\n" + result.stderr)
             raise RuntimeError(
                 "isolated Docker operation failed; inspect the private experiment deployment logs"
             )
         return result.stdout
+
+    def diagnostics(self, name: str, details: str) -> None:
+        if self.env_file.exists():
+            for line in self.env_file.read_text().splitlines():
+                _name, separator, value = line.partition("=")
+                if separator and value:
+                    details = details.replace(value, "[redacted]")
+        log = self.directory / name
+        with log.open("a", encoding="utf-8") as target:
+            os.chmod(log, 0o600)
+            target.write(str(public_data(details)) + "\n")
 
     def prepare(self, participant: Participant) -> None:
         self.directory.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -255,11 +257,14 @@ class DockerFixture:
         socket_dir = self.directory / "socket"
         socket_dir.mkdir(mode=0o700)
         seed = self.directory / "initdb"
-        seed.mkdir(mode=0o700)
+        seed.mkdir(mode=0o755)
+        os.chmod(seed, 0o755)
         shutil.copyfile(
             self.experiment.fixture / "database.sql", seed / "01-fixture.sql"
         )
-        os.chmod(seed / "01-fixture.sql", 0o600)
+        # The host attempt directory stays 0700. Only its read-only seed subtree
+        # is mounted into MariaDB, whose mysql UID differs from the host worker.
+        os.chmod(seed / "01-fixture.sql", 0o644)
         data = self.directory / "database"
         data.mkdir(mode=0o700)
         server = {
@@ -376,7 +381,29 @@ class DockerFixture:
     def close(self) -> None:
         if self.started:
             # Only this newly generated project. Keep its bind data for evidence.
-            self.command("down", "--remove-orphans", "--timeout", "180", timeout=240)
+            try:
+                try:
+                    logs = self.command(
+                        "logs",
+                        "--no-color",
+                        "--timestamps",
+                        "--tail",
+                        "2000",
+                        timeout=30,
+                    )
+                    self.diagnostics("services.log", logs)
+                except (RuntimeError, subprocess.TimeoutExpired, OSError) as error:
+                    try:
+                        self.diagnostics(
+                            "services.log",
+                            "Service log capture unavailable: " + type(error).__name__,
+                        )
+                    except OSError:
+                        pass  # Cleanup still runs if the evidence disk cannot accept writes.
+            finally:
+                self.command(
+                    "down", "--remove-orphans", "--timeout", "180", timeout=240
+                )
 
     def recover(self) -> None:
         # Preparation completes both artifacts before any `up`. On resume the
