@@ -559,6 +559,7 @@ async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
                     policy_seed=experiment.seed + repetition,
                     run_cap_nanousd=experiment.run_cap_nanousd,
                     run_seconds=experiment.seconds,
+                    benchmark_supervision=True,
                     decision_timeout=experiment.decision_timeout
                     if participant.kind == "litellm"
                     else 1.2,
@@ -578,42 +579,73 @@ async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
                         raise TimeoutError("experiment worker did not become ready")
                     await asyncio.sleep(0.02)
                 await asyncio.to_thread(harness.start_game)
-                deadline = time.monotonic() + experiment.seconds
                 started = time.monotonic()
-                while time.monotonic() < deadline:
+                while True:
                     if worker.done():
                         await worker
-                        clock = Store(state).get("run_clock", "start")
-                        if (
-                            clock
-                            and time.monotonic() - clock["monotonic"]
-                            >= experiment.seconds
-                        ):
-                            status = "completed"
+                        ending = Store(state).get("run_stop", "end")
+                        if ending is not None:
+                            if ending["reason"] == "operator_stop":
+                                raise asyncio.CancelledError(
+                                    "campaign stopped by operator"
+                                )
+                            if ending["reason"] in {
+                                "world_changed",
+                                "observation_stale",
+                                "recording_gap",
+                                "recorder_error",
+                                "startup_timeout",
+                            }:
+                                raise RuntimeError(
+                                    "campaign stopped: " + ending["reason"]
+                                )
+                            if ending["reason"] == "completed":
+                                clock = Store(state).get("run_clock", "start")
+                                if (
+                                    not clock
+                                    or time.monotonic() - clock["monotonic"]
+                                    < experiment.seconds
+                                    or ending.get("elapsed_seconds", 0)
+                                    < experiment.seconds
+                                ):
+                                    raise RuntimeError(
+                                        "worker completed before the observed horizon"
+                                    )
+                            status = (
+                                "completed"
+                                if ending["reason"] == "completed"
+                                else "failed"
+                            )
                             break
                         raise RuntimeError(
-                            "experiment worker ended before the run horizon"
+                            "experiment worker ended without a supervised stop"
                         )
-                    await asyncio.sleep(min(1, max(0.01, deadline - time.monotonic())))
+                    await asyncio.sleep(1)
                     state_rows = Store(state).get("budget_stop", str(experiment.bot_id))
                     if state_rows:
                         status = "budget_stop"
                         break
-                    observed = Store(state).get("status", str(experiment.bot_id)) or {}
+                    clock = Store(state).get("run_clock", "start")
                     if (
                         time.monotonic() - started > min(15, experiment.seconds / 2)
-                        and time.time() - observed.get("last_observation", 0) > 5
+                        and clock is None
                     ):
                         raise ValueError(
                             "experiment bot observations are missing or stale"
+                        )
+                    if (
+                        clock
+                        and time.monotonic() - clock["monotonic"]
+                        > experiment.seconds + 5
+                    ):
+                        raise TimeoutError(
+                            "worker did not stop at its observed horizon"
                         )
                     bridge = Store(state).get("bridge", "benchmark")
                     if bridge is not None and not bridge["ready"]:
                         raise ValueError(
                             "game image lacks benchmark lifecycle/awake capabilities"
                         )
-                if status != "budget_stop":
-                    status = "completed"
                 stopped.set()
                 await worker
                 worker = None

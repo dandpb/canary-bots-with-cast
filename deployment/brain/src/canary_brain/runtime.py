@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import socket
+import sqlite3
 import stat
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Any, Literal
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .benchmark_stops import Stops
 from .controller import Controller
 from .gateway import GatewayConfiguration, GatewayProvider
 from .operator_http import OperatorServer
@@ -44,9 +46,16 @@ class Configuration(BaseModel):
     policy_seed: int = 0
     run_cap_nanousd: int | None = Field(default=None, gt=0)
     run_seconds: int | None = Field(default=None, ge=10, le=86400)
+    benchmark_supervision: bool = False
 
     @model_validator(mode="after")
     def isolated_recording(self) -> "Configuration":
+        if self.benchmark_supervision and (
+            self.run_seconds is None or self.recording is None or len(self.bots) != 1
+        ):
+            raise ValueError(
+                "benchmark supervision requires a timed, recorded single-bot run"
+            )
         if self.provider != "litellm" and self.decision_timeout > 3:
             raise ValueError("legacy decision timeout must not exceed three seconds")
         if self.provider == "litellm" and self.gateway is None:
@@ -228,6 +237,14 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             if transport is not None and len(encoded) <= 32768:
                 transport.sendto(encoded, server)
 
+        benchmark_stops = (
+            Stops(
+                horizon=configuration.run_seconds or 1800,
+                model=configuration.provider != "native",
+            )
+            if configuration.benchmark_supervision
+            else None
+        )
         active_controller = Controller(
             store,
             provider,
@@ -243,6 +260,7 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 configuration.recording
                 and any(m.experiment for m in configuration.recording.manifests)
             ),
+            benchmark_stops=benchmark_stops,
         )
         if configuration.memory_mode != "existing":
             import random
@@ -266,11 +284,46 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             await operator.start(configuration.operator_host)
         stopped = stop or asyncio.Event()
         last_maintenance = time.monotonic()
+        launched = last_maintenance
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stopped.set)
         while not stopped.is_set():
             remaining = 1.0
-            if configuration.run_seconds is not None:
+            if benchmark_stops:
+                now = time.monotonic()
+                reason = benchmark_stops.check(now)
+                if benchmark_stops.start is None and now - launched > 240:
+                    reason = "startup_timeout"
+                if recorder and (recorder.errors or recorder.dropped):
+                    reason = "recorder_error"
+                if recorder:
+                    try:
+                        if any(
+                            ReplayReader(recorder.config.path).run(m.run_id)[
+                                "incomplete"
+                            ]
+                            for m in recorder.manifests.values()
+                        ):
+                            reason = reason or "recording_gap"
+                    except (sqlite3.Error, OSError, ValueError):
+                        reason = "recorder_error"
+                if reason:
+                    details = {
+                        "reason": reason,
+                        "elapsed_seconds": now - benchmark_stops.start
+                        if benchmark_stops.start is not None
+                        else None,
+                    }
+                    store.put("run_stop", "end", details)
+                    if recorder:
+                        recorder.emit(
+                            configuration.bots[0],
+                            "lifecycle",
+                            {"phase": "run_supervisor_stop", **details},
+                        )
+                    stopped.set()
+                    break
+            if configuration.run_seconds is not None and benchmark_stops is None:
                 clock = store.get("run_clock", "start")
                 if clock is not None:
                     remaining = configuration.run_seconds - (
@@ -291,6 +344,8 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 await asyncio.wait_for(stopped.wait(), timeout=min(1, remaining))
             except TimeoutError:
                 pass
+        if benchmark_stops and store.get("run_stop", "end") is None:
+            store.put("run_stop", "end", {"reason": "operator_stop"})
         await asyncio.gather(*protocol.tasks, return_exceptions=True)
     finally:
         if operator is not None:
