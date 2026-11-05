@@ -28,7 +28,7 @@ def snapshot():
 
 def save(phase):
     RESULTS["phases"].append(phase)
-    (q.WORK / "party-scenarios-raw.json").write_text(json.dumps(RESULTS, indent=2))
+    q.write_json("party-scenarios-raw.json", RESULTS)
     print(
         json.dumps(
             {
@@ -84,16 +84,18 @@ def initial_hunt():
 
 
 def main(resume=False):
+    if resume:
+        saved = q.read_json("party-scenarios-raw.json")
+        assert [p["name"] for p in saved["phases"]] == ["coordinated_native_hunt"]
+        RESULTS.update(saved)
+    else:
+        q.reserve_output("party-scenarios-raw.json")
     q.verify()
     perf.mode("active")
     q.command(
         'PartyScenario=dofile("/qa-repo/tests/fixture/party_scenarios.lua");return true'
     )
-    if resume:
-        saved = json.loads((q.WORK / "party-scenarios-raw.json").read_text())
-        assert [p["name"] for p in saved["phases"]] == ["coordinated_native_hunt"]
-        RESULTS.update(saved)
-    else:
+    if not resume:
         initial_hunt()
     phase = {
         "name": "three_companion_resupply_and_return",

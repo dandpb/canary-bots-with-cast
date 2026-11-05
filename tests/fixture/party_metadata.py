@@ -50,7 +50,7 @@ def main():
                 for m in detail["Mounts"]
             ],
         }
-    (q.WORK / "party-environment.json").write_text(json.dumps(environment, indent=2))
+    q.write_json("party-environment.json", environment)
     inspection = q.docker(
         "exec",
         q.GAME,
@@ -97,19 +97,15 @@ print(json.dumps({'source':comparison,'blobs':blobs,'states':states}))
         row["requests"] == row["reserved_nanousd"] == row["spent_nanousd"] == 0
         for row in data["states"]
     )
-    (q.WORK / "party-runtime-source-comparison.json").write_text(
-        json.dumps(data["source"], indent=2)
-    )
-    (q.WORK / "party-datapack-normalized-blobs.json").write_text(
-        json.dumps(data["blobs"], indent=2)
-    )
+    q.write_json("party-runtime-source-comparison.json", data["source"])
+    q.write_json("party-datapack-normalized-blobs.json", data["blobs"])
     functional = None
     scenarios = q.WORK / "party-scenarios-raw.json"
     if scenarios.exists():
         supply = next(
             (
                 p
-                for p in json.loads(scenarios.read_text())["phases"]
+                for p in q.read_json("party-scenarios-raw.json")["phases"]
                 if p["name"] == "three_companion_resupply_and_return"
             ),
             None,
@@ -128,7 +124,7 @@ print(json.dumps({'source':comparison,'blobs':blobs,'states':states}))
         "spent_total_nanousd": 0,
         "functional_state": functional,
     }
-    (q.WORK / "financial-and-pending.json").write_text(json.dumps(financial, indent=2))
+    q.write_json("financial-and-pending.json", financial)
     print(
         json.dumps(
             {

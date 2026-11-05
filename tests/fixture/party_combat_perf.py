@@ -25,6 +25,7 @@ def main(output_name="party-combat-perf-raw.json", expected_population=3):
         and "\\" not in output_name
         and output_name.endswith(".json")
     )
+    q.reserve_output(output_name)
     q.verify()
     q.command(
         'PartyScenario=dofile("/qa-repo/tests/fixture/party_scenarios.lua");return true'
@@ -105,7 +106,7 @@ return removed""")
             }
             assert len(ticks) >= 200, len(ticks)
             results.append(result)
-            (q.WORK / output_name).write_text(json.dumps(results, indent=2))
+            q.write_json(output_name, results)
             print(
                 json.dumps(
                     {

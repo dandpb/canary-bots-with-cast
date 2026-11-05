@@ -3,16 +3,109 @@
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
+import tempfile
 import time
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-WORK = Path("/tmp/canary-party-qa")
+WORK = Path(os.environ.get("CANARY_PARTY_QA_WORK", "/tmp/canary-party-qa"))
+BUILD = Path(os.environ.get("CANARY_PARTY_QA_BUILD", "/tmp/canary-party-qa-build"))
 PREFIX = "canary-party-qa"
 GAME = PREFIX + "-game"
 DB = PREFIX + "-db"
+
+
+def initialize_run():
+    if WORK.is_symlink() or (WORK.exists() and any(WORK.iterdir())):
+        raise FileExistsError(f"QA run directory must be new or empty: {WORK}")
+    WORK.mkdir(parents=True, exist_ok=True)
+    manifest = {"version": 1, "run_id": str(uuid.uuid4())}
+    with (WORK / "run.json").open("x", encoding="utf-8") as stream:
+        json.dump(manifest, stream)
+    return manifest["run_id"]
+
+
+def run_id():
+    try:
+        manifest = json.loads((WORK / "run.json").read_text())
+        identity = manifest["run_id"]
+        if manifest["version"] != 1 or str(uuid.UUID(identity)) != identity:
+            raise ValueError("invalid identity")
+        return identity
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        raise ValueError(f"Missing or invalid QA run manifest in {WORK}") from error
+
+
+def artifact_path(name):
+    if Path(name).name != name or not name.endswith(".json") or name == "run.json":
+        raise ValueError("invalid QA artifact name")
+    return WORK / name
+
+
+def read_json(name, expected_run=None):
+    identity = expected_run or run_id()
+    try:
+        value = json.loads(artifact_path(name).read_text())
+    except (OSError, ValueError) as error:
+        raise ValueError(f"Unreadable/incomplete QA run artifact: {name}") from error
+    rows = value if isinstance(value, list) else [value]
+    if not rows or any(
+        not isinstance(row, dict) or row.get("run_id") != identity for row in rows
+    ):
+        raise ValueError(f"QA run identity mismatch or missing in {name}")
+    return value
+
+
+def reserve_output(name):
+    run_id()
+    # An interrupted attempt remains reserved. Starting over requires a fresh run.
+    with artifact_path(name).open("x", encoding="utf-8"):
+        pass
+
+
+def write_json(name, value):
+    identity = run_id()
+    rows = value if isinstance(value, list) else [value]
+    if any(
+        not isinstance(row, dict) or row.get("run_id", identity) != identity
+        for row in rows
+    ):
+        raise ValueError(f"Cannot relabel another QA run's data: {name}")
+    tagged = [{**row, "run_id": identity} for row in rows]
+    tagged = tagged if isinstance(value, list) else tagged[0]
+    target = artifact_path(name)
+    if target.exists() and target.stat().st_size:
+        read_json(name, identity)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=WORK,
+            prefix=f".{name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            json.dump(tagged, stream, indent=2)
+            stream.write("\n")
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def report_directory(identity=None):
+    return (
+        ROOT
+        / "deployment/brain/evidence/2026-11-05/party-technical-acceptance"
+        / (identity or run_id())
+    )
 
 
 def docker(*args, input=None, check=True):
@@ -31,6 +124,9 @@ def docker(*args, input=None, check=True):
 def verify():
     detail = json.loads(docker("inspect", GAME))[0]
     assert detail["Config"]["Labels"].get("canary.qa") == "party"
+    assert detail["Config"]["Labels"].get("canary.qa.run_id") == run_id(), (
+        "QA container belongs to another run"
+    )
     assert set(detail["NetworkSettings"]["Networks"]) == {PREFIX}
     assert not detail["HostConfig"]["PortBindings"]
     assert detail["State"]["Running"], "private QA game stopped"
@@ -69,6 +165,9 @@ def command(script):
 def sql(query):
     detail = json.loads(docker("inspect", DB))[0]
     assert detail["Config"]["Labels"].get("canary.qa") == "party"
+    assert detail["Config"]["Labels"].get("canary.qa.run_id") == run_id(), (
+        "QA database belongs to another run"
+    )
     assert set(detail["NetworkSettings"]["Networks"]) == {PREFIX}
     assert any(
         m.get("Name") == PREFIX + "-data" and m["Destination"] == "/var/lib/mysql"
@@ -89,6 +188,7 @@ def sql(query):
 
 
 def create():
+    identity = initialize_run()
     for name in [GAME, DB]:
         assert not docker("inspect", "--format", "{{.Name}}", name, check=False), (
             f"QA container already exists: {name}"
@@ -99,10 +199,10 @@ def create():
     assert not docker(
         "volume", "inspect", "--format", "{{.Name}}", PREFIX + "-data", check=False
     ), "retained QA database volume exists"
-    WORK.mkdir(exist_ok=True)
+    for name in ["canary", "libbot_engine.so", "party_acceptance.so"]:
+        shutil.copy2(BUILD / name, WORK / name)
     init = WORK / "initdb"
     init.mkdir(exist_ok=True)
-    (init / "999_qa_background.sql").unlink(missing_ok=True)
     for index, rel in enumerate(
         [
             "schema.sql",
@@ -186,8 +286,25 @@ os.execv('/canary/canary',['/canary/canary'])
         "FROM canary-bots-wsl-game:local\nCOPY --chmod=0755 canary /canary/canary\nCOPY --chmod=0644 libbot_engine.so /canary/libbot_engine.so\n"
     )
     docker("build", "-t", "canary-party-qa:local", WORK)
-    docker("network", "create", "--internal", "--label", "canary.qa=party", PREFIX)
-    docker("volume", "create", "--label", "canary.qa=party", PREFIX + "-data")
+    docker(
+        "network",
+        "create",
+        "--internal",
+        "--label",
+        "canary.qa=party",
+        "--label",
+        f"canary.qa.run_id={identity}",
+        PREFIX,
+    )
+    docker(
+        "volume",
+        "create",
+        "--label",
+        "canary.qa=party",
+        "--label",
+        f"canary.qa.run_id={identity}",
+        PREFIX + "-data",
+    )
     docker(
         "run",
         "-d",
@@ -195,6 +312,8 @@ os.execv('/canary/canary',['/canary/canary'])
         DB,
         "--label",
         "canary.qa=party",
+        "--label",
+        f"canary.qa.run_id={identity}",
         "--network",
         PREFIX,
         "--network-alias",
@@ -240,6 +359,8 @@ os.execv('/canary/canary',['/canary/canary'])
         GAME,
         "--label",
         "canary.qa=party",
+        "--label",
+        f"canary.qa.run_id={identity}",
         "--network",
         PREFIX,
         "--network-alias",
@@ -310,6 +431,9 @@ def stop():
     for name in [GAME, DB]:
         detail = json.loads(docker("inspect", name))[0]
         assert detail["Config"]["Labels"].get("canary.qa") == "party"
+        assert detail["Config"]["Labels"].get("canary.qa.run_id") == run_id(), (
+            "QA resource belongs to another run"
+        )
         assert set(detail["NetworkSettings"]["Networks"]) == {PREFIX}
         assert not detail["HostConfig"]["PortBindings"]
         if detail["State"]["Running"]:
@@ -330,7 +454,7 @@ def stop():
             "exit_code": state["ExitCode"],
             "qa_label": detail["Config"]["Labels"].get("canary.qa"),
         }
-    (WORK / "teardown.json").write_text(json.dumps(statuses, indent=2) + "\n")
+    write_json("teardown.json", statuses)
     assert all(not s["running"] and s["exit_code"] == 0 for s in statuses.values()), (
         statuses
     )

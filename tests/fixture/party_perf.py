@@ -87,6 +87,7 @@ def percentile(values, p):
 
 
 def main(seconds=60):
+    q.reserve_output("party-perf-raw.json")
     q.verify()
     results = []
     # Rotation spreads host/background drift across the three treatments.
@@ -156,7 +157,7 @@ def main(seconds=60):
                 "snapshots": snapshots,
             }
             results.append(result)
-            (q.WORK / "party-perf-raw.json").write_text(json.dumps(results, indent=2))
+            q.write_json("party-perf-raw.json", results)
             print(
                 json.dumps(
                     {

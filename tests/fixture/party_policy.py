@@ -7,9 +7,11 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
+import party_qa as q
 from canary_brain.learning import Policy
 from canary_brain.store import Store
 
+q.reserve_output("party-variety-raw.json")
 rows = []
 with tempfile.TemporaryDirectory(prefix="party-variety-") as tmp:
     for seed in range(20):
@@ -44,9 +46,7 @@ out = {
     "episodes_per_seed_and_bot": 100,
     "results": rows,
 }
-Path("/tmp/canary-party-qa/party-variety-raw.json").write_text(
-    json.dumps(out, indent=2)
-)
+q.write_json("party-variety-raw.json", out)
 print(
     json.dumps(
         {

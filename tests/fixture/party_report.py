@@ -244,10 +244,39 @@ def scenarios(data):
 
 
 def main():
-    idle = json.loads((q.WORK / "party-perf-raw.json").read_text())
-    combat = json.loads((q.WORK / "party-combat-perf-raw.json").read_text())
-    functional = json.loads((q.WORK / "party-scenarios-raw.json").read_text())
+    identity = q.run_id()
+    population = q.WORK / "party-population-perf-raw.json"
+    raw_files = [
+        "party-perf-raw.json",
+        "party-combat-perf-raw.json",
+        "party-scenarios-raw.json",
+        "party-variety-raw.json",
+    ]
+    metadata_files = [
+        "party-environment.json",
+        "party-runtime-source-comparison.json",
+        "party-datapack-normalized-blobs.json",
+    ]
+    if population.exists():
+        raw_files.append("party-population-perf-raw.json")
+        metadata_files.append("party-population-load.json")
+    metadata_files += [
+        name
+        for name in [
+            "financial-and-pending.json",
+            "teardown.json",
+            "fixture-command-regression.json",
+        ]
+        if (q.WORK / name).exists()
+    ]
+    # Snapshot and validate every input before publishing anything. Never reread
+    # an artifact after validating it or silently accept untagged historical data.
+    inputs = {name: q.read_json(name, identity) for name in raw_files + metadata_files}
+    idle = inputs["party-perf-raw.json"]
+    combat = inputs["party-combat-perf-raw.json"]
+    functional = inputs["party-scenarios-raw.json"]
     result = {
+        "run_id": identity,
         "native_base": functional["base_revision"],
         "death_observer_scope": "five party fixture avatars; background mortality not classified",
         "intervention_observer_scope": "setup_teleports in retained raw files is a planned upper bound of five; zero fixture-injected heals/teleports during timed combat; native automatic rescues not exhaustively classified",
@@ -255,36 +284,19 @@ def main():
         "combat": matrix(combat, True),
         "scenarios": scenarios(functional),
     }
-    population = q.WORK / "party-population-perf-raw.json"
-    if population.exists():
-        result["population_combat"] = matrix(json.loads(population.read_text()), True)
-    target = q.ROOT / "deployment/brain/evidence/2026-11-05/party-technical-acceptance"
-    target.mkdir(exist_ok=True)
-    for file in [
-        "party-perf-raw.json",
-        "party-combat-perf-raw.json",
-        "party-scenarios-raw.json",
-        "party-variety-raw.json",
-        *(["party-population-perf-raw.json"] if population.exists() else []),
-    ]:
-        data = json.loads((q.WORK / file).read_text())
+    if "party-population-perf-raw.json" in inputs:
+        result["population_combat"] = matrix(
+            inputs["party-population-perf-raw.json"], True
+        )
+    target = q.report_directory(identity)
+    target.mkdir(parents=True, exist_ok=True)
+    for file in raw_files:
+        data = inputs[file]
         (target / (file + ".gz")).write_bytes(
             gzip.compress(json.dumps(data, separators=(",", ":")).encode(), mtime=0)
         )
-    for file in [
-        "party-environment.json",
-        "party-runtime-source-comparison.json",
-        "party-datapack-normalized-blobs.json",
-        *(["party-population-load.json"] if population.exists() else []),
-    ]:
-        (target / file).write_bytes((q.WORK / file).read_bytes())
-    for file in [
-        "financial-and-pending.json",
-        "teardown.json",
-        "fixture-command-regression.json",
-    ]:
-        if (q.WORK / file).exists():
-            (target / file).write_bytes((q.WORK / file).read_bytes())
+    for file in metadata_files:
+        (target / file).write_text(json.dumps(inputs[file], indent=2) + "\n")
     (target / "summary.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))
 

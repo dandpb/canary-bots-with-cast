@@ -10,7 +10,7 @@ import party_qa as q
 def main():
     # Run only after the initial functional scenarios have been archived.
     assert (q.WORK / "party-scenarios-raw.json").is_file()
-    phases = json.loads((q.WORK / "party-scenarios-raw.json").read_text())["phases"]
+    phases = q.read_json("party-scenarios-raw.json")["phases"]
     assert {p["name"] for p in phases} == {
         "coordinated_native_hunt",
         "three_companion_resupply_and_return",
@@ -19,10 +19,12 @@ def main():
         "worker_restart",
         "leader_disconnect",
     }
-    assert (
-        q.ROOT
-        / "deployment/brain/evidence/2026-11-05/party-technical-acceptance/summary.json"
-    ).is_file(), "archive and validate the three-bot scenarios first"
+    summary = q.report_directory() / "summary.json"
+    assert summary.is_file(), "archive and validate the three-bot scenarios first"
+    assert json.loads(summary.read_text()).get("run_id") == q.run_id(), (
+        "report belongs to another run"
+    )
+    q.reserve_output("party-population-load.json")
     q.verify()
     print(q.docker("stop", "-t", "30", q.GAME), flush=True)
     source = (q.ROOT / "database/bots/02_players.sql").read_bytes().decode("latin1")
@@ -35,6 +37,9 @@ def main():
     path.write_bytes(statement.encode("latin1"))
     db = json.loads(q.docker("inspect", q.DB))[0]
     assert db["Config"]["Labels"].get("canary.qa") == "party"
+    assert db["Config"]["Labels"].get("canary.qa.run_id") == q.run_id(), (
+        "QA database belongs to another run"
+    )
     assert set(db["NetworkSettings"]["Networks"]) == {q.PREFIX}
     assert any(
         m.get("Name") == q.PREFIX + "-data" and m["Destination"] == "/var/lib/mysql"
@@ -84,7 +89,7 @@ batch();return {requested=#BackgroundQA.names}""")
             break
         time.sleep(1)
     assert state["loaded"] == 994 and not state["errors"], state
-    (q.WORK / "party-population-load.json").write_text(json.dumps(state, indent=2))
+    q.write_json("party-population-load.json", state)
     q.command(
         'PartyScenario=dofile("/qa-repo/tests/fixture/party_scenarios.lua");return PartyScenario.baseline()'
     )

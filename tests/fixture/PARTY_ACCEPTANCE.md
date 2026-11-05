@@ -17,7 +17,8 @@ Python 3.12 worker dependencies are supplied read only at
 `/tmp/canary-replay-deps`. These assets are intentionally not committed.
 
 Build `tests/fixture/party_build.py` in a disposable container with this checkout
-mounted at `/review:ro` and a fresh `/tmp/canary-party-qa:/out`. It synchronizes the
+mounted at `/review:ro` and `/tmp/canary-party-qa-build:/out`. Build outputs stay
+separate from the run directory. It synchronizes the
 current native source, configures/builds `canary`, `bot_engine` and `canary_ut`,
 runs the native unit binary from `/source`, and compiles `party_acceptance.so`.
 Only the private build copy of `bot_tick.cpp` receives a timing scope. The product
@@ -36,6 +37,9 @@ behavior or human follow skill. Bot invitations and leadership transfer use real
 ## Commands in WSL
 
 ```sh
+export CANARY_PARTY_QA_BUILD=/tmp/canary-party-qa-build
+# Choose an unused directory for every attempt, including an interrupted rerun.
+export CANARY_PARTY_QA_WORK=/tmp/canary-party-run-20261105-a
 python3 tests/fixture/party_qa.py create
 python3 tests/fixture/party_qa.py setup
 # Wait for all three bots to accept the invitations and enter the five-member party.
@@ -59,6 +63,41 @@ before stopping only this game and database, preserving the QA volume/artifacts.
 After a failure, retain its output and inspect the private stack; stop it when the
 investigation finishes. Reusing existing Docker names is intentionally rejected by
 `create` rather than deleting another run's containers or volume.
+
+## Run identity and interrupted attempts
+
+`create` claims a new or empty directory with an exclusive `run.json` manifest.
+It refuses any existing contents before calling Docker or writing fixtures, and
+copies only the three build inputs from `CANARY_PARTY_QA_BUILD` into the new run.
+The chosen directory remains claimed if initialization fails. Keep it for
+inspection and select another unused directory; no old data is removed for you.
+Existing QA Docker names still require explicit operator cleanup before another
+creation. Changing the work directory does not bypass those resource guards.
+
+Raw rows and metadata carry the manifest's `run_id`; game/database/container
+checks also verify the matching label. Each measurement producer reserves its
+output before beginning and refuses to overwrite an earlier attempt, including
+an empty or partial checkpoint. Only `--resume-after-hunt` is an explicit resume
+path, and it validates the saved identity and phase before touching the game.
+Checkpoints are written atomically. Metadata can be refreshed within the same
+round; foreign or untagged existing data cannot be relabelled by a writer.
+
+The report snapshots and validates **all** selected inputs, including optional
+997-bot data and metadata, before creating output. Missing/mixed identities fail
+closed. Exports live under
+`deployment/brain/evidence/2026-11-05/party-technical-acceptance/<run_id>/`, so a
+new three-bot-only report cannot retain an older round's 997-bot archive.
+
+The historical artifacts published by this PR predate the identity protocol.
+They remain unchanged and were checked independently. The new reporter refuses
+to ingest them directly; it does not invent provenance or provide a legacy
+bypass. The offline regression suite uses copies in temporary directories to
+exercise coherent/mixed-round cases:
+
+```sh
+cd tests/fixture
+python3 -m unittest -v test_party_run
+```
 
 `party_perf.py` rotates modes over three repetitions, defaulting to 60 seconds
 each; the retained acceptance evidence uses `--seconds 30`. `party_combat_perf.py`

@@ -1,5 +1,10 @@
 # Party technical acceptance — #1
 
+The recorded measurements below are preserved historical evidence from head
+`d9c507c75`. The subsequent [run-isolation correction](run-isolation-review.md)
+adds round identities and fresh-directory gates for future executions; it does
+not backfill identities or change these raw measurements.
+
 Native base: `33c6a57878e58ef1241d287d26bd5aa489b5cc50`. Work used the isolated
 `qa/1-party-technical-acceptance` clone and `canary-party-qa` game/MariaDB/internal
 network/named volume. No host ports, production writes or paid calls. All three QA
