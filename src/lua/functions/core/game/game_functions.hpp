@@ -90,6 +90,8 @@ private:
 	static int luaGameBotCountActive(lua_State* L);
 	static int luaGameBotCommand(lua_State* L);
 	static int luaGameBotReload(lua_State* L);
+	static int luaGameBotPrepareReload(lua_State* L);
+	static int luaGameBotCancelReload(lua_State* L);
 	static int luaGameBotReregisterAll(lua_State* L);
 	static int luaGameBotStartTickLoop(lua_State* L);
 	static int luaGameBotGetState(lua_State* L);

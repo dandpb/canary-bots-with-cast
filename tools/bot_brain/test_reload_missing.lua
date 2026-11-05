@@ -34,6 +34,8 @@ Player = function(name)
 	for _, player in pairs(world) do if player:getName() == name then return player end end
 end
 Game = {
+	botPrepareReload = function() return { ok = true, ticket = 1 } end,
+	botCancelReload = function() end,
 	botCommand = function(_, command)
 		if command == "schedule status" then return scheduler and "Scheduler: ON" or "Scheduler: OFF" end
 		if command == "schedule on" then scheduler = true end
@@ -49,7 +51,7 @@ Game = {
 		active[guid] = false
 		if guid == 56 then world[56] = nil; collectgarbage("collect") end
 	end,
-	botReload = function() registered = {}; active = {}; scheduler = true; return "Reloaded" end,
+	botReload = function() registered = {}; active = {}; scheduler = true; return { ok = true, message = "Reloaded" } end,
 	botStartTickLoop = function() end,
 	loadBotPlayer = function(name)
 		assert(not scheduler, "scheduler must pause while registrations are incomplete")

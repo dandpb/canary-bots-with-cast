@@ -571,8 +571,7 @@ void Game::start(ServiceManager* manager) {
 
 	// Bot AI engine — load shared library, then start batch tick
 	auto& botLoader = BotEngineLoader::getInstance();
-	if (botLoader.load("./libbot_engine.so")) {
-		g_botEngine().loadHuntData();
+	if (botLoader.load("./libbot_engine.so") && botLoader.initialize()) {
 		restartBotTickLoop();
 	} else {
 		g_logger().error("[Game] Failed to load bot engine — bots disabled");
@@ -2967,7 +2966,7 @@ ReturnValue Game::internalTeleport(const std::shared_ptr<Thing> &thing, const Po
 		// stagger, the AI burst spreads across multiple dispatcher windows. The !isBotPlayer
 		// guard prevents recursion (wakeBot itself calls internalTeleport for the bot creature).
 		if (auto p = creature->getPlayer(); p && !p->isBotPlayer()) {
-			g_botEngine().wakeBotsInRadius(newPos, 100);
+			if (auto* engine = getBotEngineIfLoaded()) engine->wakeBotsInRadius(newPos, 100);
 		}
 
 		return RETURNVALUE_NOERROR;
@@ -6499,7 +6498,7 @@ void Game::playerSay(uint32_t playerId, uint16_t channelId, SpeakClasses type, c
 			// let the bot engine keyword-match it and maybe schedule one nearby
 			// idle bot to answer (delayed, throttled). Bots never react to bots.
 			if (!player->isBotPlayer()) {
-				g_botEngine().onPlayerSayNearBots(player->getID(), player->getPosition(), text);
+				if (auto* engine = getBotEngineIfLoaded()) engine->onPlayerSayNearBots(player->getID(), player->getPosition(), text);
 			}
 			break;
 
@@ -6608,9 +6607,9 @@ bool Game::playerSpeakTo(const std::shared_ptr<Player> &player, SpeakClasses typ
 		// before declaring not-online so PMs route to the bot's onCreatureSay handler.
 		// exiva is intentionally left alone — hibernated bots remain spatially absent,
 		// matching the Edron Library "ignore exiva" social pattern.
-		uint32_t hibGuid = g_botEngine().getHibernatedBotGuidByName(receiver);
-		if (hibGuid != 0) {
-			toPlayer = g_botEngine().getHibernatedBotPlayer(hibGuid);
+		if (auto* engine = getBotEngineIfLoaded()) {
+			uint32_t hibGuid = engine->getHibernatedBotGuidByName(receiver);
+			if (hibGuid != 0) toPlayer = engine->getHibernatedBotPlayer(hibGuid);
 		}
 		if (!toPlayer) {
 			player->sendTextMessage(MESSAGE_FAILURE, "A player with this name is not online.");
@@ -6634,7 +6633,7 @@ bool Game::playerSpeakTo(const std::shared_ptr<Player> &player, SpeakClasses typ
 	// bot reply seconds later would contradict that. (Bots are never ghosted in
 	// practice; this is belt-and-braces.)
 	if (toPlayer->isBotPlayer() && !player->isBotPlayer() && !toPlayer->isInGhostMode()) {
-		g_botEngine().onPlayerPmToBot(toPlayer->getGUID(), player->getID(), text);
+		if (auto* engine = getBotEngineIfLoaded()) engine->onPlayerPmToBot(toPlayer->getGUID(), player->getID(), text);
 	}
 
 	if (toPlayer->isInGhostMode() && !player->isAccessPlayer()) {

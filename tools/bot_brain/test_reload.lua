@@ -25,6 +25,8 @@ local orphan = actor(52, true, true)
 local recoveredOrphan = false
 local human = actor(9, false, false)
 Game = {
+	botPrepareReload = function() return { ok = true, ticket = 1 } end,
+	botCancelReload = function() end,
 	botCommand = function() return "OK fixture" end,
 	botIsActive = function(guid) return guid ~= 52 or recoveredOrphan end,
 	botRecoverOrphanForReload = function(guid, player)
@@ -36,7 +38,7 @@ Game = {
 	loadBotPlayer = function() return current end,
 	botForceDeactivateForReload = function() end,
 	botReactivateForReload = function() return true end,
-	botReload = function() return "Reloaded" end,
+	botReload = function() return { ok = true, message = "Reloaded" } end,
 	botStartTickLoop = function() end,
 	botReregisterAll = function() return 1 end,
 	getPlayers = function() return { current, human } end,
