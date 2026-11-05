@@ -24,6 +24,7 @@ if SUPPLY:
     STOP.horizon = SUPPLY["horizon"]
 TRACE = WORK / "supervisor.jsonl"
 CURRENT = None
+PURCHASE = None
 
 
 def forbidden(*_args, **_kwargs):
@@ -44,17 +45,30 @@ class Controller(BaseController):
         CURRENT = self
 
     async def handle(self, packet):
+        global PURCHASE
         await super().handle(packet)
         if SUPPLY and packet.get("type") == "outcome":
             outcome = Outcome.model_validate(packet)
             if (
                 outcome.bot_id == 65001
                 and outcome.status == "completed"
-                and outcome.reason == "supplies_bought_and_party_rejoined"
+                and outcome.reason
+                in {"supplies_bought", "supplies_bought_and_party_rejoined"}
                 and outcome.metrics.get("supply_delta", 0)
                 >= SUPPLY["minimum_supply_delta"]
             ):
-                (WORK / "supply-goal.json").write_text(json.dumps(outcome.model_dump()))
+                PURCHASE = outcome.model_dump()
+                (WORK / "supply-purchase.json").write_text(json.dumps(PURCHASE))
+            if (
+                PURCHASE
+                and outcome.bot_id == 65001
+                and outcome.status == "completed"
+                and outcome.reason
+                in {"party_rejoined", "supplies_bought_and_party_rejoined"}
+            ):
+                (WORK / "supply-goal.json").write_text(
+                    json.dumps({"purchase": PURCHASE, "return": outcome.model_dump()})
+                )
                 STOP.reason = "supply_goal_completed"
         if packet.get("type") in {"observation", "telemetry"}:
             if packet.get("type") == "observation":
@@ -75,6 +89,8 @@ class ScriptedFake(runtime.FakeProvider):
                 (k for k, v in candidates.items() if v == "continue"),
                 next(iter(candidates)),
             )
+        if SUPPLY and PURCHASE:
+            return "retreat" if "retreat" in candidates else "continue"
         if observation.bot.potions < 10 and "resupply" in candidates:
             return "resupply"
         for preferred in ("hunt:399", "hunt:77", "resupply", "continue"):

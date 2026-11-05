@@ -50,6 +50,7 @@ for name in [
         )
 for name in [
     "supply-goal.json",
+    "supply-purchase.json",
     "initial-supplies.json",
     "saved-supplies.json",
     "platform-attestation.json",
