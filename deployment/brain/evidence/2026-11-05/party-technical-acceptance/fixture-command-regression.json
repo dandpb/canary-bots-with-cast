@@ -1,0 +1,5 @@
+{
+  "utf8_round_trip": true,
+  "malformed_lua_returns_failure": true,
+  "command_loop_recovers": true
+}

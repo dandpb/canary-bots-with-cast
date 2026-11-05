@@ -1,0 +1,17 @@
+{
+  "canary-party-qa-game": {
+    "running": false,
+    "exit_code": 0,
+    "qa_label": "party"
+  },
+  "canary-party-qa-db": {
+    "running": false,
+    "exit_code": 0,
+    "qa_label": "party"
+  },
+  "canary-party-qa-build": {
+    "running": false,
+    "exit_code": 0,
+    "qa_label": "party"
+  }
+}

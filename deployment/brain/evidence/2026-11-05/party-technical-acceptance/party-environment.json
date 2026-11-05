@@ -1,0 +1,95 @@
+{
+  "native_base": "33c6a57878e58ef1241d287d26bd5aa489b5cc50",
+  "architecture": "x86_64",
+  "kernel": "6.18.33.2-microsoft-standard-WSL2",
+  "logical_cpus": 16,
+  "runtime_artifacts": {
+    "canary": "c2a0ababa5f69d074703c60b488ed88d852f3f3c437a756364ddb804c223c150",
+    "libbot_engine.so": "9088c8142cab7b554c30f4f0c2dad971f773b9fd8609d997fee9efe64909bdb4",
+    "party_acceptance.so": "a4ede7a4d05d6785838f6333cc472e502d602d8c031cb492b325171ce2adb4ef"
+  },
+  "instrumentation": "private bot_tick.cpp execution-wall scope and tickBrain call scope; product source unchanged",
+  "world_fixture": {
+    "file": "canary-lifecycle-qa-world.otbm",
+    "bytes": 184776037,
+    "sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+    "read_only_mount": true
+  },
+  "canary-party-qa-game": {
+    "image_id": "sha256:9c04e77fda530755c03ace77fc8495de08de1cdd4756383cf3e44a7e8e0d7e42",
+    "labels": {
+      "canary.qa": "party",
+      "com.docker.compose.project": "canary-bots-wsl",
+      "com.docker.compose.service": "game",
+      "com.docker.compose.version": "5.5.1",
+      "desktop.docker.io/wsl-distro": "Ubuntu",
+      "local.canary.patch": "retreat-recovery-and-online-time-persistence",
+      "org.opencontainers.image.revision": "8a1a2eab943ffbcbc60c4faa4ec46d503e92bf5f",
+      "org.opencontainers.image.version": "24.04"
+    },
+    "networks": [
+      "canary-party-qa"
+    ],
+    "published_ports": {},
+    "mounts": [
+      {
+        "target": "/qa",
+        "read_write": false,
+        "type": "bind"
+      },
+      {
+        "target": "/qa-deps",
+        "read_write": false,
+        "type": "bind"
+      },
+      {
+        "target": "/qa-repo",
+        "read_write": false,
+        "type": "bind"
+      },
+      {
+        "target": "/canary/data-otservbr-global/world/otservbr.otbm",
+        "read_write": false,
+        "type": "bind"
+      },
+      {
+        "target": "/canary/data/scripts/globalevents/aaa_party_qa.lua",
+        "read_write": false,
+        "type": "bind"
+      }
+    ]
+  },
+  "canary-party-qa-db": {
+    "image_id": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+    "labels": {
+      "canary.qa": "party",
+      "desktop.docker.io/wsl-distro": "Ubuntu",
+      "org.opencontainers.image.authors": "MariaDB Community",
+      "org.opencontainers.image.base.name": "docker.io/library/ubuntu:noble",
+      "org.opencontainers.image.description": "MariaDB Database for relational SQL",
+      "org.opencontainers.image.documentation": "https://hub.docker.com/_/mariadb/",
+      "org.opencontainers.image.licenses": "GPL-2.0",
+      "org.opencontainers.image.source": "https://github.com/MariaDB/mariadb-docker",
+      "org.opencontainers.image.title": "MariaDB Database",
+      "org.opencontainers.image.url": "https://github.com/MariaDB/mariadb-docker",
+      "org.opencontainers.image.vendor": "MariaDB Community",
+      "org.opencontainers.image.version": "11.4.12"
+    },
+    "networks": [
+      "canary-party-qa"
+    ],
+    "published_ports": {},
+    "mounts": [
+      {
+        "target": "/docker-entrypoint-initdb.d",
+        "read_write": false,
+        "type": "bind"
+      },
+      {
+        "target": "/var/lib/mysql",
+        "read_write": true,
+        "type": "volume"
+      }
+    ]
+  }
+}

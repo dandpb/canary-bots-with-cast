@@ -1,0 +1,866 @@
+{
+  "native_base": "33c6a57878e58ef1241d287d26bd5aa489b5cc50",
+  "death_observer_scope": "five party fixture avatars; background mortality not classified",
+  "intervention_observer_scope": "setup_teleports in retained raw files is a planned upper bound of five; zero fixture-injected heals/teleports during timed combat; native automatic rescues not exhaustively classified",
+  "idle_follow": {
+    "disabled": {
+      "repetitions": 3,
+      "native_ticks": 967,
+      "duration_seconds": [
+        31.38692235200142,
+        32.089068564004265,
+        31.752963566003018
+      ],
+      "bridge_window_p95_ms": [
+        0.000864,
+        0.0009469999999999999,
+        0.000962
+      ],
+      "total_tick_window_p95_ms": [
+        0.20321899999999998,
+        0.215949,
+        0.21238300000000002
+      ],
+      "bridge_pooled_p95_ms": 0.000939,
+      "total_tick_pooled_p95_ms": 0.211185,
+      "bridge_pooled_p99_ms": 0.001178,
+      "total_tick_pooled_p99_ms": 0.380109,
+      "bridge_max_ms": 0.001639,
+      "total_tick_max_ms": 0.504057,
+      "bridge_ticks_over_2ms": 0,
+      "container_cpu_one_core_percent": [
+        3.2967488446155926,
+        3.5177026025187375,
+        3.34914250693314
+      ],
+      "walk_queue_max_observed": 0,
+      "controller_pending_peak": 0
+    },
+    "shadow": {
+      "repetitions": 3,
+      "native_ticks": 988,
+      "duration_seconds": [
+        32.43584527300118,
+        32.43247470899951,
+        32.038350484006514
+      ],
+      "bridge_window_p95_ms": [
+        0.351669,
+        0.37131000000000003,
+        0.354985
+      ],
+      "total_tick_window_p95_ms": [
+        0.50986,
+        0.540008,
+        0.5113530000000001
+      ],
+      "bridge_pooled_p95_ms": 0.358861,
+      "total_tick_pooled_p95_ms": 0.5222619999999999,
+      "bridge_pooled_p99_ms": 0.42124,
+      "total_tick_pooled_p99_ms": 0.6546609999999999,
+      "bridge_max_ms": 0.642309,
+      "total_tick_max_ms": 1.416296,
+      "bridge_ticks_over_2ms": 0,
+      "container_cpu_one_core_percent": [
+        6.24078387032182,
+        6.4570928330020205,
+        6.165030253308463
+      ],
+      "walk_queue_max_observed": 0,
+      "controller_pending_peak": 1
+    },
+    "active": {
+      "repetitions": 3,
+      "native_ticks": 994,
+      "duration_seconds": [
+        32.241262766001455,
+        32.407250374002615,
+        32.57296134299395
+      ],
+      "bridge_window_p95_ms": [
+        0.370608,
+        0.358964,
+        0.389788
+      ],
+      "total_tick_window_p95_ms": [
+        0.558701,
+        0.548442,
+        0.551591
+      ],
+      "bridge_pooled_p95_ms": 0.369803,
+      "total_tick_pooled_p95_ms": 0.549861,
+      "bridge_pooled_p99_ms": 0.465451,
+      "total_tick_pooled_p99_ms": 0.683682,
+      "bridge_max_ms": 0.577108,
+      "total_tick_max_ms": 0.957939,
+      "bridge_ticks_over_2ms": 0,
+      "container_cpu_one_core_percent": [
+        6.381834405598191,
+        6.5658640441367195,
+        6.390708471607039
+      ],
+      "walk_queue_max_observed": 0,
+      "controller_pending_peak": 1
+    }
+  },
+  "combat": {
+    "disabled": {
+      "repetitions": 3,
+      "native_ticks": 942,
+      "duration_seconds": [
+        32.18764874400222,
+        32.180442844000936,
+        31.191490588003944
+      ],
+      "bridge_window_p95_ms": [
+        0.001077,
+        0.001108,
+        0.0012900000000000001
+      ],
+      "total_tick_window_p95_ms": [
+        0.38353899999999996,
+        0.468416,
+        0.485045
+      ],
+      "bridge_pooled_p95_ms": 0.0011790000000000001,
+      "total_tick_pooled_p95_ms": 0.462557,
+      "bridge_pooled_p99_ms": 0.001367,
+      "total_tick_pooled_p99_ms": 0.745203,
+      "bridge_max_ms": 0.001536,
+      "total_tick_max_ms": 1.449146,
+      "bridge_ticks_over_2ms": 0,
+      "container_cpu_one_core_percent": [
+        7.546646290691338,
+        7.643583439556499,
+        8.44547647560365
+      ],
+      "walk_queue_max_observed": 0,
+      "controller_pending_peak": 0,
+      "defeats": [
+        12,
+        11,
+        11
+      ],
+      "spawned": [
+        12,
+        12,
+        12
+      ],
+      "removed_after_measurement": [
+        0,
+        1,
+        1
+      ],
+      "xp_delta_by_guid": [
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 162,
+          "65003": 0,
+          "65004": 162
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 216,
+          "65003": 0,
+          "65004": 81
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 270,
+          "65003": 27,
+          "65004": 0
+        }
+      ],
+      "damage_sources": [
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ]
+      ],
+      "deaths": 0
+    },
+    "shadow": {
+      "repetitions": 3,
+      "native_ticks": 933,
+      "duration_seconds": [
+        31.14330091100419,
+        32.239660696999636,
+        31.85515120499622
+      ],
+      "bridge_window_p95_ms": [
+        0.419359,
+        0.407145,
+        0.426137
+      ],
+      "total_tick_window_p95_ms": [
+        0.695061,
+        0.7560800000000001,
+        0.797239
+      ],
+      "bridge_pooled_p95_ms": 0.41775,
+      "total_tick_pooled_p95_ms": 0.7603,
+      "bridge_pooled_p99_ms": 0.50519,
+      "total_tick_pooled_p99_ms": 1.0283769999999999,
+      "bridge_max_ms": 0.8112659999999999,
+      "total_tick_max_ms": 1.5117239999999998,
+      "bridge_ticks_over_2ms": 0,
+      "container_cpu_one_core_percent": [
+        10.093711674889507,
+        10.054302464484888,
+        10.252009098885669
+      ],
+      "walk_queue_max_observed": 2,
+      "controller_pending_peak": 1,
+      "defeats": [
+        10,
+        12,
+        11
+      ],
+      "spawned": [
+        12,
+        12,
+        12
+      ],
+      "removed_after_measurement": [
+        2,
+        0,
+        1
+      ],
+      "xp_delta_by_guid": [
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 216,
+          "65003": 0,
+          "65004": 54
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 162,
+          "65003": 27,
+          "65004": 135
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 270,
+          "65003": 27,
+          "65004": 0
+        }
+      ],
+      "damage_sources": [
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ]
+      ],
+      "deaths": 0
+    },
+    "active": {
+      "repetitions": 3,
+      "native_ticks": 931,
+      "duration_seconds": [
+        32.029445804000716,
+        31.140910230998998,
+        31.111080602000584
+      ],
+      "bridge_window_p95_ms": [
+        0.389118,
+        0.407609,
+        0.476707
+      ],
+      "total_tick_window_p95_ms": [
+        0.723505,
+        0.732784,
+        0.8122480000000001
+      ],
+      "bridge_pooled_p95_ms": 0.419272,
+      "total_tick_pooled_p95_ms": 0.758522,
+      "bridge_pooled_p99_ms": 0.528518,
+      "total_tick_pooled_p99_ms": 1.0327840000000001,
+      "bridge_max_ms": 1.193568,
+      "total_tick_max_ms": 1.544202,
+      "bridge_ticks_over_2ms": 0,
+      "container_cpu_one_core_percent": [
+        9.987796915301034,
+        9.848055105811266,
+        11.181488822269662
+      ],
+      "walk_queue_max_observed": 3,
+      "controller_pending_peak": 1,
+      "defeats": [
+        11,
+        12,
+        11
+      ],
+      "spawned": [
+        12,
+        12,
+        12
+      ],
+      "removed_after_measurement": [
+        1,
+        0,
+        1
+      ],
+      "xp_delta_by_guid": [
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 162,
+          "65003": 27,
+          "65004": 108
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 189,
+          "65003": 27,
+          "65004": 108
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 189,
+          "65003": 54,
+          "65004": 54
+        }
+      ],
+      "damage_sources": [
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ]
+      ],
+      "deaths": 0
+    }
+  },
+  "scenarios": {
+    "hunt": {
+      "guided_hunt_samples": 51,
+      "defeats": 16,
+      "xp_delta": {
+        "64999": 0,
+        "64998": 0,
+        "65001": 246,
+        "65003": 150,
+        "65004": 243
+      },
+      "guide_positions": 37,
+      "damage_sources": [
+        "Galdon Whitehoof",
+        "Grizzle Alyronia",
+        "Sever Heartspear"
+      ],
+      "complete_15_minute_hunts": 0,
+      "deaths": 0
+    },
+    "resupply": {
+      "65001": {
+        "potions_before": 2,
+        "potions_after": 40,
+        "funds_spent": 2014,
+        "native_outcome": {
+          "action_id": "301da180d60146f4be1dca06db6a6f10",
+          "bot_id": 65001,
+          "metrics": {
+            "danger": 0.0,
+            "deaths": 0.0,
+            "defeats_delta": 0,
+            "elapsed_seconds": 75.282,
+            "level": 20,
+            "party_distance": 3.0,
+            "party_size": 5,
+            "progress": 1.0,
+            "supply_delta": 38,
+            "xp_delta": 0.0
+          },
+          "reason": "supplies_bought_and_party_rejoined",
+          "status": "completed",
+          "type": "outcome",
+          "version": 1,
+          "world": "1-63943299001141"
+        }
+      },
+      "65003": {
+        "potions_before": 2,
+        "potions_after": 40,
+        "funds_spent": 2014,
+        "native_outcome": {
+          "action_id": "a2e48d57d45443d9a9f7b07d37b7a2fe",
+          "bot_id": 65003,
+          "metrics": {
+            "danger": 0.0,
+            "deaths": 0.0,
+            "defeats_delta": 0,
+            "elapsed_seconds": 65.329,
+            "level": 20,
+            "party_distance": 3.0,
+            "party_size": 5,
+            "progress": 1.0,
+            "supply_delta": 38,
+            "xp_delta": 0.0
+          },
+          "reason": "supplies_bought_and_party_rejoined",
+          "status": "completed",
+          "type": "outcome",
+          "version": 1,
+          "world": "1-63943299001141"
+        }
+      },
+      "65004": {
+        "potions_before": 2,
+        "potions_after": 40,
+        "funds_spent": 2014,
+        "native_outcome": {
+          "action_id": "f71bdf676d324dee98bbd14ec4c80701",
+          "bot_id": 65004,
+          "metrics": {
+            "danger": 0.0,
+            "deaths": 0.0,
+            "defeats_delta": 0,
+            "elapsed_seconds": 55.707,
+            "level": 20,
+            "party_distance": 3.0,
+            "party_size": 5,
+            "progress": 1.0,
+            "supply_delta": 38,
+            "xp_delta": 0.0
+          },
+          "reason": "supplies_bought_and_party_rejoined",
+          "status": "completed",
+          "type": "outcome",
+          "version": 1,
+          "world": "1-63943299001141"
+        }
+      }
+    },
+    "leader_transfer": {
+      "new_leader": 64998,
+      "old_leader_started_hunt": false,
+      "authority_changed_outcomes": [
+        {
+          "action_id": "74c41332e36e42e788a35f2e07de4f1b",
+          "bot_id": 65001,
+          "metrics": {
+            "danger": 0.0,
+            "deaths": 0.0,
+            "defeats_delta": 0,
+            "elapsed_seconds": 2.312,
+            "level": 20,
+            "party_distance": 1.0,
+            "party_size": 5,
+            "progress": 0.0,
+            "supply_delta": 0,
+            "xp_delta": 0.0
+          },
+          "reason": "authority_changed",
+          "status": "cancelled",
+          "type": "outcome",
+          "version": 1,
+          "world": "1-63943299001141"
+        },
+        {
+          "action_id": "adf54599dc7b4ef1b07cb59af81732b3",
+          "bot_id": 65003,
+          "metrics": {
+            "danger": 0.0,
+            "deaths": 0.0,
+            "defeats_delta": 0,
+            "elapsed_seconds": 2.211,
+            "level": 20,
+            "party_distance": 3.0,
+            "party_size": 5,
+            "progress": 0.0,
+            "supply_delta": 0,
+            "xp_delta": 0.0
+          },
+          "reason": "authority_changed",
+          "status": "cancelled",
+          "type": "outcome",
+          "version": 1,
+          "world": "1-63943299001141"
+        },
+        {
+          "action_id": "5834d45d7a2c4a72b3f2230d6e512857",
+          "bot_id": 65004,
+          "metrics": {
+            "danger": 0.0,
+            "deaths": 0.0,
+            "defeats_delta": 0,
+            "elapsed_seconds": 2.009,
+            "level": 20,
+            "party_distance": 2.0,
+            "party_size": 5,
+            "progress": 0.0,
+            "supply_delta": 0,
+            "xp_delta": 0.0
+          },
+          "reason": "authority_changed",
+          "status": "cancelled",
+          "type": "outcome",
+          "version": 1,
+          "world": "1-63943299001141"
+        }
+      ]
+    },
+    "worker_loss": {
+      "goals_before_stop": 3,
+      "running_after_stop": 0,
+      "first_observed_fallback_seconds": 6.267769220001355,
+      "observation_lower_bound_seconds": 3.794414798001526,
+      "confirmed_defeats_after_worker_stop": 1
+    },
+    "worker_restart": {
+      "worker_alive": true,
+      "resurrected_goals": 0
+    },
+    "disconnect": {
+      "leader_after_B_disconnect": 64999,
+      "authority_after_all_disconnect": 0,
+      "retained_human_party_members": 0
+    },
+    "deaths_all_phases": 0
+  },
+  "population_combat": {
+    "disabled": {
+      "repetitions": 3,
+      "native_ticks": 936,
+      "duration_seconds": [
+        32.25091947000328,
+        32.17012920599518,
+        32.13900892300444
+      ],
+      "bridge_window_p95_ms": [
+        0.0012,
+        0.0013180000000000002,
+        0.001212
+      ],
+      "total_tick_window_p95_ms": [
+        1.1046040000000001,
+        1.069558,
+        5.722551
+      ],
+      "bridge_pooled_p95_ms": 0.001252,
+      "total_tick_pooled_p95_ms": 5.088993,
+      "bridge_pooled_p99_ms": 0.001471,
+      "total_tick_pooled_p99_ms": 6.027546999999999,
+      "bridge_max_ms": 0.028129,
+      "total_tick_max_ms": 13.102377,
+      "bridge_ticks_over_2ms": 0,
+      "container_cpu_one_core_percent": [
+        11.002011906358957,
+        11.648859026968502,
+        12.332617379383315
+      ],
+      "walk_queue_max_observed": 2,
+      "controller_pending_peak": 0,
+      "defeats": [
+        12,
+        12,
+        11
+      ],
+      "spawned": [
+        12,
+        12,
+        12
+      ],
+      "removed_after_measurement": [
+        0,
+        0,
+        1
+      ],
+      "xp_delta_by_guid": [
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 162,
+          "65003": 27,
+          "65004": 135
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 135,
+          "65003": 0,
+          "65004": 81
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 189,
+          "65003": 54,
+          "65004": 54
+        }
+      ],
+      "damage_sources": [
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Miiraxa Axeblow",
+          "Sever Heartspear"
+        ],
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ]
+      ],
+      "deaths": 0,
+      "population_registered_range": [
+        997,
+        997
+      ],
+      "population_awake_range": [
+        7,
+        8
+      ],
+      "population_hibernated_range": [
+        989,
+        990
+      ]
+    },
+    "shadow": {
+      "repetitions": 3,
+      "native_ticks": 931,
+      "duration_seconds": [
+        32.213036128996464,
+        31.74517527399439,
+        31.756105312000727
+      ],
+      "bridge_window_p95_ms": [
+        0.41429000000000005,
+        0.448541,
+        0.43523399999999995
+      ],
+      "total_tick_window_p95_ms": [
+        1.46573,
+        5.7824409999999995,
+        6.18912
+      ],
+      "bridge_pooled_p95_ms": 0.43523399999999995,
+      "total_tick_pooled_p95_ms": 5.627905,
+      "bridge_pooled_p99_ms": 0.53622,
+      "total_tick_pooled_p99_ms": 7.56491,
+      "bridge_max_ms": 0.6704349999999999,
+      "total_tick_max_ms": 13.052238,
+      "bridge_ticks_over_2ms": 0,
+      "container_cpu_one_core_percent": [
+        12.916699262180423,
+        16.955997103627617,
+        16.325311145888044
+      ],
+      "walk_queue_max_observed": 2,
+      "controller_pending_peak": 1,
+      "defeats": [
+        12,
+        12,
+        11
+      ],
+      "spawned": [
+        12,
+        12,
+        12
+      ],
+      "removed_after_measurement": [
+        0,
+        0,
+        1
+      ],
+      "xp_delta_by_guid": [
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 162,
+          "65003": 0,
+          "65004": 162
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 216,
+          "65003": 81,
+          "65004": 27
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 216,
+          "65003": 0,
+          "65004": 81
+        }
+      ],
+      "damage_sources": [
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ]
+      ],
+      "deaths": 0,
+      "population_registered_range": [
+        997,
+        997
+      ],
+      "population_awake_range": [
+        7,
+        8
+      ],
+      "population_hibernated_range": [
+        989,
+        990
+      ]
+    },
+    "active": {
+      "repetitions": 3,
+      "native_ticks": 934,
+      "duration_seconds": [
+        31.721773934004887,
+        31.727058247997775,
+        32.54619490500045
+      ],
+      "bridge_window_p95_ms": [
+        0.43098200000000003,
+        0.44031,
+        0.44649500000000003
+      ],
+      "total_tick_window_p95_ms": [
+        1.655998,
+        1.473009,
+        5.784529
+      ],
+      "bridge_pooled_p95_ms": 0.44031,
+      "total_tick_pooled_p95_ms": 5.3939449999999995,
+      "bridge_pooled_p99_ms": 0.543,
+      "total_tick_pooled_p99_ms": 6.617603,
+      "bridge_max_ms": 0.773177,
+      "total_tick_max_ms": 10.721316,
+      "bridge_ticks_over_2ms": 0,
+      "container_cpu_one_core_percent": [
+        13.038148524116405,
+        15.527172300353087,
+        14.872912222547674
+      ],
+      "walk_queue_max_observed": 0,
+      "controller_pending_peak": 1,
+      "defeats": [
+        11,
+        10,
+        11
+      ],
+      "spawned": [
+        12,
+        12,
+        12
+      ],
+      "removed_after_measurement": [
+        1,
+        2,
+        1
+      ],
+      "xp_delta_by_guid": [
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 189,
+          "65003": 0,
+          "65004": 108
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 162,
+          "65003": 27,
+          "65004": 81
+        },
+        {
+          "64999": 0,
+          "64998": 0,
+          "65001": 270,
+          "65003": 0,
+          "65004": 27
+        }
+      ],
+      "damage_sources": [
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ],
+        [
+          "Galdon Whitehoof",
+          "Grizzle Alyronia",
+          "Sever Heartspear"
+        ]
+      ],
+      "deaths": 0,
+      "population_registered_range": [
+        997,
+        997
+      ],
+      "population_awake_range": [
+        7,
+        8
+      ],
+      "population_hibernated_range": [
+        989,
+        990
+      ]
+    }
+  }
+}
