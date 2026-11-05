@@ -1,3 +1,3 @@
 add_subdirectory(components)
 add_subdirectory(imbuements)
-target_sources(canary_ut PRIVATE bot_brain_protocol_test.cpp bot_save_queue_test.cpp bot_database_scope_test.cpp)
+target_sources(canary_ut PRIVATE bot_brain_protocol_test.cpp bot_save_queue_test.cpp bot_database_scope_test.cpp cast_publisher_test.cpp)
