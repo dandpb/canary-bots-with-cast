@@ -99,6 +99,8 @@ the same headers. No native test bridge is shipped in a normal runtime.
 ```sh
 python3 tools/bot_brain/test_stateful_reload.py --swaps 50
 python3 tools/bot_brain/test_reload_progress.py
+# QA-only config: botQuestBotPct=4 and botResupplyRehuntPct=100.
+python3 tools/bot_brain/test_reload_quests.py
 # Optional matching QA library: change only loadHuntData to throw
 # std::runtime_error("isolated init failure") before its body; do not deploy it.
 python3 tools/bot_brain/test_stateful_reload.py --swaps 50 --fault-library /tmp/fault.so
@@ -119,6 +121,11 @@ after the candidate accepts the hunt. Unknown explicit debug names are rejected
 against the returned roster before changing the scheduler, tick owner or debug
 population; the native reload itself has already completed at that point.
 The live test checks that all three Players and scheduler ON survive rejection.
+Quest restore uses the candidate script's shared classification and does not
+reserve quest IDs or spawn groups. Quest-role eligibility is derived from GUID
+and current percentage by the same helper as activation. The quest regression
+checks two simultaneous quest runners, a regular-role control, automatic next
+quest selection at the completion boundary and exclusive ordinary-hunt ownership.
 
 Representative population overhead, connected cast continuity and missing-library
 teleport/PM/XML/binary-status exercises are recorded separately as they are completed.

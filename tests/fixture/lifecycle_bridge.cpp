@@ -70,6 +70,23 @@ int reloadProgress(lua_State* state) {
 		// so startTravel does not choose Dawnport's unrelated recovery route.
 		bot->townId = 8;
 		bot->townName = "Thais";
+	} else if (operation == "questProgress" || operation == "regularCollision") {
+		bot->state = BotAIState::HUNTING;
+		bot->huntPhase = HuntPhase::PATROLLING;
+		if (operation == "regularCollision") bot->huntScriptId = 1;
+		bot->huntWaypointIdx = guid == 65001 ? 1 : 2;
+		bot->huntKillCount = guid == 65001 ? 5 : 7;
+		bot->huntStartTime = OTSYS_TIME() - 1000;
+		bot->huntEndTime = OTSYS_TIME() + 300000;
+	} else if (operation == "questCompleted") {
+		// The journey is not simulated here: drive the real completion/reroll
+		// boundary after the quest's return and supply steps have finished.
+		bot->state = BotAIState::HUNTING;
+		bot->huntPhase = HuntPhase::RESUPPLYING;
+		bot->huntResupplyStart = OTSYS_TIME() - 1000;
+		bot->prepareStartTime = OTSYS_TIME() - 1000;
+		bot->prepareStep = 5;
+		bot->resupplyRerolled = true;
 	} else if (operation == "preparing" || operation == "resupplying") {
 		bot->state = BotAIState::HUNTING;
 		bot->huntPhase = operation == "preparing" ? HuntPhase::PREPARING : HuntPhase::RESUPPLYING;
@@ -111,6 +128,9 @@ int reloadProgress(lua_State* state) {
 	lua_pushinteger(state, bot->dwellUntil); lua_setfield(state, -2, "dwellUntil");
 	lua_pushinteger(state, OTSYS_TIME()); lua_setfield(state, -2, "now");
 	lua_pushinteger(state, bot->huntScriptId); lua_setfield(state, -2, "huntId");
+	lua_pushboolean(state, bot->isQuestBot); lua_setfield(state, -2, "isQuestBot");
+	lua_pushinteger(state, bot->huntWaypointIdx); lua_setfield(state, -2, "waypoint");
+	lua_pushinteger(state, bot->huntKillCount); lua_setfield(state, -2, "kills");
 	lua_pushinteger(state, static_cast<int>(bot->huntPhase)); lua_setfield(state, -2, "huntPhase");
 	lua_pushinteger(state, bot->prepareStep); lua_setfield(state, -2, "prepareStep");
 	lua_pushinteger(state, bot->prepareStartTime); lua_setfield(state, -2, "prepareStarted");
