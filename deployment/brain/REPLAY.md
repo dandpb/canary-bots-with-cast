@@ -154,6 +154,12 @@ and MP4 hash. The encoded artifact is checked with ffprobe before publication.
 `source_metadata`, including the manifest, status and incomplete flag. It is an
 export-evidence hash, not a checksum of unused events or SQLite file bytes.
 Output and sidecar paths must be new; existing artifacts are not overwritten.
+Both files are written and flushed in a private staging directory on the output
+filesystem before publication. Each final name is linked exclusively to a complete
+file; a caught write/publication error or interrupt removes only names created by
+that export, allowing a retry. A concurrently created destination is preserved.
+The output filesystem must support same-filesystem hard links. The two names are
+published sequentially; consume the export only when both MP4 and JSON are present.
 The renderer streams history and bounds its displayed trail to recent samples.
 
 Validate changes with the existing pytest, ruff and strict mypy commands, plus the gateway smoke tool and native library build. Browser checks cover the initial page, comparing two runs, seeking, floor changes, playback, milestone alignment, console health and a narrow viewport. Real model rankings require a separately selected, budgeted pilot with multiple independent runs. Native client capture/clips can later be attached separately to these sampled-map videos.
