@@ -109,7 +109,7 @@ class Provider:
         upper += int(body.get("max_output_tokens", 0)) * self.prices.output_nanousd
         upper = max(1, upper)
         async with (
-            asyncio.timeout(timeout),
+            asyncio.timeout(timeout) as deadline,
             self.fast_slots if endpoint == "decisions" or fast else self.planning_slots,
         ):
             failures, retry_at = self.backoff.get(endpoint, (0, 0))
@@ -123,7 +123,13 @@ class Provider:
                 run_id=run_id,
                 run_cap=self.run_cap,
             )
-            record({"phase": "reserved", "reserved_nanousd": upper})
+            record(
+                {
+                    "phase": "reserved",
+                    "reserved_nanousd": upper,
+                    "deadline_ms": round(timeout * 1000),
+                }
+            )
             started = time.monotonic()
             settled = False
             try:
@@ -195,6 +201,13 @@ class Provider:
                 self.backoff.pop(endpoint, None)
                 return data
             except (Exception, asyncio.CancelledError) as error:
+                # The outer scope expires first and cancels the transmission; record
+                # the deadline miss as a timeout, not as an external cancellation.
+                failure = (
+                    "TimeoutError"
+                    if isinstance(error, asyncio.CancelledError) and deadline.expired()
+                    else type(error).__name__
+                )
                 self.backoff[endpoint] = (
                     failures + 1,
                     time.monotonic() + min(60, 2 ** min(failures, 6)),
@@ -205,7 +218,8 @@ class Provider:
                     request_id,
                     {
                         "endpoint": endpoint,
-                        "error": type(error).__name__,
+                        "error": failure,
+                        "deadline_ms": round(timeout * 1000),
                         "unsettled": not settled,
                         "elapsed_ms": round((time.monotonic() - started) * 1000),
                     },
@@ -213,7 +227,8 @@ class Provider:
                 record(
                     {
                         "phase": "failed",
-                        "error": type(error).__name__,
+                        "error": failure,
+                        "deadline_ms": round(timeout * 1000),
                         "reserved_nanousd": 0 if settled else upper,
                         "unsettled": not settled,
                         "elapsed_ms": round((time.monotonic() - started) * 1000),
