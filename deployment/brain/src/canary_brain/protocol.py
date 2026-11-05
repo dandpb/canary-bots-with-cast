@@ -93,6 +93,20 @@ class Intent(Packet):
     expires_ms: int
 
 
+class Telemetry(Packet):
+    """Cumulative native lifecycle counters survive a lost datagram in one world."""
+
+    version: Literal[1] = 1
+    type: Literal["telemetry"] = "telemetry"
+    world: str = Field(min_length=1, max_length=80)
+    bot_id: int = Field(gt=0)
+    sequence: int = Field(ge=0)
+    captured_ms: int = Field(ge=0)
+    deaths: int = Field(ge=0)
+    phase: Literal["alive", "dead", "hibernated", "unavailable"]
+    model_owned: bool = False
+
+
 class Outcome(Packet):
     version: Literal[1] = 1
     type: Literal["outcome"] = "outcome"
