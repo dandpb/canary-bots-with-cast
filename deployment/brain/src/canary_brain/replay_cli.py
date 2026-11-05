@@ -31,6 +31,7 @@ from .replay import campaign, export_archive, export_report, import_archive, sum
 from .runtime import Configuration, read_credential
 from .store import USD, Store
 from .testing import FakeProvider
+from .timelapse import export_video
 
 
 def configure(commands: Any) -> None:
@@ -38,19 +39,33 @@ def configure(commands: Any) -> None:
         "replay", help="read-only historical playback and archives"
     )
     operations = replay.add_subparsers(dest="operation", required=True)
-    for name in ("list", "summary", "serve", "export", "import", "report", "demo"):
+    for name in (
+        "list",
+        "summary",
+        "serve",
+        "export",
+        "import",
+        "report",
+        "demo",
+        "video",
+    ):
         operation = operations.add_parser(name)
         operation.add_argument("--recording", type=Path, required=True)
-        if name in {"summary", "export"}:
+        if name in {"summary", "export", "video"}:
             operation.add_argument("--run", required=True)
         if name == "report":
             operation.add_argument("--run", action="append", required=True)
-        if name in {"export", "report"}:
+        if name in {"export", "report", "video"}:
             operation.add_argument("--output", type=Path, required=True)
         if name == "import":
             operation.add_argument("--archive", type=Path, required=True)
         if name == "serve":
             operation.add_argument("--port", type=int, default=8092)
+        if name == "video":
+            operation.add_argument("--speed", type=float, default=60)
+            operation.add_argument("--fps", type=int, default=24)
+            operation.add_argument("--start-ms", type=int, default=0)
+            operation.add_argument("--end-ms", type=int)
     benchmark = commands.add_parser(
         "benchmark", help="predeclare and run isolated model comparisons"
     )
@@ -210,5 +225,15 @@ def execute(args: argparse.Namespace) -> None:
         elif args.operation == "report":
             export_report(reader, args.run, args.output)
             result = {"report": str(args.output)}
+        elif args.operation == "video":
+            result = export_video(
+                reader,
+                args.run,
+                args.output,
+                speed=args.speed,
+                fps=args.fps,
+                start_ms=args.start_ms,
+                end_ms=args.end_ms,
+            )
     if result is not None:
         print(json.dumps(result, ensure_ascii=False, indent=2))

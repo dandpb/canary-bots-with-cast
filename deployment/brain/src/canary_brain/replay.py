@@ -215,9 +215,7 @@ def summarize(
         if first and last
         else None
     )
-    wall_ms = (
-        max(0, last["t_ms"] - first["t_ms"]) if first and last else 0
-    )
+    wall_ms = max(0, last["t_ms"] - first["t_ms"]) if first and last else 0
     calendar_elapsed_ms = (
         int((last["wall"] - first["wall"]) * 1000) if first and last else None
     )

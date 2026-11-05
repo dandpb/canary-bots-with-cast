@@ -30,7 +30,10 @@ def test_private_datagram_worker_round_trip_without_credentials(tmp_path):
                     "socket_directory": directory,
                     "state_file": str(tmp_path / "state.db"),
                     "bots": [7],
-                    "recording": {"path": str(tmp_path / "replay.db"), "namespace": "test"},
+                    "recording": {
+                        "path": str(tmp_path / "replay.db"),
+                        "namespace": "test",
+                    },
                 }
             )
         )
@@ -98,5 +101,8 @@ def test_private_datagram_worker_round_trip_without_credentials(tmp_path):
         assert not (root / "worker.sock").exists()
         reader = ReplayReader(tmp_path / "replay.db")
         events = list(reader.all_events("test:7:life"))
-        assert any(e["kind"] == "outcome" and e["data"]["status"] == "completed" for e in events)
+        assert any(
+            e["kind"] == "outcome" and e["data"]["status"] == "completed"
+            for e in events
+        )
         assert reader.seek("test:7:life", 10**9)["sample"]["data"]["bot"]["id"] == 7

@@ -383,6 +383,26 @@ class ReplayReader:
             yield from rows
             after = rows[-1]["id"]
 
+    def ordered_events(self, run: str, until_ms: int) -> Iterator[dict[str, Any]]:
+        """Stream a chronological prefix without loading a bot's entire life."""
+        with self.connect() as db:
+            cursor = db.execute(
+                "SELECT id,event_key,segment,t_ms,wall,kind,data FROM replay_events "
+                "WHERE run=? AND t_ms<=? ORDER BY t_ms,id",
+                (run, until_ms),
+            )
+            while rows := cursor.fetchmany(1000):
+                for row in rows:
+                    yield {
+                        "id": row[0],
+                        "key": row[1],
+                        "segment": row[2],
+                        "t_ms": row[3],
+                        "wall": row[4],
+                        "kind": row[5],
+                        "data": json.loads(row[6]),
+                    }
+
     def track(self, run: str, limit: int = 2000) -> list[dict[str, Any]]:
         duration = self.run(run)["duration_ms"]
         bucket = max(1, (duration + limit - 1) // min(max(limit, 1), 2000))
