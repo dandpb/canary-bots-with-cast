@@ -10,6 +10,7 @@ from collections import deque
 from typing import TYPE_CHECKING, Any
 
 from .protocol import Observation, Outcome
+from .recording import attribution
 
 if TYPE_CHECKING:
     from .controller import Controller
@@ -39,6 +40,7 @@ class Supervisor:
         self.store.put("supervision", str(bot), self.state(bot))
 
     def event(self, bot: int, kind: str, text: str, **details: Any) -> None:
+        self.controller.record(bot, "operator", {"kind": kind, "text": text, **details})
         self.store.put(
             "operator_event",
             uuid.uuid4().hex,
@@ -153,6 +155,27 @@ class Supervisor:
         return action_id
 
     def command(
+        self,
+        bot: int,
+        operation: str,
+        data: dict[str, Any],
+        *,
+        automatic_recovery: bool = False,
+    ) -> dict[str, Any]:
+        result = self._command(
+            bot, operation, data, automatic_recovery=automatic_recovery
+        )
+        self.controller.record(
+            bot,
+            "operator",
+            {
+                "operation": operation,
+                "automatic": automatic_recovery,
+            },
+        )
+        return result
+
+    def _command(
         self,
         bot: int,
         operation: str,
@@ -516,6 +539,14 @@ class Supervisor:
         return result
 
     async def chat(self, bot: int, text: str, act: bool) -> dict[str, Any]:
+        with attribution(bot):
+            result = await self._chat(bot, text, act)
+            self.controller.record(
+                bot, "operator", {"operation": "chat_act" if act else "chat"}
+            )
+            return result
+
+    async def _chat(self, bot: int, text: str, act: bool) -> dict[str, Any]:
         snapshot = self.snapshot(bot)
         observed_at = self.received[bot]
         if not text.strip() or len(text) > 1024:

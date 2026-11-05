@@ -1,7 +1,8 @@
+from test_protocol import observation
+
 from canary_brain.controller import Controller
 from canary_brain.provider import Proposal
 from canary_brain.store import Store
-from test_protocol import observation
 
 
 async def test_special_bot_decides_without_party_and_accepts_any_human(tmp_path):

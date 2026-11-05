@@ -487,3 +487,6 @@ data/bot/dumps/
 
 # Native companion worker development environment.
 .venv/
+/deployment/brain/gateway/runtime/
+/deployment/brain/experiments/runtime/
+*.replay.zip

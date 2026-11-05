@@ -12,11 +12,13 @@ from pathlib import Path
 from typing import Any, Literal
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .controller import Controller
+from .gateway import GatewayConfiguration, GatewayProvider
 from .operator_http import OperatorServer
 from .provider import Provider
+from .recording import Manifest, Recorder, RecordingConfiguration, ReplayReader, digest
 from .store import USD, Store
 from .testing import FakeProvider
 
@@ -24,21 +26,55 @@ from .testing import FakeProvider
 class Configuration(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["shadow", "active"] = "shadow"
-    provider: Literal["openai", "fake"] = "openai"
+    provider: Literal["openai", "fake", "litellm", "native"] = "openai"
     socket_directory: Path
     state_file: Path
     budget_file: Path | None = None
     credential_file: Path | None = None
     bots: list[int] = Field(min_length=1, max_length=3)
     monthly_usd: int = Field(default=50, ge=1, le=50)
-    decision_timeout: float = Field(default=1.2, ge=0.1, le=3)
+    decision_timeout: float = Field(default=1.2, ge=0.1, le=30)
     learning: bool = False
     exploration: float = Field(default=0.15, ge=0.05, le=0.5)
     operator_port: int | None = Field(default=None, ge=1024, le=65535)
     operator_host: Literal["127.0.0.1", "0.0.0.0"] = "127.0.0.1"
+    recording: RecordingConfiguration | None = None
+    gateway: GatewayConfiguration | None = None
+    memory_mode: Literal["existing", "frozen", "independent"] = "existing"
+    policy_seed: int = 0
+    run_cap_nanousd: int | None = Field(default=None, gt=0)
+    run_seconds: int | None = Field(default=None, ge=10, le=86400)
+
+    @model_validator(mode="after")
+    def isolated_recording(self) -> "Configuration":
+        if self.provider != "litellm" and self.decision_timeout > 3:
+            raise ValueError("legacy decision timeout must not exceed three seconds")
+        if self.provider == "litellm" and self.gateway is None:
+            raise ValueError(
+                "LiteLLM participant requires an explicit gateway configuration"
+            )
+        if self.run_cap_nanousd is not None and self.recording is None:
+            raise ValueError("a run budget requires recording identities")
+        if self.recording:
+            if self.recording.path.resolve() in {
+                self.state_file.resolve(),
+                (self.budget_file or self.state_file).resolve(),
+            }:
+                raise ValueError(
+                    "recording must not share the state or budget database"
+                )
+            manifests = self.recording.manifests
+            if manifests and (
+                {m.bot_id for m in manifests} != set(self.bots)
+                or len(manifests) != len(self.bots)
+            ):
+                raise ValueError(
+                    "recording manifests must match the pilot roster exactly"
+                )
+        return self
 
 
-def read_credential(path: Path) -> str:
+def read_credential(path: Path, variable: str = "OPENAI_API_KEY") -> str:
     if (
         path.is_symlink()
         or not path.is_file()
@@ -47,9 +83,14 @@ def read_credential(path: Path) -> str:
         raise ValueError("credential file must be private and must not be a symlink")
     for line in path.read_text().splitlines():
         name, separator, value = line.partition("=")
-        if separator and name == "OPENAI_API_KEY" and value.startswith("sk-"):
+        if (
+            separator
+            and name == variable
+            and value.strip()
+            and (variable != "OPENAI_API_KEY" or value.startswith("sk-"))
+        ):
             return value.strip()
-    raise ValueError("credential file has no OpenAI key")
+    raise ValueError("credential file has no configured key")
 
 
 class DatagramProtocol(asyncio.DatagramProtocol):
@@ -74,7 +115,7 @@ class DatagramProtocol(asyncio.DatagramProtocol):
         task.add_done_callback(self.tasks.discard)
 
 
-async def run(configuration: Configuration) -> None:
+async def run(configuration: Configuration, stop: asyncio.Event | None = None) -> None:
     os.umask(0o077)
     directory = configuration.socket_directory
     if directory.is_symlink() or not directory.is_absolute():
@@ -88,6 +129,7 @@ async def run(configuration: Configuration) -> None:
     controller: Controller | None = None
     client: AsyncOpenAI | None = None
     operator: OperatorServer | None = None
+    recorder: Recorder | None = None
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if endpoint.is_symlink() or (
@@ -100,6 +142,45 @@ async def run(configuration: Configuration) -> None:
             configuration.budget_file or configuration.state_file,
             cap=configuration.monthly_usd * USD,
         )
+        if configuration.recording:
+            recording = configuration.recording
+            gateway = configuration.gateway
+            manifests = recording.manifests or [
+                Manifest(
+                    run_id=f"{recording.namespace}:{bot}:life",
+                    bot_id=bot,
+                    lineage=f"{recording.namespace}:{bot}",
+                    sample_ms=recording.sample_ms,
+                    provider=gateway.provider if gateway else configuration.provider,
+                    model=gateway.effective_model
+                    if gateway
+                    else (
+                        "none"
+                        if configuration.provider in {"fake", "native"}
+                        else "gpt-6-luna"
+                    ),
+                    memory_mode=configuration.memory_mode,
+                )
+                for bot in configuration.bots
+            ]
+            recorder = Recorder(recording, manifests)
+            for bot in configuration.bots:
+                recorder.emit(
+                    bot,
+                    "configuration",
+                    {
+                        "provider": configuration.provider,
+                        "memory_mode": configuration.memory_mode,
+                        "gateway": gateway.model_dump(exclude={"base_url"})
+                        if gateway
+                        else None,
+                        "configuration_sha256": digest(
+                            configuration.model_dump(
+                                mode="json", exclude={"credential_file"}
+                            )
+                        ),
+                    },
+                )
         if configuration.provider == "openai":
             if configuration.credential_file is None:
                 raise ValueError("OpenAI provider requires a private credential file")
@@ -110,7 +191,32 @@ async def run(configuration: Configuration) -> None:
                 timeout=45,
             )
             provider: Provider | FakeProvider = Provider(
-                ledger, client, configuration.decision_timeout
+                ledger,
+                client,
+                configuration.decision_timeout,
+                recorder=recorder,
+                run_cap=configuration.run_cap_nanousd,
+            )
+        elif configuration.provider == "litellm":
+            if configuration.credential_file is None or configuration.gateway is None:
+                raise ValueError(
+                    "LiteLLM requires a private gateway credential and model mapping"
+                )
+            client = AsyncOpenAI(
+                api_key=read_credential(
+                    configuration.credential_file, "LITELLM_API_KEY"
+                ),
+                base_url=configuration.gateway.base_url,
+                max_retries=0,
+                timeout=45,
+            )
+            provider = GatewayProvider(
+                ledger,
+                client,
+                configuration.decision_timeout,
+                gateway=configuration.gateway,
+                recorder=recorder,
+                run_cap=configuration.run_cap_nanousd,
             )
         else:
             provider = FakeProvider()
@@ -130,7 +236,18 @@ async def run(configuration: Configuration) -> None:
             set(configuration.bots),
             configuration.learning,
             configuration.exploration,
+            recorder=recorder,
+            memory_mode=configuration.memory_mode,
+            observe_only=configuration.provider == "native",
+            require_benchmark_bridge=bool(
+                configuration.recording
+                and any(m.experiment for m in configuration.recording.manifests)
+            ),
         )
+        if configuration.memory_mode != "existing":
+            import random
+
+            active_controller.policy.rng = random.Random(configuration.policy_seed)
         controller = active_controller
         loop = asyncio.get_running_loop()
         transport, protocol = await loop.create_datagram_endpoint(
@@ -139,13 +256,29 @@ async def run(configuration: Configuration) -> None:
             local_addr=str(endpoint),
         )
         if configuration.operator_port:
-            operator = OperatorServer(controller.supervisor, configuration.operator_port)
+            operator = OperatorServer(
+                controller.supervisor,
+                configuration.operator_port,
+                ReplayReader(configuration.recording.path)
+                if configuration.recording
+                else None,
+            )
             await operator.start(configuration.operator_host)
-        stopped = asyncio.Event()
+        stopped = stop or asyncio.Event()
         last_maintenance = time.monotonic()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, stopped.set)
         while not stopped.is_set():
+            remaining = 1.0
+            if configuration.run_seconds is not None:
+                clock = store.get("run_clock", "start")
+                if clock is not None:
+                    remaining = configuration.run_seconds - (
+                        time.monotonic() - clock["monotonic"]
+                    )
+                    if remaining <= 0:
+                        stopped.set()
+                        break
             if time.monotonic() - last_maintenance >= 60:
                 store.prune()
                 if ledger.path != store.path:
@@ -155,7 +288,7 @@ async def run(configuration: Configuration) -> None:
                 send({"version": 1, "type": "heartbeat", "world": controller.world})
                 controller.reconcile()
             try:
-                await asyncio.wait_for(stopped.wait(), timeout=1)
+                await asyncio.wait_for(stopped.wait(), timeout=min(1, remaining))
             except TimeoutError:
                 pass
         await asyncio.gather(*protocol.tasks, return_exceptions=True)
@@ -169,4 +302,6 @@ async def run(configuration: Configuration) -> None:
             endpoint.unlink(missing_ok=True)
         if client is not None:
             await client.close()
+        if recorder is not None:
+            await asyncio.to_thread(recorder.close)
         os.close(descriptor)

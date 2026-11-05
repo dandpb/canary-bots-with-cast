@@ -1,5 +1,7 @@
 # Optional intelligent party companions
 
+For durable bot-life recordings, the read-only map replay, independent gameplay experiments and the LiteLLM gateway, see [Replay and gameplay benchmarks](REPLAY.md). All new runtime paths are opt-in; existing configurations retain their behavior.
+
 Implements [issue #1](https://github.com/dandpb/canary-bots-with-cast/issues/1) for one to three explicitly selected native bots. The feature is disabled when `data/bot/brain.json` is absent. Other bots retain their existing engine.
 
 The C++ engine owns gameplay and projects live observations. A native Python worker calls **GPT-6 Luna only**: Decisions selects an offered action; Responses interprets Portuguese requests and proposes objectives. Neither API receives administrative commands or database credentials. Movement, attacks, cooldowns and emergency healing remain local.

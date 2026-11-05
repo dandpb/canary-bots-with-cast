@@ -7,10 +7,31 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from .protocol import Observation
+from .recording import Recorder, request_context
 from .store import Store, month_now
 
 MODEL = "gpt-6-luna"
+
+
+class Prices(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    version: str = Field(min_length=1, max_length=80)
+    input_nanousd: int = Field(ge=0)
+    cached_nanousd: int = Field(ge=0)
+    cache_write_nanousd: int = Field(ge=0)
+    output_nanousd: int = Field(ge=0)
+
+
+LUNA_PRICES = Prices(
+    version="existing-luna-rates-v1",
+    input_nanousd=100,
+    cached_nanousd=10,
+    cache_write_nanousd=125,
+    output_nanousd=500,
+)
 
 
 @dataclass(frozen=True)
@@ -23,59 +44,123 @@ class Proposal:
 
 class Provider:
     def __init__(
-        self, store: Store, client: Any, decision_timeout: float = 1.2
+        self,
+        store: Store,
+        client: Any,
+        decision_timeout: float = 1.2,
+        *,
+        model: str = MODEL,
+        prices: Prices = LUNA_PRICES,
+        recorder: Recorder | None = None,
+        run_cap: int | None = None,
     ) -> None:
         self.store, self.client, self.decision_timeout = store, client, decision_timeout
+        self.model, self.prices, self.recorder, self.run_cap = (
+            model,
+            prices,
+            recorder,
+            run_cap,
+        )
         self.fast_slots, self.planning_slots = (
             asyncio.Semaphore(3),
             asyncio.Semaphore(1),
         )
         self.backoff: dict[str, tuple[int, float]] = {}
 
+    async def _transmit(self, endpoint: str, body: dict[str, Any]) -> dict[str, Any]:
+        resource = (
+            self.client.decisions if endpoint == "decisions" else self.client.responses
+        )
+        result = await resource.create(**body)
+        data: dict[str, Any] = result.model_dump(mode="json", by_alias=True)
+        return data
+
     async def _request(
-        self, endpoint: str, body: dict[str, Any], timeout: float
+        self, endpoint: str, body: dict[str, Any], timeout: float, *, fast: bool = False
     ) -> dict[str, Any]:
         request_id = uuid.uuid4().hex
+        body = {**body, "model": self.model}
+        bot, decision = request_context.get()
+        manifest = self.recorder.manifests.get(bot) if self.recorder else None
+        run_id = manifest.run_id if manifest else ""
+
+        def record(data: dict[str, Any]) -> None:
+            if self.recorder:
+                self.recorder.emit(
+                    bot,
+                    "request",
+                    {
+                        "request_id": request_id,
+                        "decision_id": decision,
+                        "requested_model": self.model,
+                        "endpoint": endpoint,
+                        "pricing_version": self.prices.version,
+                        **data,
+                    },
+                    "request:" + request_id + ":" + str(data.get("phase", "finished")),
+                )
+
         # UTF-8 bytes bound tokenized content; leave room for API tool serialization.
-        upper = (len(json.dumps(body, ensure_ascii=False).encode()) + 4096) * 125
-        upper += int(body.get("max_output_tokens", 0)) * 500
+        upper = (len(json.dumps(body, ensure_ascii=False).encode()) + 4096) * max(
+            self.prices.input_nanousd,
+            self.prices.cached_nanousd,
+            self.prices.cache_write_nanousd,
+        )
+        upper += int(body.get("max_output_tokens", 0)) * self.prices.output_nanousd
+        upper = max(1, upper)
         async with (
             asyncio.timeout(timeout),
-            self.fast_slots if endpoint == "decisions" else self.planning_slots,
+            self.fast_slots if endpoint == "decisions" or fast else self.planning_slots,
         ):
             failures, retry_at = self.backoff.get(endpoint, (0, 0))
             if time.monotonic() < retry_at:
                 raise RuntimeError("provider temporarily backed off")
-            self.store.reserve(request_id, upper, month_now(), endpoint)
+            self.store.reserve(
+                request_id,
+                upper,
+                month_now(),
+                endpoint,
+                run_id=run_id,
+                run_cap=self.run_cap,
+            )
+            record({"phase": "reserved", "reserved_nanousd": upper})
             started = time.monotonic()
             settled = False
             try:
                 async with asyncio.timeout(timeout):
-                    resource = (
-                        self.client.decisions
-                        if endpoint == "decisions"
-                        else self.client.responses
-                    )
-                    result = await resource.create(**body)
-                data: dict[str, Any] = result.model_dump(mode="json", by_alias=True)
+                    data = await self._transmit(endpoint, body)
                 usage = data.get("usage")
-                if not isinstance(usage, dict) or not isinstance(
-                    usage.get("input_tokens"), int
+                if (
+                    not isinstance(usage, dict)
+                    or type(usage.get("input_tokens")) is not int
+                    or usage["input_tokens"] < 0
                 ):
                     raise TypeError("provider response has no trustworthy usage")
                 details = usage.get("input_tokens_details") or {}
+                counts = [
+                    details.get("cached_tokens", 0),
+                    details.get("cache_write_tokens", 0),
+                ]
+                if endpoint == "responses":
+                    counts.append(usage.get("output_tokens"))
+                if any(type(value) is not int or value < 0 for value in counts):
+                    raise TypeError("provider response has invalid usage counts")
                 cached, written = (
                     int(details.get("cached_tokens", 0)),
                     int(details.get("cache_write_tokens", 0)),
                 )
                 inputs = int(usage["input_tokens"])
+                if cached + written > inputs:
+                    raise TypeError("provider cache usage exceeds total input")
                 spent = (
-                    max(0, inputs - cached - written) * 100
-                    + cached * 10
-                    + written * 125
+                    max(0, inputs - cached - written) * self.prices.input_nanousd
+                    + cached * self.prices.cached_nanousd
+                    + written * self.prices.cache_write_nanousd
                 )
                 if endpoint == "responses":
-                    spent += int(usage.get("output_tokens", 0)) * 500
+                    spent += (
+                        int(usage.get("output_tokens", 0)) * self.prices.output_nanousd
+                    )
                 self.store.settle(request_id, spent)
                 settled = True
                 self.store.put(
@@ -88,7 +173,21 @@ class Provider:
                         "spent": spent,
                     },
                 )
-                if data.get("model") != MODEL:
+                record(
+                    {
+                        "phase": "finished",
+                        "usage": usage,
+                        "spent_nanousd": spent,
+                        "reserved_nanousd": 0,
+                        "elapsed_ms": round((time.monotonic() - started) * 1000),
+                        "effective_model": data.get(
+                            "effective_model", data.get("model")
+                        ),
+                        "provider_request_id": data.get("id"),
+                        "gateway": data.get("gateway", {}),
+                    }
+                )
+                if data.get("model") != self.model:
                     raise ValueError("unexpected provider model")
                 self.backoff.pop(endpoint, None)
                 return data
@@ -107,6 +206,15 @@ class Provider:
                         "unsettled": not settled,
                         "elapsed_ms": round((time.monotonic() - started) * 1000),
                     },
+                )
+                record(
+                    {
+                        "phase": "failed",
+                        "error": type(error).__name__,
+                        "reserved_nanousd": 0 if settled else upper,
+                        "unsettled": not settled,
+                        "elapsed_ms": round((time.monotonic() - started) * 1000),
+                    }
                 )
                 raise
 

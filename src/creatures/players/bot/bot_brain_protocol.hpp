@@ -9,6 +9,10 @@
 #include <string>
 
 namespace botbrain {
+	inline nlohmann::json telemetry(const std::string &world, uint32_t guid, uint64_t sequence, int64_t captured, uint64_t deaths, const std::string &phase, bool owned = false) {
+		return { { "version", 1 }, { "type", "telemetry" }, { "world", world }, { "bot_id", guid },
+		         { "sequence", sequence }, { "captured_ms", captured }, { "deaths", deaths }, { "phase", phase }, { "model_owned", owned } };
+	}
 
 	// Used by both the live candidate projector and the movement guard.
 	inline bool partyReady(const nlohmann::json &members, const nlohmann::json &origin) {
