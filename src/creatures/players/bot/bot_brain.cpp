@@ -523,7 +523,7 @@ void BotEngine::tickBrain() {
 	}
 	if (now - brain_->lastHello >= 1000) {
 		brain_->lastHello = now;
-		brain_->channel->send({ { "version", 1 }, { "type", "hello" }, { "world", brain_->world } });
+		brain_->channel->send({ { "version", 1 }, { "type", "hello" }, { "world", brain_->world }, { "capabilities", { { "lifecycle_telemetry", 1 }, { "keep_awake", brain_->keepAwake } } } });
 	}
 	for (const auto guid : brain_->roster) {
 		auto bot = getBotState(guid);
@@ -532,10 +532,15 @@ void BotEngine::tickBrain() {
 		}
 		auto &session = brain_->sessions[guid];
 		auto player = bot->getPlayer();
-		if (guid == brain_->autonomous && brainOwns(guid) && bot->active && bot->hibernated && now - session.lastPublish >= 5000) {
+		if (guid == brain_->autonomous && (brainOwns(guid) || (brain_->keepAwake && now - brain_->heartbeat <= 5000)) && bot->active && bot->hibernated && now - session.lastPublish >= 5000) {
 			session.lastPublish = now;
 			wakeBot(guid);
 			player = bot->getPlayer();
+		}
+		if (now - session.lastTelemetry >= 1000) {
+			session.lastTelemetry = now;
+			const std::string phase = bot->hibernated ? "hibernated" : !player || !bot->active ? "unavailable" : player->getHealth() <= 0 ? "dead" : "alive";
+			brain_->channel->send(botbrain::telemetry(brain_->world, guid, ++session.telemetrySequence, now, session.deaths, phase, brainOwns(guid)));
 		}
 		if (!player || !bot->active || bot->hibernated || player->getHealth() <= 0) {
 			finishBrain(*bot, player && player->getHealth() <= 0 ? "failed" : "cancelled", player && player->getHealth() <= 0 ? "death" : "unavailable");

@@ -131,6 +131,8 @@ namespace botbrain {
 		int64_t targetUntil = 0;
 		uint8_t supplyStep = 0;
 		uint64_t sequence = 0, xp = 0;
+		uint64_t telemetrySequence = 0, deaths = 0;
+		int64_t lastTelemetry = 0;
 		int64_t lastPublish = 0, started = 0, lastMessage = 0, lastMove = 0, lastShopScan = 0;
 		size_t waypoint = 0;
 		uint32_t skipped = 0;
@@ -142,6 +144,7 @@ namespace botbrain {
 		std::string mode = "disabled", world;
 		std::vector<uint32_t> roster;
 		uint32_t autonomous = 0;
+		bool keepAwake = false;
 		std::unordered_map<uint32_t, Session> sessions;
 		int64_t heartbeat = 0;
 		int64_t lastHello = 0;
@@ -169,6 +172,7 @@ namespace botbrain {
 				throw std::runtime_error("brain supports one to three pilots");
 			}
 			autonomous = config.value("autonomous_bot", 0U);
+			keepAwake = config.value("keep_awake", false);
 			if (autonomous && std::find(roster.begin(), roster.end(), autonomous) == roster.end()) {
 				throw std::runtime_error("autonomous bot must belong to the pilot roster");
 			}
