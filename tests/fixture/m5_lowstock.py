@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 from canary_brain.benchmark import fixture_hash
-
 from m5_qa import WORLD, sha
 
 source, target = map(Path, sys.argv[1:])
