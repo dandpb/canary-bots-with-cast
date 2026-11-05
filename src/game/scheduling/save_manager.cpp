@@ -19,6 +19,7 @@
 #include "lib/di/container.hpp"
 #include "creatures/players/player.hpp"
 #include "utils/tools.hpp"
+#include "game/scheduling/dispatcher.hpp"
 
 void checkpointBotReloadPlayers(const BotReloadSnapshot& snapshot) {
 	for (const auto& entry : snapshot.entries) {
@@ -105,6 +106,16 @@ void SaveManager::scheduleAll() {
 }
 
 std::shared_future<bool> SaveManager::enqueueBot(BotSave save) {
+	// This runs on the dispatcher before any reactivation can mutate the object.
+	// Retain Player only for failed-save recovery and dispatcher-owned acknowledgement.
+	if (save.player) {
+		try {
+			save.checkpoint = std::make_shared<const PlayerSaveSnapshot>(IOLoginData::capturePlayerSave(save.player, save.position));
+		} catch (const std::exception& error) {
+			logger.error("Could not capture bot {} checkpoint: {}", save.guid, error.what());
+			save.checkpoint.reset(); // Retain authoritative Player for an explicit retry.
+		}
+	}
 	const auto guid = save.guid;
 	auto requested = botSaves_.request(guid, std::move(save));
 	if (requested.start) botSavePool_.detach_task([this, guid] { runBotSave(guid); });
@@ -124,7 +135,13 @@ void SaveManager::runBotSave(uint32_t guid) {
 				connection = std::move(candidate);
 			}
 			Database::ScopedConnection route(*connection);
-			if (work->value.player) success = doSavePlayer(work->value.player, work->value.position);
+			if (work->value.player && !work->value.checkpoint) throw std::runtime_error("bot checkpoint capture failed");
+			if (work->value.checkpoint) {
+				success = IOLoginData::persistPlayerSave(*work->value.checkpoint);
+				if (success) g_dispatcher().addEvent([player = work->value.player, snapshot = work->value.checkpoint] {
+					IOLoginData::acknowledgePlayerSave(player, *snapshot);
+				}, "SaveManager::acknowledgeBotCheckpoint");
+			}
 			else {
 				const auto& pos = work->value.position;
 				success = Database::getInstance().executeQuery(fmt::format(
