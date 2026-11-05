@@ -1,7 +1,10 @@
+import sqlite3
 import threading
 import zipfile
 
 import pytest
+from test_protocol import observation
+
 from canary_brain.protocol import Observation
 from canary_brain.recording import (
     Manifest,
@@ -11,7 +14,6 @@ from canary_brain.recording import (
     ReplayReader,
 )
 from canary_brain.replay import export_archive, import_archive, summary
-from test_protocol import observation
 
 
 def recorder(tmp_path, **kwargs):
@@ -120,3 +122,78 @@ def test_recording_store_refuses_closed_or_reassigned_run_identity(tmp_path):
     store.begin(Manifest(run_id="one", bot_id=7, lineage="a"))
     with pytest.raises(ValueError, match="identity"):
         store.begin(Manifest(run_id="one", bot_id=8, lineage="b"))
+
+
+def archive_fixture(tmp_path):
+    store = RecordingStore(tmp_path / "source.db")
+    manifest = Manifest(run_id="import:7", bot_id=7, lineage="source")
+    store.begin(manifest)
+    for index, key in enumerate(("first", "second")):
+        store.append(
+            {
+                "run": manifest.run_id,
+                "key": key,
+                "segment": "a",
+                "t_ms": index,
+                "wall": 1.0,
+                "kind": "decision",
+                "data": {"choice": key},
+            }
+        )
+    return store, manifest
+
+
+def test_export_uses_one_snapshot_during_concurrent_recording(tmp_path, monkeypatch):
+    store, manifest = archive_fixture(tmp_path)
+    original = zipfile.ZipFile.writestr
+
+    def write(archive, name, data, **kwargs):
+        if name == "run.json":
+            store.append(
+                {
+                    "run": manifest.run_id,
+                    "key": "late",
+                    "segment": "a",
+                    "t_ms": 2,
+                    "wall": 2.0,
+                    "kind": "decision",
+                    "data": {},
+                }
+            )
+        return original(archive, name, data, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "writestr", write)
+    archive = tmp_path / "snapshot.zip"
+    export_archive(ReplayReader(store.path), manifest.run_id, archive)
+    destination = tmp_path / "imported.db"
+    import_archive(archive, destination)
+    assert ReplayReader(destination).run(manifest.run_id)["event_count"] == 2
+    assert ReplayReader(store.path).run(manifest.run_id)["event_count"] == 3
+
+
+def test_import_never_merges_an_existing_run_even_for_lifetime_manifests(tmp_path):
+    store, manifest = archive_fixture(tmp_path)
+    archive = tmp_path / "conflict.zip"
+    export_archive(ReplayReader(store.path), manifest.run_id, archive)
+    destination = RecordingStore(tmp_path / "existing.db")
+    destination.begin(manifest.model_copy(update={"participant": "another-history"}))
+    with pytest.raises(ValueError, match="identity"):
+        import_archive(archive, destination.path)
+    assert ReplayReader(destination.path).run(manifest.run_id)["event_count"] == 0
+
+
+def test_import_sql_failure_rolls_back_the_entire_new_run(tmp_path):
+    store, manifest = archive_fixture(tmp_path)
+    archive = tmp_path / "atomic.zip"
+    export_archive(ReplayReader(store.path), manifest.run_id, archive)
+    destination = RecordingStore(tmp_path / "atomic.db")
+    with destination.connect() as db:
+        db.execute(
+            "CREATE TRIGGER reject_second BEFORE INSERT ON replay_events "
+            "WHEN NEW.event_key='second' BEGIN SELECT RAISE(ABORT,'isolated failure'); END"
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="isolated failure"):
+        import_archive(archive, destination.path)
+    assert ReplayReader(destination.path).runs() == []
+    with destination.connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM replay_events").fetchone()[0] == 0

@@ -231,27 +231,82 @@ class RecordingStore:
                 (status, time.time(), run),
             )
 
+    def import_run(
+        self, manifest: Manifest, metadata: dict[str, Any], events: list[dict[str, Any]]
+    ) -> None:
+        """Archive import owns a new identity and commits its entire history once."""
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute(
+                "SELECT 1 FROM replay_runs WHERE id=?", (manifest.run_id,)
+            ).fetchone():
+                raise ValueError(
+                    "run identity already exists; import into a new recording"
+                )
+            db.execute(
+                "INSERT INTO replay_runs(id,manifest,status,incomplete,started,updated) VALUES(?,?,?,?,?,?)",
+                (
+                    manifest.run_id,
+                    canonical(manifest.model_dump()),
+                    metadata["status"],
+                    int(
+                        metadata["incomplete"]
+                        or any(e["kind"] == "gap" for e in events)
+                    ),
+                    metadata["started"],
+                    metadata["updated"],
+                ),
+            )
+            db.executemany(
+                "INSERT INTO replay_events(run,event_key,segment,t_ms,wall,kind,data) VALUES(?,?,?,?,?,?,?)",
+                (
+                    (
+                        manifest.run_id,
+                        e["key"],
+                        e["segment"],
+                        e["t_ms"],
+                        e["wall"],
+                        e["kind"],
+                        canonical(e["data"]),
+                    )
+                    for e in events
+                ),
+            )
+
 
 class ReplayReader:
     """Read-only connections: viewing cannot create or mutate a recording."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self, path: Path, *, _connection: sqlite3.Connection | None = None
+    ) -> None:
         if path.is_symlink() or not path.is_file():
             raise ValueError("recording is unavailable")
         self.path = path
+        self._connection = _connection
         with self.connect() as db:
             if db.execute("PRAGMA user_version").fetchone()[0] != SCHEMA:
                 raise ValueError("unsupported recording schema")
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
+        if self._connection is not None:
+            yield self._connection
+            return
         db = sqlite3.connect(
             self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.2
         )
         try:
+            db.execute("BEGIN")
             yield db
         finally:
             db.close()
+
+    @contextmanager
+    def snapshot(self) -> Iterator[ReplayReader]:
+        """Pin every query/paginated batch to the same read-only WAL snapshot."""
+        with self.connect() as db:
+            yield ReplayReader(self.path, _connection=db)
 
     def runs(
         self, limit: int = 100, before: float | None = None

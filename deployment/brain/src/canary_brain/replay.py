@@ -29,6 +29,18 @@ class ArchivedEvent(BaseModel):
     data: dict[str, Any]
 
 
+class ArchivedRun(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    id: str
+    manifest: dict[str, Any]
+    status: str
+    incomplete: bool
+    started: float = Field(ge=0)
+    updated: float = Field(ge=0)
+    event_count: int = Field(ge=0)
+    duration_ms: int = Field(ge=0)
+
+
 def summarize(
     events: Iterable[dict[str, Any]], manifest: dict[str, Any]
 ) -> dict[str, Any]:
@@ -317,6 +329,11 @@ def campaign(reader: ReplayReader, runs: list[str]) -> dict[str, Any]:
 
 
 def export_archive(reader: ReplayReader, run: str, output: Path) -> None:
+    with reader.snapshot() as snapshot:
+        _export_archive(snapshot, run, output)
+
+
+def _export_archive(reader: ReplayReader, run: str, output: Path) -> None:
     metadata = reader.run(run)
     hashes: dict[str, str] = {}
     with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -366,7 +383,7 @@ def import_archive(path: Path, destination: Path) -> str:
             if hashlib.sha256(encoded).hexdigest() != expected:
                 raise ValueError("archive integrity failure")
             decoded[name] = json.loads(encoded)
-    metadata = decoded["run.json"]
+    metadata = ArchivedRun.model_validate(decoded["run.json"]).model_dump()
     if metadata.get("status") not in {
         "running",
         "completed",
@@ -376,6 +393,8 @@ def import_archive(path: Path, destination: Path) -> str:
     }:
         raise ValueError("invalid archived run state")
     manifest = Manifest.model_validate(metadata["manifest"])
+    if metadata["id"] != manifest.run_id:
+        raise ValueError("archived run identity mismatch")
     all_events = [
         event
         for name in sorted(decoded)
@@ -422,20 +441,10 @@ def import_archive(path: Path, destination: Path) -> str:
         "event_count"
     ) != len(all_events):
         raise ValueError("archive repeats or omits events")
+    if metadata["duration_ms"] != max((e["t_ms"] for e in all_events), default=0):
+        raise ValueError("archive duration differs from its events")
     store = RecordingStore(destination)
-    store.begin(manifest)
-    for event in all_events:
-        store.append(
-            dict(
-                run=manifest.run_id,
-                **{
-                    k: event[k]
-                    for k in ("key", "segment", "t_ms", "wall", "kind", "data")
-                },
-            )
-        )
-    if metadata["status"] != "running":
-        store.finish(manifest.run_id, metadata["status"])
+    store.import_run(manifest, metadata, all_events)
     return manifest.run_id
 
 
@@ -449,6 +458,11 @@ def re_event_name(name: str) -> bool:
 
 
 def export_report(reader: ReplayReader, runs: list[str], output: Path) -> None:
+    with reader.snapshot() as snapshot:
+        _export_report(snapshot, runs, output)
+
+
+def _export_report(reader: ReplayReader, runs: list[str], output: Path) -> None:
     """Standalone HTML for bounded reports; ZIP keeps full, potentially large history."""
     if not 1 <= len(runs) <= 4:
         raise ValueError("a portable report compares one to four runs")
