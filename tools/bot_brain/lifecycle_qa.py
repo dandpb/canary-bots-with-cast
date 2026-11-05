@@ -52,6 +52,8 @@ def command(action, **values):
     if action == "shutdown":
         return {"requested": True} # Completion is verified with docker wait + fresh SQL.
     for _ in range(600):
+        if _ % 10 == 0:
+            assert docker("inspect", "--format", "{{.State.Running}}", game) == "true", "disposable QA game exited before responding"
         result = docker("exec", game, "cat", "/canary/qa-result.json", check=False)
         if result:
             value = json.loads(result)

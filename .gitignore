@@ -419,6 +419,7 @@ compile_commands.json
 !/tools/bot_brain/README.reload.md
 !/tools/bot_brain/lifecycle_qa.py
 !/tools/bot_brain/test_stateful_reload.py
+!/tools/bot_brain/test_checkpoint_overlap.py
 !/tools/bot_brain/test_cast_lifecycle.py
 !/tools/bot_brain/test_movement.py
 !/tools/bot_brain/test_online_time.cpp
