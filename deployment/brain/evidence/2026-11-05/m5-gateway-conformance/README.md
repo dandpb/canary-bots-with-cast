@@ -3,6 +3,11 @@
 The pinned route is **not qualified for paid M5 execution**. This is a local
 protocol test, not a model quality result or a check of account access.
 
+**Current state:** with the adapter fix described in the
+[follow-up](#follow-up-cause-and-adapter-fix-same-day), the smoke exits **0**
+with `contract_qualified: true` (wire gate only). The exit **1** sections
+below are the **historical baseline** captured before the fix.
+
 ## Reproduction
 
 From the repository in WSL, with the existing Python environment and local image:
@@ -12,8 +17,10 @@ PYTHONPATH=deployment/brain/src /tmp/canary-replay-venv/bin/python \
   deployment/brain/tools/haiku_gateway_smoke.py
 ```
 
-Expected exit status for this finding: **1**, with
-`contract_qualified: false`. The container has `--network none`; the proxy and
+Expected exit status at the current head: **0**, with
+`contract_qualified: true` ([result](haiku-native-tool-result.json)).
+Historical baseline before the fix: **1**, with `contract_qualified: false`
+([result](haiku-pinned-result.json)). The container has `--network none`; the proxy and
 fake Anthropic Messages server communicate only over container loopback. All
 keys are newly generated or explicit mock values. No provider credential or
 external service is accessed.
@@ -24,7 +31,7 @@ Route: `anthropic/claude-haiku-5-5`. The script uses the actual
 `GatewayProvider.decide` request and the repository's gateway authentication
 policy. Retries, fallback, response caching and parameter dropping are disabled.
 
-## Observed contracts
+## Observed contracts (historical baseline, before the fix)
 
 The [captured result](haiku-pinned-result.json) records:
 
@@ -49,7 +56,7 @@ native strict protocol gate for this exact version/configuration; it does not
 establish that every LiteLLM configuration or newer release has the same
 behavior. It also provides no evidence of real account/model availability.
 
-## Required next gate
+## Required next gate (as written before the fix)
 
 Review a LiteLLM configuration or version change and reproduce the strict flag
 on the captured native wire, retaining all accounting and single-call checks.
