@@ -55,6 +55,11 @@ The deliberately controlled scenario differs from the unrestricted world:
 - Native hunt clock is fixed at600s; hunting activity weight100, other ambient
   activity weights0; short idle dwell and no ambient roaming. Hunt termination
   still waits for a patrol lap, so600s is not proof of a completed cycle.
+- Candidate B retained the default50% re-hunt chance and could finish a hunt with
+  no activity available during its native cooldown. It stopped correctly for
+  stagnation at1,637.274s and was not accepted as a full window. Candidate D sets
+  `botResupplyRehuntPct=100` equally for native/fake. Its image digest is distinct;
+  it must not be pooled with B just because the SQL/map hash is the same.
 - Standard natural world spawns and combat remain intact. No monsters are spawned,
   damaged, or removed by the harness during a timed run. No human leaders or
   gameplay orders are injected. Keep-awake is enabled in both modes.
@@ -67,6 +72,12 @@ The optional probe queues only the read-only `status` command, at most once per
 does not issue movement, supplies, teleport, healing or stop commands. These
 inspection operations and their start times remain in `phase-status.jsonl` and
 the native logs; they are not silently counted as model choices or human rescue.
+
+After the harness has stopped and saved its database, `m5_finalize.py RUN_DIR`
+checks the recorded duration, XP persistence, gaps and zero inference before
+updating recording metadata. It refuses an active run and writes a new analysis
+file exclusively. A completed horizon is distinct from a completed supply cycle;
+stock/bank and native outcome evidence must still establish a purchase.
 
 The monotonic horizon begins at the first valid observation, not provisioning or
 healthcheck completion. The supervisor stops at1800s, after three observed deaths,
