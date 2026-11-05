@@ -1,0 +1,205 @@
+{
+  "analysis_revision": "9aade71b1",
+  "metrics_version": 2,
+  "cases": [
+    {
+      "label": "dawnport-tutorial",
+      "game_image": "sha256:d564b249e91ff36b6850de472c77f6201a71292c4c78ededb1f926b6a4bcf6ea",
+      "requested_seconds": 300,
+      "initial_character": {
+        "id": 65001,
+        "level": 8,
+        "experience": 4200,
+        "posx": 32069,
+        "posy": 31901,
+        "posz": 6
+      },
+      "summary": {
+        "id": "native-progress-5m-v2:native:0",
+        "manifest": {
+          "bot_id": 65001,
+          "configuration_sha256": "a2953b38203cf7d0ec46bded5a057c2bb42f46e18bcb309b3851bf66f3016d54",
+          "experiment": "native-progress-5m-v2",
+          "initial_sha256": "7c512b093ef63870410326d38fd64ec152e2001d37d0ad9e288c4fa9c916d73b",
+          "lineage": "native-progress-5m-v2:0",
+          "memory_mode": "frozen",
+          "model": "none",
+          "participant": "native",
+          "provider": "native",
+          "run_id": "native-progress-5m-v2:native:0",
+          "sample_ms": 1000,
+          "scenario": "autonomous-progression",
+          "source_revision": "game:81ac51592;worker:235459ec6",
+          "synthetic": false,
+          "version": 1
+        },
+        "status": "completed",
+        "incomplete": false,
+        "started": 1793860276.7043552,
+        "updated": 1793860624.873361,
+        "event_count": 545,
+        "duration_ms": 308970,
+        "metrics": {
+          "version": 2,
+          "xp_delta": 0,
+          "xp_per_wall_hour": 0.0,
+          "xp_per_active_hour": 0.0,
+          "active_ms": 294199,
+          "wall_ms": 295395,
+          "calendar_elapsed_ms": 315204,
+          "duration_ms": 308970,
+          "deaths": 0,
+          "initial_native_deaths_excluded": 0,
+          "deaths_observed": true,
+          "interventions": 0,
+          "intervention_free_ms": 308970,
+          "intervention_free_censored": true,
+          "automatic_recoveries_requested": 0,
+          "model_decisions": 0,
+          "valid_proposals": 0,
+          "policy_overrides": 0,
+          "accepted_actions": 0,
+          "completed_actions": 0,
+          "failed_actions": 0,
+          "provider_failures": 0,
+          "spent_nanousd": 0,
+          "reserved_nanousd": 0,
+          "xp_per_dollar": null,
+          "latency_p50_ms": null,
+          "latency_p95_ms": null,
+          "gaps": 0,
+          "gap_times": [],
+          "levels": [],
+          "milestones": [],
+          "native_control_ms": 294199,
+          "native_fallback_ms": 0,
+          "stalled_ms": null,
+          "confirmed_objective_defeats": 0,
+          "limitations": [
+            "Sampled observations; hidden events are not reconstructed.",
+            "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+            "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+          ]
+        }
+      },
+      "sample_count": 247,
+      "distinct_observed_positions": 1,
+      "offered_actions": [
+        "continue",
+        "hold"
+      ],
+      "minimum_observed_health": 100,
+      "first_observed_position": [
+        32069,
+        31901,
+        6
+      ],
+      "last_observed_position": [
+        32069,
+        31901,
+        6
+      ]
+    },
+    {
+      "label": "thais",
+      "game_image": "sha256:d564b249e91ff36b6850de472c77f6201a71292c4c78ededb1f926b6a4bcf6ea",
+      "requested_seconds": 180,
+      "initial_character": {
+        "id": 65001,
+        "level": 8,
+        "experience": 4200,
+        "posx": 32369,
+        "posy": 32241,
+        "posz": 7
+      },
+      "summary": {
+        "id": "native-thais-qualification:native:0",
+        "manifest": {
+          "bot_id": 65001,
+          "configuration_sha256": "6f43bfa2a61c907bb31324868d207ef3d820bd62f596e41bd4ffa0e0d83ad728",
+          "experiment": "native-thais-qualification",
+          "initial_sha256": "3b8a877d248f707dee076cf4beb322e101b4f764bfd0768e2df713df94cdf670",
+          "lineage": "native-thais-qualification:0",
+          "memory_mode": "frozen",
+          "model": "none",
+          "participant": "native",
+          "provider": "native",
+          "run_id": "native-thais-qualification:native:0",
+          "sample_ms": 1000,
+          "scenario": "autonomous-progression",
+          "source_revision": "game:81ac51592;worker:235459ec6",
+          "synthetic": false,
+          "version": 1
+        },
+        "status": "completed",
+        "incomplete": false,
+        "started": 1793860641.0894592,
+        "updated": 1793860863.4436567,
+        "event_count": 329,
+        "duration_ms": 191089,
+        "metrics": {
+          "version": 2,
+          "xp_delta": 0,
+          "xp_per_wall_hour": 0.0,
+          "xp_per_active_hour": 0.0,
+          "active_ms": 175935,
+          "wall_ms": 177826,
+          "calendar_elapsed_ms": 189725,
+          "duration_ms": 191089,
+          "deaths": 0,
+          "initial_native_deaths_excluded": 0,
+          "deaths_observed": true,
+          "interventions": 0,
+          "intervention_free_ms": 191089,
+          "intervention_free_censored": true,
+          "automatic_recoveries_requested": 0,
+          "model_decisions": 0,
+          "valid_proposals": 0,
+          "policy_overrides": 0,
+          "accepted_actions": 0,
+          "completed_actions": 0,
+          "failed_actions": 0,
+          "provider_failures": 0,
+          "spent_nanousd": 0,
+          "reserved_nanousd": 0,
+          "xp_per_dollar": null,
+          "latency_p50_ms": null,
+          "latency_p95_ms": null,
+          "gaps": 0,
+          "gap_times": [],
+          "levels": [],
+          "milestones": [],
+          "native_control_ms": 175935,
+          "native_fallback_ms": 0,
+          "stalled_ms": null,
+          "confirmed_objective_defeats": 0,
+          "limitations": [
+            "Sampled observations; hidden events are not reconstructed.",
+            "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+            "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+          ]
+        }
+      },
+      "sample_count": 149,
+      "distinct_observed_positions": 128,
+      "offered_actions": [
+        "continue",
+        "hold",
+        "resupply",
+        "retreat",
+        "target"
+      ],
+      "minimum_observed_health": 100,
+      "first_observed_position": [
+        32369,
+        32241,
+        7
+      ],
+      "last_observed_position": [
+        32494,
+        32131,
+        7
+      ]
+    }
+  ]
+}
