@@ -43,6 +43,22 @@ end
 
 function qa.run(command)
 	local name = command.name or "Grizzle Alyronia"
+	if command.action == "brain" then
+		local operation = command.operation or "status"
+		assert(operation == "status" or operation == "reload" or operation == "disable")
+		return Game.botCommand("_global", "brain " .. operation)
+	end
+	if command.action == "party" then
+		local leader = assert(Player("Lifecycle Human"))
+		if leader:getParty() then leader:getParty():disband() end
+		for _, botName in ipairs({ "Grizzle Alyronia", "Sever Heartspear", "Galdon Whitehoof" }) do
+			local player = assert(Player(botName))
+			Game.botSetAIPaused(player:getGuid(), false)
+		end
+		qa.native = qa.native or assert(package.loadlib("/qa/lifecycle_bridge.so", "luaopen_lifecycle_bridge"))()
+		qa.native.cast("invite")
+		return { invited = 3 }
+	end
 	if command.action == "population" then
 		local start = assert(tonumber(command.start))
 		local limit = assert(tonumber(command.limit))
@@ -69,7 +85,7 @@ function qa.run(command)
 	end
 	if command.action == "cast" then
 		qa.native = qa.native or assert(package.loadlib("/qa/lifecycle_bridge.so", "luaopen_lifecycle_bridge"))()
-		return qa.native.cast(command.operation or "status")
+		return qa.native.cast(command.operation or "status", command.text or "")
 	end
 	if command.action == "optional" then
 		assert(Game.loadBotPlayer(name) == nil)

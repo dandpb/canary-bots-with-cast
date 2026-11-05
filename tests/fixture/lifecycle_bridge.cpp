@@ -159,6 +159,15 @@ int cast(lua_State* state) {
 	} else if (action == "release") (caster.get()->*member(Release{}))();
 	else if (action == "drop") caster->getConnection()->close(true);
 	else if (action == "logout") caster->logout(false, true);
+	else if (action == "order") g_game().playerSay(human->getID(), 0, TALKTYPE_PRIVATE_TO,
+		"Grizzle Alyronia", luaL_checkstring(state, 2));
+	else if (action == "invite") {
+		for (const auto& name : {"Grizzle Alyronia", "Sever Heartspear", "Galdon Whitehoof"}) {
+			const auto player = g_game().getPlayerByName(name);
+			if (!player) return luaL_error(state, "awake companion required");
+			g_game().playerInviteToParty(human->getID(), player->getID());
+		}
+	}
 	else if (action == "replace") {
 		oldCaster = caster;
 		caster = protocol();
