@@ -418,6 +418,9 @@ compile_commands.json
 !/tools/bot_brain/test_reload_failures.lua
 !/tools/bot_brain/README.reload.md
 !/tools/bot_brain/lifecycle_qa.py
+!/tools/bot_brain/test_stateful_reload.py
+!/tools/bot_brain/test_reload_progress.py
+!/tools/bot_brain/test_reload_quests.py
 !/tools/bot_brain/test_movement.py
 !/tools/bot_brain/test_online_time.cpp
 !/tools/bot_population_generator/

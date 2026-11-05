@@ -24,6 +24,14 @@
 #include "creatures/players/bot/bot_engine_impl.hpp"
 #include "game/scheduling/save_manager.hpp"
 
+namespace {
+bool questRoleForGuid(uint32_t guid) {
+	const int32_t questPct = std::clamp(
+		static_cast<int32_t>(g_configManager().getNumber(BOT_QUEST_BOT_PCT)), 0, 100);
+	return static_cast<int32_t>(guid % 100) < questPct;
+}
+}
+
 // PARTY_HUNT lifecycle coupling (2026-06-14): mirror of s_inPartyCascade for the HIBERNATE
 // side. hibernateBot blocks an independent (non-leader) party member from hibernating on its
 // own — a support's lifecycle must follow its leader (leader hibernate → whole-team cascade;
@@ -126,6 +134,107 @@ std::vector<BotPlayerSnapshot> BotEngine::capturePersistentPlayers() const {
 	return result;
 }
 
+BotReloadSnapshot BotEngine::captureReloadState() const {
+	BotReloadSnapshot snapshot;
+	snapshot.schedulerEnabled = schedulerEnabled_;
+	std::unordered_map<uint32_t, BotPlayerSnapshot> characters;
+	for (const auto& character : capturePersistentPlayers()) characters[character.player->getGUID()] = character;
+	for (const auto& bot : bots_) {
+		BotReloadEntry entry;
+		entry.guid = bot.guid; entry.name = bot.name;
+		const auto found = characters.find(bot.guid);
+		if (found != characters.end()) {
+			entry.player = found->second.player;
+			entry.position = found->second.loginPosition;
+		} else entry.position = bot.currentPos;
+		entry.active = bot.active; entry.hibernated = bot.hibernated;
+		entry.dying = dyingBots_.contains(bot.guid); entry.aiPaused = bot.aiPaused;
+		entry.state = bot.state; entry.townId = bot.townId; entry.townName = bot.townName;
+		entry.level = bot.cachedLevel; entry.vocation = bot.vocationId; entry.personality = bot.personalitySeed;
+		entry.huntId = bot.huntScriptId; entry.huntPhase = bot.huntPhase;
+		entry.waypoint = bot.huntWaypointIdx; entry.kills = bot.huntKillCount;
+		entry.travelTown = bot.travelDestTownId; entry.deathPause = bot.deathPauseUntil;
+		entry.lastVirtualSave = bot.lastVirtualPosSave;
+		entry.huntStarted = bot.huntStartTime; entry.huntEnds = bot.huntEndTime;
+		entry.pendingHuntAfterTravel = bot.pendingHuntAfterTravel;
+		entry.dwellUntil = bot.dwellUntil;
+		entry.prepareStarted = bot.prepareStartTime; entry.prepareWaitUntil = bot.prepareWaitUntil;
+		entry.prepareStep = bot.prepareStep; entry.prepareTarget = bot.prepareTarget; entry.prepareHasTarget = bot.prepareHasTarget;
+		entry.resupplyStarted = bot.huntResupplyStart; entry.resupplyPhase = bot.huntResupplyPhase; entry.resupplyRerolled = bot.resupplyRerolled;
+		entry.travelPhase = bot.travelPhase; entry.travelBoat = bot.travelBoatPos; entry.travelSource = bot.travelSrcBoatPos;
+		snapshot.entries.push_back(std::move(entry));
+	}
+	return snapshot;
+}
+
+void BotEngine::quiesceForReload() {
+	schedulerEnabled_ = false;
+	cancelPendingDispatcherEvents();
+	std::vector<uint32_t> guids;
+	for (const auto& bot : bots_) guids.push_back(bot.guid);
+	for (const auto guid : guids) {
+		if (auto* bot = getBotState(guid)) {
+			if (auto player = bot->getPlayer()) player->stopWalk();
+		}
+		forceDeactivateBotForReload(guid);
+		reclaimStaleCanaryParty(guid, "reload");
+	}
+}
+
+void BotEngine::restoreReloadState(const BotReloadSnapshot& snapshot) {
+	for (const auto& entry : snapshot.entries) {
+		if (entry.player) registerBot(entry.player);
+		else {
+			guidToIndex_[entry.guid] = bots_.size();
+			bots_.emplace_back();
+		}
+		auto& bot = bots_[guidToIndex_.at(entry.guid)];
+		bot.guid = entry.guid; bot.name = entry.name;
+		bot.isQuestBot = questRoleForGuid(entry.guid);
+		bot.active = entry.active; bot.hibernated = entry.hibernated; bot.aiPaused = entry.aiPaused;
+		bot.currentPos = entry.position; bot.lastPos = entry.position;
+		bot.townId = entry.townId; bot.townName = entry.townName;
+		bot.cachedLevel = entry.level; bot.vocationId = entry.vocation; bot.personalitySeed = entry.personality;
+		bot.state = entry.state; bot.tickCounter = botInitialTickPhase(entry.guid);
+		bot.dwellUntil = entry.dwellUntil; // Same-process deadline; do not restart or expire the wait on reload.
+		bot.deathPauseUntil = entry.deathPause; bot.lastVirtualPosSave = entry.lastVirtualSave;
+		bot.travelDestTownId = entry.travelTown; bot.travelPhase = entry.travelPhase;
+		bot.travelBoatPos = entry.travelBoat; bot.travelSrcBoatPos = entry.travelSource;
+		if (entry.player && entry.hibernated) {
+			hibernationPool_[entry.guid] = entry.player;
+			bot.playerRef.reset();
+		} else if (entry.player && entry.dying) dyingBots_[entry.guid] = entry.player;
+		// World-owned combat/party sessions are cancelled; no stale references cross.
+		if (bot.state == BotAIState::COMBAT || bot.state == BotAIState::FLEEING ||
+			bot.state == BotAIState::PK_ATTACK || bot.state == BotAIState::PARTY) bot.state = BotAIState::IDLE;
+		if (entry.huntId) {
+			auto script = std::find_if(huntScripts_.begin(), huntScripts_.end(), [&](const auto& value) { return value.id == entry.huntId; });
+			const bool sharedQuest = script != huntScripts_.end() && botScriptIsQuest(&*script);
+			if (script != huntScripts_.end() && (sharedQuest || !activeHunts_.contains(entry.huntId))) {
+				bot.huntScriptId = entry.huntId; bot.huntPhase = entry.huntPhase;
+				bot.huntTownId = script->townId;
+				bot.pendingHuntAfterTravel = entry.pendingHuntAfterTravel && bot.state == BotAIState::TRAVELING;
+				bot.prepareStartTime = entry.prepareStarted; bot.prepareWaitUntil = entry.prepareWaitUntil;
+				bot.prepareStep = entry.prepareStep; bot.prepareTarget = entry.prepareTarget; bot.prepareHasTarget = entry.prepareHasTarget;
+				bot.huntResupplyStart = entry.resupplyStarted; bot.huntResupplyPhase = entry.resupplyPhase; bot.resupplyRerolled = entry.resupplyRerolled;
+				const auto size = entry.huntPhase == HuntPhase::PATROLLING ? script->patrolWaypoints.size() :
+					(entry.huntPhase == HuntPhase::TRAVEL_TO ? script->travelToWaypoints.size() : script->travelFromWaypoints.size());
+				bot.huntWaypointIdx = size ? std::min(entry.waypoint, size - 1) : 0;
+				bot.huntKillCount = entry.kills; bot.huntStartTime = entry.huntStarted; bot.huntEndTime = entry.huntEnds;
+				if (!sharedQuest) {
+					activeHunts_[entry.huntId] = entry.guid;
+					if (!script->spawnGroup.empty()) activeSpawnGroups_[script->spawnGroup] = entry.guid;
+				}
+			} else {
+				bot.state = BotAIState::IDLE;
+				g_logger().warn("[BotEngine] reload cancelled unavailable/conflicting hunt {} for {}", entry.huntId, entry.name);
+			}
+		}
+	}
+	schedulerEnabled_ = snapshot.schedulerEnabled;
+	g_logger().info("[BotEngine] restored {} roster entries without DB rematerialization", snapshot.entries.size());
+}
+
 void BotEngine::registerBot(const std::shared_ptr<Player> &player) {
 	if (!player) {
 		return;
@@ -218,6 +327,10 @@ void BotEngine::registerBot(const std::shared_ptr<Player> &player) {
 void BotEngine::unregisterBot(uint32_t guid) {
 	auto it = guidToIndex_.find(guid);
 	if (it == guidToIndex_.end()) return;
+	if (auto& event = bots_[it->second].pendingWalkPauseEventId; event != 0) {
+		g_dispatcher().stopEvent(event);
+		event = 0;
+	}
 
 	// BOT_LURE_KITE hygiene. Correctness does NOT depend on this — both features
 	// re-validate their own gate every tick and self-clear (beginHuntPhase is
@@ -279,7 +392,7 @@ std::shared_ptr<Player> BotEngine::materializePlayerFromDb(BotState &bot) {
 		newPlayer->setNotRemoved();
 		newPlayer->clearTileParent();
 	} else {
-		newPlayer = std::make_shared<Player>(nullptr);
+		newPlayer = Player::createNativeBot();
 		// Flag before load to skip bot-irrelevant badge/title/cyclopedia work.
 		newPlayer->setBotPlayer(true);
 		if (!IOLoginData::loadPlayerByName(newPlayer, bot.name, false)) {
@@ -361,12 +474,8 @@ bool BotEngine::activateBot(uint32_t guid) {
 	// Share of bots eligible for quest scripts. Deterministic per guid so a bot keeps its
 	// role across reconnects. Was hardcoded (guid % 20 == 0); the %100 form is what makes an
 	// arbitrary percentage expressible, and at the default 5 it selects a same-sized but
-	// different subset — quest-bot identity is recomputed here and persisted nowhere.
-	{
-		const int32_t questPct = std::clamp(
-			static_cast<int32_t>(g_configManager().getNumber(BOT_QUEST_BOT_PCT)), 0, 100);
-		bot.isQuestBot = (static_cast<int32_t>(bot.guid % 100) < questPct);
-	}
+	// different subset. Reload and activation derive the role through the same rule.
+	bot.isQuestBot = questRoleForGuid(guid);
 
 	// Set town from player's DB assignment
 	auto town = player->getTown();

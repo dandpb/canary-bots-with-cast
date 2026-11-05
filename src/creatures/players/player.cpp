@@ -72,6 +72,11 @@ MuteCountMap Player::muteCountMap;
  * This constructor is intended for unit testing only.
  * For full documentation and usage notes, see the function declaration.
  */
+std::shared_ptr<Player> Player::createNativeBot() {
+	// Keep shared_ptr control-block destruction in the executable across unloads.
+	return std::make_shared<Player>(nullptr);
+}
+
 Player::Player() :
 	m_wheelPlayer(*this),
 	m_playerAchievement(*this),

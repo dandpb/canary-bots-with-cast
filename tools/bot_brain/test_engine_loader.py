@@ -2,7 +2,8 @@
 """Exercise the real dlopen loader with disposable libraries, without a game/DB.
 
 Run in the native build image (vcpkg includes under /opt/installed/x64-linux).
-Only logging is replaced. The engine fixture implements the real IBotEngine.
+Logging and the empty-roster checkpoint hook are replaced. The engine fixture
+implements the real IBotEngine; lifecycle_qa covers nonempty live Player handoff.
 """
 import os
 import re

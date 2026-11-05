@@ -21,6 +21,12 @@
 #include "utils/tools.hpp"
 #include "game/scheduling/dispatcher.hpp"
 
+void checkpointBotReloadPlayers(const BotReloadSnapshot& snapshot) {
+	for (const auto& entry : snapshot.entries) {
+		if (entry.player) g_saveManager().savePlayer(entry.player, entry.position);
+	}
+}
+
 std::shared_ptr<Player> SaveManager::getPendingBotPlayer(uint32_t guid) const {
 	auto pending = botSaves_.find(guid);
 	return pending ? pending->player : nullptr;

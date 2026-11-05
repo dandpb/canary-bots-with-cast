@@ -179,13 +179,10 @@ foreach(
 endforeach()
 
 # Export symbols from the main binary so libbot_engine.so can resolve them via dlopen
-if(UNIX AND NOT APPLE)
-    foreach(
-        core_target IN
-        LISTS CANARY_CORE_TARGETS
-    )
-        target_link_options(${core_target} PRIVATE -rdynamic)
-    endforeach()
+if(UNIX AND NOT APPLE AND TARGET ${PROJECT_NAME})
+    # With tests enabled canary_core is static: PRIVATE link flags on that
+    # archive do not reach the executable which dlopen actually searches.
+    target_link_options(${PROJECT_NAME} PRIVATE -rdynamic)
 endif()
 
 if(SPEED_UP_BUILD_UNITY)

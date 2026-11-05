@@ -53,4 +53,5 @@ private:
 	std::string phase_ = "idle";
 	uint64_t nextTicket_ = 0;
 	uint64_t preparedTicket_ = 0;
+	std::optional<BotReloadSnapshot> retained_;
 };

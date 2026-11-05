@@ -851,6 +851,7 @@ int GameFunctions::luaGameLoadBotPlayer(lua_State* L) {
 	if (existing) {
 		g_logger().info("[Game.loadBotPlayer] Bot '{}' already online, reusing", name);
 		existing->setBotPlayer(true);
+		g_botEngine().registerBot(existing);
 		Lua::pushUserdata<Player>(L, existing);
 		Lua::setMetatable(L, -1, "Player");
 		return 1;
@@ -1233,11 +1234,30 @@ int GameFunctions::luaGameBotCommand(lua_State* L) {
 int GameFunctions::luaGameBotReload(lua_State* L) {
 	// Only consume the already validated candidate. Never open the source again.
 	auto& loader = BotEngineLoader::getInstance();
-	const bool success = loader.commitReload(Lua::getNumber<uint64_t>(L, 1)) && loader.initialize();
-	const std::string message = loader.lastError();
+	bool success = loader.commitReload(Lua::getNumber<uint64_t>(L, 1)) && loader.initialize();
+	std::string message = loader.lastError();
+	BotReloadSnapshot roster;
+	if (success) {
+		try { roster = loader.getEngine().captureReloadState(); }
+		catch (const std::exception& error) { success = false; message = error.what(); }
+		catch (...) { success = false; message = "cannot describe restored roster"; }
+	}
 	lua_newtable(L);
 	lua_pushboolean(L, success);
 	lua_setfield(L, -2, "ok");
+	lua_pushboolean(L, success);
+	lua_setfield(L, -2, "state_restored");
+	lua_newtable(L);
+	int index = 1;
+	for (const auto& entry : roster.entries) {
+		lua_newtable(L);
+		Lua::setField(L, "guid", entry.guid);
+		Lua::setField(L, "name", entry.name);
+		lua_pushboolean(L, entry.active); lua_setfield(L, -2, "active");
+		lua_pushboolean(L, entry.hibernated); lua_setfield(L, -2, "hibernated");
+		lua_rawseti(L, -2, index++);
+	}
+	lua_setfield(L, -2, "bots");
 	Lua::setField(L, "phase", loader.phase());
 	Lua::setField(L, "message", success ? "Bot engine reloaded successfully." : message);
 	return 1;
@@ -1249,6 +1269,8 @@ int GameFunctions::luaGameBotPrepareReload(lua_State* L) {
 	lua_newtable(L);
 	lua_pushboolean(L, success);
 	lua_setfield(L, -2, "ok");
+	lua_pushboolean(L, true);
+	lua_setfield(L, -2, "native_handoff");
 	Lua::setField(L, "ticket", success ? loader.preparedTicket() : 0);
 	Lua::setField(L, "phase", loader.phase());
 	Lua::setField(L, "message", loader.lastError());
