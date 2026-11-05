@@ -4292,6 +4292,7 @@ public:
 	BotState* getBotState(uint32_t guid) override;
 	std::string getStatusText(uint32_t guid) override;
 	void loadHuntData() override;
+	bool prepareAuthoredData(std::string& error);
 	std::string executeCommand(const std::string& botName, const std::string& command) override;
 
 	void saveAllStates() override;
@@ -6406,7 +6407,8 @@ private:
 	// force parameter: every call site constructs a fresh engine (BotEngineLoader::reload
 	// destroys the old one first), so there is no previous data to fall back to and no
 	// old container to shrink-guard against.
-	std::string reloadBotData();
+	bool authoredDataPrepared_ = false;
+	std::string reloadBotData(bool prepareOnly = false);
 	uint32_t loadMetaCsv();
 	void loadHuntScriptsCsv(std::vector<HuntScript>& out, uint32_t nextScriptId);
 	// Rebuilt after the commit, from the world / live registries / config.

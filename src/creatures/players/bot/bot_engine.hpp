@@ -11,6 +11,7 @@
 
 // Provided by bot_engine_loader.cpp — returns the active IBotEngine from the loaded .so
 IBotEngine& getBotEngineInstance();
+IBotEngine* getBotEngineIfLoaded();
 
 // All existing call sites use g_botEngine().method() — this preserves that pattern
 constexpr auto g_botEngine = getBotEngineInstance;
