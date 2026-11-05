@@ -15,6 +15,34 @@ from canary_brain.benchmark_stops import Stops
 from canary_brain.store import Store
 
 
+@pytest.mark.skipif(
+    not hasattr(signal, "pthread_kill"), reason="requires POSIX signals"
+)
+async def test_signal_from_worker_thread_wakes_idle_campaign_loop():
+    loop = asyncio.get_running_loop()
+    completed = threading.Event()
+    fallback_fired = threading.Event()
+
+    def deliver() -> None:
+        # Let the main thread enter the selector before delivering the signal.
+        time.sleep(0.05)
+        signal.pthread_kill(threading.get_ident(), signal.SIGTERM)
+        if not completed.wait(1):
+            fallback_fired.set()
+            loop.call_soon_threadsafe(lambda: None)
+
+    with benchmark.campaign_signals() as operator_stop:
+        sender = threading.Thread(target=deliver)
+        sender.start()
+        try:
+            await asyncio.wait_for(operator_stop.wait(), timeout=3)
+        finally:
+            completed.set()
+            sender.join(timeout=3)
+    assert not sender.is_alive()
+    assert not fallback_fired.is_set(), "signal waited for the watchdog to wake asyncio"
+
+
 @pytest.mark.parametrize("stage", ["character", "socket", "start_game"])
 @pytest.mark.parametrize("sig", [signal.SIGINT, signal.SIGTERM])
 async def test_signal_stops_startup_worker_before_healthcheck_returns(
