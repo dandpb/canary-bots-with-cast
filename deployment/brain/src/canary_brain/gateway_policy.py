@@ -69,7 +69,7 @@ def validate_policy(config: dict[str, Any]) -> set[str]:
     return names
 
 
-async def authenticate(request: Any, api_key: str) -> Any:
+async def authenticate(request: Any, api_key: str | None) -> Any:
     # Imported only inside LiteLLM; the worker and offline tests do not need its SDK.
     yaml = importlib.import_module("yaml")
     HTTPException = importlib.import_module("fastapi").HTTPException
@@ -81,8 +81,10 @@ async def authenticate(request: Any, api_key: str) -> Any:
             status_code=403, detail="worker credential cannot administer gateway"
         )
     expected = os.environ.get("LITELLM_WORKER_KEY", "")
-    if not expected or not hmac.compare_digest(
-        api_key.removeprefix("Bearer "), expected
+    if (
+        not isinstance(api_key, str)
+        or not expected
+        or not hmac.compare_digest(api_key.removeprefix("Bearer "), expected)
     ):
         raise HTTPException(status_code=401, detail="invalid worker credential")
     raw = Path(
