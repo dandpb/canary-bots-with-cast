@@ -123,4 +123,30 @@ canary-brain replay report --recording /path/to/recording.sqlite3 --run RUN_A --
 
 ZIP archives contain bounded event segments, metadata and SHA-256 checksums. ZIP and HTML exports pin one read-only SQLite snapshot, including concurrent live recording. Import validates every member before creating the destination; it never extracts arbitrary paths. It imports the complete new run in one transaction and rejects any existing run identity, including an otherwise identical lifetime manifest; choose a new destination to keep histories separate. SQL failure rolls back the entire imported run. HTML reports contain the player, styles and data and work offline. HTML exports are limited to four runs and 20,000 events; use the full ZIP and local viewer for larger histories. Neither archive nor report contains credentials or a game-control token. Replay never makes billable requests.
 
-Validate changes with the existing pytest, ruff and strict mypy commands, plus the gateway smoke tool and native library build. Browser checks cover the initial page, comparing two runs, seeking, floor changes, playback, milestone alignment, console health and a narrow viewport. Real model rankings require a separately selected, budgeted pilot with multiple independent runs. Client-quality animation and video/timelapse rendering remain the later milestone agreed in the issue.
+## Offline video / timelapse
+
+```sh
+canary-brain replay video --recording /path/to/recording.sqlite3 --run RUN_ID \
+  --output /tmp/bot-life.mp4 --speed 60 --fps 24
+# Export a chapter rather than the entire recorded life:
+canary-brain replay video --recording /path/to/recording.sqlite3 --run RUN_ID \
+  --output /tmp/chapter.mp4 --start-ms 600000 --end-ms 1800000 --speed 30
+```
+
+The renderer uses only recorded coordinates, floor, XP, health, mana, supplies,
+settled/reserved cost and event phases. It streams a pinned read-only snapshot;
+no game, provider, browser, tile service or credentials are needed. It requires
+local `ffmpeg` with `librsvg`/`libx264`, plus `ffprobe`. It draws a sparse coordinate
+map, not the original client's terrain, sprites or attack animation. The video
+always labels that distinction, and synthetic recordings remain visibly labelled.
+No coordinates are interpolated across gaps/floor changes. Stale displays retain
+the last known state with a gap label until another actual sample arrives.
+
+MP4 is 1280×720. Export is bounded to 14,400 frames/600 seconds; increase speed or
+select chapters for longer histories. A JSON sidecar records the source manifest,
+snapshot hash, time window, requested/effective speed, actual frame count/duration
+and MP4 hash. The encoded artifact is checked with ffprobe before publication.
+Output and sidecar paths must be new; existing artifacts are not overwritten.
+The renderer streams history and bounds its displayed trail to recent samples.
+
+Validate changes with the existing pytest, ruff and strict mypy commands, plus the gateway smoke tool and native library build. Browser checks cover the initial page, comparing two runs, seeking, floor changes, playback, milestone alignment, console health and a narrow viewport. Real model rankings require a separately selected, budgeted pilot with multiple independent runs. Native client capture/clips can later be attached separately to these sampled-map videos.
