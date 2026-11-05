@@ -24,6 +24,7 @@ from .recording import (
     attribution,
     canonical,
     digest,
+    public_data,
 )
 from .replay import campaign
 from .runtime import Configuration, run
@@ -211,7 +212,16 @@ class DockerFixture:
             check=False,
         )
         if result.returncode:
-            # Database/client output can carry configuration secrets.
+            details = result.stdout + "\n" + result.stderr
+            if self.env_file.exists():
+                for line in self.env_file.read_text().splitlines():
+                    _name, separator, value = line.partition("=")
+                    if separator and value:
+                        details = details.replace(value, "[redacted]")
+            log = self.directory / "command-errors.log"
+            with log.open("a", encoding="utf-8") as target:
+                os.chmod(log, 0o600)
+                target.write(str(public_data(details)) + "\n")
             raise RuntimeError(
                 "isolated Docker operation failed; inspect the private experiment deployment logs"
             )
@@ -526,13 +536,31 @@ async def run_campaign(experiment: Experiment, *, live: bool = False) -> dict[st
                     if isinstance(error, (KeyboardInterrupt, asyncio.CancelledError))
                     else "failed"
                 )
+                end = ReplayReader(recording).run(identity)["duration_ms"]
+                store.append(
+                    {
+                        "run": identity,
+                        "key": "orchestrator-failure",
+                        "segment": "orchestrator",
+                        "t_ms": end + 1,
+                        "wall": time.time(),
+                        "kind": "lifecycle",
+                        "data": {
+                            "phase": "run_failed",
+                            "category": type(error).__name__,
+                            "classification": "infrastructure_or_operator_interruption",
+                        },
+                    }
+                )
                 raise
             finally:
                 stopped.set()
-                if worker:
-                    await asyncio.gather(worker, return_exceptions=True)
-                store.finish(identity, status)
-                await asyncio.to_thread(harness.close)
+                try:
+                    if worker:
+                        await asyncio.gather(worker, return_exceptions=True)
+                    store.finish(identity, status)
+                finally:
+                    await asyncio.to_thread(harness.close)
     result = campaign(ReplayReader(recording), identities)
     (experiment.output / "summary.json").write_text(canonical(result))
     return result

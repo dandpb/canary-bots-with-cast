@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 from canary_brain.benchmark import (
@@ -16,6 +17,26 @@ from canary_brain.recording import ReplayReader
 from canary_brain.replay import campaign, export_report
 from canary_brain.testing import FakeProvider
 from test_protocol import observation
+
+
+def test_failed_docker_diagnostics_are_retained_with_credentials_redacted(
+    tmp_path, monkeypatch
+):
+    config = experiment(tmp_path)
+    harness = DockerFixture(config, config.output / "native-0", "qa-only")
+    harness.directory.parent.mkdir()
+    harness.prepare(config.participants[0])
+    private_value = harness.env_file.read_text().splitlines()[0].split("=", 1)[1]
+    monkeypatch.setattr(
+        "canary_brain.benchmark.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1, stdout="failed", stderr="private: " + private_value
+        ),
+    )
+    with pytest.raises(RuntimeError, match="isolated Docker"):
+        harness.command("up")
+    diagnostics = (harness.directory / "command-errors.log").read_text()
+    assert "[redacted]" in diagnostics and private_value not in diagnostics
 
 
 def experiment(tmp_path):
