@@ -2655,7 +2655,29 @@ void BotEngine::restoreAllStates() {
 // Shared library factory functions — called by BotEngineLoader via dlsym
 // ============================================================================
 
+#include "creatures/players/bot/bot_engine_abi.hpp"
+
 extern "C" {
+	const char* botEngineAbiTag() { return BOT_ENGINE_ABI_TAG; }
+
+	bool prepareBotEngine(IBotEngine* engine, char* error, size_t size) {
+		std::string message;
+		bool success = false;
+		try {
+			success = static_cast<BotEngine*>(engine)->prepareAuthoredData(message);
+		} catch (const std::exception& exception) {
+			message = exception.what();
+		} catch (...) {
+			message = "unexpected exception parsing candidate authored data";
+		}
+		if (error && size > 0) {
+			const auto count = std::min(size - 1, message.size());
+			std::memcpy(error, message.data(), count);
+			error[count] = '\0';
+		}
+		return success;
+	}
+
 	IBotEngine* createBotEngine() {
 		// A fresh engine starts with an empty s_probeBots, but the probe flag itself lives on
 		// the Player, which SURVIVES a reload. Clearing it is therefore registerBot's job, not

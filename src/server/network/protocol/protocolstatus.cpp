@@ -113,7 +113,7 @@ void ProtocolStatus::sendStatusString() {
 	// awake bots, which have IP=0, causing the sidebar widget to undercount.)
 	size_t playerCount = g_game().getPlayersOnline();
 	if (g_configManager().getBoolean(BOT_PLAYERS_SHOW_AS_ONLINE)) {
-		playerCount += g_botEngine().getHibernatedBotCount();
+		if (auto* engine = getBotEngineIfLoaded()) playerCount += engine->getHibernatedBotCount();
 	}
 	players.append_attribute("online") = std::to_string(playerCount).c_str();
 	players.append_attribute("max") = std::to_string(g_configManager().getNumber(MAX_PLAYERS)).c_str();
@@ -181,7 +181,7 @@ void ProtocolStatus::sendInfo(uint16_t requestedInfo, const std::string &charact
 		output->addByte(0x20);
 		size_t playerCount = g_game().getPlayersOnline();
 		if (g_configManager().getBoolean(BOT_PLAYERS_SHOW_AS_ONLINE)) {
-			playerCount += g_botEngine().getHibernatedBotCount();
+			if (auto* engine = getBotEngineIfLoaded()) playerCount += engine->getHibernatedBotCount();
 		}
 		output->add<uint32_t>(static_cast<uint32_t>(playerCount));
 		output->add<uint32_t>(g_configManager().getNumber(MAX_PLAYERS));

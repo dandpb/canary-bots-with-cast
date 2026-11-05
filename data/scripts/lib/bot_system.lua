@@ -1094,34 +1094,14 @@ function BotSystem.executeReload(opts)
 		return { ok = false, message = "reload already in progress", lines = lines }
 	end
 
-	-- BOT_CSV pre-flight. Authored data lives in data/bot/authored/*.csv, and
-	-- Game.botReload() DESTROYS the engine before the new one parses those files —
-	-- so a malformed CSV has nothing to fall back to. It poisons the fresh engine and
-	-- every bot refuses to activate until a human fixes the file.
-	--
-	-- Asking the still-live engine to parse-check first turns that outage into a
-	-- refused reload with the population untouched. Runs BEFORE _reloadInProgress is
-	-- set and before anything is deactivated, so an abort leaves zero residue.
-	--
-	-- Caveat: this validates with the CURRENTLY LOADED .so. If the .so is also
-	-- changing in this deploy, the check uses the old parser — it is a sanity check,
-	-- not a proof. tools/bot_csv/validate.py is the real gate and runs pre-deploy.
-	do
-		local ok, csvResult = pcall(Game.botCommand, "_global", "csvcheck")
-		if ok and type(csvResult) == "string" and csvResult ~= "" then
-			if csvResult:sub(1, 2) ~= "OK" then
-				emit("reload ABORTED — authored CSV failed to parse, nothing was touched:")
-				emit("  " .. csvResult)
-				emit("  Fix the file (or: git checkout -- data/bot/authored) and reload again.")
-				return { ok = false, message = "csv pre-flight failed: " .. csvResult, lines = lines }
-			end
-			logger.info("[reload:{}] csv pre-flight {}", source, csvResult)
-		else
-			-- Older .so without csvcheck, or an unexpected return: do not block the
-			-- reload on a missing diagnostic. Say so, so it is visible rather than
-			-- silently skipped.
-			logger.warn("[reload:{}] csv pre-flight unavailable — proceeding without it", source)
-		end
+	-- The candidate parses its own authored data before any population changes.
+	-- The ticket binds commit to this exact immutable library and parsed data.
+	local prepareOk, candidate = pcall(Game.botPrepareReload)
+	if not prepareOk or type(candidate) ~= "table" or candidate.ok ~= true
+		or type(candidate.ticket) ~= "number" or candidate.ticket <= 0 then
+		local message = type(candidate) == "table" and candidate.message or tostring(candidate)
+		emit("reload preparation failed: " .. tostring(message))
+		return { ok = false, message = "reload preparation failed: " .. tostring(message), lines = lines }
 	end
 
 	BotSystem._reloadInProgress = true
@@ -1221,14 +1201,18 @@ function BotSystem.executeReload(opts)
 		end
 
 		-- 3. Reload the .so + hunt data — this destroys old hibernationPool_
-		local result = Game.botReload()
-		emit(tostring(result))
+		local reloadResult = Game.botReload(candidate.ticket)
+		if type(reloadResult) ~= "table" or reloadResult.ok ~= true then
+			error("reload commit failed: " .. tostring(type(reloadResult) == "table" and reloadResult.message or reloadResult))
+		end
+		emit(reloadResult.message)
 		Game.botCommand("_global", "schedule off")
 
 		-- 4. Restart the 100ms tick loop (old cycleEvent may be stale after dlclose/dlopen)
 		Game.botStartTickLoop()
 	end)
 	if not prefixOk then
+		pcall(Game.botCancelReload, candidate.ticket)
 		BotSystem._reloadInProgress = false
 		logger.error("[reload:{}] prefix error: {}", source, tostring(prefixErr))
 		return { ok = false, message = "reload prefix failed: " .. tostring(prefixErr), lines = lines }
