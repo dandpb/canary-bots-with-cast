@@ -17,6 +17,7 @@
 // ============================================================================
 
 #include "creatures/players/bot/bot_engine_impl.hpp"
+#include "game/scheduling/save_manager.hpp"
 
 // ============================================================================
 // PZ-blocked roaming (Feature 2) — per-bot mill-around timer.
@@ -1061,9 +1062,7 @@ void BotEngine::maybeQueueVirtualPositionSave(BotState &bot) {
 
 	bot.lastVirtualPosSave = now;
 	bot.lastPos = bot.currentPos;
-	g_botDatabaseTasks().execute(fmt::format(
-		"UPDATE `players` SET `posx`={}, `posy`={}, `posz`={} WHERE `id`={}",
-		bot.currentPos.x, bot.currentPos.y, bot.currentPos.z, bot.guid));
+	g_saveManager().saveBotPosition(bot.guid, bot.currentPos);
 }
 
 // Phase 2: virtualAdvanceHunting — full HUNTING phase machine in pure memory.
@@ -2170,16 +2169,11 @@ void BotEngine::forceDeactivateBot(uint32_t guid) {
 	// True offline: remove bot from game world
 	auto player = bot.getPlayer();
 	if (player) {
-		// Save current position to players table before removing
-		auto pos = player->getPosition();
-		g_botDatabaseTasks().execute(fmt::format(
-			"UPDATE `players` SET `posx`={}, `posy`={}, `posz`={} WHERE `id`={}",
-			pos.x, pos.y, pos.z, guid));
 
 		player->setCastBroadcasting(false);
 		// JITTER FIX: async DELETE (was sync executeQuery — see hibernateBot fix).
 		g_botDatabaseTasks().execute(fmt::format("DELETE FROM `cast_broadcasters` WHERE `player_id` = {}", guid));
-		checkpointBotProgression(bot, player);
+		checkpointBotPersistentState(bot, player);
 		g_game().removeCreature(player, false);
 		g_game().removePlayer(player);
 		player->setOnline(false);
@@ -2194,13 +2188,9 @@ void BotEngine::forceDeactivateBot(uint32_t guid) {
 		auto poolPlayer = poolIt->second;
 		hibernationPool_.erase(poolIt);
 		if (poolPlayer) {
-			checkpointBotProgression(bot, poolPlayer);
+			checkpointBotPersistentState(bot, poolPlayer);
 			poolPlayer->setOnline(false);
-			// Save position for next-boot DB load (pool is in-memory only, lost on restart)
-			auto pos = poolPlayer->getPosition();
-			g_botDatabaseTasks().execute(fmt::format(
-				"UPDATE `players` SET `posx`={}, `posy`={}, `posz`={} WHERE `id`={}",
-				pos.x, pos.y, pos.z, guid));
+
 		}
 	}
 	bot.hibernated = false;
@@ -2297,7 +2287,7 @@ void BotEngine::forceDeactivateBotForReload(uint32_t guid) {
 	dropAssemblyMember(guid, "reload");
 
 	if (auto player = bot.getPlayer()) {
-		checkpointBotProgression(bot, player);
+		checkpointBotPersistentState(bot, player);
 	}
 
 	// NOTE: Do NOT touch cast broadcasting or teleport — bot stays in place

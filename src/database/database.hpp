@@ -10,6 +10,9 @@
 #pragma once
 
 #include "declarations.hpp"
+#include <string>
+#include <stdexcept>
+#include <vector>
 
 #ifndef USE_PRECOMPILED_HEADERS
 	#include <mysql/mysql.h>
@@ -25,6 +28,13 @@ public:
 	static const size_t MAX_QUERY_SIZE = 8 * 1024 * 1024; // 8 Mb -- half the default MySQL max_allowed_packet size
 
 	Database() = default;
+	// A write-only, connection-free sink for dispatcher-owned serialization.
+	// Its statements can subsequently be executed by a private worker connection.
+	void collectStatements(std::vector<std::string>& statements) {
+		if (handle || statements_) throw std::logic_error("Statement collection requires a fresh Database");
+		statements_ = &statements;
+	}
+	bool isCapturingStatements() const { return statements_ != nullptr; }
 	~Database();
 
 	// Singleton - ensures we don't accidentally copy it.
@@ -32,6 +42,16 @@ public:
 	Database &operator=(const Database &) = delete;
 
 	static Database &getInstance();
+	// Route helpers in one transaction to an executable-owned worker connection.
+	class ScopedConnection {
+	public:
+		explicit ScopedConnection(Database& connection);
+		~ScopedConnection();
+		ScopedConnection(const ScopedConnection&) = delete;
+		ScopedConnection& operator=(const ScopedConnection&) = delete;
+	private:
+		Database* previous_;
+	};
 
 	bool connect();
 
@@ -76,6 +96,7 @@ public:
 	}
 
 private:
+	std::vector<std::string>* statements_ = nullptr;
 	bool beginTransaction();
 	bool rollback();
 	bool commit();

@@ -191,16 +191,53 @@ void IOLoginData::loadOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &pla
 	IOLoginDataLoad::loadPlayerUpdateSystem(player);
 }
 
-bool IOLoginData::savePlayer(const std::shared_ptr<Player> &player) {
+PlayerSaveSnapshot IOLoginData::capturePlayerSave(const std::shared_ptr<Player>& player, const Position& position) {
+	PlayerSaveSnapshot snapshot;
+	snapshot.guid = player->getGUID();
+	snapshot.onlineSystems = !player->isOffline();
+	snapshot.loginOnly = fmt::format("UPDATE `players` SET `lastlogin`={}, `lastip`={} WHERE `id`={}",
+		player->lastLoginSaved, player->lastIP, snapshot.guid);
+	Database sink;
+	sink.collectStatements(snapshot.statements);
+	Database::ScopedConnection route(sink);
+	savePlayerGuard(player, position, &snapshot.storage);
+	if (snapshot.onlineSystems) snapshot.forge = player->forgeHistory().pending();
+	return snapshot;
+}
+
+bool IOLoginData::persistPlayerSave(const PlayerSaveSnapshot& snapshot) {
+	return DBTransaction::executeWithinTransaction([&snapshot] {
+		auto& db = Database::getInstance();
+		auto row = db.storeQuery(fmt::format("SELECT `save` FROM `players` WHERE `id`={}", snapshot.guid));
+		if (!row || snapshot.statements.empty()) throw DatabaseException("Checkpoint player is unavailable");
+		const bool full = row->getNumber<uint16_t>("save") != 0;
+		for (size_t i = 0; i < snapshot.statements.size(); ++i) {
+			const auto& query = i == 0 && !full ? snapshot.loginOnly : snapshot.statements[i];
+			if (!db.executeQuery(query)) throw DatabaseException("Checkpoint statement failed");
+		}
+		return true;
+	});
+}
+
+void IOLoginData::acknowledgePlayerSave(const std::shared_ptr<Player>& player, const PlayerSaveSnapshot& snapshot) {
+	if (!snapshot.onlineSystems) return;
+	player->storage().acknowledge(snapshot.storage);
+	player->forgeHistory().acknowledge(snapshot.forge);
+}
+
+bool IOLoginData::savePlayer(const std::shared_ptr<Player> &player, std::optional<Position> position) {
+	if (!player) return false;
+	PlayerStorage::PlayerStorageDelta storageDelta;
 	try {
-		bool success = DBTransaction::executeWithinTransaction([player]() {
-			return savePlayerGuard(player);
+		bool success = DBTransaction::executeWithinTransaction([player, position, &storageDelta]() {
+			return savePlayerGuard(player, position, &storageDelta);
 		});
 
 		if (!success) {
 			g_logger().error("[{}] Error occurred saving player", __FUNCTION__);
 		}
 
+		if (success && !player->isOffline()) player->storage().acknowledge(storageDelta);
 		return success;
 	} catch (const DatabaseException &e) {
 		g_logger().error("[{}] Exception occurred: {}", __FUNCTION__, e.what());
@@ -209,12 +246,12 @@ bool IOLoginData::savePlayer(const std::shared_ptr<Player> &player) {
 	return false;
 }
 
-bool IOLoginData::savePlayerGuard(const std::shared_ptr<Player> &player) {
+bool IOLoginData::savePlayerGuard(const std::shared_ptr<Player> &player, std::optional<Position> position, PlayerStorage::PlayerStorageDelta* persisted) {
 	if (!player) {
 		throw DatabaseException("Player nullptr in function: " + std::string(__FUNCTION__));
 	}
 
-	if (!IOLoginDataSave::savePlayerFirst(player)) {
+	if (!IOLoginDataSave::savePlayerFirst(player, position)) {
 		throw DatabaseException("[" + std::string(__FUNCTION__) + "] - Failed to save player first: " + player->getName());
 	}
 
@@ -260,12 +297,12 @@ bool IOLoginData::savePlayerGuard(const std::shared_ptr<Player> &player) {
 
 	// Saves data components that are only valid if the player is online.
 	// Skips execution entirely if the player is offline to avoid overwriting unloaded data.
-	saveOnlyDataForOnlinePlayer(player);
+	saveOnlyDataForOnlinePlayer(player, persisted);
 
 	return true;
 }
 
-void IOLoginData::saveOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &player) {
+void IOLoginData::saveOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &player, PlayerStorage::PlayerStorageDelta* persisted) {
 	if (player->isOffline()) {
 		return;
 	}
@@ -287,7 +324,7 @@ void IOLoginData::saveOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &pla
 	player->wheel().saveKVModGrades();
 	player->wheel().saveKVScrolls();
 
-	if (!IOLoginDataSave::savePlayerStorage(player)) {
+	if (!IOLoginDataSave::savePlayerStorage(player, persisted)) {
 		throw DatabaseException("[IOLoginDataSave::savePlayerStorage] - Failed to save player storage: " + player->getName());
 	}
 }

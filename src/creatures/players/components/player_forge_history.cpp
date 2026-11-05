@@ -85,7 +85,19 @@ bool PlayerForgeHistory::save() {
 			return false;
 		}
 
-		m_removedHistoryIds.clear();
+		if (!g_database().isCapturingStatements()) m_removedHistoryIds.clear();
+	}
+	if (g_database().isCapturingStatements()) {
+		// A newer checkpoint may be captured before an older commit is acknowledged.
+		// Replaying these additions must not insert the same logical history twice.
+		for (const auto& history : m_modifiedHistory) {
+			if (!g_database().executeQuery(fmt::format(
+				"INSERT INTO `forge_history` (`player_id`,`action_type`,`description`,`done_at`,`is_success`) "
+				"SELECT {},{},{},{},{} WHERE NOT EXISTS (SELECT 1 FROM `forge_history` WHERE `player_id`={} AND `done_at`={})",
+				playerGUID, static_cast<int>(history.actionType), g_database().escapeString(history.description),
+				history.createdAt, history.success ? 1 : 0, playerGUID, history.createdAt))) return false;
+		}
+		return true;
 	}
 
 	DBInsert insertQuery("INSERT INTO `forge_history` (`player_id`, `action_type`, `description`, `done_at`, `is_success`) VALUES ");
@@ -110,4 +122,15 @@ bool PlayerForgeHistory::save() {
 
 	benchmark.log("PlayerForgeHistory::save completed");
 	return true;
+}
+
+void PlayerForgeHistory::acknowledge(const Pending& persisted) {
+	std::erase_if(m_modifiedHistory, [&persisted](const ForgeHistory& history) {
+		return std::ranges::any_of(persisted.additions, [&history](const ForgeHistory& saved) {
+			return history.createdAt == saved.createdAt;
+		});
+	});
+	std::erase_if(m_removedHistoryIds, [&persisted](uint32_t id) {
+		return std::ranges::find(persisted.deletions, id) != persisted.deletions.end();
+	});
 }
