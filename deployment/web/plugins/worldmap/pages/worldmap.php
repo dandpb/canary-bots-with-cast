@@ -85,10 +85,9 @@ if (!is_array($vocations)) {
 // comma-separated config string ("Elder Druid,Royal Paladin" has no space).
 $vocations = array_map('trim', $vocations);
 
-// map_big.jpg is CipSoft artwork and is NOT redistributed with this plugin, so a
-// fresh install will not have it. Detect that and drop the Overview layer rather
-// than offering a button that renders a broken image.
-$hasOverview = is_file(PLUGINS . 'worldmap/static/map_big.jpg');
+// A deployment can provide an overview image; otherwise retain the default.
+$overviewImage = $wmCfg['overview_image'] ?? 'map_big.jpg';
+$hasOverview = is_file(PLUGINS . 'worldmap/static/' . $overviewImage);
 $defaultLayer = $wmCfg['default_layer'] ?? 'overview';
 if (!$hasOverview) {
 	$defaultLayer = 'floors';
@@ -103,6 +102,7 @@ $cfg = [
 	'defaultFloor' => (int)($wmCfg['default_floor'] ?? 7),
 	'defaultLayer' => $defaultLayer,
 	'hasOverview'  => $hasOverview,
+	'overviewImage' => $overviewImage,
 	'layers'       => $wmCfg['layers'],
 	'bounds'       => $wmCfg['bounds'],
 	'vocations'    => $vocations,

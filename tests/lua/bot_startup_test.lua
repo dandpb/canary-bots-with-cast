@@ -12,15 +12,15 @@ local function startup(options)
 	options = options or {}
 	local state = { now = 0, events = {}, calls = {}, attempts = {}, queries = {}, logs = {}, finalizers = {}, maxPending = 0 }
 	local names = {}
-	for i = 1, options.pool or options.target or 1 do
-		names[i] = "Bot " .. i
+	for i = 1, options.rows and #options.rows or options.pool or options.target or 1 do
+		names[i] = options.rows and options.rows[i].name or "Bot " .. i
 	end
 	local current = 1
 	local startupEvent
 	BOT_CONFIG = { TARGET_ONLINE = options.target or #names, BOT_ACCOUNT_ID = 65000 }
 	BotPlayers = {}
-	configKeys = { BOT_PERSONALITY_REROLL_ON_RESTART = "reroll", BOT_PLAYERS_SHOW_AS_ONLINE = "online" }
-	configManager = { getBoolean = function(key)
+	configKeys = { BOT_PERSONALITY_REROLL_ON_RESTART = "reroll", BOT_PLAYERS_SHOW_AS_ONLINE = "online", BOT_POPULATION_REFERENCE_BOTS = "references" }
+	configManager = { getString = function() return options.references or "" end, getBoolean = function(key)
 		return key == "online" and options.showOnline ~= false
 	end }
 	GlobalEvent = function(name)
@@ -37,6 +37,7 @@ local function startup(options)
 		botAsyncQuery = function(query) state.queries[#state.queries + 1] = query end,
 	}
 	Result = {
+		getNumber = function(_, field) return options.rows and options.rows[current][field] or current end,
 		getString = function() return names[current] end,
 		next = function() current = current + 1; return current <= #names end,
 		free = function() end,
@@ -67,6 +68,9 @@ local function startup(options)
 				return nil
 			end
 			local guid = tonumber(name:match("%d+"))
+			for _, row in ipairs(options.rows or {}) do
+				if row.name == name then guid = row.id; break end
+			end
 			return {
 				getGuid = function() return guid end,
 				setStorageValue = function(_, key, value)
@@ -177,6 +181,51 @@ end)
 test("stratified selection remains unchanged", function()
 	local s = startup({ target = 3, pool = 100 })
 	check(s.calls[1].name == "Bot 1" and s.calls[2].name == "Bot 34" and s.calls[3].name == "Bot 67", "selection changed")
+end)
+
+test("nearest levels include every pilot and rank by live level then GUID", function()
+	local rows = {
+		{ id = 500, name = "Outlier", level = 5000 }, { id = 90, name = "Pilot 90", level = 90 },
+		{ id = 13, name = "Pilot 13", level = 13 }, { id = 11, name = "Pilot 11", level = 11 },
+		{ id = 91, name = "Near 91", level = 91 }, { id = 14, name = "Near 14", level = 14 },
+		{ id = 89, name = "Near 89", level = 89 }, { id = 9, name = "Near 9", level = 9 },
+	}
+	local s = startup({ target = 5, rows = rows, references = " 90,13,11 " })
+	local expected = { "Pilot 11", "Pilot 13", "Pilot 90", "Near 14", "Near 89" }
+	check(#s.calls == 5, "target population changed")
+	for i, name in ipairs(expected) do check(s.calls[i].name == name, "incorrect nearest population at " .. i) end
+end)
+
+test("100 nearest bots exclude the remaining high-level population", function()
+	local rows = {}
+	for i = 1, 997 do rows[i] = { id = i, name = "Bot " .. i, level = i <= 100 and (80 + i) or (5000 + i) } end
+	rows[3].level, rows[4].level, rows[45].level = 11, 13, 90
+	local s = startup({ target = 100, rows = rows, references = "45,4,3" })
+	check(#s.calls == 100, "did not load exactly 100")
+	local seen = {}
+	for _, call in ipairs(s.calls) do
+		local id = tonumber(call.name:match("%d+"))
+		check(id <= 100 and not seen[id], "loaded a distant or duplicate bot")
+		seen[id] = true
+	end
+	check(seen[3] and seen[4] and seen[45], "pilot was excluded")
+end)
+
+test("bad or missing references do not fall back to distant bots", function()
+	for _, refs in ipairs({ "1,invalid", "9999" }) do
+		local s = startup({ target = 5, pool = 10, references = refs })
+		check(#s.calls == 0, "invalid reference configuration loaded bots")
+	end
+end)
+
+test("a population too small for its references is rejected", function()
+	local s = startup({ target = 2, pool = 10, references = "1,2,3" })
+	check(#s.calls == 0, "population silently dropped a reference bot")
+end)
+
+test("duplicate references do not consume extra population slots", function()
+	local s = startup({ target = 1, pool = 10, references = "4,4" })
+	check(#s.calls == 1 and s.calls[1].name == "Bot 4", "duplicate references changed the selection")
 end)
 
 print(passed .. " startup tests passed")

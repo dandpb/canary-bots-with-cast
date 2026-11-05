@@ -25,7 +25,7 @@
 	var LAYERS = {};
 	if (CFG.hasOverview && CFG.layers && CFG.layers.overview) {
 		LAYERS.overview = Object.assign({}, CFG.layers.overview, {
-			url: function () { return ASSETS + 'map_big.jpg'; },
+			url: function () { return ASSETS + (CFG.overviewImage || 'map_big.jpg'); },
 			pixelated: false,
 			keep: function () { return true; }          // z-agnostic by design
 		});

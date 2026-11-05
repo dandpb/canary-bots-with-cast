@@ -9,6 +9,40 @@
 -- INACTIVE_STAGING_POS is no longer used as the "home" for inactive bots.
 -- local INACTIVE_STAGING_POS = Position(31970, 32283, 7)
 
+-- Resolve reference GUIDs against current levels once, before scheduling any loads.
+local function selectNearestPopulation(bots, referenceConfig, target)
+	local byGuid, references = {}, {}
+	for _, bot in ipairs(bots) do byGuid[bot.id] = bot end
+	for token in (referenceConfig .. ","):gmatch("(.-),") do
+		local digits = token:match("^%s*(%d+)%s*$")
+		local guid = digits and tonumber(digits)
+		if not guid or not byGuid[guid] then
+			return nil, "reference GUID is invalid or is not an available bot"
+		end
+		references[guid] = byGuid[guid].level
+	end
+	local referenceCount = 0
+	for _ in pairs(references) do referenceCount = referenceCount + 1 end
+	if target < referenceCount then
+		return nil, "botPlayersOnline must include every reference bot"
+	end
+	for _, bot in ipairs(bots) do
+		bot.distance = math.huge
+		for _, level in pairs(references) do
+			bot.distance = math.min(bot.distance, math.abs(bot.level - level))
+		end
+	end
+	table.sort(bots, function(a, b)
+		local aReference, bReference = references[a.id] ~= nil, references[b.id] ~= nil
+		if aReference ~= bReference then return aReference end
+		if a.distance ~= b.distance then return a.distance < b.distance end
+		return a.id < b.id
+	end)
+	local names = {}
+	for i = 1, math.min(target, #bots) do names[i] = bots[i].name end
+	return names
+end
+
 -- Initialize access before an earlier batch can hibernate and leave BotPlayers.
 local botQuestStorages
 local function initializeBotQuestAccess(player)
@@ -281,10 +315,9 @@ function botStartup.onStartup()
 	-- Ensure staging tile exists for brand-new bots that have no prior loginPosition
 	Game.createTile(Position(31970, 32283, 7), true)
 
-	-- Query all bot characters ordered by id ASC (= level ASC, since bots are seeded sorted by level).
-	-- We fetch all then stratify in Lua so any TARGET_ONLINE < total still covers the full
-	-- level/vocation range (otherwise LIMIT N would clip to the lowest-level slice).
-	local query = "SELECT `id`, `name` FROM `players` WHERE `account_id` = " .. BOT_CONFIG.BOT_ACCOUNT_ID
+	-- Fetch the full pool: either rank by current reference levels or stratify
+	-- across IDs so a smaller population still covers the seeded level range.
+	local query = "SELECT `id`, `name`, `level` FROM `players` WHERE `account_id` = " .. BOT_CONFIG.BOT_ACCOUNT_ID
 		.. " AND `deletion` = 0 ORDER BY `id` ASC"
 
 	local resultId = db.storeQuery(query)
@@ -295,9 +328,15 @@ function botStartup.onStartup()
 		return true
 	end
 
-	local allBotNames = {}
+	local referenceConfig = configManager.getString(configKeys.BOT_POPULATION_REFERENCE_BOTS)
+	local nearestMode = referenceConfig:match("%S") ~= nil
+	local allBotNames, bots = {}, {}
 	repeat
-		table.insert(allBotNames, Result.getString(resultId, "name"))
+		local name = Result.getString(resultId, "name")
+		table.insert(allBotNames, name)
+		if nearestMode then
+			table.insert(bots, { id = Result.getNumber(resultId, "id"), name = name, level = Result.getNumber(resultId, "level") })
+		end
 	until not Result.next(resultId)
 	Result.free(resultId)
 
@@ -307,11 +346,20 @@ function botStartup.onStartup()
 	local total = #allBotNames
 	local target = BOT_CONFIG.TARGET_ONLINE
 	local botNames = {}
+	if nearestMode then
+		local selectionError
+		botNames, selectionError = selectNearestPopulation(bots, referenceConfig, target)
+		if not botNames then
+			logger.error("[BotManager] Population selection stopped: " .. selectionError)
+			return true
+		end
+		logger.info("[BotManager] Selected " .. #botNames .. " bots by nearest reference level (references included).")
+	end
 
 	-- 2026-05-28 test override: when target == 1 AND BOT_CONFIG.SINGLE_BOT_NAME is set,
 	-- load that specific bot (useful for isolated cast-watch perf testing on a chosen
 	-- high-level character rather than the lowest-id bot stratification picker would return).
-	if target == 1 and BOT_CONFIG.SINGLE_BOT_NAME and BOT_CONFIG.SINGLE_BOT_NAME ~= "" then
+	if not nearestMode and target == 1 and BOT_CONFIG.SINGLE_BOT_NAME and BOT_CONFIG.SINGLE_BOT_NAME ~= "" then
 		local found = false
 		for _, n in ipairs(allBotNames) do
 			if n == BOT_CONFIG.SINGLE_BOT_NAME then
@@ -326,7 +374,7 @@ function botStartup.onStartup()
 		end
 	end
 
-	if #botNames == 0 then
+	if not nearestMode and #botNames == 0 then
 		if target >= total then
 			botNames = allBotNames
 		else
@@ -363,7 +411,7 @@ function botStartup.onStartup()
 	end
 
 	logger.info("[BotManager] Found " .. total .. " bots in database, loading "
-		.. #botNames .. " (stratified across level/vocation) as INACTIVE...")
+		.. #botNames .. (nearestMode and " (nearest reference levels)" or " (stratified across level/vocation)") .. " as INACTIVE...")
 
 	-- Load consecutive batches of 50. Schedule the next load only after this
 	-- one finishes, giving unobserved bots time to hibernate between batches.
@@ -445,7 +493,7 @@ function botStartup.onStartup()
 							if val == "1" then
 								logger.info("[BotManager] Restore flag set — restoring persisted bot states...")
 								Game.botRestoreStates()
-								-- restoreAllStates() already deletes bot_state_persistence rows internally.
+								-- Restored rows are consumed; tasks for unloaded bots remain persisted.
 								-- Clear the flag so a crash before next graceful shutdown doesn't re-restore stale data.
 								db.botAsyncQuery("UPDATE `bot_startup_config` SET `config_value`='0' WHERE `config_key`='should_restore_states'")
 								logger.info("[BotManager] Bot state restore complete. Restore flag cleared.")
