@@ -138,9 +138,14 @@ void SaveManager::runBotSave(uint32_t guid) {
 			if (work->value.player && !work->value.checkpoint) throw std::runtime_error("bot checkpoint capture failed");
 			if (work->value.checkpoint) {
 				success = IOLoginData::persistPlayerSave(*work->value.checkpoint);
-				if (success) g_dispatcher().addEvent([player = work->value.player, snapshot = work->value.checkpoint] {
-					IOLoginData::acknowledgePlayerSave(player, *snapshot);
-				}, "SaveManager::acknowledgeBotCheckpoint");
+				if (success) threadPool.detach_task([player = work->value.player, snapshot = work->value.checkpoint] {
+					// Dispatcher has slots for its general pool, not these dedicated SQL
+					// workers. Relay only the tiny acknowledgement through a known producer;
+					// never move SQL or mutable character serialization back into that pool.
+					g_dispatcher().addEvent([player, snapshot] {
+						IOLoginData::acknowledgePlayerSave(player, *snapshot);
+					}, "SaveManager::acknowledgeBotCheckpoint");
+				});
 			}
 			else {
 				const auto& pos = work->value.position;
