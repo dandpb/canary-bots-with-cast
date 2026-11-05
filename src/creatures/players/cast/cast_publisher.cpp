@@ -10,8 +10,8 @@
 #include "creatures/players/cast/cast_publisher.hpp"
 
 #include "database/database.hpp"
-#include "database/databasetasks.hpp"
 #include "game/scheduling/dispatcher.hpp"
+#include "lib/thread/thread_pool.hpp"
 
 CastPublisher::CastPublisher(Executor executor, Scheduler scheduler) :
 	executor(std::move(executor)), scheduler(std::move(scheduler)) { }
@@ -19,20 +19,29 @@ CastPublisher::CastPublisher(Executor executor, Scheduler scheduler) :
 CastPublisher &CastPublisher::getInstance() {
 	static CastPublisher instance(
 		[](const Operation &operation, std::function<void(bool)> done) {
-			std::string query;
-			if (operation.publish) {
-				const std::string name = g_database().escapeString(operation.name);
-				query = fmt::format(
-					"INSERT INTO `cast_broadcasters` (`player_id`, `player_name`) VALUES ({}, {}) "
-					"ON DUPLICATE KEY UPDATE `player_name` = {}",
-					operation.guid, name, name
-				);
-			} else {
-				query = fmt::format("DELETE FROM `cast_broadcasters` WHERE `player_id` = {}", operation.guid);
-			}
-			// DatabaseTasks delivers the callback on the dispatcher thread.
-			g_databaseTasks().execute(query, [done = std::move(done)](const DBResult_ptr &, bool success) {
-				done(success);
+			// Neither the shared AI pool nor the dispatcher's DB connection may
+			// wait behind cast I/O. Escaping names also acquires a DB lock.
+			static BS::thread_pool<BS::tp::none> workers(2);
+			workers.detach_task([operation, done = std::move(done)] {
+				static thread_local std::unique_ptr<Database> connection;
+				if (!connection) {
+					auto candidate = std::make_unique<Database>();
+					if (candidate->connect()) connection = std::move(candidate);
+				}
+				bool success = false;
+				if (connection) {
+					std::string query;
+					if (operation.publish) {
+						const auto name = connection->escapeString(operation.name);
+						query = fmt::format(
+							"INSERT INTO `cast_broadcasters` (`player_id`, `player_name`) VALUES ({}, {}) "
+							"ON DUPLICATE KEY UPDATE `player_name` = {}", operation.guid, name, name);
+					} else {
+						query = fmt::format("DELETE FROM `cast_broadcasters` WHERE `player_id` = {}", operation.guid);
+					}
+					success = connection->executeQuery(query);
+				}
+				g_dispatcher().addEvent([done, success] { done(success); }, "CastPublisher::complete");
 			});
 		},
 		[](uint32_t delayMs, std::function<void()> task) {
