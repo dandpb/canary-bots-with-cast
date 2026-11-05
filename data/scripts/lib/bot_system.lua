@@ -1106,6 +1106,35 @@ function BotSystem.executeReload(opts)
 		assert(type(committed) == "table" and committed.ok == true and committed.state_restored == true,
 			type(committed) == "table" and committed.message or "native handoff failed")
 		local roster = assert(committed.bots, "native handoff did not return its roster")
+		-- Build/validate the entire debug selection before disabling the scheduler,
+		-- restarting its tick owner or deactivating any restored character.
+		local selected = {}
+		local count = opts.debugCount
+		if type(count) == "number" and count > 0 then
+			outcome.phase = "select"
+			assert(count % 1 == 0, "debug count must be an integer")
+			local named, found = {}, {}
+			local names = opts.debugBotNames or { opts.debugBotName or BOT_CONFIG.DEBUG_BOT_NAME }
+			for _, name in ipairs(names) do
+				if name and name ~= "" then named[name:lower()] = true end
+			end
+			for _, entry in ipairs(roster) do found[entry.name:lower()] = true end
+			for name in pairs(named) do
+				assert(found[name], "requested debug bot is not registered: " .. name)
+			end
+			table.sort(roster, function(a, b)
+				local pa = named[a.name:lower()] and 0 or (a.active and not a.hibernated and 1 or 2)
+				local pb = named[b.name:lower()] and 0 or (b.active and not b.hibernated and 1 or 2)
+				return pa == pb and a.guid < b.guid or pa < pb
+			end)
+			local picked = 0
+			for _, entry in ipairs(roster) do
+				if picked < count and (next(named) == nil or named[entry.name:lower()]) then
+					selected[entry.guid], picked = true, picked + 1
+				end
+			end
+			assert(picked > 0, "no requested debug bot is registered")
+		end
 		emit(committed.message)
 		local scheduler = not tostring(Game.botCommand("_global", "schedule status")):find("Scheduler: OFF", 1, true)
 		Game.botCommand("_global", "schedule off")
@@ -1143,19 +1172,9 @@ function BotSystem.executeReload(opts)
 					scheduler = true
 					db.query("INSERT INTO bot_startup_config (config_key,config_value) VALUES ('debug_active_count','0') ON DUPLICATE KEY UPDATE config_value='0'")
 				elseif type(count) == "number" and count > 0 then
-					assert(count % 1 == 0, "debug count must be an integer")
-					local named = {}
-					local names = opts.debugBotNames or { opts.debugBotName or BOT_CONFIG.DEBUG_BOT_NAME }
-					for _, name in ipairs(names) do if name and name ~= "" then named[name:lower()] = true end end
-					table.sort(roster, function(a, b)
-						local pa = named[a.name:lower()] and 0 or (a.active and not a.hibernated and 1 or 2)
-						local pb = named[b.name:lower()] and 0 or (b.active and not b.hibernated and 1 or 2)
-						return pa == pb and a.guid < b.guid or pa < pb
-					end)
-					local picked = 0
 					for _, entry in ipairs(roster) do
-						if picked < count and (next(named) == nil or named[entry.name:lower()]) then
-							activate(entry); picked = picked + 1
+						if selected[entry.guid] then
+							activate(entry)
 							Game.botCommand(entry.name, "debug on"); Game.botCommand(entry.name, "pin on")
 							BotDebugPinned[entry.guid] = true
 						else
@@ -1164,7 +1183,6 @@ function BotSystem.executeReload(opts)
 							BotPlayers[entry.guid], BotDebugPinned[entry.guid] = nil, nil
 						end
 					end
-					assert(picked > 0, "no requested debug bot is registered")
 					scheduler = false
 					db.query("INSERT INTO bot_startup_config (config_key,config_value) VALUES ('debug_active_count','" .. count .. "') ON DUPLICATE KEY UPDATE config_value='" .. count .. "'")
 				end

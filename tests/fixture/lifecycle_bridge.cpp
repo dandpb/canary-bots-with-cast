@@ -5,6 +5,7 @@
 #include "creatures/players/player.hpp"
 #include "game/scheduling/save_manager.hpp"
 #include "game/scheduling/dispatcher.hpp"
+#include "utils/tools.hpp"
 extern "C" {
 #include <lua.h>
 #include <lauxlib.h>
@@ -57,6 +58,72 @@ int counts(lua_State* state) {
 	return 2;
 }
 
+// Seed only a state-machine boundary; transitions still run through production tick().
+int reloadProgress(lua_State* state) {
+	auto* current = engine(state);
+	const auto guid = static_cast<uint32_t>(luaL_checkinteger(state, 1));
+	const std::string operation = luaL_checkstring(state, 2);
+	auto* bot = current->getBotState(guid);
+	if (!bot || !bot->getPlayer()) return luaL_error(state, "awake reload fixture required");
+	if (operation == "sourceTown") {
+		// The fixture avatar is stationary; select a town with an authored boat
+		// so startTravel does not choose Dawnport's unrelated recovery route.
+		bot->townId = 8;
+		bot->townName = "Thais";
+	} else if (operation == "preparing" || operation == "resupplying") {
+		bot->state = BotAIState::HUNTING;
+		bot->huntPhase = operation == "preparing" ? HuntPhase::PREPARING : HuntPhase::RESUPPLYING;
+		bot->prepareStartTime = OTSYS_TIME() - 1000;
+		bot->prepareWaitUntil = OTSYS_TIME() + 5000;
+		bot->prepareStep = 1;
+		bot->prepareTarget = bot->getPlayer()->getPosition();
+		bot->prepareHasTarget = false;
+		bot->huntResupplyStart = OTSYS_TIME() - 500;
+		bot->huntResupplyPhase = 1;
+		bot->resupplyRerolled = false;
+	} else if (operation == "unavailableHunt") {
+		bot->state = BotAIState::TRAVELING;
+		bot->huntScriptId = 0xFFFFFFFE;
+		bot->pendingHuntAfterTravel = true;
+		bot->travelPhase = "arrived";
+	} else if (operation == "dwelling") {
+		bot->state = BotAIState::DWELLING;
+		bot->dwellUntil = OTSYS_TIME() + luaL_checkinteger(state, 3);
+		bot->hasWalkTarget = false;
+		bot->currentPOI = nullptr;
+		bot->hasDepotTarget = false;
+		bot->aiPaused = true;
+	} else if (operation == "arrived") {
+		if (bot->state != BotAIState::TRAVELING) return luaL_error(state, "traveling fixture required");
+		bot->travelPhase = "arrived";
+	} else if (operation == "tick") {
+		bot->wakeQuietTicks = 0;
+		bot->tickCounter = 29; // Next tick is due for travel (%2), preparation (%3) and dwell (%5).
+		bot->aiPaused = false;
+		current->tick();
+		bot = current->getBotState(guid);
+		if (!bot) return luaL_error(state, "fixture disappeared during tick");
+		bot->aiPaused = true;
+	} else if (operation != "inspect") return luaL_error(state, "unknown progress fixture operation");
+	lua_newtable(state);
+	lua_pushinteger(state, static_cast<int>(bot->state)); lua_setfield(state, -2, "state");
+	lua_pushboolean(state, bot->pendingHuntAfterTravel); lua_setfield(state, -2, "pendingHuntAfterTravel");
+	lua_pushinteger(state, bot->dwellUntil); lua_setfield(state, -2, "dwellUntil");
+	lua_pushinteger(state, OTSYS_TIME()); lua_setfield(state, -2, "now");
+	lua_pushinteger(state, bot->huntScriptId); lua_setfield(state, -2, "huntId");
+	lua_pushinteger(state, static_cast<int>(bot->huntPhase)); lua_setfield(state, -2, "huntPhase");
+	lua_pushinteger(state, bot->prepareStep); lua_setfield(state, -2, "prepareStep");
+	lua_pushinteger(state, bot->prepareStartTime); lua_setfield(state, -2, "prepareStarted");
+	lua_pushinteger(state, bot->prepareWaitUntil); lua_setfield(state, -2, "prepareWaitUntil");
+	lua_pushinteger(state, bot->huntResupplyStart); lua_setfield(state, -2, "resupplyStarted");
+	lua_pushinteger(state, bot->huntResupplyPhase); lua_setfield(state, -2, "resupplyPhase");
+	lua_pushboolean(state, bot->resupplyRerolled); lua_setfield(state, -2, "resupplyRerolled");
+	lua_pushinteger(state, bot->getPlayer() ? bot->getPlayer()->getID() : 0); lua_setfield(state, -2, "runtimeId");
+	const auto reservations = current->executeCommand("_global", "whohunts");
+	lua_pushlstring(state, reservations.data(), reservations.size()); lua_setfield(state, -2, "reservations");
+	return 1;
+}
+
 int roster(lua_State* state) {
 	const auto snapshot = engine(state)->captureReloadState();
 	lua_newtable(state);
@@ -80,7 +147,7 @@ extern "C" int luaopen_lifecycle_bridge(lua_State* state) {
 	lua_newtable(state);
 	for (const auto& [name, function] : std::initializer_list<std::pair<const char*, lua_CFunction>> {
 		{"setVirtual", setVirtual}, {"unregister", unregister}, {"pending", pending},
-		{"armPause", armPause}, {"counts", counts}, {"roster", roster}}) {
+		{"armPause", armPause}, {"counts", counts}, {"roster", roster}, {"reloadProgress", reloadProgress}}) {
 		lua_pushcfunction(state, function);
 		lua_setfield(state, -2, name);
 	}

@@ -148,6 +148,11 @@ BotReloadSnapshot BotEngine::captureReloadState() const {
 		entry.travelTown = bot.travelDestTownId; entry.deathPause = bot.deathPauseUntil;
 		entry.lastVirtualSave = bot.lastVirtualPosSave;
 		entry.huntStarted = bot.huntStartTime; entry.huntEnds = bot.huntEndTime;
+		entry.pendingHuntAfterTravel = bot.pendingHuntAfterTravel;
+		entry.dwellUntil = bot.dwellUntil;
+		entry.prepareStarted = bot.prepareStartTime; entry.prepareWaitUntil = bot.prepareWaitUntil;
+		entry.prepareStep = bot.prepareStep; entry.prepareTarget = bot.prepareTarget; entry.prepareHasTarget = bot.prepareHasTarget;
+		entry.resupplyStarted = bot.huntResupplyStart; entry.resupplyPhase = bot.huntResupplyPhase; entry.resupplyRerolled = bot.resupplyRerolled;
 		entry.travelPhase = bot.travelPhase; entry.travelBoat = bot.travelBoatPos; entry.travelSource = bot.travelSrcBoatPos;
 		snapshot.entries.push_back(std::move(entry));
 	}
@@ -182,6 +187,7 @@ void BotEngine::restoreReloadState(const BotReloadSnapshot& snapshot) {
 		bot.townId = entry.townId; bot.townName = entry.townName;
 		bot.cachedLevel = entry.level; bot.vocationId = entry.vocation; bot.personalitySeed = entry.personality;
 		bot.state = entry.state; bot.tickCounter = botInitialTickPhase(entry.guid);
+		bot.dwellUntil = entry.dwellUntil; // Same-process deadline; do not restart or expire the wait on reload.
 		bot.deathPauseUntil = entry.deathPause; bot.lastVirtualPosSave = entry.lastVirtualSave;
 		bot.travelDestTownId = entry.travelTown; bot.travelPhase = entry.travelPhase;
 		bot.travelBoatPos = entry.travelBoat; bot.travelSrcBoatPos = entry.travelSource;
@@ -196,6 +202,11 @@ void BotEngine::restoreReloadState(const BotReloadSnapshot& snapshot) {
 			auto script = std::find_if(huntScripts_.begin(), huntScripts_.end(), [&](const auto& value) { return value.id == entry.huntId; });
 			if (script != huntScripts_.end() && !activeHunts_.contains(entry.huntId)) {
 				bot.huntScriptId = entry.huntId; bot.huntPhase = entry.huntPhase;
+				bot.huntTownId = script->townId;
+				bot.pendingHuntAfterTravel = entry.pendingHuntAfterTravel && bot.state == BotAIState::TRAVELING;
+				bot.prepareStartTime = entry.prepareStarted; bot.prepareWaitUntil = entry.prepareWaitUntil;
+				bot.prepareStep = entry.prepareStep; bot.prepareTarget = entry.prepareTarget; bot.prepareHasTarget = entry.prepareHasTarget;
+				bot.huntResupplyStart = entry.resupplyStarted; bot.huntResupplyPhase = entry.resupplyPhase; bot.resupplyRerolled = entry.resupplyRerolled;
 				const auto size = entry.huntPhase == HuntPhase::PATROLLING ? script->patrolWaypoints.size() :
 					(entry.huntPhase == HuntPhase::TRAVEL_TO ? script->travelToWaypoints.size() : script->travelFromWaypoints.size());
 				bot.huntWaypointIdx = size ? std::min(entry.waypoint, size - 1) : 0;
