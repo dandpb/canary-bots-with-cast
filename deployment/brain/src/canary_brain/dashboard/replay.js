@@ -231,7 +231,13 @@ function nearest(track, t) {
 function drawMap(r, t) {
 	const canvas = r.node.querySelector(".map"),
 		c = canvas.getContext("2d"),
-		sample = r.sample && r.sample.t_ms <= t ? r.sample : nearest(r.track, t);
+		tracked = nearest(r.track, t),
+		sample =
+			r.sample &&
+			r.sample.t_ms <= t &&
+			(!tracked || r.sample.t_ms >= tracked.t_ms)
+				? r.sample
+				: tracked;
 	c.clearRect(0, 0, 700, 420);
 	if (!sample) {
 		c.fillStyle = "#9eafb4";
@@ -393,7 +399,7 @@ function frame(now) {
 			$("play").textContent = "▶ Reproduzir";
 		}
 		draw();
-		if (now - inspected > 700) {
+		if (!state.playing || now - inspected > 700) {
 			inspect();
 			inspected = now;
 		}
