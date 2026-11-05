@@ -2,10 +2,14 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from test_gateway import gateway
+from test_protocol import observation
+
 from canary_brain.benchmark import (
     DockerFixture,
     Experiment,
     Participant,
+    campaign_lease,
     demo,
     evaluate_decisions,
     fixture_hash,
@@ -13,10 +17,10 @@ from canary_brain.benchmark import (
     run_campaign,
 )
 from canary_brain.gateway_policy import validate_policy
-from canary_brain.recording import ReplayReader
+from canary_brain.recording import Manifest, RecordingStore, ReplayReader, digest
 from canary_brain.replay import campaign, export_report
+from canary_brain.store import USD, Store, month_now
 from canary_brain.testing import FakeProvider
-from test_protocol import observation
 
 
 def test_failed_docker_diagnostics_are_retained_with_credentials_redacted(
@@ -118,7 +122,7 @@ async def test_live_execution_is_explicit_and_failed_attempts_are_preserved(
     assert starts == ["database", "closed"]
     result = await run_campaign(config, live=True)
     assert result["participants"][0]["statuses"] == ["failed"]
-    assert starts == ["database", "closed"]
+    assert starts == ["database", "closed", "closed"]
 
 
 def test_isolated_compose_has_no_production_ports_or_named_volumes(tmp_path):
@@ -184,3 +188,88 @@ def test_gateway_policy_rejects_hidden_changes_to_benchmark_conditions(change):
     change(config)
     with pytest.raises(ValueError):
         validate_policy(config)
+
+
+def attempt(config, participant="native"):
+    return Manifest(
+        run_id=f"{config.name}:{participant}:0",
+        bot_id=config.bot_id,
+        lineage=f"{config.name}:0",
+        experiment=config.name,
+        participant=participant,
+        initial_sha256=config.expected_initial_sha256,
+        configuration_sha256=digest(config.model_dump(mode="json")),
+    )
+
+
+def test_resume_monthly_budget_only_reserves_attempts_not_already_recorded(tmp_path):
+    config = experiment(tmp_path)
+    credential = tmp_path / "private.env"
+    credential.write_text("LITELLM_API_KEY=qa-only\n")
+    credential.chmod(0o600)
+    config = config.model_copy(
+        update={
+            "participants": [
+                Participant(name="model", kind="litellm", gateway=gateway())
+            ],
+            "repetitions": 2,
+            "run_cap_nanousd": 2 * USD,
+            "campaign_cap_nanousd": 4 * USD,
+            "gateway_credential": credential,
+        }
+    )
+    budget = Store(config.budget_file)
+    budget.reserve("spent", 47 * USD, month_now())
+    budget.settle("spent", 47 * USD)
+    recording = RecordingStore(config.output / "recording.sqlite3")
+    recording.begin(attempt(config, "model"))
+    recording.finish("qa:model:0", "completed")
+    result = preflight(config)
+    assert result["worst_case_nanousd"] == 4 * USD
+    assert result["remaining_nanousd"] == 2 * USD
+
+
+async def test_resume_cleans_the_same_project_before_closing_an_interrupted_attempt(
+    tmp_path, monkeypatch
+):
+    config = experiment(tmp_path)
+    recording = RecordingStore(config.output / "recording.sqlite3")
+    recording.begin(attempt(config))
+    harness = DockerFixture(config, config.output / "native-0", "unused")
+    harness.prepare(config.participants[0])
+    closed = []
+
+    def close(self):
+        assert self.started
+        assert ReplayReader(recording.path).run("qa:native:0")["status"] == "running"
+        closed.append(self.project)
+
+    monkeypatch.setattr(DockerFixture, "close", close)
+    await run_campaign(config, live=True)
+    assert len(closed) == 1
+    assert ReplayReader(recording.path).run("qa:native:0")["status"] == "interrupted"
+
+
+async def test_failed_orphan_cleanup_keeps_attempt_pending_for_next_resume(
+    tmp_path, monkeypatch
+):
+    config = experiment(tmp_path)
+    recording = RecordingStore(config.output / "recording.sqlite3")
+    recording.begin(attempt(config))
+    DockerFixture(config, config.output / "native-0", "unused").prepare(
+        config.participants[0]
+    )
+
+    def fail(self):
+        raise RuntimeError("cleanup unavailable")
+
+    monkeypatch.setattr(DockerFixture, "close", fail)
+    with pytest.raises(RuntimeError, match="cleanup unavailable"):
+        await run_campaign(config, live=True)
+    assert ReplayReader(recording.path).run("qa:native:0")["status"] == "running"
+
+
+async def test_running_orchestrator_cannot_be_mistaken_for_an_orphan(tmp_path):
+    config = experiment(tmp_path)
+    with campaign_lease(config.output), pytest.raises(ValueError, match="orchestrator"):
+        await run_campaign(config, live=True)

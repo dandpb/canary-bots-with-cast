@@ -10,6 +10,8 @@ import secrets
 import shutil
 import subprocess
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal
 
@@ -165,15 +167,34 @@ def preflight(experiment: Experiment) -> dict[str, Any]:
             "planned worst-case run caps exceed the declared campaign budget"
         )
     budget = Store(experiment.budget_file).budget()
+    remaining = liability
+    recording = experiment.output / "recording.sqlite3"
+    if recording.exists():
+        fingerprint = digest(experiment.model_dump(mode="json"))
+        with ReplayReader(recording).snapshot() as reader:
+            for repetition in range(experiment.repetitions):
+                for participant in experiment.participants:
+                    identity = f"{experiment.name}:{participant.name}:{repetition}"
+                    try:
+                        prior = reader.run(identity)
+                    except ValueError:
+                        continue
+                    if prior["manifest"]["configuration_sha256"] != fingerprint:
+                        raise ValueError(
+                            "recorded attempt has a different experiment configuration"
+                        )
+                    if participant.kind == "litellm":
+                        remaining -= experiment.run_cap_nanousd
     if (
         any(p.kind == "litellm" for p in experiment.participants)
-        and liability > budget["available"]
+        and remaining > budget["available"]
     ):
         raise ValueError("campaign does not fit the existing shared monthly budget")
     return {
         "initial_sha256": initial,
         "runs": planned,
         "worst_case_nanousd": liability,
+        "remaining_nanousd": remaining,
         "budget": budget,
         "character": character,
         "limitations": [
@@ -355,12 +376,46 @@ class DockerFixture:
     def close(self) -> None:
         if self.started:
             # Only this newly generated project. Keep its bind data for evidence.
-            self.command("down", "--timeout", "180", timeout=240)
+            self.command("down", "--remove-orphans", "--timeout", "180", timeout=240)
+
+    def recover(self) -> None:
+        # Preparation completes both artifacts before any `up`. On resume the
+        # in-memory started flag is gone, but the deterministic project is ours.
+        if self.compose.is_file() and self.env_file.is_file():
+            self.started = True
+            self.close()
 
 
 async def run_campaign(experiment: Experiment, *, live: bool = False) -> dict[str, Any]:
     if not live:
         raise ValueError("live game/provider execution requires --live")
+    with campaign_lease(experiment.output):
+        return await _run_campaign(experiment)
+
+
+@contextmanager
+def campaign_lease(output: Path) -> Iterator[None]:
+    # A live worker uses Unix sockets. The kernel releases this lease on a crash;
+    # another orchestrator must never mistake a live attempt for an orphan.
+    if os.name != "posix":
+        raise ValueError("live campaigns require Linux/WSL")
+    import fcntl
+
+    output.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor = os.open(
+        output / "runner.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600
+    )
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ValueError("another campaign orchestrator is running") from error
+        yield
+    finally:
+        os.close(descriptor)
+
+
+async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
     check = preflight(experiment)
     experiment.output.mkdir(parents=True, exist_ok=True, mode=0o700)
     plan_file = experiment.output / "experiment.json"
@@ -399,6 +454,14 @@ async def run_campaign(experiment: Experiment, *, live: bool = False) -> dict[st
                 except ValueError:
                     existing = None
                 if existing:
+                    harness = DockerFixture(
+                        experiment,
+                        experiment.output / (participant.name + f"-{repetition}"),
+                        hashlib.sha256(identity.encode()).hexdigest(),
+                    )
+                    # Cleanup must succeed before declaring interruption handled
+                    # or starting another independent attempt.
+                    await asyncio.to_thread(harness.recover)
                     # Never restart a completed attempt, or silently turn an interrupted one into a new trial.
                     if existing["status"] == "running":
                         RecordingStore(recording).finish(identity, "interrupted")
