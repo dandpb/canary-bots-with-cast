@@ -13,7 +13,7 @@ its own game/database/worker from the same fixture and destroyed its stack. All
 four initial hashes were
 `7c512b093ef63870410326d38fd64ec152e2001d37d0ad9e288c4fa9c916d73b`.
 The runtime image was pinned to
-`sha256:a81621f41ddb9fd792c1c87b787f0788c00cb0104678256e91e5c5321e38e220`;
+`sha256:1a5876fe13c2b6da2d1b8d2d3e6de984970eabb509418134182c21ed99baf0b0`;
 game source was `3748d691e6740ae119de9f4be649d92b6f57a0c7`, worker/runner
 source `0da3501a0cd93ad83dd547c0b3ed69e7600902a5`.
 
