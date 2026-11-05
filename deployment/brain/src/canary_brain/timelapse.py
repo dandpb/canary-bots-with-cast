@@ -100,7 +100,7 @@ class Projection:
             return f'<text x="{x}" y="{y}" fill="{color}" font-size="{size}">{escape(content)}</text>'
 
         parts = [
-            f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{HEIGHT}">',
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{HEIGHT}" viewBox="0 0 {WIDTH} {HEIGHT}">',
             '<rect width="1280" height="720" fill="#0b1220"/>',
             '<g font-family="DejaVu Sans,sans-serif">',
             '<rect x="24" y="110" width="862" height="510" rx="16" fill="#132236"/>',
@@ -294,6 +294,10 @@ def export_video(
                     "error",
                     "-framerate",
                     str(fps),
+                    "-threads",
+                    "1",
+                    "-filter_threads",
+                    "1",
                     "-i",
                     str(root / "frame-%06d.svg"),
                     "-frames:v",
