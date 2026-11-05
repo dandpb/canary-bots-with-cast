@@ -43,6 +43,25 @@ end
 
 function qa.run(command)
 	local name = command.name or "Grizzle Alyronia"
+	if command.action == "population" then
+		local start = assert(tonumber(command.start))
+		local limit = assert(tonumber(command.limit))
+		assert(limit > 0 and limit <= 25 and start >= 65000)
+		Game.botCommand("_global", "schedule off")
+		local cursor = db.storeQuery("SELECT id,name FROM players WHERE account_id=65000 AND id>=" .. start .. " ORDER BY id LIMIT " .. limit)
+		local names, last = {}, start
+		if cursor then
+			repeat names[#names + 1] = result.getString(cursor, "name"); last = result.getNumber(cursor, "id") until not result.next(cursor)
+			result.free(cursor)
+		end
+		for _, botName in ipairs(names) do
+			local player = assert(Game.loadBotPlayer(botName))
+			Game.botActivate(player:getGuid())
+			Game.botSetAIPaused(player:getGuid(), true)
+			Game.botHibernate(player:getGuid())
+		end
+		return { count = #names, last = last }
+	end
 	if command.action == "dbprobe" then
 		local cursor = assert(db.storeQuery("SELECT 1 AS value"))
 		result.free(cursor)
