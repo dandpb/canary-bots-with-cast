@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .learning import VERSION, Policy
+from .replay_cli import configure, execute
 from .runtime import Configuration, run
 from .store import Store
 
@@ -13,6 +14,7 @@ from .store import Store
 def main() -> None:
     parser = argparse.ArgumentParser(description="GPT-6 Luna party companion service")
     commands = parser.add_subparsers(dest="command", required=True)
+    configure(commands)
     serve = commands.add_parser("serve")
     serve.add_argument("--config", type=Path, required=True)
     status = commands.add_parser("status")
@@ -33,7 +35,14 @@ def main() -> None:
     seed.add_argument("--month", required=True)
     seed.add_argument("--nanousd", type=int, required=True)
     args = parser.parse_args()
-    if args.command == "serve":
+    if args.command in {"replay", "benchmark"}:
+        try:
+            execute(args)
+        except KeyboardInterrupt:
+            pass
+        except Exception as error:  # noqa: BLE001 - private runtime errors may carry credentials
+            parser.exit(1, f"Replay/benchmark stopped: {type(error).__name__}\n")
+    elif args.command == "serve":
         configuration = Configuration.model_validate_json(args.config.read_text())
         try:
             asyncio.run(run(configuration))

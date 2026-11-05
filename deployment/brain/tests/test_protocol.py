@@ -1,6 +1,7 @@
 import pytest
-from canary_brain.protocol import Observation, intent_for
 from pydantic import ValidationError
+
+from canary_brain.protocol import Observation, intent_for
 
 
 def observation():

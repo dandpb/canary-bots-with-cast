@@ -46,6 +46,13 @@ class Store:
                 );
                 PRAGMA user_version=1;
             """)
+            db.execute("BEGIN IMMEDIATE")
+            columns = {row[1] for row in db.execute("PRAGMA table_info(requests)")}
+            if "run_id" not in columns:
+                db.execute(
+                    "ALTER TABLE requests ADD COLUMN run_id TEXT NOT NULL DEFAULT ''"
+                )
+            db.execute("CREATE INDEX IF NOT EXISTS requests_run ON requests(run_id)")
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
@@ -75,7 +82,14 @@ class Store:
                 self._transaction.connection = None
 
     def reserve(
-        self, request_id: str, amount: int, month: str, endpoint: str = ""
+        self,
+        request_id: str,
+        amount: int,
+        month: str,
+        endpoint: str = "",
+        *,
+        run_id: str = "",
+        run_cap: int | None = None,
     ) -> None:
         if amount <= 0:
             raise ValueError("reservation must be positive")
@@ -89,9 +103,18 @@ class Store:
             ).fetchone()[0]
             if used + amount > self.cap:
                 raise BudgetExceeded("monthly application budget exhausted")
+            if run_cap is not None:
+                if not run_id or run_cap <= 0:
+                    raise ValueError("run budget requires a stable run identity")
+                run_used = db.execute(
+                    "SELECT COALESCE(SUM(COALESCE(spent,reserved)),0) FROM requests WHERE run_id=?",
+                    (run_id,),
+                ).fetchone()[0]
+                if run_used + amount > run_cap:
+                    raise BudgetExceeded("run budget exhausted")
             db.execute(
-                "INSERT INTO requests(id,month,reserved,endpoint) VALUES(?,?,?,?)",
-                (request_id, month, amount, endpoint),
+                "INSERT INTO requests(id,month,reserved,endpoint,run_id) VALUES(?,?,?,?,?)",
+                (request_id, month, amount, endpoint, run_id),
             )
 
     def settle(self, request_id: str, spent: int) -> None:

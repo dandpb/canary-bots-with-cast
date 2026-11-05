@@ -1,0 +1,84 @@
+[
+  {
+    "window_seconds": 30.032756288004748,
+    "worker_cpu_seconds": 0.28,
+    "worker_rss_max_bytes": 70918144,
+    "viewer_requests": 0,
+    "viewer_errors": 0,
+    "name": "oh-1-0-0",
+    "observed_bots": 1,
+    "recording": false,
+    "viewer": false,
+    "bridge_tick_p95_us": 194.557,
+    "bridge_tick_samples": 256,
+    "real_cast_viewers": 0
+  },
+  {
+    "window_seconds": 30.030745094998565,
+    "worker_cpu_seconds": 0.33999999999999997,
+    "worker_rss_max_bytes": 71233536,
+    "viewer_requests": 0,
+    "viewer_errors": 0,
+    "name": "oh-1-1-0-retry",
+    "observed_bots": 1,
+    "recording": {
+      "bytes": 77824,
+      "events": 81,
+      "gaps": 0
+    },
+    "viewer": false,
+    "bridge_tick_p95_us": 156.769,
+    "bridge_tick_samples": 256,
+    "real_cast_viewers": 0
+  },
+  {
+    "window_seconds": 30.036869420000585,
+    "worker_cpu_seconds": 0.69,
+    "worker_rss_max_bytes": 71319552,
+    "viewer_requests": 0,
+    "viewer_errors": 0,
+    "name": "oh-3-0-0",
+    "observed_bots": 3,
+    "recording": false,
+    "viewer": false,
+    "bridge_tick_p95_us": 356.049,
+    "bridge_tick_samples": 256,
+    "real_cast_viewers": 0
+  },
+  {
+    "window_seconds": 30.030921144003514,
+    "worker_cpu_seconds": 0.7899999999999999,
+    "worker_rss_max_bytes": 71684096,
+    "viewer_requests": 0,
+    "viewer_errors": 0,
+    "name": "oh-3-1-0",
+    "observed_bots": 3,
+    "recording": {
+      "bytes": 163840,
+      "events": 235,
+      "gaps": 0
+    },
+    "viewer": false,
+    "bridge_tick_p95_us": 290.846,
+    "bridge_tick_samples": 256,
+    "real_cast_viewers": 0
+  },
+  {
+    "window_seconds": 30.01788011300232,
+    "worker_cpu_seconds": 1.19,
+    "worker_rss_max_bytes": 72273920,
+    "viewer_requests": 145,
+    "viewer_errors": 0,
+    "name": "oh-3-1-1",
+    "observed_bots": 3,
+    "recording": {
+      "bytes": 172032,
+      "events": 241,
+      "gaps": 0
+    },
+    "viewer": true,
+    "bridge_tick_p95_us": 332.036,
+    "bridge_tick_samples": 256,
+    "real_cast_viewers": 0
+  }
+]
