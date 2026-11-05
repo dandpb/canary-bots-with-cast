@@ -8,6 +8,8 @@
  */
 
 #pragma once
+#include "game/movement/position.hpp"
+#include <optional>
 
 #include "io/iologindata.hpp"
 
@@ -16,7 +18,7 @@ class DBInsert;
 
 class IOLoginDataSave : public IOLoginData {
 public:
-	static bool savePlayerFirst(const std::shared_ptr<Player> &player);
+	static bool savePlayerFirst(const std::shared_ptr<Player> &player, std::optional<Position> position = std::nullopt);
 	static bool savePlayerStash(const std::shared_ptr<Player> &player);
 	static bool savePlayerSpells(const std::shared_ptr<Player> &player);
 	static bool savePlayerKills(const std::shared_ptr<Player> &player);
@@ -29,7 +31,7 @@ public:
 	static bool savePlayerTaskHuntingClass(const std::shared_ptr<Player> &player);
 	static bool savePlayerForgeHistory(const std::shared_ptr<Player> &player);
 	static bool savePlayerBosstiary(const std::shared_ptr<Player> &player);
-	static bool savePlayerStorage(const std::shared_ptr<Player> &player);
+	static bool savePlayerStorage(const std::shared_ptr<Player> &player, PlayerStorage::PlayerStorageDelta* persisted = nullptr);
 	/**
 	 * @brief Saves the player's systems state to persistent key-value storage.
 	 *

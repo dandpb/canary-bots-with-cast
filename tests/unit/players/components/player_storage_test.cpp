@@ -12,6 +12,8 @@
 #include "creatures/appearance/outfit/outfit.hpp"
 #include "creatures/players/grouping/familiars.hpp"
 #include "utils/const.hpp"
+#include "creatures/players/components/player_forge_history.hpp"
+#include "database/database.hpp"
 
 #include "lib/logging/in_memory_logger.hpp"
 
@@ -42,6 +44,55 @@ TEST_F(PlayerStorageTest, AddAndGetStorageValue) {
 	EXPECT_EQ(42, delta.upserts.at(key));
 	storage.clearDirty();
 }
+
+TEST_F(PlayerStorageTest, AcknowledgingOldSaveRetainsNewStorageValue) {
+	auto player = std::make_shared<Player>();
+	auto& storage = player->storage();
+	storage.add(50000, 1, true);
+	auto written = storage.delta();
+	storage.add(50000, 2, true);
+	storage.acknowledge(written);
+	EXPECT_EQ(storage.delta().upserts.at(50000), 2);
+	storage.acknowledge(storage.delta());
+	EXPECT_TRUE(storage.delta().upserts.empty());
+}
+
+TEST_F(PlayerStorageTest, CapturingForgeDoesNotAcknowledgeBeforeCommit) {
+	auto player = std::make_shared<Player>();
+	ForgeHistory first;
+	first.createdAt = 100;
+	first.description = "checkpoint fixture";
+	player->forgeHistory().add(first);
+	std::vector<std::string> statements;
+	Database sink;
+	sink.collectStatements(statements);
+	Database::ScopedConnection route(sink);
+	ASSERT_TRUE(player->forgeHistory().save());
+	EXPECT_EQ(player->forgeHistory().pending().additions.size(), 1);
+	ASSERT_EQ(statements.size(), 1);
+	EXPECT_NE(statements.front().find("WHERE NOT EXISTS"), std::string::npos);
+	auto persisted = player->forgeHistory().pending();
+	ForgeHistory second;
+	second.createdAt = 200;
+	player->forgeHistory().add(second);
+	player->forgeHistory().acknowledge(persisted);
+	ASSERT_EQ(player->forgeHistory().pending().additions.size(), 1);
+	EXPECT_EQ(player->forgeHistory().pending().additions.front().createdAt, 200);
+}
+
+TEST_F(PlayerStorageTest, RestoredStorageCannotBeDeletedByAnOldAcknowledgement) {
+	auto player = std::make_shared<Player>();
+	auto& storage = player->storage();
+	storage.add(50000, 1, true);
+	storage.clearDirty();
+	storage.remove(50000);
+	auto written = storage.delta();
+	storage.add(50000, 2, true);
+	storage.acknowledge(written);
+	EXPECT_TRUE(storage.delta().deletions.empty());
+	EXPECT_EQ(storage.delta().upserts.at(50000), 2);
+}
+
 
 TEST_F(PlayerStorageTest, RemoveStorageValue) {
 	auto player = std::make_shared<Player>();

@@ -157,7 +157,7 @@ bool IOLoginDataSave::saveItems(const std::shared_ptr<Player> &player, const Ite
 	return true;
 }
 
-bool IOLoginDataSave::savePlayerFirst(const std::shared_ptr<Player> &player) {
+bool IOLoginDataSave::savePlayerFirst(const std::shared_ptr<Player> &player, std::optional<Position> position) {
 	if (!player) {
 		g_logger().warn("[IOLoginData::savePlayer] - Player nullptr: {}", __FUNCTION__);
 		return false;
@@ -172,17 +172,19 @@ bool IOLoginDataSave::savePlayerFirst(const std::shared_ptr<Player> &player) {
 	Database &db = Database::getInstance();
 
 	std::ostringstream query;
-	query << "SELECT `save` FROM `players` WHERE `id` = " << player->getGUID();
-	DBResult_ptr result = db.storeQuery(query.str());
-	if (!result) {
-		g_logger().warn("[IOLoginData::savePlayer] - Error for select result query from player: {}", player->getName());
-		return false;
-	}
+	if (!db.isCapturingStatements()) {
+		query << "SELECT `save` FROM `players` WHERE `id` = " << player->getGUID();
+		DBResult_ptr result = db.storeQuery(query.str());
+		if (!result) {
+			g_logger().warn("[IOLoginData::savePlayer] - Error for select result query from player: {}", player->getName());
+			return false;
+		}
 
-	if (result->getNumber<uint16_t>("save") == 0) {
-		query.str("");
-		query << "UPDATE `players` SET `lastlogin` = " << player->lastLoginSaved << ", `lastip` = " << player->lastIP << " WHERE `id` = " << player->getGUID();
-		return db.executeQuery(query.str());
+		if (result->getNumber<uint16_t>("save") == 0) {
+			query.str("");
+			query << "UPDATE `players` SET `lastlogin` = " << player->lastLoginSaved << ", `lastip` = " << player->lastIP << " WHERE `id` = " << player->getGUID();
+			return db.executeQuery(query.str());
+		}
 	}
 
 	// First, an UPDATE query to write the player itself
@@ -216,7 +218,7 @@ bool IOLoginDataSave::savePlayerFirst(const std::shared_ptr<Player> &player) {
 		query << "`town_id` = " << player->town->getID() << ",";
 	}
 
-	const Position &loginPosition = player->getLoginPosition();
+	const Position loginPosition = position.value_or(player->getLoginPosition());
 	query << "`posx` = " << loginPosition.getX() << ",";
 	query << "`posy` = " << loginPosition.getY() << ",";
 	query << "`posz` = " << loginPosition.getZ() << ",";
@@ -768,7 +770,7 @@ bool IOLoginDataSave::savePlayerBosstiary(const std::shared_ptr<Player> &player)
 	return true;
 }
 
-bool IOLoginDataSave::savePlayerStorage(const std::shared_ptr<Player> &player) {
+bool IOLoginDataSave::savePlayerStorage(const std::shared_ptr<Player> &player, PlayerStorage::PlayerStorageDelta* persisted) {
 	if (!player) {
 		g_logger().warn("[{}] - Player nullptr", __FUNCTION__);
 		return false;
@@ -788,7 +790,8 @@ bool IOLoginDataSave::savePlayerStorage(const std::shared_ptr<Player> &player) {
 		return false;
 	}
 
-	storage.clearDirty();
+	// Acknowledge this exact written delta only after the enclosing transaction commits.
+	if (persisted) *persisted = std::move(delta);
 	return true;
 }
 
