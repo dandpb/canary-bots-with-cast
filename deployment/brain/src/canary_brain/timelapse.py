@@ -8,7 +8,9 @@ import math
 import os
 import shutil
 import sqlite3
+import stat
 import subprocess
+import sys
 import tempfile
 import time
 from collections import deque
@@ -23,6 +25,92 @@ from .recording import ReplayReader, canonical, digest
 
 WIDTH, HEIGHT = 1280, 720
 MAX_FRAMES = 14400
+RENDERER_VERSION = 2
+
+
+def sync_directory(path: Path) -> None:
+    """Persist directory entries on POSIX; Windows does not expose this API."""
+    if os.name == "posix":
+        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+
+def destination_key(output: Path) -> str:
+    return hashlib.sha256(os.fsencode(os.path.normcase(output.name))).hexdigest()
+
+
+@contextmanager
+def publication_lock(output: Path) -> Iterator[None]:
+    """A persistent lock inode prevents recovery from racing a live publisher."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    path = output.parent / f".canary-publish-{destination_key(output)}.lock"
+    with path.open("a+b") as handle:
+        if sys.platform == "win32":
+            import msvcrt
+
+            if path.stat().st_size == 0:
+                handle.write(b"0")
+                handle.flush()
+            handle.seek(0)
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as error:
+                raise ValueError("video destination has an active publisher") from error
+        else:
+            import fcntl
+
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise ValueError("video destination has an active publisher") from error
+        try:
+            yield
+        finally:
+            if sys.platform == "win32":
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def linked_to(staged: Path, final: Path) -> bool:
+    try:
+        source, destination = staged.lstat(), final.lstat()
+        return stat.S_ISREG(source.st_mode) and os.path.samestat(source, destination)
+    except FileNotFoundError:
+        return False
+
+
+def recover_publications(output: Path) -> None:
+    """Called under the destination lock; journal paths never choose deletions."""
+    sidecar = output.with_suffix(output.suffix + ".json")
+    expected = {"version": 1, "video": output.name, "sidecar": sidecar.name}
+    prefix = f".canary-video-{destination_key(output)}-"
+    for directory in output.parent.glob(prefix + "*"):
+        if directory.is_symlink() or not directory.is_dir():
+            continue
+        journal = directory / "transaction.json"
+        try:
+            transaction = json.loads(journal.read_text())
+        except (FileNotFoundError, ValueError):
+            # Before a durable journal there cannot be any published name.
+            # Leave unrecognised staging alone rather than guessing ownership.
+            continue
+        if transaction not in (expected, {**expected, "committed": True}):
+            continue
+        pairs = [(directory / output.name, output), (directory / sidecar.name, sidecar)]
+        owned = [linked_to(staged, final) for staged, final in pairs]
+        if not transaction.get("committed") and not all(owned):
+            for (staged, final), ours in zip(pairs, owned, strict=True):
+                if ours and linked_to(staged, final):
+                    final.unlink()
+        # Both matching final names are a completed publication; retain them.
+        sync_directory(output.parent)
+        shutil.rmtree(directory)
+        sync_directory(output.parent)
 
 
 @contextmanager
@@ -42,14 +130,27 @@ def materialized_snapshot(reader: ReplayReader) -> Iterator[ReplayReader]:
 
 
 def publish_video(encoded: Path, output: Path, evidence: dict[str, Any]) -> None:
-    """Stage both files, publish complete names exclusively, roll back on error."""
+    """Recover a dead publisher, stage complete files and publish exclusively."""
+    with publication_lock(output):
+        recover_publications(output)
+        _publish_video(encoded, output, evidence)
+
+
+def _publish_video(encoded: Path, output: Path, evidence: dict[str, Any]) -> None:
     sidecar = output.with_suffix(output.suffix + ".json")
-    output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
-        prefix=".canary-video-", dir=output.parent
+        prefix=f".canary-video-{destination_key(output)}-", dir=output.parent
     ) as directory:
         staged_video = Path(directory) / output.name
         staged_sidecar = Path(directory) / sidecar.name
+        with (Path(directory) / "transaction.json").open(
+            "x", encoding="utf-8"
+        ) as journal:
+            journal.write(
+                canonical({"version": 1, "video": output.name, "sidecar": sidecar.name})
+            )
+            journal.flush()
+            os.fsync(journal.fileno())
         with encoded.open("rb") as source, staged_video.open("xb") as target:
             shutil.copyfileobj(source, target)
             target.flush()
@@ -58,6 +159,8 @@ def publish_video(encoded: Path, output: Path, evidence: dict[str, Any]) -> None
             target_manifest.write(canonical(evidence))
             target_manifest.flush()
             os.fsync(target_manifest.fileno())
+        sync_directory(Path(directory))
+        sync_directory(output.parent)
         attempted: list[tuple[Path, Path]] = []
         try:
             for staged, final in ((staged_video, output), (staged_sidecar, sidecar)):
@@ -67,14 +170,55 @@ def publish_video(encoded: Path, output: Path, evidence: dict[str, Any]) -> None
                 # still rolls back the new name; inode checks protect collisions.
                 attempted.append((staged, final))
                 os.link(staged, final)
+                sync_directory(output.parent)
+            # Recovery must not mistake interrupted staging cleanup for a partial
+            # publication after either staged hard link has already been removed.
+            marker = Path(directory) / "committed.tmp"
+            with marker.open("x", encoding="utf-8") as committed:
+                committed.write(
+                    canonical(
+                        {
+                            "version": 1,
+                            "video": output.name,
+                            "sidecar": sidecar.name,
+                            "committed": True,
+                        }
+                    )
+                )
+                committed.flush()
+                os.fsync(committed.fileno())
+            os.replace(marker, Path(directory) / "transaction.json")
+            sync_directory(Path(directory))
         except BaseException:
             for staged, final in reversed(attempted):
                 try:
-                    if os.path.samestat(staged.stat(), final.lstat()):
+                    if linked_to(staged, final):
                         final.unlink()
                 except FileNotFoundError:
                     pass
+            sync_directory(output.parent)
             raise
+    sync_directory(output.parent)
+
+
+def rendered_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Only values read by Projection/apply/frame or map bounds, in stream order."""
+    kind, data = event["kind"], event["data"]
+    if kind == "sample":
+        bot = data["bot"]
+        used = {
+            key: bot[key]
+            for key in ["position", "level", "xp", "health", "mana", "potions"]
+        }
+        used["name"] = bot["name"][:25]
+        payload: dict[str, Any] = {"bot": used}
+    else:
+        payload = {"phase": str(data.get("phase", kind))[:90]}
+        if kind == "request":
+            for key in ["request_id", "spent_nanousd", "reserved_nanousd"]:
+                if key in data:
+                    payload[key] = data[key]
+    return {"t_ms": event["t_ms"], "kind": kind, "data": payload}
 
 
 def clock(milliseconds: int) -> str:
@@ -273,11 +417,33 @@ def export_video(
     start_ms: int = 0,
     end_ms: int | None = None,
 ) -> dict[str, Any]:
+    try:
+        return _export_video(
+            reader, run, output, speed=speed, fps=fps, start_ms=start_ms, end_ms=end_ms
+        )
+    except (TimeoutError, subprocess.SubprocessError) as error:
+        raise ValueError("video export failed: " + str(error)[-1500:]) from error
+
+
+def _export_video(
+    reader: ReplayReader,
+    run: str,
+    output: Path,
+    *,
+    speed: float = 60,
+    fps: int = 24,
+    start_ms: int = 0,
+    end_ms: int | None = None,
+) -> dict[str, Any]:
     if not math.isfinite(speed) or not 1 <= speed <= 10000 or not 1 <= fps <= 60:
         raise ValueError("video speed must be 1..10000 and fps 1..60")
     sidecar = output.with_suffix(output.suffix + ".json")
-    if output.suffix.lower() != ".mp4" or output.exists() or sidecar.exists():
+    if output.suffix.lower() != ".mp4":
         raise ValueError("choose a new .mp4 output and sidecar path")
+    with publication_lock(output):
+        recover_publications(output)
+        if output.exists() or sidecar.exists():
+            raise ValueError("choose a new .mp4 output and sidecar path")
     ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
     if not ffmpeg or not ffprobe:
         raise ValueError(
@@ -295,6 +461,7 @@ def export_video(
             )
         bounds: dict[int, list[int]] = {}
         checksum = hashlib.sha256()
+        used_checksum = hashlib.sha256()
         event_count = 0
         prior: Bot | None = None
 
@@ -313,6 +480,7 @@ def export_video(
                 canonical({k: v for k, v in event.items() if k != "id"}).encode()
                 + b"\n"
             )
+            used_checksum.update(canonical(rendered_event(event)).encode() + b"\n")
             event_count += 1
             if event["kind"] == "sample":
                 bot = Bot.model_validate(event["data"]["bot"])
@@ -406,9 +574,38 @@ def export_video(
                 raise ValueError(
                     "encoded video does not match the requested frames/duration"
                 )
+            manifest = metadata["manifest"]
+            source_evidence = {
+                "manifest": {
+                    "participant": manifest["participant"][:36],
+                    "model": manifest["model"][:36],
+                    "synthetic": manifest["synthetic"],
+                    "sample_ms": manifest["sample_ms"],
+                },
+                "status": metadata["status"],
+                "events_until_ms": end,
+                "rendered_events_sha256": used_checksum.hexdigest(),
+            }
+            render_input = {
+                "renderer_version": RENDERER_VERSION,
+                "source_evidence_sha256": digest(source_evidence),
+                "start_ms": start_ms,
+                "end_ms": end,
+                "fps": fps,
+                "speed": float(speed),
+                "frames": count,
+                "width": WIDTH,
+                "height": HEIGHT,
+                "font": "DejaVu Sans,sans-serif",
+                "codec": {"name": "libx264", "pixel_format": "yuv420p", "crf": 22},
+            }
             evidence = {
-                "version": 1,
+                "version": 2,
                 "kind": "sampled-map-timelapse",
+                "source_evidence": source_evidence,
+                "source_evidence_sha256": digest(source_evidence),
+                "render_input": render_input,
+                "render_input_sha256": digest(render_input),
                 "run": run,
                 "manifest": metadata["manifest"],
                 "source_status": metadata["status"],

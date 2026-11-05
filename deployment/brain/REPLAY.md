@@ -161,12 +161,41 @@ and MP4 hash. The encoded artifact is checked with ffprobe before publication.
 `source_events_sha256` covers the chronological event prefix through `end_ms`;
 `source_snapshot_sha256` covers that digest, its ending time and the captured
 `source_metadata`, including the manifest, status and incomplete flag. It is an
-export-evidence hash, not a checksum of unused events or SQLite file bytes.
+audit hash of the captured export, not a cache/deduplication key. The raw audit
+fields remain available in sidecar version 2; historical sidecars are not changed.
+
+Version 2 adds two explicit identity contracts:
+
+- `source_evidence_sha256 = digest(source_evidence)` covers the displayed manifest
+  labels, synthetic flag, sampling interval, captured status, `end_ms` and the
+  chronological event prefix used by the renderer. Only renderer-consumed event
+  values enter this digest. Row IDs, wall timestamps, event keys, storage segment
+  envelopes, metadata update times and events after `end_ms` do not enter it.
+  Pre-window events remain inputs because they establish trail, state and cost.
+  Actual `kind="segment"` events still enter the hash and mark observation gaps.
+- `render_input_sha256 = digest(render_input)` additionally covers renderer version,
+  source-evidence identity, start/end, FPS, normalized requested speed, frame count,
+  dimensions, font choice and fixed codec settings. It fingerprints these logical
+  render inputs; it is not a claim of identical encoder/font installations.
+  `video_sha256` identifies the actual encoded bytes. Advance `RENDERER_VERSION`
+  when changing projection, frame layout or other rendering behavior.
+
 Output and sidecar paths must be new; existing artifacts are not overwritten.
 Both files are written and flushed in a private staging directory on the output
 filesystem before publication. Each final name is linked exclusively to a complete
 file; a caught write/publication error or interrupt removes only names created by
 that export, allowing a retry. A concurrently created destination is preserved.
+Publication and recovery hold a per-output kernel lock. A durable transaction
+journal identifies staging owned by this publisher. After process death, the next
+export at that path removes incomplete final names only when their inodes match
+the orphan's staged files, then retries. A foreign replacement is preserved; a
+completed pair is retained. A durable committed marker also protects a completed
+pair if the process dies while deleting staging. An active publisher cannot be
+mistaken for an orphan. Lock files are intentionally retained to avoid inode races;
+unrecognised/legacy staging without the journal is left for manual inspection.
+On POSIX, staging and destination directories are fsynced before/after publication;
+the Windows API does not expose the same directory-fsync guarantee. Signal-death
+tests exercise recovery, not physical power-loss/storage-hardware guarantees.
 The output filesystem must support same-filesystem hard links. The two names are
 published sequentially; consume the export only when both MP4 and JSON are present.
 The renderer streams history and bounds its displayed trail to recent samples.
