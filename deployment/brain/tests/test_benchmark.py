@@ -257,6 +257,8 @@ def test_resume_monthly_budget_only_reserves_attempts_not_already_recorded(tmp_p
             "run_cap_nanousd": 2 * USD,
             "campaign_cap_nanousd": 4 * USD,
             "gateway_credential": credential,
+            "game_image": "sha256:" + "a" * 64,
+            "database_image": "mariadb@sha256:" + "b" * 64,
         }
     )
     budget = Store(config.budget_file)

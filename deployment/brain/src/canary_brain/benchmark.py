@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -56,6 +57,7 @@ class Experiment(BaseModel):
     budget_file: Path
     gateway_credential: Path | None = None
     game_image: str = "canary-bots-wsl-game:local"
+    database_image: str = "mariadb:11.4"
     bot_id: int = Field(gt=0)
     participants: list[Participant] = Field(min_length=1, max_length=8)
     seconds: int = Field(default=1800, ge=10, le=86400)
@@ -145,6 +147,11 @@ def preflight(experiment: Experiment) -> dict[str, Any]:
             "character fixture must declare the exact initial saved progression and position"
         )
     if any(p.kind == "litellm" for p in experiment.participants):
+        for image in (experiment.game_image, experiment.database_image):
+            if re.fullmatch(r"(?:sha256:|[^@\s]+@sha256:)[a-f0-9]{64}", image) is None:
+                raise ValueError(
+                    "scored provider campaigns require immutable image IDs for game and database"
+                )
         credential = experiment.gateway_credential
         if (
             credential is None
@@ -317,7 +324,7 @@ class DockerFixture:
             game["volumes"].append(f"{authored}:/canary/data/bot/authored")
         services = {
             "database": {
-                "image": "mariadb:11.4",
+                "image": self.experiment.database_image,
                 "environment": {
                     "MARIADB_DATABASE": "canary",
                     "MARIADB_USER": "canary",
