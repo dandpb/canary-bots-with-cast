@@ -48,7 +48,7 @@ audit hash remains available and is explicitly not a deduplication/cache key.
 From `deployment/brain`, using the existing WSL Python 3.12 environment:
 
 ```sh
-python -m pytest -q --tb=short                    # 110 passed, 36.54 s
+python -m pytest -q --tb=short                    # 111 passed
 python -m ruff check src tests                   # passed
 python -m ruff format --check src tests          # 38 files formatted
 python -m mypy src/canary_brain --no-incremental  # 18 modules passed

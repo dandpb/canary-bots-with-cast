@@ -272,6 +272,7 @@ publish_video(Path(sys.argv[1]), Path(sys.argv[2]), {'fixture': True})
 
 
 @pytest.mark.parametrize("termination", ["SIGKILL", "SIGTERM"])
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-death regression")
 def test_process_death_between_links_is_recovered_before_retry(
     tmp_path, monkeypatch, termination
 ):
@@ -287,20 +288,28 @@ def test_process_death_between_links_is_recovered_before_retry(
     assert not list(tmp_path.glob(".canary-video-*"))
 
 
-def test_orphan_recovery_preserves_a_foreign_replacement(tmp_path, monkeypatch):
+@pytest.mark.parametrize("replacement", ["video", "sidecar"])
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-death regression")
+def test_orphan_recovery_preserves_a_foreign_replacement(
+    tmp_path, monkeypatch, replacement
+):
     video = crash_publisher(tmp_path, "SIGKILL")
-    video.unlink()
-    video.write_bytes(b"foreign replacement")
+    sidecar = video.with_suffix(".mp4.json")
+    target = video if replacement == "video" else sidecar
+    target.unlink(missing_ok=True)
+    target.write_bytes(b"foreign replacement")
     stub_codec(monkeypatch)
     recording = tmp_path / "recording.db"
     run = demo(recording)[0]
     with pytest.raises(ValueError, match="new .mp4"):
         export(ReplayReader(recording), run, video)
-    assert video.read_bytes() == b"foreign replacement"
+    assert target.read_bytes() == b"foreign replacement"
+    assert not (sidecar if replacement == "video" else video).exists()
     assert not list(tmp_path.glob(".canary-video-*"))
 
 
 @pytest.mark.parametrize("after_link", [2, 3])
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-death regression")
 def test_process_death_after_both_links_preserves_the_completed_pair(
     tmp_path, monkeypatch, after_link
 ):
