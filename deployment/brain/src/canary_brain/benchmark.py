@@ -433,11 +433,20 @@ def campaign_signals() -> Iterator[asyncio.Event]:
         stopped.set()
         loop.call_soon_threadsafe(stopped.set)
 
+    installed: list[signal.Signals] = []
+    loop_handlers = getattr(loop, "_signal_handlers", {})
     try:
         for sig in previous:
+            # An existing loop handler already keeps the wakeup FD active.
+            # Preserve it; only remove handlers this context installs.
+            if sig not in loop_handlers:
+                loop.add_signal_handler(sig, stopped.set)
+                installed.append(sig)
             signal.signal(sig, interrupt)
         yield stopped
     finally:
+        for sig in installed:
+            loop.remove_signal_handler(sig)
         for sig, handler in previous.items():
             signal.signal(sig, handler)
 
