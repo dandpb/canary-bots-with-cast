@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from canary_brain.benchmark import DockerFixture, Experiment, Participant, fixture_hash
+from canary_brain.recording import digest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORK = Path(os.environ.get("CANARY_M5_QA", "/tmp/m5q-20261105a"))
@@ -130,6 +131,7 @@ def prepare():
         "botDwellRerollMaxSec": 5,
         "botHuntTimeMinSec": 600,
         "botHuntTimeMaxSec": 600,
+        "botResupplyRehuntPct": 100,
         "loginProtocolPort": 7171,
         "gameProtocolPort": 7172,
         "statusProtocolPort": 7173,
@@ -266,6 +268,15 @@ def run(mode):
             "memory_mode": "frozen",
             "initial_sha256": manifest["fixture_sha256"],
             "source_revision": manifest["source_revision"],
+            "configuration_sha256": digest(
+                {
+                    "image_id": manifest["image_id"],
+                    "initial": manifest["fixture_sha256"],
+                    "overrides": manifest["overrides"],
+                    "worker": manifest["harness_sha256"],
+                    "mode": mode,
+                }
+            ),
         }
     ]
     (directory / "worker.json").write_text(json.dumps(config))
