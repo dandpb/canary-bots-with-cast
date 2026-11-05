@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -38,6 +39,42 @@ def materialized_snapshot(reader: ReplayReader) -> Iterator[ReplayReader]:
         with reader.connect() as source, closing(sqlite3.connect(path)) as target:
             source.backup(target, pages=256, progress=progress)
         yield ReplayReader(path)
+
+
+def publish_video(encoded: Path, output: Path, evidence: dict[str, Any]) -> None:
+    """Stage both files, publish complete names exclusively, roll back on error."""
+    sidecar = output.with_suffix(output.suffix + ".json")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=".canary-video-", dir=output.parent
+    ) as directory:
+        staged_video = Path(directory) / output.name
+        staged_sidecar = Path(directory) / sidecar.name
+        with encoded.open("rb") as source, staged_video.open("xb") as target:
+            shutil.copyfileobj(source, target)
+            target.flush()
+            os.fsync(target.fileno())
+        with staged_sidecar.open("x", encoding="utf-8") as target_manifest:
+            target_manifest.write(canonical(evidence))
+            target_manifest.flush()
+            os.fsync(target_manifest.fileno())
+        attempted: list[tuple[Path, Path]] = []
+        try:
+            for staged, final in ((staged_video, output), (staged_sidecar, sidecar)):
+                # Same-filesystem links expose complete files without overwriting a
+                # destination created after the initial existence check.
+                # Register first so an interrupt immediately after link creation
+                # still rolls back the new name; inode checks protect collisions.
+                attempted.append((staged, final))
+                os.link(staged, final)
+        except BaseException:
+            for staged, final in reversed(attempted):
+                try:
+                    if os.path.samestat(staged.stat(), final.lstat()):
+                        final.unlink()
+                except FileNotFoundError:
+                    pass
+            raise
 
 
 def clock(milliseconds: int) -> str:
@@ -403,9 +440,5 @@ def export_video(
                 evidence["video_sha256"] = hashlib.file_digest(
                     artifact, "sha256"
                 ).hexdigest()
-            output.parent.mkdir(parents=True, exist_ok=True)
-            with encoded.open("rb") as source, output.open("xb") as target:
-                shutil.copyfileobj(source, target)
-            with sidecar.open("x", encoding="utf-8") as manifest_file:
-                manifest_file.write(canonical(evidence))
+            publish_video(encoded, output, evidence)
             return evidence

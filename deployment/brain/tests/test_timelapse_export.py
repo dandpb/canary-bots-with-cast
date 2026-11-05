@@ -130,3 +130,89 @@ def test_materialized_source_stays_consistent_without_locking_live_database(tmp_
         assert list(copy.all_events(run)) == events
         assert copied_path != recording
     assert not copied_path.exists()
+
+
+@pytest.mark.parametrize("failure", ["video_copy", "sidecar_write"])
+def test_failed_publication_leaves_no_final_artifacts_and_can_retry(
+    tmp_path, monkeypatch, failure
+):
+    stub_codec(monkeypatch)
+    recording = tmp_path / "recording.db"
+    run = demo(recording)[0]
+    video = tmp_path / "clip.mp4"
+    sidecar = video.with_suffix(".mp4.json")
+
+    with monkeypatch.context() as fault:
+        if failure == "video_copy":
+
+            def fail_copy(source, target, *args, **kwargs):
+                target.write(source.read(3))
+                raise OSError("injected partial video copy")
+
+            fault.setattr(timelapse.shutil, "copyfileobj", fail_copy)
+        else:
+            original = Path.open
+
+            def fail_sidecar(path, mode="r", *args, **kwargs):
+                if path.name.endswith(".mp4.json") and any(c in mode for c in "wx"):
+                    raise OSError("injected sidecar write failure")
+                return original(path, mode, *args, **kwargs)
+
+            fault.setattr(Path, "open", fail_sidecar)
+        with pytest.raises(OSError, match="injected"):
+            export(ReplayReader(recording), run, video)
+
+    assert not video.exists()
+    assert not sidecar.exists()
+    assert not any(path.name.startswith(".canary-video-") for path in tmp_path.iterdir())
+    evidence = export(ReplayReader(recording), run, video)
+    assert video.read_bytes() == b"fixture-video"
+    assert json.loads(sidecar.read_text()) == evidence
+
+
+@pytest.mark.parametrize("occupied", ["video", "sidecar"])
+def test_publication_collision_preserves_existing_artifact_and_rolls_back_its_own(
+    tmp_path, monkeypatch, occupied
+):
+    stub_codec(monkeypatch)
+    recording = tmp_path / "recording.db"
+    run = demo(recording)[0]
+    video = tmp_path / "clip.mp4"
+    sidecar = video.with_suffix(".mp4.json")
+    target = video if occupied == "video" else sidecar
+    encode = timelapse.subprocess.run
+
+    def race(*args, **kwargs):
+        result = encode(*args, **kwargs)
+        target.write_bytes(b"existing artifact")
+        return result
+
+    monkeypatch.setattr(timelapse.subprocess, "run", race)
+    with pytest.raises(FileExistsError):
+        export(ReplayReader(recording), run, video)
+    assert target.read_bytes() == b"existing artifact"
+    assert not (sidecar if occupied == "video" else video).exists()
+
+
+@pytest.mark.parametrize("interrupted", ["video", "sidecar"])
+def test_interruption_just_after_publishing_a_name_cleans_both_outputs(
+    tmp_path, monkeypatch, interrupted
+):
+    stub_codec(monkeypatch)
+    recording = tmp_path / "recording.db"
+    run = demo(recording)[0]
+    video = tmp_path / "clip.mp4"
+    sidecar = video.with_suffix(".mp4.json")
+    target = video if interrupted == "video" else sidecar
+    link = timelapse.os.link
+
+    def interrupt(source, destination):
+        link(source, destination)
+        if destination == target:
+            raise KeyboardInterrupt("injected publication interrupt")
+
+    monkeypatch.setattr(timelapse.os, "link", interrupt)
+    with pytest.raises(KeyboardInterrupt, match="injected"):
+        export(ReplayReader(recording), run, video)
+    assert not video.exists()
+    assert not sidecar.exists()
