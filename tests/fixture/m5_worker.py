@@ -7,14 +7,21 @@ import time
 from pathlib import Path
 
 from canary_brain import runtime
-from canary_brain.protocol import Observation
-
+from canary_brain.protocol import Observation, Outcome
 from m5_stop import Stops
 
 WORK = Path(sys.argv[1])
 MODE = sys.argv[2]
 assert MODE in {"native", "fake"}
 STOP = Stops(model=MODE == "fake")
+SUPPLY = (
+    json.loads((WORK / "supply-probe.json").read_text())
+    if (WORK / "supply-probe.json").is_file()
+    else None
+)
+if SUPPLY:
+    assert MODE == "fake"
+    STOP.horizon = SUPPLY["horizon"]
 TRACE = WORK / "supervisor.jsonl"
 CURRENT = None
 
@@ -38,6 +45,17 @@ class Controller(BaseController):
 
     async def handle(self, packet):
         await super().handle(packet)
+        if SUPPLY and packet.get("type") == "outcome":
+            outcome = Outcome.model_validate(packet)
+            if (
+                outcome.bot_id == 65001
+                and outcome.status == "completed"
+                and outcome.reason == "supplies_bought_and_party_rejoined"
+                and outcome.metrics.get("supply_delta", 0)
+                >= SUPPLY["minimum_supply_delta"]
+            ):
+                (WORK / "supply-goal.json").write_text(json.dumps(outcome.model_dump()))
+                STOP.reason = "supply_goal_completed"
         if packet.get("type") in {"observation", "telemetry"}:
             if packet.get("type") == "observation":
                 Observation.model_validate(packet)

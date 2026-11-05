@@ -211,6 +211,8 @@ event:interval(1000);event:register()
 def run(mode):
     assert mode in {"native", "fake"}
     manifest = json.loads((WORK / "manifest.json").read_text())
+    supply_only = manifest.get("purpose", "").startswith("supply-only")
+    assert not supply_only or mode == "fake"
     assert fixture_hash(WORK / "fixture", WORLD) == manifest["fixture_sha256"]
     directory = WORK / mode
     experiment = Experiment(
@@ -238,6 +240,9 @@ def run(mode):
     value["mode"] = "shadow" if mode == "native" else "active"
     server.write_text(json.dumps(value))
     compose = json.loads(harness.compose.read_text())
+    compose["services"]["database"]["image"] = manifest.get(
+        "database_image_id"
+    ) or command("docker", "image", "inspect", "mariadb:11.4", "--format", "{{.Id}}")
     compose["networks"] = {"default": {"internal": True}}
     compose["services"]["game"]["volumes"].append(f"{directory}:/m5")
     harness.compose.write_text(json.dumps(compose))
@@ -260,8 +265,8 @@ def run(mode):
             "run_id": WORK.name + ":" + mode,
             "bot_id": 65001,
             "lineage": WORK.name,
-            "experiment": "m5-free-qualification",
-            "scenario": "thais-controlled-hunts",
+            "experiment": "m5-supply-proof" if supply_only else "m5-free-qualification",
+            "scenario": "supply-only" if supply_only else "thais-controlled-hunts",
             "participant": mode,
             "provider": mode,
             "model": "none",
@@ -280,6 +285,10 @@ def run(mode):
         }
     ]
     (directory / "worker.json").write_text(json.dumps(config))
+    if supply_only:
+        (directory / "supply-probe.json").write_text(
+            json.dumps({"minimum_supply_delta": 38, "horizon": 300})
+        )
     worker = None
     result = {
         "mode": mode,
@@ -289,6 +298,22 @@ def run(mode):
     }
     try:
         harness.start_database()
+        (directory / "result.json").write_text(json.dumps(result))
+        if supply_only:
+            from m5_read_state import query
+
+            def supplies():
+                row = (
+                    query(
+                        directory,
+                        "SELECT balance,(SELECT COALESCE(SUM(count),0) FROM player_items WHERE player_id=65001 AND itemtype IN (266,268)) FROM players WHERE id=65001;",
+                    )
+                    .strip()
+                    .split()
+                )
+                return dict(zip(["bank", "potions"], map(int, row), strict=True))
+
+            (directory / "initial-supplies.json").write_text(json.dumps(supplies()))
         result["initial_character"] = harness.character()
         assert result["initial_character"] == json.loads(
             (WORK / "fixture/character.json").read_text()
@@ -319,6 +344,8 @@ def run(mode):
         result["stop"] = json.loads((directory / "stop.json").read_text())
         harness.stop_game()
         result["saved_character"] = harness.character()
+        if supply_only:
+            (directory / "saved-supplies.json").write_text(json.dumps(supplies()))
         result["phase"] = "finished"
     finally:
         if worker and worker.poll() is None:
