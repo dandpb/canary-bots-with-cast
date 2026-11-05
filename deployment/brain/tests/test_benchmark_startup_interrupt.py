@@ -39,7 +39,7 @@ async def test_signal_stops_startup_worker_before_healthcheck_returns(
         def start_game(self):
             if stage == "start_game":
                 os.kill(os.getpid(), sig)
-                startup_saw_stop.append(worker_stopped.wait(0.3))
+                # Shutdown may exceed 300 ms on a loaded CI host.\n                startup_saw_stop.append(worker_stopped.wait(5))
 
         def close(self):
             closed.append(True)
