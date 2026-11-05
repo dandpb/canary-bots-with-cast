@@ -10,9 +10,10 @@ from functools import partial
 from typing import Any, Protocol
 
 from .learning import Policy, episode_reward
-from .protocol import Message, Observation, Outcome, intent_for
+from .protocol import Message, Observation, Outcome, Telemetry, intent_for
 from .provider import Proposal
-from .store import Store
+from .recording import Recorder, attribution, request_context
+from .store import BudgetExceeded, Store
 from .supervision import Supervisor
 
 
@@ -40,6 +41,10 @@ class Controller:
         roster: set[int] | None = None,
         learning: bool = False,
         exploration: float = 0.15,
+        recorder: Recorder | None = None,
+        memory_mode: str = "existing",
+        observe_only: bool = False,
+        require_benchmark_bridge: bool = False,
     ) -> None:
         if mode not in {"shadow", "active"}:
             raise ValueError("controller mode must be shadow or active")
@@ -47,6 +52,13 @@ class Controller:
         self.roster = roster
         self.policy = Policy(store, epsilon=exploration)
         self.learning = learning
+        self.recorder, self.memory_mode, self.observe_only = (
+            recorder,
+            memory_mode,
+            observe_only,
+        )
+        self.require_benchmark_bridge = require_benchmark_bridge
+        self.bridge_ready = not require_benchmark_bridge
         self.latest: dict[int, Observation] = {}
         self.pending: dict[tuple[int, str], asyncio.Task[None]] = {}
         self.seen: deque[str] = deque(maxlen=512)
@@ -54,6 +66,12 @@ class Controller:
         self.leader_message: dict[int, str] = {}
         self.world = ""
         self.supervisor = Supervisor(self)
+
+    def record(
+        self, bot: int, kind: str, data: dict[str, Any], key: str | None = None
+    ) -> None:
+        if self.recorder:
+            self.recorder.emit(bot, kind, data, key)
 
     @staticmethod
     def authority(snapshot: Observation) -> int:
@@ -74,8 +92,16 @@ class Controller:
 
         async def guarded() -> None:
             try:
-                await work()
+                with attribution(bot):
+                    await work()
             except Exception as error:  # noqa: BLE001 - isolate provider faults and redact their messages
+                self.record(
+                    bot,
+                    "lifecycle",
+                    {"phase": "native_fallback", "reason": type(error).__name__},
+                )
+                if isinstance(error, BudgetExceeded):
+                    self.store.put("budget_stop", str(bot), {"at": time.time()})
                 self.store.put(
                     "status",
                     str(bot),
@@ -88,6 +114,20 @@ class Controller:
         self.pending[key] = asyncio.create_task(guarded())
 
     async def handle(self, packet: dict[str, Any]) -> None:
+        if packet.get("type") == "telemetry":
+            telemetry = Telemetry.model_validate(packet)
+            if self.recorder and (
+                self.roster is None or telemetry.bot_id in self.roster
+            ):
+                self.recorder.native_event(
+                    telemetry.bot_id,
+                    telemetry.world,
+                    telemetry.sequence,
+                    telemetry.model_dump(
+                        exclude={"version", "type", "world", "sequence", "bot_id"}
+                    ),
+                )
+            return
         if packet.get("type") == "hello":
             world = packet.get("world")
             if (
@@ -95,12 +135,28 @@ class Controller:
                 and isinstance(world, str)
                 and 0 < len(world) <= 80
             ):
+                if self.require_benchmark_bridge:
+                    capabilities = packet.get("capabilities", {})
+                    self.bridge_ready = (
+                        capabilities.get("lifecycle_telemetry") == 1
+                        and capabilities.get("keep_awake") is True
+                    )
+                    self.store.put("bridge", "benchmark", {"ready": self.bridge_ready})
                 self._world(world)
             return
         if packet.get("type") == "outcome":
-            self._outcome(Outcome.model_validate(packet))
+            outcome = Outcome.model_validate(packet)
+            self.record(
+                outcome.bot_id,
+                "outcome",
+                outcome.model_dump(),
+                f"outcome:{outcome.world}:{outcome.action_id}:{outcome.status}",
+            )
+            self._outcome(outcome)
             return
         snapshot = Observation.model_validate(packet)
+        if not self.bridge_ready:
+            return
         bot = snapshot.bot.id
         if self.roster is not None and bot not in self.roster:
             return
@@ -108,6 +164,14 @@ class Controller:
         if len(self.latest) >= 3 and bot not in self.latest:
             return
         self.latest[bot] = snapshot
+        if self.store.get("run_clock", "start") is None:
+            self.store.put(
+                "run_clock",
+                "start",
+                {"monotonic": time.monotonic(), "wall": time.time()},
+            )
+        if self.recorder:
+            self.recorder.observe(snapshot)
         self.store.put(
             "status",
             str(bot),
@@ -132,8 +196,14 @@ class Controller:
                 "eligible": [item.id for item in snapshot.actions],
             },
         )
+        if self.observe_only:
+            return
         self.supervisor.observe(snapshot)
-        if self.supervisor.managed(bot) and snapshot.autonomous and snapshot.party is None:
+        if (
+            self.supervisor.managed(bot)
+            and snapshot.autonomous
+            and snapshot.party is None
+        ):
             return
         for message in snapshot.messages:
             if self.authorized(snapshot, message.player_id):
@@ -151,6 +221,7 @@ class Controller:
             and snapshot.party is None
             and not snapshot.bot.objective_running
             and len(snapshot.actions) > 1
+            and self.memory_mode != "frozen"
         ):
             profile = self.store.get("profile", str(bot)) or {}
             if time.time() - profile.get("last_autonomous_plan", 0) >= 600:
@@ -237,6 +308,18 @@ class Controller:
         *,
         operator: bool = False,
     ) -> str | None:
+        self.record(
+            snapshot.bot.id,
+            "proposal",
+            {
+                "decision_id": request_context.get()[1],
+                "candidate": candidate,
+                "source": "operator" if operator else "controller",
+                "selection": selection,
+                "observation_sequence": snapshot.sequence,
+                "world": snapshot.world,
+            },
+        )
         if candidate == "continue":
             return None
         if snapshot.autonomous and snapshot.party is None:
@@ -247,6 +330,17 @@ class Controller:
         if len(self.store.records("pending", 25)) >= 24:
             return None
         intent = intent_for(snapshot, candidate, uuid.uuid4().hex)
+        self.record(
+            snapshot.bot.id,
+            "intent",
+            {
+                **intent.model_dump(),
+                "decision_id": request_context.get()[1],
+                "mode": self.mode,
+                "operator": operator,
+            },
+            "intent:" + intent.action_id,
+        )
         episode = {
             "bot": snapshot.bot.id,
             "world": snapshot.world,
@@ -378,7 +472,30 @@ class Controller:
                     ]
                 }
             )
+        self.record(
+            snapshot.bot.id,
+            "decision",
+            {
+                "decision_id": request_context.get()[1],
+                "phase": "requested",
+                "observation": snapshot.model_dump(exclude={"lease", "messages"}),
+                "memory": memory,
+            },
+        )
         selected = await self.model.decide(snapshot, memory)
+        proposed = selected
+        self.record(
+            snapshot.bot.id,
+            "decision",
+            {
+                "decision_id": request_context.get()[1],
+                "phase": "model_proposed",
+                "candidate": proposed,
+                "source": "single_candidate_rule"
+                if len(snapshot.actions) == 1
+                else "model",
+            },
+        )
         latest = self.latest.get(snapshot.bot.id)
         if (
             latest is None
@@ -405,7 +522,11 @@ class Controller:
         }:
             return
         selection = None
-        if (self.learning or snapshot.autonomous) and selected.startswith("hunt:"):
+        if (
+            self.memory_mode != "frozen"
+            and (self.learning or snapshot.autonomous)
+            and selected.startswith("hunt:")
+        ):
             alternatives = [
                 item.id for item in snapshot.actions if item.action == "hunt"
             ]
@@ -419,6 +540,22 @@ class Controller:
                 "version": chosen.policy_version,
                 "offered": alternatives,
             }
+        self.record(
+            snapshot.bot.id,
+            "decision",
+            {
+                "decision_id": request_context.get()[1],
+                "phase": "selected",
+                "proposed": proposed,
+                "selected": selected,
+                "selection": selection,
+                "source": "policy"
+                if proposed != selected
+                else "single_candidate_rule"
+                if len(snapshot.actions) == 1
+                else "model",
+            },
+        )
         # The original tactical deadline remains authoritative despite newer observations.
         action_id = self._apply(snapshot, selected, selection)
         if action_id is not None:
@@ -510,8 +647,11 @@ class Controller:
         ][:2]
         try:
             proposal = await self.model.converse(
-                snapshot, message.text, authorized,
-                history + facts + hypotheses + self.supervisor.advice(bot), deep
+                snapshot,
+                message.text,
+                authorized,
+                history + facts + hypotheses + self.supervisor.advice(bot),
+                deep,
             )
         except Exception:
             if self.mode == "active" and snapshot.mode == "active":
@@ -610,6 +750,7 @@ class Controller:
         if (
             terminal
             and reward is not None
+            and self.memory_mode != "frozen"
             and (
                 str(episode["candidate"]).startswith("hunt:")
                 or episode["candidate"] == "resupply"
@@ -644,7 +785,11 @@ class Controller:
                     plan["outcomes"].append(outcome.model_dump())
                     plan["phase"] = "ready" if plan["failures"] < 2 else "stopped"
                     self.store.put("plan", str(outcome.bot_id), plan)
-            if episode.get("tool_call") and hasattr(self.model, "reflect"):
+            if (
+                self.memory_mode != "frozen"
+                and episode.get("tool_call")
+                and hasattr(self.model, "reflect")
+            ):
                 self._spawn(
                     outcome.bot_id,
                     "reflection",
