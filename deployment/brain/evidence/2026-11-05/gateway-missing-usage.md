@@ -72,3 +72,20 @@ source files. `git diff --check` passed. The exercised pinned image ID was
 `sha256:a0e9d7da7b36ff52f325f1f715123e77de91fa3b6676402c06f34f9312eccf62`.
 No native build is needed for this Python-only change. M5 remains blocked pending
 review/integration and the separate fixture, contract and paid-approval gates.
+
+## Positive-usage follow-up after merge
+
+The fix was integrated by Socrates in main `a2bbf1c0d2ead30eac28659305445b58a3de9a24`.
+The HTTP smoke now explicitly asserts that the known fixture produces input 10,
+output 2, and **14 nanodollars** (`10 * 1 + 2 * 2`) before either fault scenario.
+It also asserts final settled spend is still 14 after missing usage and the 500.
+These assertions run in both native Responses passthrough and Responses-to-chat
+translation; a normalized positive-count or pricing regression must fail rather
+than merely print its spend. The broader real-model accounting qualification is
+still pending and no paid execution is authorized by this follow-up.
+
+Both HTTP commands passed with those explicit assertions: each returned
+`upstream_calls=3`, `settled_nanousd=14`, and `unknown_liability_retained=true`.
+The targeted gateway suite passed **8/8 in 1.04 s**; Ruff lint/format for the
+affected smoke and `git diff --check` passed. The full 142-test result above belongs
+to the original fix; it was not rerun for this assertions/documentation follow-up.
