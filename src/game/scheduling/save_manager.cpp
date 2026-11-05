@@ -12,6 +12,7 @@
 #include "config/configmanager.hpp"
 #include "creatures/players/grouping/guild.hpp"
 #include "game/game.hpp"
+#include "creatures/players/bot/bot_engine.hpp"
 #include "io/ioguild.hpp"
 #include "io/iologindata.hpp"
 #include "kv/kv.hpp"
@@ -19,29 +20,15 @@
 #include "creatures/players/player.hpp"
 #include "utils/tools.hpp"
 
-namespace {
-	struct PendingBotSave {
-		std::shared_ptr<Player> player;
-		std::chrono::steady_clock::time_point scheduledAt;
-	};
-	// Owned by the save manager, so pending state survives bot-engine reloads.
-	std::mutex pendingBotMutex;
-	std::unordered_map<uint32_t, PendingBotSave> pendingBotPlayers;
-} // namespace
-
 std::shared_ptr<Player> SaveManager::getPendingBotPlayer(uint32_t guid) const {
-	std::lock_guard lock(pendingBotMutex);
-	const auto it = pendingBotPlayers.find(guid);
-	return it == pendingBotPlayers.end() ? nullptr : it->second.player;
+	auto pending = botSaves_.find(guid);
+	return pending ? pending->player : nullptr;
 }
 
 std::shared_ptr<Player> SaveManager::getPendingBotPlayer(const std::string &name) const {
-	const auto normalizedName = asLowerCaseString(name);
-	std::lock_guard lock(pendingBotMutex);
-	for (const auto &[_, pending] : pendingBotPlayers) {
-		if (asLowerCaseString(pending.player->getName()) == normalizedName) {
-			return pending.player;
-		}
+	const auto normalized = asLowerCaseString(name);
+	for (const auto& pending : botSaves_.snapshot()) {
+		if (pending.player && asLowerCaseString(pending.player->getName()) == normalized) return pending.player;
 	}
 	return nullptr;
 }
@@ -53,88 +40,100 @@ SaveManager &SaveManager::getInstance() {
 	return inject<SaveManager>();
 }
 
-void SaveManager::saveAll() {
-	Benchmark bm_saveAll;
-	logger.info("Saving server...");
-	Benchmark bm_players;
-	std::unordered_map<uint32_t, std::shared_ptr<Player>> players;
-	for (const auto &[_, player] : game.getPlayers()) {
-		players[player->getGUID()] = player;
+SaveManager::SaveBatch SaveManager::captureBatch() {
+	Benchmark captureTimer;
+	// Capture strong references and position policy on the dispatcher, before any SQL.
+	std::unordered_map<uint32_t, BotSave> captured;
+	for (const auto& [_, player] : game.getPlayers()) {
+		captured[player->getGUID()] = {player->getGUID(), player, player->getPosition()};
 	}
-	{
-		std::lock_guard lock(pendingBotMutex);
-		for (const auto &[guid, pending] : pendingBotPlayers) {
-			players.try_emplace(guid, pending.player);
+	if (auto* engine = getBotEngineIfLoaded()) {
+		for (const auto& snapshot : engine->capturePersistentPlayers()) {
+			const auto guid = snapshot.player->getGUID();
+			captured[guid] = {guid, snapshot.player, snapshot.loginPosition};
 		}
 	}
-	std::vector<std::pair<std::future<void>, std::string>> pending;
-	const auto asyncSave = g_configManager().getBoolean(TOGGLE_SAVE_ASYNC);
-	logger.info("Saving {} players... (Async: {})", players.size(), asyncSave ? "Enabled" : "Disabled");
-	std::vector<std::future<void>> futures;
-	for (const auto &[_, player] : players) {
-		player->loginPosition = player->getPosition();
-
-		auto fut = threadPool.submit_task([this, player] {
-			doSavePlayer(player);
-		});
-		pending.emplace_back(std::move(fut), player->getName());
+	for (const auto& pending : botSaves_.snapshot()) captured.try_emplace(pending.guid, pending);
+	SaveBatch batch;
+	for (const auto& [guid, save] : captured) {
+		if (!save.player || save.player->isBotPlayer()) {
+			batch.players.emplace_back(enqueueBot(save), save.player ? save.player->getName() : std::to_string(guid));
+		} else {
+			save.player->loginPosition = save.position;
+			batch.players.emplace_back(threadPool.submit_task([this, player = save.player] {
+				return doSavePlayer(player);
+			}).share(), save.player->getName());
+		}
 	}
+	for (const auto& [_, guild] : game.getGuilds()) batch.guilds.push_back(guild);
+	logger.info("Captured {} players for server save in {} milliseconds", captured.size(), captureTimer.duration());
+	return batch;
+}
 
-	for (auto &[future, name] : pending) {
+void SaveManager::saveBatch(SaveBatch batch) {
+	Benchmark timer;
+	size_t failures = 0;
+	for (auto& [future, name] : batch.players) {
 		try {
-			future.get();
-		} catch (const std::exception &e) {
-			logger.error("Failed to save player {}: {}", name, e.what());
+			if (!future.get()) { ++failures; logger.error("Failed to durably save player {}", name); }
+		} catch (const std::exception& error) {
+			++failures;
+			logger.error("Failed to durably save player {}: {}", name, error.what());
 		}
 	}
-
-	double duration_players = bm_players.duration();
-	if (duration_players > 1000.0) {
-		logger.info("Players saved in {:.2f} seconds.", duration_players / 1000.0);
-	} else {
-		logger.info("Players saved in {} milliseconds.", duration_players);
-	}
-
-	Benchmark bm_guilds;
-	const auto &guilds = game.getGuilds();
-	for (const auto &[_, guild] : guilds) {
-		saveGuild(guild);
-	}
-	double duration_guilds = bm_guilds.duration();
-	if (duration_guilds > 1000.0) {
-		logger.info("Guilds saved in {:.2f} seconds.", duration_guilds / 1000.0);
-	} else {
-		logger.info("Guilds saved in {} milliseconds.", duration_guilds);
-	}
-
+	for (const auto& guild : batch.guilds) saveGuild(guild);
 	saveMap();
 	saveKV();
+	if (failures) logger.error("Server save completed with {} player failures; bot state remains pending", failures);
+	else logger.info("Server saved {} players in {} milliseconds", batch.players.size(), timer.duration());
+}
 
-	double duration_saveAll = bm_saveAll.duration();
-	if (duration_saveAll > 1000.0) {
-		logger.info("Server saved in {:.2f} seconds.", duration_saveAll / 1000.0);
-	} else {
-		logger.info("Server saved in {} milliseconds.", duration_saveAll);
+void SaveManager::saveAll() { saveBatch(captureBatch()); }
+
+void SaveManager::scheduleAll() {
+	// Dependencies are queued before the batch waiter on the FIFO worker pool.
+	// Neither the waiter nor a save worker consults the unloadable bot engine.
+	auto batch = captureBatch();
+	if (!g_configManager().getBoolean(TOGGLE_SAVE_ASYNC)) { saveBatch(std::move(batch)); return; }
+	threadPool.detach_task([this, batch = std::move(batch)]() mutable { saveBatch(std::move(batch)); });
+}
+
+std::shared_future<bool> SaveManager::enqueueBot(BotSave save) {
+	const auto guid = save.guid;
+	auto requested = botSaves_.request(guid, std::move(save));
+	if (requested.start) botSavePool_.detach_task([this, guid] { runBotSave(guid); });
+	return requested.completed;
+}
+
+void SaveManager::runBotSave(uint32_t guid) {
+	// Keep a transaction off the dispatcher's main DB connection. TLS belongs
+	// to the executable and cannot retain an unloaded engine's code.
+	thread_local std::unique_ptr<Database> connection;
+	while (auto work = botSaves_.take(guid)) {
+		bool success = false;
+		try {
+			if (!connection) {
+				auto candidate = std::make_unique<Database>();
+				if (!candidate->connect()) throw std::runtime_error("bot save DB connection unavailable");
+				connection = std::move(candidate);
+			}
+			Database::ScopedConnection route(*connection);
+			if (work->value.player) success = doSavePlayer(work->value.player, work->value.position);
+			else {
+				const auto& pos = work->value.position;
+				success = Database::getInstance().executeQuery(fmt::format(
+					"UPDATE `players` SET `posx`={}, `posy`={}, `posz`={} WHERE `id`={}", pos.x, pos.y, pos.z, guid));
+			}
+		} catch (const std::exception& error) {
+			logger.error("Bot save failed for {}: {}", guid, error.what());
+		} catch (...) { logger.error("Bot save failed for {} with an unknown exception", guid); }
+		if (!botSaves_.finish(guid, work->generation, success)) break;
 	}
 }
 
-void SaveManager::scheduleAll() {
-	auto scheduledAt = std::chrono::steady_clock::now();
-	m_scheduledAt = scheduledAt;
-
-	// Disable save async if the config is set to false
-	if (!g_configManager().getBoolean(TOGGLE_SAVE_ASYNC)) {
-		saveAll();
-		return;
-	}
-
-	threadPool.detach_task([this, scheduledAt]() {
-		if (m_scheduledAt.load() != scheduledAt) {
-			logger.warn("Skipping save for server because another save has been scheduled.");
-			return;
-		}
-		saveAll();
-	});
+void SaveManager::saveBotPosition(uint32_t guid, const Position& position) {
+	// Dispatcher only. Preserve a pending full character save when updating position.
+	enqueueBot({guid, getPendingBotPlayer(guid), position});
 }
 
 void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
@@ -144,21 +143,13 @@ void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
 		return;
 	}
 
-	// PERF_INVESTIGATION_2026-05-24 Tier 1-F + 1-G: bot players ALWAYS go through
-	// the async save path regardless of toggleSaveAsync config. The bot save chain
-	// is ~150 sync DB queries per bot (BEGIN + UPDATE players + many DELETE/INSERT
-	// for player_stash/spells/kills/charms/items/rewards/prey/taskhunt/bosstiary/
-	// storage). During bot load (500 bots starting) AND during hibernate sweeps
-	// (player walks away from a populated area), firing this chain synchronously
-	// on the dispatcher thread starves all globalevents and stalls the dispatcher
-	// for minutes (TF1/TF4 in PERF_INVESTIGATION_2026-05-24.md). Bot data loss on
-	// server crash is acceptable: bot population is re-derivable from the
-	// generator script + bot_state_persistence table.
-	// Real-player save path is unchanged (still respects toggleSaveAsync config).
-	const bool forceBotAsync = playerToSave->isBotPlayer();
+	if (playerToSave->isBotPlayer()) {
+		enqueueBot({playerToSave->getGUID(), playerToSave, playerToSave->getLoginPosition()});
+		return;
+	}
 
 	// Disable save async if the config is set to false
-	if (!g_configManager().getBoolean(TOGGLE_SAVE_ASYNC) && !forceBotAsync) {
+	if (!g_configManager().getBoolean(TOGGLE_SAVE_ASYNC)) {
 		if (g_game().getGameState() == GAME_STATE_NORMAL) {
 			logger.debug("Saving player {}.", playerToSave->getName());
 		}
@@ -169,15 +160,8 @@ void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
 	logger.debug("Scheduling player {} for saving.", playerToSave->getName());
 	auto scheduledAt = std::chrono::steady_clock::now();
 	m_playerMap[playerToSave->getGUID()] = scheduledAt;
-	// Bot deactivation can release the last game reference before this task runs.
-	// Retain bots until their queued save completes, including progression saves.
-	auto botToSave = forceBotAsync ? playerToSave : nullptr;
-	if (botToSave) {
-		std::lock_guard lock(pendingBotMutex);
-		pendingBotPlayers[botToSave->getGUID()] = { botToSave, scheduledAt };
-	}
-	threadPool.detach_task([this, playerPtr, botToSave, scheduledAt]() {
-		auto player = botToSave ? botToSave : playerPtr.lock();
+	threadPool.detach_task([this, playerPtr, scheduledAt]() {
+		auto player = playerPtr.lock();
 		if (!player) {
 			logger.debug("Skipping save for player because player is no longer online.");
 			return;
@@ -190,7 +174,7 @@ void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
 	});
 }
 
-bool SaveManager::doSavePlayer(std::shared_ptr<Player> player) {
+bool SaveManager::doSavePlayer(std::shared_ptr<Player> player, std::optional<Position> position) {
 	if (!player) {
 		logger.debug("Failed to save player because player is null.");
 		return false;
@@ -203,23 +187,7 @@ bool SaveManager::doSavePlayer(std::shared_ptr<Player> player) {
 		logger.debug("Saving player {}.", player->getName());
 	}
 
-	const auto experience = player->getExperience();
-	std::optional<PendingBotSave> pending;
-	if (player->isBotPlayer()) {
-		std::lock_guard pendingLock(pendingBotMutex);
-		const auto it = pendingBotPlayers.find(player->getGUID());
-		if (it != pendingBotPlayers.end()) {
-			pending = it->second;
-		}
-	}
-	bool saveSuccess = IOLoginData::savePlayer(player);
-	if (saveSuccess && pending && player->getExperience() == experience) {
-		std::lock_guard pendingLock(pendingBotMutex);
-		const auto it = pendingBotPlayers.find(player->getGUID());
-		if (it != pendingBotPlayers.end() && it->second.player == player && it->second.scheduledAt == pending->scheduledAt) {
-			pendingBotPlayers.erase(it);
-		}
-	}
+	bool saveSuccess = IOLoginData::savePlayer(player, position);
 	if (!saveSuccess) {
 		logger.error("Failed to save player {}.", player->getName());
 	}
@@ -229,18 +197,17 @@ bool SaveManager::doSavePlayer(std::shared_ptr<Player> player) {
 	return saveSuccess;
 }
 
-bool SaveManager::savePlayer(std::shared_ptr<Player> player) {
+bool SaveManager::savePlayer(std::shared_ptr<Player> player, std::optional<Position> position) {
+	if (!player) return false;
+	if (player->isBotPlayer()) {
+		enqueueBot({player->getGUID(), player, position.value_or(player->getLoginPosition())});
+		return true; // queued, never an acknowledgement of SQL durability
+	}
 	if (player->isOnline() && g_game().getGameState() != GAME_STATE_SHUTDOWN) {
 		schedulePlayer(player);
 		return true;
 	}
-	// PERF Tier 1-F+1-G: route offline bot saves to async too (some bot code paths
-	// call savePlayer after player->setOnline(false)). Avoids sync 150-query stall
-	// on the dispatcher even in the rare offline-bot save case.
-	if (player->isBotPlayer() && g_game().getGameState() != GAME_STATE_SHUTDOWN) {
-		schedulePlayer(player);
-		return true;
-	}
+
 	return doSavePlayer(player);
 }
 

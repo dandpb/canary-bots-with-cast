@@ -482,10 +482,16 @@ struct BotState {
 	}
 };
 
+struct BotPlayerSnapshot {
+	std::shared_ptr<Player> player;
+	Position loginPosition;
+};
+
 // Abstract interface for the bot engine — implemented in libbot_engine.so
 class IBotEngine {
 public:
 	virtual ~IBotEngine() = default;
+	virtual std::vector<BotPlayerSnapshot> capturePersistentPlayers() const = 0;
 
 	// Lifecycle
 	virtual void registerBot(const std::shared_ptr<Player>& player) = 0;

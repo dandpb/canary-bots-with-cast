@@ -86,6 +86,14 @@ int64_t DbDispatcherStats::fetchResetSyncDbUs() {
 	return s_dispatcherSyncDbUs.exchange(0, std::memory_order_relaxed);
 }
 
+namespace { thread_local Database* scopedConnection_ = nullptr; }
+
+Database::ScopedConnection::ScopedConnection(Database& connection) : previous_(scopedConnection_) {
+	scopedConnection_ = &connection;
+}
+
+Database::ScopedConnection::~ScopedConnection() { scopedConnection_ = previous_; }
+
 Database::~Database() {
 	if (handle != nullptr) {
 		mysql_close(handle);
@@ -93,6 +101,7 @@ Database::~Database() {
 }
 
 Database &Database::getInstance() {
+	if (scopedConnection_) return *scopedConnection_;
 	return inject<Database>();
 }
 

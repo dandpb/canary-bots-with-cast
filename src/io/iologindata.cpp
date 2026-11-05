@@ -191,16 +191,19 @@ void IOLoginData::loadOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &pla
 	IOLoginDataLoad::loadPlayerUpdateSystem(player);
 }
 
-bool IOLoginData::savePlayer(const std::shared_ptr<Player> &player) {
+bool IOLoginData::savePlayer(const std::shared_ptr<Player> &player, std::optional<Position> position) {
+	if (!player) return false;
+	PlayerStorage::PlayerStorageDelta storageDelta;
 	try {
-		bool success = DBTransaction::executeWithinTransaction([player]() {
-			return savePlayerGuard(player);
+		bool success = DBTransaction::executeWithinTransaction([player, position, &storageDelta]() {
+			return savePlayerGuard(player, position, &storageDelta);
 		});
 
 		if (!success) {
 			g_logger().error("[{}] Error occurred saving player", __FUNCTION__);
 		}
 
+		if (success && !player->isOffline()) player->storage().acknowledge(storageDelta);
 		return success;
 	} catch (const DatabaseException &e) {
 		g_logger().error("[{}] Exception occurred: {}", __FUNCTION__, e.what());
@@ -209,12 +212,12 @@ bool IOLoginData::savePlayer(const std::shared_ptr<Player> &player) {
 	return false;
 }
 
-bool IOLoginData::savePlayerGuard(const std::shared_ptr<Player> &player) {
+bool IOLoginData::savePlayerGuard(const std::shared_ptr<Player> &player, std::optional<Position> position, PlayerStorage::PlayerStorageDelta* persisted) {
 	if (!player) {
 		throw DatabaseException("Player nullptr in function: " + std::string(__FUNCTION__));
 	}
 
-	if (!IOLoginDataSave::savePlayerFirst(player)) {
+	if (!IOLoginDataSave::savePlayerFirst(player, position)) {
 		throw DatabaseException("[" + std::string(__FUNCTION__) + "] - Failed to save player first: " + player->getName());
 	}
 
@@ -260,12 +263,12 @@ bool IOLoginData::savePlayerGuard(const std::shared_ptr<Player> &player) {
 
 	// Saves data components that are only valid if the player is online.
 	// Skips execution entirely if the player is offline to avoid overwriting unloaded data.
-	saveOnlyDataForOnlinePlayer(player);
+	saveOnlyDataForOnlinePlayer(player, persisted);
 
 	return true;
 }
 
-void IOLoginData::saveOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &player) {
+void IOLoginData::saveOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &player, PlayerStorage::PlayerStorageDelta* persisted) {
 	if (player->isOffline()) {
 		return;
 	}
@@ -287,7 +290,7 @@ void IOLoginData::saveOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &pla
 	player->wheel().saveKVModGrades();
 	player->wheel().saveKVScrolls();
 
-	if (!IOLoginDataSave::savePlayerStorage(player)) {
+	if (!IOLoginDataSave::savePlayerStorage(player, persisted)) {
 		throw DatabaseException("[IOLoginDataSave::savePlayerStorage] - Failed to save player storage: " + player->getName());
 	}
 }

@@ -44,7 +44,7 @@ target_sources(
 if(UNIX)
     # Reject incompatible shared layouts before invoking the library factory.
     set(BOT_ABI_INPUT "contract=1;${CMAKE_CXX_COMPILER_ID};${CMAKE_CXX_COMPILER_VERSION};${CMAKE_CXX_FLAGS};${CMAKE_BUILD_TYPE}")
-    foreach(BOT_ABI_HEADER players/bot/bot_engine_interface.hpp players/player.hpp creature.hpp ../game/movement/position.hpp)
+    foreach(BOT_ABI_HEADER players/bot/bot_engine_interface.hpp players/player.hpp creature.hpp players/components/player_storage.hpp ../database/database.hpp ../io/iologindata.hpp ../game/scheduling/save_manager.hpp ../game/movement/position.hpp)
         file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/${BOT_ABI_HEADER}" BOT_ABI_HASH)
         string(APPEND BOT_ABI_INPUT ";${BOT_ABI_HASH}")
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${BOT_ABI_HEADER}")

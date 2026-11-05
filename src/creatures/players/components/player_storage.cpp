@@ -45,6 +45,7 @@ PlayerStorage::PlayerStorage(Player &player) :
 	m_player(player) { }
 
 void PlayerStorage::ingest(const std::vector<PlayerStorageRow> &rows) {
+	std::lock_guard lock(mutex_);
 	m_storageMap.clear();
 	m_modifiedKeys.clear();
 	m_removedKeys.clear();
@@ -54,6 +55,7 @@ void PlayerStorage::ingest(const std::vector<PlayerStorageRow> &rows) {
 }
 
 void PlayerStorage::add(const uint32_t key, const int32_t value, const bool shouldStorageUpdate /* = false*/, const bool shouldTrackModification /*= true*/) {
+	std::lock_guard lock(mutex_);
 	if (isStorageKeyInRange(key, PSTRG_RESERVED_RANGE_START, PSTRG_RESERVED_RANGE_SIZE)) {
 		if (isStorageKeyInRange(key, PSTRG_OUTFITS_RANGE_START, PSTRG_OUTFITS_RANGE_SIZE)) {
 			m_player.outfits.emplace_back(
@@ -75,6 +77,7 @@ void PlayerStorage::add(const uint32_t key, const int32_t value, const bool shou
 	if (value != -1) {
 		int32_t oldValue = get(key);
 		m_storageMap[key] = value;
+		m_removedKeys.erase(key);
 
 		if (shouldTrackModification) {
 			m_modifiedKeys.insert(key);
@@ -93,6 +96,7 @@ void PlayerStorage::add(const uint32_t key, const int32_t value, const bool shou
 }
 
 int32_t PlayerStorage::get(const uint32_t key) const {
+	std::lock_guard lock(mutex_);
 	int32_t value = -1;
 	const auto it = m_storageMap.find(key);
 	if (it == m_storageMap.end()) {
@@ -104,10 +108,12 @@ int32_t PlayerStorage::get(const uint32_t key) const {
 }
 
 bool PlayerStorage::has(uint32_t key) const {
+	std::lock_guard lock(mutex_);
 	return m_storageMap.contains(key);
 }
 
 bool PlayerStorage::remove(const uint32_t key) {
+	std::lock_guard lock(mutex_);
 	if (!has(key)) {
 		return false;
 	}
@@ -119,10 +125,12 @@ bool PlayerStorage::remove(const uint32_t key) {
 }
 
 void PlayerStorage::prepareForPersist() {
+	std::lock_guard lock(mutex_);
 	getReservedRange();
 }
 
 PlayerStorage::PlayerStorageDelta PlayerStorage::delta() const {
+	std::lock_guard lock(mutex_);
 	PlayerStorageDelta data;
 	for (auto key : m_modifiedKeys) {
 		data.upserts.emplace(key, m_storageMap.at(key));
@@ -132,8 +140,20 @@ PlayerStorage::PlayerStorageDelta PlayerStorage::delta() const {
 }
 
 void PlayerStorage::clearDirty() {
+	std::lock_guard lock(mutex_);
 	m_modifiedKeys.clear();
 	m_removedKeys.clear();
+}
+
+void PlayerStorage::acknowledge(const PlayerStorageDelta& persisted) {
+	std::lock_guard lock(mutex_);
+	for (const auto& [key, value] : persisted.upserts) {
+		auto current = m_storageMap.find(key);
+		if (current != m_storageMap.end() && current->second == value) m_modifiedKeys.erase(key);
+	}
+	for (const auto key : persisted.deletions) {
+		if (!m_storageMap.contains(key)) m_removedKeys.erase(key);
+	}
 }
 
 void PlayerStorage::getReservedRange() {

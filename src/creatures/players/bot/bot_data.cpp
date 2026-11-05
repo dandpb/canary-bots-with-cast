@@ -1104,8 +1104,7 @@ std::pair<Position, std::string> BotEngine::getTravelPosition(uint32_t townId) c
 void BotEngine::equipBot(BotState& bot) {
 	auto player = bot.getPlayer();
 	if (!player) return;
-	const bool preserveBackpack = brain_ && player->getInventoryItem(CONST_SLOT_BACKPACK)
-	    && std::find(brain_->roster.begin(), brain_->roster.end(), bot.guid) != brain_->roster.end();
+	const bool preserveBackpack = player->getInventoryItem(CONST_SLOT_BACKPACK) != nullptr;
 
 	auto voc = player->getVocation();
 	uint32_t baseVoc = voc ? voc->getBaseId() : 4; // default to paladin if unknown
@@ -1208,15 +1207,8 @@ void BotEngine::equipBot(BotState& bot) {
 		}
 	}
 
-	// Wipe the backpack to clear accumulated junk (quest items like Ewer with Holy
-	// Water from Lion's Rock, looted clutter, etc.) so the seed blocks below produce
-	// a deterministic loadout every activation. Bots use bank balance for shop
-	// purchases (set to 100000 in bot_players_setup.sql), so destroying the bag's
-	// gold/loot is fine. Runes re-seed immediately below (empty() guard now satisfied),
-	// exercise weapons re-seed at max 14400 charges via the per-id findItemOfType guard.
-	// Only fires from activateBot (line 2194) and the reload-reactivate path (line 4309).
-	// NOT from wakeBot — hibernation preserves the Player object as-is via the
-	// hibernationPool_ fast-path, so the bag persists across proximity/teleport wakes.
+	// Activation must not discard persisted loot or reset training charges. Keep a
+	// loaded backpack and bootstrap one only when the character has none.
 	if (!preserveBackpack) {
 		auto bpExisting = player->getInventoryItem(CONST_SLOT_BACKPACK);
 		if (bpExisting) {

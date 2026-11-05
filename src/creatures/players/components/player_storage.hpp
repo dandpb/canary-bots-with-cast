@@ -8,6 +8,7 @@
  */
 
 #pragma once
+#include <mutex>
 
 #ifndef USE_PRECOMPILED_HEADERS
 	#include <cstdint>
@@ -106,11 +107,13 @@ public:
 	 * @brief Clears modified and removed tracking sets.
 	 */
 	void clearDirty();
+	void acknowledge(const PlayerStorageDelta& persisted);
 
 	/**
 	 * @brief Returns the full storage map.
 	 */
 	auto getStorageMap() const {
+		std::lock_guard lock(mutex_);
 		return m_storageMap;
 	}
 
@@ -118,6 +121,7 @@ public:
 	 * @brief Returns the keys modified since the last persistence.
 	 */
 	auto getModifiedKeys() const {
+		std::lock_guard lock(mutex_);
 		return m_modifiedKeys;
 	}
 
@@ -125,10 +129,12 @@ public:
 	 * @brief Returns the keys removed since the last persistence.
 	 */
 	auto getRemovedKeys() const {
+		std::lock_guard lock(mutex_);
 		return m_removedKeys;
 	}
 
 private:
+	mutable std::recursive_mutex mutex_;
 	/**
 	 * @brief Populates the map with values from reserved ranges.
 	 *

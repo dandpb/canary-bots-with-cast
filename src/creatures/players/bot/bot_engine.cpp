@@ -98,19 +98,32 @@ static constexpr uint16_t PICKAXE_ITEM_ID = 3456;
 // Bot registration and lifecycle
 // ============================================================================
 
-// Hibernated players are absent from the normal online-player save set.
-// Only bots with changed experience need a full asynchronous progression save.
-static std::unordered_map<uint32_t, uint64_t> s_botExperienceCheckpoint;
-
-void BotEngine::checkpointBotProgression(BotState &bot, const std::shared_ptr<Player> &player) {
-	auto &experience = s_botExperienceCheckpoint[bot.guid];
+void BotEngine::checkpointBotPersistentState(BotState &bot, const std::shared_ptr<Player> &player) {
+	if (!player) return;
 	bot.cachedLevel = player->getLevel();
-	if (player->getExperience() != experience || g_saveManager().getPendingBotPlayer(bot.guid)) {
-		player->loginPosition = player->getPosition();
-		if (g_saveManager().savePlayer(player)) {
-			experience = player->getExperience();
+	const auto position = bot.hibernated ? bot.currentPos : player->getPosition();
+	g_saveManager().savePlayer(player, position);
+}
+
+std::vector<BotPlayerSnapshot> BotEngine::capturePersistentPlayers() const {
+	std::vector<BotPlayerSnapshot> result;
+	for (const auto& bot : bots_) {
+		auto player = bot.getPlayer();
+		if (!player) {
+			const auto pool = hibernationPool_.find(bot.guid);
+			if (pool != hibernationPool_.end()) player = pool->second;
+		}
+		if (!player) {
+			const auto dying = dyingBots_.find(bot.guid);
+			if (dying != dyingBots_.end()) player = dying->second;
+		}
+		if (player) {
+			const auto position = bot.hibernated ? bot.currentPos :
+				(dyingBots_.contains(bot.guid) ? player->getLoginPosition() : player->getPosition());
+			result.push_back({player, position});
 		}
 	}
+	return result;
 }
 
 void BotEngine::registerBot(const std::shared_ptr<Player> &player) {
@@ -140,7 +153,6 @@ void BotEngine::registerBot(const std::shared_ptr<Player> &player) {
 	bot.state = BotAIState::INACTIVE;
 	bot.vocationId = static_cast<uint8_t>(player->getVocationId());
 	bot.cachedLevel = static_cast<uint32_t>(player->getLevel());
-	s_botExperienceCheckpoint[bot.guid] = player->getExperience();
 	bot.townId = 0;
 
 	// BOT_LIVENESS_PACK Phase B: derive 16-bit personality seed from a proper hash
@@ -218,9 +230,10 @@ void BotEngine::unregisterBot(uint32_t guid) {
 	// visible on /cavebot reload (500 bots unregistered → 500 leaked Player refs in
 	// channels 3 + 5 + cast + any others). Bounded but accumulates across reload cycles.
 	if (auto player = it != guidToIndex_.end() ? bots_[it->second].playerRef.lock() : nullptr) {
-		checkpointBotProgression(bots_[it->second], player);
+		checkpointBotPersistentState(bots_[it->second], player);
 		g_chat().removeUserFromAllChannels(player);
 	} else if (auto pooled = hibernationPool_.find(guid); pooled != hibernationPool_.end() && pooled->second) {
+		checkpointBotPersistentState(bots_[it->second], pooled->second);
 		g_chat().removeUserFromAllChannels(pooled->second);
 	}
 
@@ -235,7 +248,6 @@ void BotEngine::unregisterBot(uint32_t guid) {
 	}
 	bots_.pop_back();
 	guidToIndex_.erase(it);
-	s_botExperienceCheckpoint.erase(guid);
 
 	// The mid-walk pause lambda keys off guidToIndex_, which we just dropped — it will
 	// early-return without erasing walkPauseInfo_, so clean it up here to avoid a leak
@@ -346,7 +358,6 @@ bool BotEngine::activateBot(uint32_t guid) {
 	bot.state = BotAIState::IDLE;
 	bot.tickCounter = botInitialTickPhase(bot.guid); // guid-phased (Phase 1) — not 0
 	bot.cachedLevel = static_cast<uint32_t>(player->getLevel()); // refresh for v2 virtual reroll
-	s_botExperienceCheckpoint[bot.guid] = player->getExperience();
 	// Share of bots eligible for quest scripts. Deterministic per guid so a bot keeps its
 	// role across reconnects. Was hardcoded (guid % 20 == 0); the %100 form is what makes an
 	// arbitrary percentage expressible, and at the default 5 it selects a same-sized but
@@ -522,12 +533,11 @@ bool BotEngine::deactivateBot(uint32_t guid) {
 	auto& db = Database::getInstance();
 
 	auto player = bot.getPlayer();
+	if (!player) {
+		auto pooled = hibernationPool_.find(guid);
+		if (pooled != hibernationPool_.end()) player = pooled->second;
+	}
 	if (player) {
-		// Save current position to players table before removing from world
-		auto pos = player->getPosition();
-		g_botDatabaseTasks().execute(fmt::format(
-			"UPDATE `players` SET `posx`={}, `posy`={}, `posz`={} WHERE `id`={}",
-			pos.x, pos.y, pos.z, guid));
 
 		// True offline: remove bot from game world (like a player disconnect)
 		player->setCastBroadcasting(false);
@@ -536,9 +546,11 @@ bool BotEngine::deactivateBot(uint32_t guid) {
 		// in-memory setCastBroadcasting(false) already disconnects viewers; DB cleanup
 		// is non-critical and can be async.
 		g_botDatabaseTasks().execute(fmt::format("DELETE FROM `cast_broadcasters` WHERE `player_id` = {}", guid));
-		checkpointBotProgression(bot, player);
-		g_game().removeCreature(player, false);
-		g_game().removePlayer(player);
+		checkpointBotPersistentState(bot, player);
+		if (!bot.hibernated) {
+			g_game().removeCreature(player, false);
+			g_game().removePlayer(player);
+		}
 		player->setOnline(false);
 		bot.playerRef = std::weak_ptr<Player>(); // release reference
 	}
@@ -575,6 +587,8 @@ bool BotEngine::deactivateBot(uint32_t guid) {
 	clearDepotBlacklist(guid);
 	s_tpRewindBudget.erase(guid);
 
+	hibernationPool_.erase(guid);
+	bot.hibernated = false;
 	bot.active = false;
 	bot.state = BotAIState::INACTIVE;
 	bot.activatedAt = 0;
@@ -868,7 +882,7 @@ bool BotEngine::hibernateBot(uint32_t guid) {
 		hibernationPool_[guid] = player;
 
 		// removeCreature with isLogout=false skips Lua onLogout and normal player saves.
-		checkpointBotProgression(bot, player);
+		checkpointBotPersistentState(bot, player);
 		g_game().removeCreature(player, false);
 		g_game().removePlayer(player);
 		player->setOnline(false);
@@ -1248,7 +1262,6 @@ bool BotEngine::wakeBot(uint32_t guid) {
 	bot.currentPos = player->getPosition();
 	bot.lastPos = bot.currentPos;
 	bot.cachedLevel = static_cast<uint32_t>(player->getLevel()); // refresh on wake (level may have grown)
-	s_botExperienceCheckpoint[bot.guid] = player->getExperience();
 	// Don't reset tickCounter — preserves heal cadence alignment
 
 	// BOT_LIVENESS (2026-06-13): login sparkle for proximity wakes that landed ON a

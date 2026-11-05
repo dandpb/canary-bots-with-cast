@@ -43,6 +43,32 @@ TEST_F(PlayerStorageTest, AddAndGetStorageValue) {
 	storage.clearDirty();
 }
 
+TEST_F(PlayerStorageTest, AcknowledgingOldSaveRetainsNewStorageValue) {
+	auto player = std::make_shared<Player>();
+	auto& storage = player->storage();
+	storage.add(50000, 1, true);
+	auto written = storage.delta();
+	storage.add(50000, 2, true);
+	storage.acknowledge(written);
+	EXPECT_EQ(storage.delta().upserts.at(50000), 2);
+	storage.acknowledge(storage.delta());
+	EXPECT_TRUE(storage.delta().upserts.empty());
+}
+
+TEST_F(PlayerStorageTest, RestoredStorageCannotBeDeletedByAnOldAcknowledgement) {
+	auto player = std::make_shared<Player>();
+	auto& storage = player->storage();
+	storage.add(50000, 1, true);
+	storage.clearDirty();
+	storage.remove(50000);
+	auto written = storage.delta();
+	storage.add(50000, 2, true);
+	storage.acknowledge(written);
+	EXPECT_TRUE(storage.delta().deletions.empty());
+	EXPECT_EQ(storage.delta().upserts.at(50000), 2);
+}
+
+
 TEST_F(PlayerStorageTest, RemoveStorageValue) {
 	auto player = std::make_shared<Player>();
 	auto &storage = player->storage();
