@@ -193,6 +193,13 @@ completed pair is retained. A durable committed marker also protects a completed
 pair if the process dies while deleting staging. An active publisher cannot be
 mistaken for an orphan. Lock files are intentionally retained to avoid inode races;
 unrecognised/legacy staging without the journal is left for manual inspection.
+Recovery also records and syncs the committed decision before cleaning a
+complete pair whose publisher died before writing its marker. Publisher cleanup,
+rollback and recovery all use the same journal-last cleanup: payload entries are
+removed and the directory synced before the journal is unlinked. If a process dies
+after that final unlink, the next recovery removes only the empty transaction
+directory. Directory iteration order therefore cannot erase half a complete pair
+or strand a recognised cleanup transaction without its journal.
 On POSIX, staging and destination directories are fsynced before/after publication;
 the Windows API does not expose the same directory-fsync guarantee. Signal-death
 tests exercise recovery, not physical power-loss/storage-hardware guarantees.

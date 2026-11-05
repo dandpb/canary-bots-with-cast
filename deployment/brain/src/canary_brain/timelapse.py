@@ -84,6 +84,29 @@ def linked_to(staged: Path, final: Path) -> bool:
         return False
 
 
+def write_publication_journal(directory: Path, transaction: dict[str, Any]) -> None:
+    temporary = directory / "transaction.tmp"
+    with temporary.open("w", encoding="utf-8") as handle:
+        handle.write(canonical(transaction))
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, directory / "transaction.json")
+    sync_directory(directory)
+
+
+def cleanup_staging(directory: Path) -> None:
+    """Keep the durable decision until every staged payload has been removed."""
+    journal = directory / "transaction.json"
+    for path in directory.iterdir():
+        if path != journal:
+            path.unlink()
+    sync_directory(directory)
+    journal.unlink(missing_ok=True)
+    sync_directory(directory)
+    directory.rmdir()
+    sync_directory(directory.parent)
+
+
 def recover_publications(output: Path) -> None:
     """Called under the destination lock; journal paths never choose deletions."""
     sidecar = output.with_suffix(output.suffix + ".json")
@@ -95,7 +118,14 @@ def recover_publications(output: Path) -> None:
         journal = directory / "transaction.json"
         try:
             transaction = json.loads(journal.read_text())
-        except (FileNotFoundError, ValueError):
+        except FileNotFoundError:
+            # Death after the last journal unlink can leave only an empty
+            # directory. rmdir removes no unknown content and is safe to retry.
+            if not any(directory.iterdir()):
+                directory.rmdir()
+                sync_directory(output.parent)
+            continue
+        except ValueError:
             # Before a durable journal there cannot be any published name.
             # Leave unrecognised staging alone rather than guessing ownership.
             continue
@@ -103,14 +133,40 @@ def recover_publications(output: Path) -> None:
             continue
         pairs = [(directory / output.name, output), (directory / sidecar.name, sidecar)]
         owned = [linked_to(staged, final) for staged, final in pairs]
-        if not transaction.get("committed") and not all(owned):
+        # The killed publisher may not have fsynced its second final name yet.
+        # Persist final entries before durably recording a completed decision.
+        sync_directory(output.parent)
+        if transaction.get("committed"):
+            # A prior attempt may have observed the rename but failed its fsync.
+            # Re-establish durability before discarding any staged inode proof.
+            sync_directory(directory)
+        elif all(owned):
+            # Recovery itself can die while removing either staged hard link.
+            # Persist the completed decision before losing any inode evidence.
+            write_publication_journal(directory, {**expected, "committed": True})
+        else:
             for (staged, final), ours in zip(pairs, owned, strict=True):
                 if ours and linked_to(staged, final):
                     final.unlink()
         # Both matching final names are a completed publication; retain them.
         sync_directory(output.parent)
-        shutil.rmtree(directory)
+        cleanup_staging(directory)
         sync_directory(output.parent)
+
+
+@contextmanager
+def publication_staging(output: Path) -> Iterator[Path]:
+    directory = Path(
+        tempfile.mkdtemp(
+            prefix=f".canary-video-{destination_key(output)}-", dir=output.parent
+        )
+    )
+    try:
+        yield directory
+    finally:
+        # Use the same journal-last cleanup on success, caught rollback and
+        # recovery. TemporaryDirectory/rmtree may remove the journal first.
+        recover_publications(output)
 
 
 @contextmanager
@@ -138,19 +194,11 @@ def publish_video(encoded: Path, output: Path, evidence: dict[str, Any]) -> None
 
 def _publish_video(encoded: Path, output: Path, evidence: dict[str, Any]) -> None:
     sidecar = output.with_suffix(output.suffix + ".json")
-    with tempfile.TemporaryDirectory(
-        prefix=f".canary-video-{destination_key(output)}-", dir=output.parent
-    ) as directory:
+    with publication_staging(output) as directory:
         staged_video = Path(directory) / output.name
         staged_sidecar = Path(directory) / sidecar.name
-        with (Path(directory) / "transaction.json").open(
-            "x", encoding="utf-8"
-        ) as journal:
-            journal.write(
-                canonical({"version": 1, "video": output.name, "sidecar": sidecar.name})
-            )
-            journal.flush()
-            os.fsync(journal.fileno())
+        transaction = {"version": 1, "video": output.name, "sidecar": sidecar.name}
+        write_publication_journal(directory, transaction)
         with encoded.open("rb") as source, staged_video.open("xb") as target:
             shutil.copyfileobj(source, target)
             target.flush()
@@ -171,24 +219,6 @@ def _publish_video(encoded: Path, output: Path, evidence: dict[str, Any]) -> Non
                 attempted.append((staged, final))
                 os.link(staged, final)
                 sync_directory(output.parent)
-            # Recovery must not mistake interrupted staging cleanup for a partial
-            # publication after either staged hard link has already been removed.
-            marker = Path(directory) / "committed.tmp"
-            with marker.open("x", encoding="utf-8") as committed:
-                committed.write(
-                    canonical(
-                        {
-                            "version": 1,
-                            "video": output.name,
-                            "sidecar": sidecar.name,
-                            "committed": True,
-                        }
-                    )
-                )
-                committed.flush()
-                os.fsync(committed.fileno())
-            os.replace(marker, Path(directory) / "transaction.json")
-            sync_directory(Path(directory))
         except BaseException:
             for staged, final in reversed(attempted):
                 try:
@@ -198,6 +228,9 @@ def _publish_video(encoded: Path, output: Path, evidence: dict[str, Any]) -> Non
                     pass
             sync_directory(output.parent)
             raise
+        # Once both names exist, a journal-write failure must leave the complete
+        # pair for recovery; it must not enter the partial-publication rollback.
+        write_publication_journal(directory, {**transaction, "committed": True})
     sync_directory(output.parent)
 
 
@@ -421,7 +454,7 @@ def export_video(
         return _export_video(
             reader, run, output, speed=speed, fps=fps, start_ms=start_ms, end_ms=end_ms
         )
-    except (TimeoutError, subprocess.SubprocessError) as error:
+    except (TimeoutError, subprocess.SubprocessError, FileExistsError) as error:
         raise ValueError("video export failed: " + str(error)[-1500:]) from error
 
 

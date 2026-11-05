@@ -196,7 +196,7 @@ def test_publication_collision_preserves_existing_artifact_and_rolls_back_its_ow
         return result
 
     monkeypatch.setattr(timelapse.subprocess, "run", race)
-    with pytest.raises(FileExistsError):
+    with pytest.raises(ValueError, match="video export failed"):
         export(ReplayReader(recording), run, video)
     assert target.read_bytes() == b"existing artifact"
     assert not (sidecar if occupied == "video" else video).exists()
@@ -231,8 +231,9 @@ def crash_publisher(tmp_path, termination, after_link=1):
     encoded.write_bytes(b"complete encoded bytes")
     video = tmp_path / "clip.mp4"
     program = """
-import os, signal, sys, tempfile
+import os, signal, sys
 from pathlib import Path
+from canary_brain import timelapse
 from canary_brain.timelapse import publish_video
 link = os.link
 calls = 0
@@ -244,10 +245,10 @@ def crash(source, destination):
         os.kill(os.getpid(), getattr(signal, sys.argv[3]))
 os.link = crash
 if int(sys.argv[4]) == 3:
-    def cleanup_crash(self):
-        (Path(self.name) / Path(sys.argv[2]).name).unlink()
+    def cleanup_crash(path):
+        (Path(path) / Path(sys.argv[2]).name).unlink()
         os.kill(os.getpid(), getattr(signal, sys.argv[3]))
-    tempfile.TemporaryDirectory.cleanup = cleanup_crash
+    timelapse.cleanup_staging = cleanup_crash
 publish_video(Path(sys.argv[1]), Path(sys.argv[2]), {'fixture': True})
 """
     env = {**os.environ, "PYTHONPATH": str(Path(timelapse.__file__).parents[1])}

@@ -1,5 +1,9 @@
 # Video publication recovery and render identities
 
+Independent follow-up found a recovery-of-recovery interruption gap in this
+checkpoint; the subsequent correction and 140-test validation are recorded in
+[video-recovery-interruption.md](video-recovery-interruption.md).
+
 Follow-up to independent review comment 6651597046 on PR #21. Work used an
 isolated sparse clone; the main development checkout, game, database and web were
 not modified. No provider calls or paid tests were made.
