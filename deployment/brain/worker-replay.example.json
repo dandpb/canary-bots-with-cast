@@ -1,0 +1,36 @@
+{
+  "mode": "active",
+  "provider": "litellm",
+  "socket_directory": "/run/canary-brain-wsl",
+  "state_file": "/var/lib/canary-brain/state.sqlite3",
+  "budget_file": "/var/lib/canary-brain/budget.sqlite3",
+  "credential_file": "/etc/canary-brain/gateway.env",
+  "bots": [65001],
+  "operator_port": 8091,
+  "monthly_usd": 50,
+  "decision_timeout": 10,
+  "recording": {
+    "path": "/var/lib/canary-brain/recording.sqlite3",
+    "namespace": "grizzle-wsl",
+    "sample_ms": 1000,
+    "max_bytes": 536870912
+  },
+  "gateway": {
+    "base_url": "http://127.0.0.1:4000/v1",
+    "alias": "participant-a",
+    "effective_model": "gpt-6-luna",
+    "deployment_id": "participant-a-deployment",
+    "provider": "openai",
+    "version": "1.108.0",
+    "configuration_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "decision_api": "responses",
+    "reasoning": true,
+    "prices": {
+      "version": "review-before-live-use",
+      "input_nanousd": 100,
+      "cached_nanousd": 10,
+      "cache_write_nanousd": 125,
+      "output_nanousd": 500
+    }
+  }
+}
