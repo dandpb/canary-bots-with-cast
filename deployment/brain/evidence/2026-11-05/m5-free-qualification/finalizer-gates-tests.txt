@@ -1,0 +1,96 @@
+.
+----------------------------------------------------------------------
+Ran 1 test in 1.912s
+
+OK
+{
+  "run_id": "fixture",
+  "checks": {
+    "horizon_completed": true,
+    "observed_duration_ok": true,
+    "no_recorded_gaps": true,
+    "positive_recorded_xp": true,
+    "saved_xp_matches_last_sample": true,
+    "zero_inference_requests": true
+  },
+  "stop": "completed",
+  "observed_seconds": 1800
+}
+{
+  "run_id": "fixture",
+  "checks": {
+    "horizon_completed": true,
+    "observed_duration_ok": true,
+    "no_recorded_gaps": false,
+    "positive_recorded_xp": true,
+    "saved_xp_matches_last_sample": true,
+    "zero_inference_requests": true
+  },
+  "stop": "completed",
+  "observed_seconds": 1800
+}
+{
+  "run_id": "fixture",
+  "checks": {
+    "horizon_completed": true,
+    "observed_duration_ok": false,
+    "no_recorded_gaps": true,
+    "positive_recorded_xp": true,
+    "saved_xp_matches_last_sample": true,
+    "zero_inference_requests": true
+  },
+  "stop": "completed",
+  "observed_seconds": 1700
+}
+{
+  "run_id": "fixture",
+  "checks": {
+    "horizon_completed": true,
+    "observed_duration_ok": true,
+    "no_recorded_gaps": true,
+    "positive_recorded_xp": false,
+    "saved_xp_matches_last_sample": true,
+    "zero_inference_requests": true
+  },
+  "stop": "completed",
+  "observed_seconds": 1800
+}
+{
+  "run_id": "fixture",
+  "checks": {
+    "horizon_completed": true,
+    "observed_duration_ok": true,
+    "no_recorded_gaps": true,
+    "positive_recorded_xp": true,
+    "saved_xp_matches_last_sample": false,
+    "zero_inference_requests": true
+  },
+  "stop": "completed",
+  "observed_seconds": 1800
+}
+{
+  "run_id": "fixture",
+  "checks": {
+    "horizon_completed": true,
+    "observed_duration_ok": true,
+    "no_recorded_gaps": true,
+    "positive_recorded_xp": true,
+    "saved_xp_matches_last_sample": true,
+    "zero_inference_requests": false
+  },
+  "stop": "completed",
+  "observed_seconds": 1800
+}
+{
+  "run_id": "fixture",
+  "checks": {
+    "horizon_completed": false,
+    "observed_duration_ok": true,
+    "no_recorded_gaps": true,
+    "positive_recorded_xp": true,
+    "saved_xp_matches_last_sample": true,
+    "zero_inference_requests": true
+  },
+  "stop": "runtime_ended",
+  "observed_seconds": 1800
+}

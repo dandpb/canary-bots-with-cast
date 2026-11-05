@@ -1,0 +1,84 @@
+{
+  "date": "2026-11-05",
+  "attempts": [
+    {
+      "run_id": "m5q-20261105b:native",
+      "artifact": "m5q-20261105b/native",
+      "stop": "stalled",
+      "supervisor_seconds": 1637.2742136549932,
+      "recorded_seconds": 1636.838,
+      "xp_delta": 2316,
+      "deaths": 0,
+      "gaps": 0,
+      "inference_requests": 0,
+      "timed_gate_passed": false,
+      "supply_gate_passed": null,
+      "database_attested": false
+    },
+    {
+      "run_id": "m5q-20261105d:native",
+      "artifact": "m5q-20261105d/native",
+      "stop": "completed",
+      "supervisor_seconds": 1800.9308920019976,
+      "recorded_seconds": 1800.586,
+      "xp_delta": 7647,
+      "deaths": 0,
+      "gaps": 0,
+      "inference_requests": 0,
+      "timed_gate_passed": true,
+      "supply_gate_passed": null,
+      "database_attested": false
+    },
+    {
+      "run_id": "m5q-20261105d:fake",
+      "artifact": "m5q-20261105d/fake",
+      "stop": "completed",
+      "supervisor_seconds": 1800.324330635005,
+      "recorded_seconds": 1799.963,
+      "xp_delta": 4365,
+      "deaths": 0,
+      "gaps": 0,
+      "inference_requests": 0,
+      "timed_gate_passed": true,
+      "supply_gate_passed": null,
+      "database_attested": true
+    },
+    {
+      "run_id": "m5q-20261105e:fake",
+      "artifact": "m5q-20261105e/fake",
+      "stop": "completed",
+      "supervisor_seconds": 300.2880147090036,
+      "recorded_seconds": 300.19,
+      "xp_delta": 617,
+      "deaths": 0,
+      "gaps": 0,
+      "inference_requests": 0,
+      "timed_gate_passed": null,
+      "supply_gate_passed": false,
+      "database_attested": true
+    },
+    {
+      "run_id": "m5q-20261105f:fake",
+      "artifact": "m5q-20261105f/fake",
+      "stop": "supply_goal_completed",
+      "supervisor_seconds": 55.81149640599324,
+      "recorded_seconds": 54.993,
+      "xp_delta": 0,
+      "deaths": 0,
+      "gaps": 0,
+      "inference_requests": 0,
+      "timed_gate_passed": null,
+      "supply_gate_passed": true,
+      "database_attested": true
+    }
+  ],
+  "paid_execution_ready": false,
+  "limits": [
+    "Controlled routes and normal live-world nondeterminism; no provider/model quality ranking.",
+    "Long-window native D database image digest was not captured; both historical Compose files name a mutable tag. Future paired scored runs require pinned database content IDs.",
+    "Low-stock supply proof is a distinct fixture and scripted resupply + retreat sequence, not a purchase inside the long-window cohort or an automatic solo resupply return.",
+    "Long windows use frozen QA driver c03a3225, not the revised canonical runner in PR26.",
+    "PR26 requires independent re-review; Haiku native strict wire gate in PR27 is unresolved.",
+    "Real account access, current monthly ledger and paid opt-in remain unverified; no credentials were read."
+  ]
+}

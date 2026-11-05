@@ -1,0 +1,6 @@
+{
+  "game_image_id": "sha256:b542d870ba0c65e586493dbe673948e9e28a5d1c585137ce9f0895d204d0101d",
+  "database_image_id": null,
+  "database_evidence": "Original Compose used mariadb:11.4; actual container digest was not collected before teardown. Do not infer it retrospectively from the current tag.",
+  "game_binary_attestation": "Original image ID is build authority; external native-artifact hashes alone are not an in-image attestation"
+}

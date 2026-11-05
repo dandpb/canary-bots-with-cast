@@ -1,0 +1,6 @@
+{
+  "game_image_id": "sha256:885acba76a8cb98d1dfe5d098a98f009194739a2844cdb7cf7d5a34d4d9a5bc3",
+  "database_image_id": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "database_evidence": "Actual database container .Image inspected during fake D before teardown",
+  "game_binary_attestation": "Pinned D image checked independently with sha256sum inside a --network none container; both binaries match the manifest"
+}

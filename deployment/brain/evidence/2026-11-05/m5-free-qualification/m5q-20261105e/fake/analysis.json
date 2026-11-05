@@ -1,0 +1,335 @@
+{
+  "run_id": "m5q-20261105e:fake",
+  "manifest": {
+    "bot_id": 65001,
+    "configuration_sha256": "4a838915f73f98e4fd4902f2179b9f55e48ca72b110d3eb05d1a6afc98f16710",
+    "experiment": "m5-supply-proof",
+    "initial_sha256": "1d6e3ca67ee5dd36ff8566395a35701255c2622ee2d9f244ce63fb84634a9b6d",
+    "lineage": "m5q-20261105e",
+    "memory_mode": "frozen",
+    "model": "none",
+    "participant": "fake",
+    "provider": "fake",
+    "run_id": "m5q-20261105e:fake",
+    "sample_ms": 1000,
+    "scenario": "supply-only",
+    "source_revision": "5357693e5e50b6bba4533b35eba9907018b2c76b",
+    "synthetic": false,
+    "version": 1
+  },
+  "metrics": {
+    "version": 2,
+    "xp_delta": 617,
+    "xp_per_wall_hour": 7399.313767946967,
+    "xp_per_active_hour": 7423.846416085669,
+    "active_ms": 299198,
+    "wall_ms": 300190,
+    "calendar_elapsed_ms": 323659,
+    "duration_ms": 313520,
+    "deaths": 0,
+    "initial_native_deaths_excluded": 0,
+    "deaths_observed": true,
+    "interventions": 0,
+    "intervention_free_ms": 313520,
+    "intervention_free_censored": true,
+    "automatic_recoveries_requested": 0,
+    "model_decisions": 95,
+    "valid_proposals": 94,
+    "policy_overrides": 0,
+    "accepted_actions": 2,
+    "completed_actions": 1,
+    "failed_actions": 0,
+    "provider_failures": 0,
+    "spent_nanousd": 0,
+    "reserved_nanousd": 0,
+    "xp_per_dollar": null,
+    "latency_p50_ms": null,
+    "latency_p95_ms": null,
+    "gaps": 0,
+    "gap_times": [],
+    "levels": [],
+    "milestones": [
+      {
+        "t_ms": 42327,
+        "kind": "completed",
+        "text": "supplies_bought"
+      }
+    ],
+    "native_control_ms": 0,
+    "native_fallback_ms": 0,
+    "stalled_ms": 0,
+    "confirmed_objective_defeats": 0,
+    "limitations": [
+      "Sampled observations; hidden events are not reconstructed.",
+      "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+      "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+    ]
+  },
+  "first_sample": {
+    "id": 4,
+    "key": "sample:1-75963225559016:1",
+    "segment": "efae32a9ad32498fb7654d8eb9f24b35",
+    "t_ms": 13210,
+    "wall": 1793889969.0613906,
+    "kind": "sample",
+    "data": {
+      "actions": [
+        {
+          "action": "continue",
+          "description": "Continue the current useful objective",
+          "id": "continue",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "hold",
+          "description": "Hold position briefly while retaining combat and healing",
+          "id": "hold",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "resupply",
+          "description": "Walk to the town shop to replenish supplies and return",
+          "id": "resupply",
+          "ttl_ms": 5000
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 100,
+        "name": "Grizzle Alyronia",
+        "objective": "follow",
+        "objective_defeats": 0,
+        "objective_running": false,
+        "position": [
+          32369,
+          32241,
+          7
+        ],
+        "potions": 2,
+        "state": "IDLE",
+        "vocation": 4,
+        "xp": 98800
+      },
+      "captured_ms": 75963291,
+      "mode": "active",
+      "nearby": [],
+      "objective_generation": 0,
+      "party": null,
+      "sequence": 1,
+      "type": "observation",
+      "version": 1,
+      "world": "1-75963225559016"
+    }
+  },
+  "last_sample": {
+    "id": 991,
+    "key": "sample:1-75963225559016:1001",
+    "segment": "efae32a9ad32498fb7654d8eb9f24b35",
+    "t_ms": 313400,
+    "wall": 1793890292.7204268,
+    "kind": "sample",
+    "data": {
+      "actions": [
+        {
+          "action": "continue",
+          "description": "Continue the current useful objective",
+          "id": "continue",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "hold",
+          "description": "Hold position briefly while retaining combat and healing",
+          "id": "hold",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "retreat",
+          "description": "Disengage and return to the leader or town temple for the next activity",
+          "id": "retreat",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+          "id": "hunt:77",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "target",
+          "description": "Prioritize visible monster Deer",
+          "id": "target:1342192289",
+          "ttl_ms": 1000
+        },
+        {
+          "action": "target",
+          "description": "Prioritize visible monster Deer",
+          "id": "target:1342192296",
+          "ttl_ms": 1000
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 100,
+        "name": "Grizzle Alyronia",
+        "objective": "hunt",
+        "objective_defeats": 20,
+        "objective_running": true,
+        "position": [
+          32375,
+          32092,
+          7
+        ],
+        "potions": 40,
+        "state": "IDLE",
+        "vocation": 4,
+        "xp": 99417
+      },
+      "captured_ms": 76263491,
+      "mode": "active",
+      "nearby": [
+        {
+          "id": 1342192289,
+          "name": "Deer",
+          "position": [
+            32374,
+            32089,
+            7
+          ]
+        },
+        {
+          "id": 1342192296,
+          "name": "Deer",
+          "position": [
+            32380,
+            32089,
+            7
+          ]
+        }
+      ],
+      "objective_generation": 2,
+      "party": null,
+      "sequence": 1001,
+      "type": "observation",
+      "version": 1,
+      "world": "1-75963225559016"
+    }
+  },
+  "observed_seconds": 300.19,
+  "samples": 252,
+  "events": 942,
+  "minimum_health_percent": 100,
+  "positions": 218,
+  "offered": {
+    "continue": 252,
+    "hold": 252,
+    "resupply": 1,
+    "retreat": 249,
+    "target:1342193060": 5,
+    "hunt:77": 228,
+    "hunt:399": 2,
+    "target:1342192489": 2,
+    "target:1342192638": 2,
+    "target:1342192457": 2,
+    "target:1342192487": 3,
+    "target:1342192517": 1,
+    "target:1342192456": 2,
+    "target:1342192571": 24,
+    "target:1342192572": 21,
+    "target:1342192632": 19,
+    "target:1342192631": 10,
+    "target:1342192503": 2,
+    "target:1342192555": 2,
+    "target:1342192502": 3,
+    "target:1342192536": 1,
+    "target:1342192455": 37,
+    "target:1342192423": 2,
+    "target:1342192422": 2,
+    "target:1342192425": 1,
+    "target:1342192342": 1,
+    "target:1342192330": 2,
+    "target:1342192329": 2,
+    "target:1342192278": 1,
+    "target:1342192253": 2,
+    "target:1342192252": 2,
+    "target:1342192251": 4,
+    "target:1342192260": 2,
+    "target:1342192288": 7,
+    "target:1342192289": 3,
+    "target:1342192296": 2
+  },
+  "selected": {
+    "resupply": 1,
+    "continue": 93,
+    "hunt:399": 1
+  },
+  "native_phases": {
+    "unavailable": 1,
+    "alive": 299
+  },
+  "ledger": {
+    "requests": 0,
+    "spent_nanousd": 0,
+    "reserved_nanousd": 0
+  },
+  "attempt": {
+    "mode": "fake",
+    "fixture_sha256": "1d6e3ca67ee5dd36ff8566395a35701255c2622ee2d9f244ce63fb84634a9b6d",
+    "project": "canary-bench-d8971825225cf21faf4d",
+    "phase": "finished",
+    "initial_character": {
+      "id": 65001,
+      "level": 20,
+      "experience": 98800,
+      "posx": 32369,
+      "posy": 32241,
+      "posz": 7
+    },
+    "stop": {
+      "monotonic": 76263.612205319,
+      "start": 75963.32419061,
+      "elapsed": 300.2880147090036,
+      "last": 76263.520029271,
+      "deaths": 0,
+      "opportunity": null,
+      "reason": "completed",
+      "finished": 76263.624330053
+    },
+    "saved_character": {
+      "id": 65001,
+      "level": 20,
+      "experience": 99417,
+      "posx": 32376,
+      "posy": 32092,
+      "posz": 7
+    }
+  },
+  "checks": {
+    "goal_stop": false,
+    "authoritative_purchase": false,
+    "authoritative_return": false,
+    "stock_persisted": true,
+    "bank_debit_persisted": true,
+    "saved_near_initial_temple": false,
+    "no_recorded_gaps": true,
+    "zero_inference_requests": true
+  },
+  "supply_gate_passed": false,
+  "initial_supplies": {
+    "bank": 10000,
+    "potions": 2
+  },
+  "saved_supplies": {
+    "bank": 7986,
+    "potions": 40
+  },
+  "goal": {},
+  "scope": "Separate low-stock derivative; not a 30-minute equivalent-start result."
+}
