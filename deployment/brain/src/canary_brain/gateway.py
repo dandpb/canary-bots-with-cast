@@ -28,6 +28,10 @@ class GatewayConfiguration(BaseModel):
 
     @model_validator(mode="after")
     def endpoint(self) -> GatewayConfiguration:
+        if self.decision_api == "decisions" and self.prices.output_nanousd:
+            raise ValueError(
+                "billable Decisions output has no enforced token bound; use responses"
+            )
         url = urlsplit(self.base_url)
         if (
             url.scheme not in {"http", "https"}

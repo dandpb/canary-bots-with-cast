@@ -2,11 +2,12 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from test_protocol import observation
+
 from canary_brain.gateway import GatewayConfiguration, GatewayProvider
 from canary_brain.protocol import Observation
 from canary_brain.provider import Prices
 from canary_brain.store import BudgetExceeded, Store
-from test_protocol import observation
 
 
 def gateway():
@@ -108,3 +109,10 @@ def test_run_and_monthly_limits_share_one_transactional_ledger(tmp_path):
     with pytest.raises(BudgetExceeded, match="monthly"):
         store.reserve("three", 60, "2026-11", run_id="run-b", run_cap=70)
     assert store.budget("2026-11")["reserved"] == 60
+
+
+def test_gateway_rejects_decisions_with_unbounded_billable_output():
+    with pytest.raises(ValueError, match="output"):
+        GatewayConfiguration.model_validate(
+            gateway().model_dump() | {"decision_api": "decisions"}
+        )
