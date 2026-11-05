@@ -39,7 +39,10 @@ release can occur on a save worker after the library that created the bot is gon
 Engine callbacks are cancelled on unregister, reload drain and destruction;
 `Dispatcher::stopEvent` clears their functions immediately. Engine native code has
 no background thread or asynchronous SQL completion callback to join. SQL closures
-belong to the executable and carry Players/position values, not engine references.
+belong to the executable and carry immutable serialized checkpoints/position values,
+not engine references. Player references are retained for failed-save recovery;
+workers do not traverse their fields or inventory. Only an exact successful delta
+is acknowledged on the dispatcher, relayed through its registered general pool.
 The executable owns the single recurring tick; restarting it cancels its predecessor.
 Shutdown explicitly unloads the module while its world/logging dependencies exist.
 
@@ -111,3 +114,18 @@ file descriptors in the measured small fixture. The loader-only sanitized tests 
 the live server are separate evidence; neither implies human party/cast acceptance.
 Representative population overhead, connected cast continuity and missing-library
 teleport/PM/XML/binary-status exercises are recorded separately as they are completed.
+
+The deterministic save-overlap regression is:
+
+```sh
+python3 tools/bot_brain/test_checkpoint_overlap.py
+python3 tools/bot_brain/test_checkpoint_overlap.py --reload
+```
+
+It uses only the labelled disposable MariaDB/game stack, holds the first UPDATE
+inside a five-second SQL barrier, then wakes/mutates the same Player (and optionally
+reloads the engine). The first durable checkpoint must contain the skills and item
+charges captured together before the barrier; the next save must contain the latest
+changes. `--expect-mixed` documents the failure on the pre-fix build. Never run
+these fixtures against production. See `tests/lua/LIFECYCLE_ACCEPTANCE.md` for
+revision-specific results and remaining acceptance gates.
