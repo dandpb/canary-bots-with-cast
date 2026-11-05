@@ -11,6 +11,16 @@
 #include "game/movement/position.hpp"
 #include <optional>
 #include "creatures/players/components/player_storage.hpp"
+#include "creatures/players/components/player_forge_history.hpp"
+
+struct PlayerSaveSnapshot {
+	uint32_t guid = 0;
+	std::vector<std::string> statements;
+	std::string loginOnly;
+	PlayerStorage::PlayerStorageDelta storage;
+	PlayerForgeHistory::Pending forge;
+	bool onlineSystems = false;
+};
 
 class Player;
 class Item;
@@ -44,6 +54,10 @@ public:
 	static void loadOnlyDataForOnlinePlayer(const std::shared_ptr<Player> &player, const std::shared_ptr<DBResult> &result);
 
 	static bool savePlayer(const std::shared_ptr<Player> &player, std::optional<Position> position = std::nullopt);
+	// Capture on the dispatcher. Persist only immutable values on the SQL worker.
+	static PlayerSaveSnapshot capturePlayerSave(const std::shared_ptr<Player>& player, const Position& position);
+	static bool persistPlayerSave(const PlayerSaveSnapshot& snapshot);
+	static void acknowledgePlayerSave(const std::shared_ptr<Player>& player, const PlayerSaveSnapshot& snapshot);
 
 	/**
 	 * @brief Saves data components that are only relevant when the player is online.

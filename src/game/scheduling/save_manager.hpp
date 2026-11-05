@@ -18,6 +18,7 @@ class Logger;
 class Game;
 class Player;
 class Guild;
+struct PlayerSaveSnapshot;
 
 class SaveManager {
 public:
@@ -43,6 +44,7 @@ private:
 		uint32_t guid = 0;
 		std::shared_ptr<Player> player;
 		Position position;
+		std::shared_ptr<const PlayerSaveSnapshot> checkpoint;
 	};
 	struct SaveBatch {
 		std::vector<std::pair<std::shared_future<bool>, std::string>> players;

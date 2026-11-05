@@ -49,6 +49,12 @@ public:
 
 	bool load();
 	bool save();
+	struct Pending {
+		std::vector<ForgeHistory> additions;
+		std::vector<uint32_t> deletions;
+	};
+	Pending pending() const { return {m_modifiedHistory, m_removedHistoryIds}; }
+	void acknowledge(const Pending& persisted);
 
 private:
 	std::vector<ForgeHistory> m_history;

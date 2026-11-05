@@ -303,6 +303,10 @@ bool Database::retryQuery(std::string_view query, int retries) {
 }
 
 bool Database::executeQuery(std::string_view query) {
+	if (statements_) {
+		statements_->emplace_back(query);
+		return true;
+	}
 	if (!handle) {
 		g_logger().error("Database not initialized!");
 		return false;
@@ -332,6 +336,7 @@ bool Database::executeQuery(std::string_view query) {
 }
 
 DBResult_ptr Database::storeQuery(std::string_view query) {
+	if (statements_) throw std::logic_error("A player checkpoint cannot perform database reads");
 	if (!handle) {
 		g_logger().error("Database not initialized!");
 		return nullptr;
@@ -388,6 +393,19 @@ std::string Database::escapeString(const std::string &s) const {
 }
 
 std::string Database::escapeBlob(const char* s, uint32_t length) const {
+	if (statements_) {
+		// Hex literals preserve arbitrary bytes without a connection, charset state,
+		// SQL-mode-dependent escaping, or a lock on the dispatcher's live connection.
+		constexpr char hex[] = "0123456789ABCDEF";
+		std::string literal = "X'";
+		literal.reserve(2 * static_cast<size_t>(length) + 3);
+		for (uint32_t i = 0; i < length; ++i) {
+			const auto byte = static_cast<unsigned char>(s[i]);
+			literal += hex[byte >> 4];
+			literal += hex[byte & 15];
+		}
+		return literal + "'";
+	}
 	size_t maxLength = (length * 2) + 1;
 
 	std::string escaped;
