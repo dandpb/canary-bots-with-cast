@@ -100,6 +100,15 @@ An attempt is persisted before provisioning. Failed, budget-stopped and interrup
 
 Run summaries report confirmed net XP, wall/observed-active time, deaths when available, human interventions, native ownership time, confirmed objective results, request failures, latency and money. Native ownership is not a claim that a provider remained continuously available. Stalled duration requires observed working-state evidence and is unavailable when that evidence is insufficient. Aggregate summaries use independent runs, report all attempts and do not automatically declare a winner.
 
+Metric version 2 computes `wall_ms` and XP/hour from the recorded elapsed timeline
+between the first and last observed samples, including idle time and recorded gaps.
+Within each worker segment this clock is monotonic; restart gaps retain their
+recorded downtime estimates. `calendar_elapsed_ms` separately preserves the signed
+difference of calendar timestamps for auditing, so clock corrections during a
+segment cannot distort the progress rate. Older unversioned summaries used the
+calendar difference as the denominator; regenerate their analysis with the same
+metric version before comparing results. Original recordings are not rewritten.
+
 ## Export and verify
 
 Recorded decision fixtures can also be evaluated without executing any game action:
