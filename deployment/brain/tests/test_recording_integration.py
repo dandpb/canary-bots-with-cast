@@ -1,11 +1,12 @@
 import json
 
+from test_protocol import observation
+from test_recording import recorder
+
 from canary_brain.controller import Controller
 from canary_brain.recording import ReplayReader
 from canary_brain.store import Store
 from canary_brain.testing import FakeProvider
-from test_protocol import observation
-from test_recording import recorder
 
 
 async def test_real_controller_records_proposals_intents_and_duplicate_outcomes_once(

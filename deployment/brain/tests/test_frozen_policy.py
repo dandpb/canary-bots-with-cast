@@ -1,6 +1,7 @@
+from test_protocol import observation
+
 from canary_brain.controller import Controller
 from canary_brain.store import Store
-from test_protocol import observation
 
 
 async def test_frozen_run_has_no_policy_override_updates_or_autonomous_memory_calls(

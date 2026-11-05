@@ -1,9 +1,10 @@
 import asyncio
 
+from test_protocol import observation
+
 from canary_brain.controller import Controller
 from canary_brain.provider import Proposal
 from canary_brain.store import Store
-from test_protocol import observation
 
 
 async def test_former_leader_cannot_apply_a_slow_response_after_transfer(tmp_path):

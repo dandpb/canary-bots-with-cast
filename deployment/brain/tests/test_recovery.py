@@ -1,9 +1,10 @@
 import asyncio
 
+from test_protocol import observation
+
 from canary_brain.controller import Controller
 from canary_brain.learning import Policy
 from canary_brain.store import Store
-from test_protocol import observation
 
 
 def test_checkpoint_rollback_preserves_financial_and_character_independence(tmp_path):
@@ -95,8 +96,9 @@ async def test_newer_leader_message_supersedes_old_slow_order(tmp_path):
 async def test_engine_restart_retries_cancelled_supply_goal_without_success_cooldown(
     tmp_path,
 ):
-    from canary_brain.controller import Controller
     from test_protocol import observation
+
+    from canary_brain.controller import Controller
 
     class Model:
         async def decide(self, *args):

@@ -1,7 +1,8 @@
+from test_protocol import observation
+
 from canary_brain.controller import Controller
 from canary_brain.provider import Proposal
 from canary_brain.store import Store
-from test_protocol import observation
 
 
 async def test_plan_advances_only_after_terminal_matching_outcome(tmp_path):

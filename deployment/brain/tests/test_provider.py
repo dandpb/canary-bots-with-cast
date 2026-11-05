@@ -1,9 +1,10 @@
 from types import SimpleNamespace
 
+from test_protocol import observation
+
 from canary_brain.protocol import Observation
 from canary_brain.provider import Provider
 from canary_brain.store import Store
-from test_protocol import observation
 
 
 class APIResult:

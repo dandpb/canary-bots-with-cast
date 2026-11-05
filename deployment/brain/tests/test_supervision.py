@@ -2,13 +2,14 @@ import asyncio
 import json
 
 import pytest
+from test_protocol import observation
+
 from canary_brain.controller import Controller
 from canary_brain.operator_http import OperatorServer
 from canary_brain.protocol import Observation, Outcome
 from canary_brain.provider import Proposal
 from canary_brain.store import Store
 from canary_brain.testing import FakeProvider
-from test_protocol import observation
 
 
 def console(tmp_path, monkeypatch):

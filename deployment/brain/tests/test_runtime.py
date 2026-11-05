@@ -6,9 +6,10 @@ import sys
 import time
 from pathlib import Path
 
+from test_protocol import observation
+
 from canary_brain.recording import ReplayReader
 from canary_brain.store import Store
-from test_protocol import observation
 
 
 def test_private_datagram_worker_round_trip_without_credentials(tmp_path):
