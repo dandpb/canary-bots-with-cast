@@ -4275,6 +4275,9 @@ public:
 	// IBotEngine overrides
 	void registerBot(const std::shared_ptr<Player>& player) override;
 	std::vector<BotPlayerSnapshot> capturePersistentPlayers() const override;
+	BotReloadSnapshot captureReloadState() const override;
+	void quiesceForReload() override;
+	void restoreReloadState(const BotReloadSnapshot& snapshot) override;
 	void unregisterBot(uint32_t guid) override;
 	bool activateBot(uint32_t guid) override;
 	bool deactivateBot(uint32_t guid) override;

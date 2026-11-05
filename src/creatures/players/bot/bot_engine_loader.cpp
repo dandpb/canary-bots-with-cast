@@ -125,6 +125,7 @@ bool BotEngineLoader::initialize() {
 	bool success = true;
 	try {
 		getEngine().loadHuntData();
+		if (retained_) getEngine().restoreReloadState(*retained_);
 	} catch (const std::exception& exception) {
 		success = false;
 		error = exception.what();
@@ -135,10 +136,11 @@ bool BotEngineLoader::initialize() {
 	// The caught exception can have a destructor in the candidate's library.
 	// Leave the handler (and destroy that exception) before closing its module.
 	if (!success) {
-		unload();
+		active_.reset(); // Keep the captured roster available for an explicit retry.
 		return fail("initialize", error.empty() ? "candidate initialization failed" : error);
 	}
 	phase_ = "initialized";
+	retained_.reset();
 	return true;
 }
 
@@ -146,7 +148,15 @@ bool BotEngineLoader::commitReload(uint64_t ticket) {
 	if (!prepared_ || ticket == 0 || ticket != preparedTicket_) {
 		return fail("commit", "missing or stale prepared candidate ticket");
 	}
-	// #12/B supplies the complete Player handoff from #11 at this boundary.
+	std::string error;
+	bool handoffOk = true;
+	try {
+		if (active_ && !retained_) retained_ = active_->engine->captureReloadState();
+		if (retained_) checkpointBotReloadPlayers(*retained_);
+		if (active_) active_->engine->quiesceForReload();
+	} catch (const std::exception& exception) { handoffOk = false; error = exception.what(); }
+	catch (...) { handoffOk = false; error = "unexpected state handoff failure"; }
+	if (!handoffOk) return fail("handoff", error.empty() ? "state handoff failed" : error);
 	active_.reset();
 	active_ = std::move(prepared_);
 	preparedTicket_ = 0;
@@ -163,7 +173,7 @@ void BotEngineLoader::cancelReload(uint64_t ticket) {
 	}
 }
 
-bool BotEngineLoader::reload() { return prepareReload() && commitReload(preparedTicket_); }
+bool BotEngineLoader::reload() { return prepareReload() && commitReload(preparedTicket_) && initialize(); }
 IBotEngine* BotEngineLoader::tryGetEngine() const { return active_ ? active_->engine : nullptr; }
 IBotEngine& BotEngineLoader::getEngine() {
 	auto* engine = tryGetEngine();
@@ -175,6 +185,7 @@ void BotEngineLoader::unload() {
 	prepared_.reset();
 	preparedTicket_ = 0;
 	active_.reset();
+	retained_.reset();
 }
 IBotEngine& getBotEngineInstance() { return BotEngineLoader::getInstance().getEngine(); }
 IBotEngine* getBotEngineIfLoaded() { return BotEngineLoader::getInstance().tryGetEngine(); }

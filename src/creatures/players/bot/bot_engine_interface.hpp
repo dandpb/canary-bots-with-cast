@@ -487,11 +487,44 @@ struct BotPlayerSnapshot {
 	Position loginPosition;
 };
 
+// Reload transfers values and executable-owned Players, never BotState pointers,
+// callbacks, POI addresses or references into an old library's containers.
+struct BotReloadEntry {
+	uint32_t guid = 0;
+	std::string name;
+	std::shared_ptr<Player> player;
+	Position position;
+	bool active = false, hibernated = false, dying = false, aiPaused = false;
+	BotAIState state = BotAIState::INACTIVE;
+	uint32_t townId = 0, level = 0;
+	std::string townName;
+	uint8_t vocation = 0;
+	uint16_t personality = 0;
+	uint32_t huntId = 0, kills = 0, travelTown = 0;
+	HuntPhase huntPhase = HuntPhase::PREPARING;
+	size_t waypoint = 0;
+	int64_t deathPause = 0, lastVirtualSave = 0;
+	int64_t huntStarted = 0, huntEnds = 0;
+	std::string travelPhase;
+	Position travelBoat, travelSource;
+};
+
+struct BotReloadSnapshot {
+	std::vector<BotReloadEntry> entries;
+	bool schedulerEnabled = true;
+};
+
+// Implemented by the executable; SQL workers retain only the captured values.
+void checkpointBotReloadPlayers(const BotReloadSnapshot& snapshot);
+
 // Abstract interface for the bot engine — implemented in libbot_engine.so
 class IBotEngine {
 public:
 	virtual ~IBotEngine() = default;
 	virtual std::vector<BotPlayerSnapshot> capturePersistentPlayers() const = 0;
+	virtual BotReloadSnapshot captureReloadState() const = 0;
+	virtual void quiesceForReload() = 0;
+	virtual void restoreReloadState(const BotReloadSnapshot& snapshot) = 0;
 
 	// Lifecycle
 	virtual void registerBot(const std::shared_ptr<Player>& player) = 0;

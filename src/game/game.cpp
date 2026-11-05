@@ -8571,6 +8571,8 @@ void Game::shutdown() {
 	// after this point. The friend class Game declaration in dispatcher.hpp
 	// permits this private-method call.
 	g_dispatcher().shutdown();
+	// Release module-owned objects while the game, dispatcher and logger still live.
+	BotEngineLoader::getInstance().unload();
 
 	g_webhook().sendMessage(":red_circle: Server is shutting down...");
 
