@@ -45,15 +45,16 @@ retomariam as casas e transfeririam a decoração antes da ativação dos bots.
 
 ## Gateway LiteLLM no mesmo projeto
 
-O serviço opcional `litellm` pertence ao projeto `canary-bots-wsl`, junto de
-database/game/brain/web. Prepare os arquivos sem substituir configurações ou
-credenciais existentes e inicie somente esse serviço:
+Os serviços opcionais `litellm` e `litellm-db` pertencem ao projeto
+`canary-bots-wsl`, junto de database/game/brain/web. O PostgreSQL exclusivo
+persiste usuários, sessões e configurações do painel, sem publicar portas.
+Prepare os arquivos sem substituir configurações ou credenciais existentes:
 
 ```bash
 cd /home/daniel/canary-bots-wsl/deployment/wsl
 python3 setup-gateway.py
-docker compose --profile gateway up -d --no-deps --build litellm
-docker compose --profile gateway ps litellm
+docker compose --profile gateway up -d --build --wait litellm
+docker compose --profile gateway ps litellm litellm-db
 ```
 
 O endpoint local é `http://127.0.0.1:4000/v1`; outros serviços deste Compose podem
@@ -62,8 +63,21 @@ o container pode ficar saudável, mas as chamadas de inferência permanecem
 bloqueadas até configurar modelos e credenciais autorizados. Isso não muda o
 provider do worker existente nem inicia testes pagos.
 
-Os arquivos locais são `runtime/config/litellm.yaml`,
-`runtime/secrets/litellm-provider.env` e `runtime/secrets/litellm-worker.env`.
+O painel fica em `http://127.0.0.1:4000/ui`: usuário `admin`, senha igual ao
+`LITELLM_MASTER_KEY` do arquivo protegido `runtime/secrets/litellm-worker.env`.
+Não compartilhe essa chave. A imagem oficial inclui Prisma e executa as
+migrações na inicialização. O erro `Not connected to DB!` indica ausência
+da conexão PostgreSQL, mesmo quando as credenciais de login estão corretas.
+
+Os arquivos locais são `runtime/config/litellm.yaml` e os arquivos protegidos
+`runtime/secrets/litellm-{provider,worker,db,ui}.env`. A preparação preserva
+senhas e `LITELLM_SALT_KEY` existentes; mantenha essa salt junto do backup do
+banco para conservar o acesso aos dados criptografados.
+Para uma configuração preexistente, acrescente explicitamente
+`general_settings.custom_auth_settings: {mode: auto}` e recrie o gateway:
+isso permite que sessões administrativas sejam validadas pelo LiteLLM.
+A credencial do worker continua restrita às rotas e à identidade do benchmark;
+suas falhas de política nunca passam para a autenticação administrativa.
 Configure ali os aliases explícitos de OpenAI/Gemini conforme
 `deployment/brain/gateway/gateway.example.yaml`, mantendo a política do gateway.
 Após alterar a configuração, recrie somente `litellm` e revalide sua identidade.
