@@ -15,13 +15,13 @@
 // disconnect (ProtocolGame::release clears the flag) left a dead cast listed by
 // deployment/web/login.php until the next startup.
 //
-// Ordering: DatabaseTasks runs queries on the thread pool with no per-character
-// order, so UPSERT and DELETE of the same GUID both go through this queue. At most
+// Ordering: UPSERT and DELETE of the same GUID both go through this queue. At most
 // one write per GUID is in flight; requests made meanwhile only replace the
 // desired state, and the newest one is written when the current write finishes.
 // A late DELETE of an old session therefore can never be the last write after a
 // newer `/cast on`: the newer UPSERT always runs after it. Different GUIDs never
-// wait on each other and the dispatcher never waits on SQL.
+// hold a dispatcher lock while SQL runs. Two dedicated workers have independent
+// connections; neither name escaping nor queries take the dispatcher's DB lock.
 //
 // Failures: the desired state is never dropped while it is the newest one. A
 // failed write is retried at once up to kMaxAttempts times in a row, then on a
