@@ -91,9 +91,11 @@ Para uma configuração preexistente, acrescente explicitamente
 isso permite que sessões administrativas sejam validadas pelo LiteLLM.
 A credencial do worker continua restrita às rotas e à identidade do benchmark;
 suas falhas de política nunca passam para a autenticação administrativa.
-Configure ali os aliases explícitos de OpenAI/Gemini conforme
-`deployment/brain/gateway/gateway.example.yaml`, copiando somente `model_list`
-e mantendo a política do gateway e a coordenação Redis.
+Reutilize as credenciais nomeadas `openai` e `gemini` cadastradas na UI e configure
+os aliases `canary-openai`/`canary-gemini` pelo
+[exemplo com credenciais nomeadas](../brain/gateway/gateway.named-credentials.example.json),
+seguindo a [etapa de associação de modelos](../brain/SETUP.pt-BR.md#4-cadastrar-credenciais-e-associar-modelos).
+Copie somente `model_list`, mantendo a política do gateway e a coordenação Redis.
 Após alterar a configuração, recrie somente `litellm` e revalide sua identidade.
 Use o serviço deste Compose para a implantação WSL; o Compose independente em
 `deployment/brain/gateway/` fica disponível para outros ambientes isolados.
@@ -101,16 +103,18 @@ Use o serviço deste Compose para a implantação WSL; o Compose independente em
 ## Worker de IA
 
 O perfil `ai` usa a imagem `canary-bots-wsl-brain:local`; um merge não recompila
-essa imagem. Na configuração direta OpenAI preparada por `setup.py`, a credencial fica em
-`runtime/secrets/openai.env` com permissão `0600`, fora do Git e do contexto de
-build. O arquivo é montado apenas no worker. Para migrar ao gateway com uma
-credencial restrita e conservar o ledger, siga a [etapa do worker](../brain/SETUP.pt-BR.md#6-configurar-o-worker-com-uma-rota-litellm).
-Iniciar o provider real pode gerar consumo. Não envie chaves pelo chat.
+essa imagem. Para a configuração inicial, siga a
+[etapa do worker LiteLLM](../brain/SETUP.pt-BR.md#6-configurar-o-worker-com-uma-rota-litellm),
+que inclui os comandos de build e inicialização: configure `provider: litellm`,
+prepare `runtime/secrets/litellm-client.env` com permissão `0600` e apenas
+`LITELLM_API_KEY`, e preserve o ledger canônico existente em `brain-state`.
+As credenciais OpenAI/Gemini permanecem no gateway.
 
-```bash
-docker compose --profile ai up -d brain
-docker compose --profile ai logs --tail=50 brain
-```
+O template de `setup.py` e a montagem `openai.env` do Compose base pertencem ao
+acesso direto OpenAI legado; `setup.py` não cria esse arquivo. No fluxo LiteLLM,
+substitua essa montagem pela de `litellm-client.env` e ajuste `credential_file`
+conforme o guia antes de iniciar `brain`. Preserve as configurações locais
+existentes. Iniciar o provider real pode gerar consumo. Não envie chaves pelo chat.
 
 As configurações em `runtime/config/` selecionam os bots 65001, 65004 e 65003,
 modo ativo, com o bot 65001 como explorador autônomo. O worker mantém o limite
