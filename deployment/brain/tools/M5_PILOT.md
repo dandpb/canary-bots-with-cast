@@ -2,7 +2,7 @@
 
 `m5_pilot.py` is an operator entry point for the declared fixture-G pilot.
 It calls the existing `decision_fixtures` evaluator and a single canonical
-`run_campaign` (native/OpenAI/Gemini, three30-minute blocks). Canonical execution
+`run_campaign` (native/OpenAI/Gemini, three 30-minute blocks). Canonical execution
 already rotates ABC/BCA/CAB; the wrapper does not implement another scheduler.
 It does not perform provider SDK translation or own a second financial ledger.
 
@@ -48,17 +48,17 @@ original configuration paths or uses the audit copies as new authority.
 It reads input hashes and SQLite in read-only mode and inspects only the current
 harness's image/mount metadata. The canonical existing volume must be mounted
 directly RW as `canary-bots-wsl_brain-state`; bind copies are rejected. This
-profile requires existing ledger headroom ofUSD12 and a global monthly cap50.
+profile requires existing ledger headroom of USD12 and a global monthly cap of USD50.
 
-The paid bounds areUSD0.49 per model's conformance block (one recorded bot,
-at most six observations) and six scored runs atUSD1 each. Historical settled
-probes and declared additional prior costs also consume theUSD7 envelope.
+The paid bounds are USD0.49 per model's conformance block (one recorded bot,
+at most six observations) and six scored runs at USD1 each. Historical settled
+probes and declared additional prior costs also consume the USD7 envelope.
 Single-candidate observations select locally and are counted as zero model
 attempts. Other observations must each produce exactly one ledger request.
 
 Each scored participant receives the same isolated internal game/DB network,
 `<trial-directory>:/m5` audit mount and passive status query cadence
-(after540s, every10s). The observer is qualified for fixture-G Grizzle65001;
+(after 540 s, every 10 s). The observer is qualified for fixture-G Grizzle 65001;
 it issues only status queries, not gameplay orders. The canonical runner owns
 service teardown; observer tasks are cancelled/joined and patched hooks restored.
 
