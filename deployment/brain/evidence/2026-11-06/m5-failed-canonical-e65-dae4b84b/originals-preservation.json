@@ -1,0 +1,226 @@
+{
+  "method": "File bytes read only; SQLite Reader only opened temporary DB+WAL copies; no canonical ledger read by this collector",
+  "files": {
+    "attempt-closed.receipt.json": {
+      "sha256": "ff01dbaaa9c282b8bee1b47a5a7b62f04796567dd1e980e034a0e8ea06534551",
+      "bytes": 2637,
+      "mtime_ns": 1793984099030256524,
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "execution-started.json": {
+      "sha256": "b052fbe76b399dd6844cba82bb6761bdccba54de8aed1ca13004e708bd008bfa",
+      "bytes": 7315,
+      "mtime_ns": 1793983993188312730,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "execution-result.json": {
+      "sha256": "08022ec13177d8c691b9298b81a0fc09a1f87e5452b2273b6050d0cea976486c",
+      "bytes": 3995,
+      "mtime_ns": 1793984002256179932,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "inputs/campaign.json": {
+      "sha256": "59a25503b423a23145b94e460b86d1468af0f3cd7eee2ea6500bf7055660ae06",
+      "bytes": 2537,
+      "mtime_ns": 1793983993194082958,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "inputs/admission.json": {
+      "sha256": "d4a9d7c240b5a3e46fbf2911d289702cbd5bc87bb37cc2e1e1836df736515b49",
+      "bytes": 12862,
+      "mtime_ns": 1793983993198883872,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "inputs/authorization.json": {
+      "sha256": "6143cf9463c5d260e85e08bbc85d527bbf40eec544775377be3d7a9845ddf3d4",
+      "bytes": 3795,
+      "mtime_ns": 1793983993203817294,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "inputs/source_manifest.json": {
+      "sha256": "ff6fac4e60adfc09b51f06536ebb84629232755f08962eab3a6efd0f4607628b",
+      "bytes": 5960,
+      "mtime_ns": 1793983993210221758,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "inputs/decision_fixtures.json": {
+      "sha256": "5f18c7805cf29a5ebffe29f6b1e4574f09a0adf358f3c76ba577ce36ce8265af",
+      "bytes": 17960,
+      "mtime_ns": 1793983993220230978,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "inputs/openai.json": {
+      "sha256": "a051736a26464552fa358977a19de5b94aebc8f5813d764b2c15264aedd8d643",
+      "bytes": 1240,
+      "mtime_ns": 1793983993224971908,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "inputs/gemini.json": {
+      "sha256": "948ecb368f05bc630ed2044a679c68b318224dabeccf76232e58ee9695c89794",
+      "bytes": 1270,
+      "mtime_ns": 1793983993229656393,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "root-GO.receipt.json": {
+      "sha256": "40bd05b7c4f507768cce92831f3325886aa92e0f99aa89e7ecf34b3bae34add3",
+      "bytes": 1162,
+      "mtime_ns": 1793983929005459600,
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "ROOT_FINAL_E65.json": {
+      "sha256": "2ff5b9375cef99c46efa0ffdb51fa5054e2c64b738313851cf5d0454ebf445f8",
+      "bytes": 34283,
+      "mtime_ns": 1793983662556644684,
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "current-gateway-final.metadata.json": {
+      "sha256": "a4e04bb3673a0f488e5872efe9267d701a3e6e37accd2175b9a80eb02a1c5d94",
+      "bytes": 1581,
+      "mtime_ns": 1793983662554115826,
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "validation/composed-validation.json": {
+      "sha256": "63aca653b14021479e7dbb1b9abf3b117a1b5e55255f012891fbee1a68cec412",
+      "bytes": 14699,
+      "mtime_ns": 1793983156195927286,
+      "mode": 420,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "probes/openai/recording.sqlite3": {
+      "sha256": "fe5d63273527e1121f6d84d9a6d7613dc8c69c280cc311a5615462b05ff4e7b5",
+      "bytes": 45056,
+      "mtime_ns": 1793983999675501534,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "probes/openai/recording.sqlite3-wal": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "mtime_ns": 1793983999682318466,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "probes/openai/recording.sqlite3-shm": {
+      "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+      "bytes": 32768,
+      "mtime_ns": 1793984098986048248,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "probes/gemini/recording.sqlite3": {
+      "sha256": "87fb8292f8b4a36045f7a12767075e65f3392d9b5c9e9431c2b513d2d05189f7",
+      "bytes": 40960,
+      "mtime_ns": 1793984002244520020,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "probes/gemini/recording.sqlite3-wal": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "mtime_ns": 1793984002253036310,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "probes/gemini/recording.sqlite3-shm": {
+      "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+      "bytes": 32768,
+      "mtime_ns": 1793984099001228800,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "openai-probe-result.json": {
+      "sha256": "3df8ece6cf4f4f2a6d682c91a51a7ef303c25503f960f1663cc6ff6dc245f5d5",
+      "bytes": 3287,
+      "mtime_ns": 1793983999686297167,
+      "mode": 384,
+      "uid": 0,
+      "gid": 0
+    },
+    "closure-snapshots/openai/openai-recording.snapshot.sqlite3": {
+      "sha256": "0edc8b7f4520ba97a59c48111a42b4a1c6a689ff468a9968f14e8f9b0e1750de",
+      "bytes": 45056,
+      "mtime_ns": 1793984098991554168,
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "closure-snapshots/openai/openai-recording.snapshot.sqlite3-wal": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "mtime_ns": 1793984172764216152,
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "closure-snapshots/openai/openai-recording.snapshot.sqlite3-shm": {
+      "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+      "bytes": 32768,
+      "mtime_ns": 1793984922763453685,
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "closure-snapshots/gemini/gemini-recording.snapshot.sqlite3": {
+      "sha256": "044f50250fb68890db0e44bce01a1d8e98f2d203733bf5a03eaa025cebab3f04",
+      "bytes": 40960,
+      "mtime_ns": 1793984099003543625,
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "closure-snapshots/gemini/gemini-recording.snapshot.sqlite3-wal": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "mtime_ns": 1793984108127910295,
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "closure-snapshots/gemini/gemini-recording.snapshot.sqlite3-shm": {
+      "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+      "bytes": 32768,
+      "mtime_ns": 1793984922764016432,
+      "mode": 384,
+      "uid": 1000,
+      "gid": 1000
+    }
+  },
+  "hashes_sizes_mtimes_modes_owners_unchanged": true,
+  "source_permissions_changed": false,
+  "canonical_ledger_read": false,
+  "canonical_ledger_written": false,
+  "docker_or_provider_calls_by_collector": 0
+}

@@ -1,0 +1,71 @@
+{
+  "source_sha256": "3df8ece6cf4f4f2a6d682c91a51a7ef303c25503f960f1663cc6ff6dc245f5d5",
+  "mode": "real-inference-on-recorded-inputs-no-game-actions",
+  "runs": [
+    "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001"
+  ],
+  "qualification": {
+    "valid": 3,
+    "late": 1,
+    "technical_invalid": 0,
+    "unknown_requests": 1,
+    "unknown_nanousd": 942250,
+    "ledger_requests": 3,
+    "root_review_required": false,
+    "failure_interpretation": "deadline_controller_performance",
+    "accepted_for_game": true,
+    "evidence_reconciled": true,
+    "policy": "short_deadline_performance_v1",
+    "long_valid": 2,
+    "causal_backoff": 2,
+    "model_opportunities": 5,
+    "liability_nanousd": 1129550,
+    "financial_final": false,
+    "short_contract_coverage_complete": false,
+    "case_outcomes": [
+      {
+        "index": 0,
+        "deadline_ms": 5000,
+        "outcome": "valid",
+        "decision_id": "ed9cdb6382e947ef81d32ad1310bfd71",
+        "request_id": "0127734202e044e9aa93cc3261a82647"
+      },
+      {
+        "index": 1,
+        "deadline_ms": 5000,
+        "outcome": "valid",
+        "decision_id": "f4ca9fa71d3342c597fefc03247dd0ae",
+        "request_id": "742774dec9f94c4eb5c903b69bffe0aa"
+      },
+      {
+        "index": 2,
+        "deadline_ms": 5000,
+        "outcome": "local_choice",
+        "decision_id": "82b1b7758c464236abbe5ca84f57c8e7",
+        "request_id": null
+      },
+      {
+        "index": 3,
+        "deadline_ms": 1000,
+        "outcome": "deadline_negative_unknown_charge",
+        "decision_id": "690ddf2e3bb84a8ca63fd5f448caa93a",
+        "request_id": "c8f2779f524c49be9da807f71eeffd58"
+      },
+      {
+        "index": 4,
+        "deadline_ms": 1500,
+        "outcome": "causal_backoff_negative",
+        "decision_id": "2f43dc30a1cc472d82cf513d33e5d6c6",
+        "request_id": "139d76e4445c4ca399b726090d3958d6"
+      },
+      {
+        "index": 5,
+        "deadline_ms": 1000,
+        "outcome": "causal_backoff_negative",
+        "decision_id": "0135bdd045324946b28a3185af52afe8",
+        "request_id": "7ca92f1f529642459ccaa938bb91f38b"
+      }
+    ]
+  },
+  "scope": "Probe acceptance only; no game began. Author valid count includes a local single-candidate selection."
+}

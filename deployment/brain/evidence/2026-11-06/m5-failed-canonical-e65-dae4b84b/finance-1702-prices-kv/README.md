@@ -1,0 +1,11 @@
+# Failed single M5 execution: financial reconciliation (public v2)
+
+The primary financial evidence was captured at 2026-11-06 17:02:36 UTC through an existing brain container: SQLite `mode=ro`/`query_only`, on the original volume mounted read-write. No reader container was created for that successful snapshot. Separately failed strict read-only helper attempts reported CANTOPEN and their temporary containers were removed. **Those helper errors are not the original M5 failure.** Only the original `OperationalError` class is retained; its exact SQLite message/code and cause remain unknown.
+
+This update uses captured files only. It performs no canonical SQL, Docker, API calls, credential reads, ledger writes or retry. Public v1 bytes were preserved privately before the update. The request-KV diagnostic has a distinct 17:05 UTC cut and reads only the previously captured `error` field projection: OpenAI's unknown request has `TimeoutError`; Gemini's second request has no captured request-KV record. Absence does not explain the original failure.
+
+The five attempt requests contain 363,100 nanodollars of known spend and 3,357,050 of full unknown reservations: liability 3,720,150. Including the historical 214,600 gives 3,934,750 nanodollars. No scored game has a canonical request. Unsettled reservations remain liabilities; neither missing replay terminals nor absent KV records imply zero cost or an active upstream request. This attempt is not qualified and must not be retried under its original authorization.
+
+The prices were selected only from the two worker inputs whose full bytes match `execution-started` hashes: OpenAI input/cached/cache-write/output = 100/10/125/500 nanodollars per token; Gemini = 300/30/unqualified/2,500. Gemini's null cache-write price is not free. These are configured execution prices, not provider invoice reconciliation.
+
+The 16:34 and 17:02 captured financial exports are compared by request identity locally. Prior unknowns are classified as still preserved, settled, missing or changed without forcing counts or attributing a cause. Aggregates and proof hashes are public; no additional raw financial inventory, credentials, headers, environment files or private paths are published. Exact cut timestamps are in the JSON.

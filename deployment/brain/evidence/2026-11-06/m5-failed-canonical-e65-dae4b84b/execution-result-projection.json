@@ -1,0 +1,13 @@
+{
+  "source_sha256": "08022ec13177d8c691b9298b81a0fc09a1f87e5452b2273b6050d0cea976486c",
+  "campaign": null,
+  "probes_with_result_json": [
+    "openai"
+  ],
+  "comparison_scope": "configured_controller_stacks",
+  "native_decoding_guarantees_equal": false,
+  "error_type": "OperationalError",
+  "ledger_export_error": "OperationalError",
+  "qualified": false,
+  "retry_performed": false
+}
