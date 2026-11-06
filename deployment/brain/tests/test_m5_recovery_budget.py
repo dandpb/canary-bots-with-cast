@@ -307,3 +307,110 @@ def test_v1_still_cannot_take_the_recovery_envelope(admitted):
 
 def test_original_strict_preflight_still_accepts_its_usd7_envelope(admitted):
     assert pilot.preflight(admitted)["accepted"] is True
+
+
+def claim_offline(recovery):
+    captured = pilot.capture_inputs(recovery)
+    admitted = {"input_sha256": pilot.input_hashes(captured)}
+    return pilot.claim_recovery(recovery, captured, admitted)
+
+
+def test_recovery_claim_persists_and_blocks_a_second_namespace(recovery):
+    first = pilot.preflight(recovery)
+    assert first["historical_nanousd"] == 3_934_750
+    claimed = claim_offline(recovery)
+    assert claimed["historical_nanousd"] == first["historical_nanousd"]
+    with closing(sqlite3.connect(recovery.canonical_ledger_file)) as db:
+        row = db.execute(
+            "SELECT data FROM records WHERE kind=? AND key=?",
+            (pilot.RECOVERY_CLAIM_KIND, pilot.RECOVERY_CLAIM_KEY),
+        ).fetchone()
+    assert row is not None
+    marker = json.loads(row[0])
+    assert marker["namespace"] == "qa-recovery"
+    assert marker["input_sha256"] == pilot.input_hashes(pilot.capture_inputs(recovery))
+
+    change_json(
+        recovery,
+        recovery.campaign,
+        lambda data: data.update(name="qa-recovery-again"),
+    )
+    with pytest.raises(ValueError, match="already been claimed"):
+        pilot.preflight(recovery)
+    with pytest.raises(ValueError, match="already been claimed"):
+        claim_offline(recovery)
+
+
+@pytest.mark.parametrize("drift", ["prior", "monthly", "missing_run", "history"])
+def test_recovery_claim_revalidates_the_ledger_before_recording_use(recovery, drift):
+    admitted = pilot.preflight(recovery)
+    captured = pilot.capture_inputs(recovery)
+    with closing(sqlite3.connect(recovery.canonical_ledger_file)) as db, db:
+        if drift == "prior":
+            db.execute(
+                "UPDATE requests SET reserved=17007501 WHERE id='prior-openai-unknown'"
+            )
+        elif drift == "monthly":
+            db.execute(
+                "INSERT INTO requests(id,month,reserved,endpoint,run_id) "
+                "VALUES(?,?,?,?,?)",
+                ("other-monthly-charge", month_now(), 40_000_000_000, "", "other"),
+            )
+        elif drift == "missing_run":
+            db.execute("DELETE FROM requests WHERE run_id=?", (GEMINI_RUN,))
+        else:
+            db.execute(
+                "UPDATE requests SET spent=52801 WHERE id=?",
+                (HISTORICAL[0]["id"],),
+            )
+    with pytest.raises(ValueError):
+        pilot.claim_recovery(recovery, captured, admitted)
+    with closing(sqlite3.connect(recovery.canonical_ledger_file)) as db:
+        assert (
+            db.execute(
+                "SELECT 1 FROM records WHERE kind=? AND key=?",
+                (pilot.RECOVERY_CLAIM_KIND, pilot.RECOVERY_CLAIM_KEY),
+            ).fetchone()
+            is None
+        )
+
+
+async def test_execute_claims_recovery_before_starting_any_probe(recovery, monkeypatch):
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    monkeypatch.setattr(
+        pilot,
+        "preflight",
+        lambda plan, captured: {"input_sha256": pilot.input_hashes(captured)},
+    )
+
+    async def before_probe(plan, admitted, captured):
+        with closing(sqlite3.connect(plan.canonical_ledger_file)) as db:
+            assert db.execute(
+                "SELECT 1 FROM records WHERE kind=? AND key=?",
+                (pilot.RECOVERY_CLAIM_KIND, pilot.RECOVERY_CLAIM_KEY),
+            ).fetchone() == (1,)
+        assert admitted["historical_nanousd"] == 3_934_750
+        return {"offline": True}
+
+    monkeypatch.setattr(pilot, "execute_admitted", before_probe)
+    assert await pilot.execute(recovery) == {"offline": True}
+    with pytest.raises(ValueError, match="already been claimed"):
+        await pilot.execute(recovery)
+
+
+async def test_failed_recovery_keeps_its_claim(recovery, monkeypatch):
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    monkeypatch.setattr(
+        pilot,
+        "preflight",
+        lambda plan, captured: {"input_sha256": pilot.input_hashes(captured)},
+    )
+
+    async def fail_after_claim(plan, admitted, captured):
+        raise RuntimeError("offline probe failure")
+
+    monkeypatch.setattr(pilot, "execute_admitted", fail_after_claim)
+    with pytest.raises(RuntimeError, match="offline probe failure"):
+        await pilot.execute(recovery)
+    with pytest.raises(ValueError, match="already been claimed"):
+        claim_offline(recovery)

@@ -83,6 +83,14 @@ conditions. `financial_final=false` remains mandatory while any included
 charge is unknown. Budget acceptance is separate from model conformance,
 observed horizons and eventual pilot qualification.
 
+The canonical ledger holds a permanent single-use recovery claim in `records`.
+Read-only preflight refuses an existing claim. Under the M5 lease and before any
+provider call, execution takes an immediate SQL transaction, rechecks the exact
+historical rows, both prior runs, USD7 envelope and USD12 monthly headroom, then
+inserts the claim with the namespace and admitted input hashes. A failed or
+interrupted execution never releases it; another namespace cannot omit the
+first recovery's charges and start a second recovery.
+
 ## Proposed minimal source delta
 
 1. Add the recovery literal and the two required prior-run IDs. Recognize it as
@@ -102,6 +110,9 @@ observed horizons and eventual pilot qualification.
    unknowns count in full; exact USD7 boundary accepts and +1 nanodollar fails;
    prior costs are not double counted; old namespace fails; v1 exact ceiling
    and legacy behavior remain unchanged. No canonical SQL or real provider call.
+6. Persist and recheck the single-use recovery claim in the canonical ledger
+   before inference. This prevents a second fresh namespace from replaying the
+   same historical envelope after the first recovery has spent money.
 
 Root reviews the precise patch, an independent reviewer checks this budget v2,
 and a new explicit root GO is required after the SQLite fix and all admission

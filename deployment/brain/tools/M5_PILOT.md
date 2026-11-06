@@ -97,7 +97,10 @@ The separate [`short_deadline_performance_recovery_v2` contract](../evidence/202
 prospectively carries the interrupted invocation's real costs and full unknown
 reservations into a new USD7 envelope. It requires both prior probe run IDs,
 unchanged historical charges and one fresh complete qualification per provider.
-It preserves the original v1 ceiling and requires new frozen inputs and root GO.
+It persists a single-use claim in the canonical ledger before any new provider
+call, after rechecking the complete envelope under an immediate SQL transaction.
+The claim remains after failure and blocks a second recovery namespace. It
+preserves the original v1 ceiling and requires new frozen inputs and root GO.
 
 Each scored participant receives the same isolated internal game/DB network,
 `<trial-directory>:/m5` audit mount and passive status query cadence
