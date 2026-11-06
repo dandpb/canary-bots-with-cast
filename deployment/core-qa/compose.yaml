@@ -82,7 +82,12 @@ services:
     volumes:
       - website-cache:/var/www/html/system/cache
     healthcheck:
-      test: [CMD, curl, -fsS, http://127.0.0.1/]
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS -H 'Content-Type: application/json'
+          --data '{"type":"cacheinfo"}' http://127.0.0.1/login.php |
+          grep -q '"playersonline"'
       interval: 30s
       timeout: 10s
       retries: 10

@@ -5,6 +5,9 @@ COPY deployment/wsl/worldmap.json /var/www/html/plugins/worldmap.json
 COPY deployment/wsl/web-entrypoint.sh /usr/local/bin/canary-web-entrypoint
 COPY deployment/wsl/worldmap-menu.php /usr/local/bin/worldmap-menu.php
 COPY deployment/wsl/patch-myaac-status.php /tmp/patch-myaac-status.php
-RUN php /tmp/patch-myaac-status.php && php -l /var/www/html/system/status.php && rm /tmp/patch-myaac-status.php && chmod +x /usr/local/bin/canary-web-entrypoint
+RUN php /tmp/patch-myaac-status.php && php -l /var/www/html/system/status.php && rm /tmp/patch-myaac-status.php \
+    && chgrp -R www-data /var/www/html/login.php /var/www/html/plugins \
+    && chmod -R g+rX /var/www/html/login.php /var/www/html/plugins \
+    && chmod +x /usr/local/bin/canary-web-entrypoint
 ENTRYPOINT ["canary-web-entrypoint"]
 CMD ["apache2-foreground"]
