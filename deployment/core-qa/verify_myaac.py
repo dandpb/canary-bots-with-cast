@@ -52,7 +52,7 @@ def rendered_config(script):
     function_end = source.index("\n}\n", function_start) + 3
     config_start = source.index("cat > /canary/config.lua <<EOF")
     config_end = source.index("\nEOF", config_start) + 4
-    with tempfile.TemporaryDirectory(dir=os.environ["TMPDIR"]) as directory:
+    with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR") or HERE) as directory:
         output = Path(directory) / "config.lua"
         heredoc = source[config_start:config_end].replace(
             "cat > /canary/config.lua", f"cat > {shlex.quote(str(output))}", 1,
@@ -96,8 +96,12 @@ def verify():
     expected = LOCK.get("qa_config_sha256")
     if expected and config_digest != expected:
         raise RuntimeError("MyAAC generated config differs from image-lock.json")
-    return config_digest
+    return {
+        "image_id": actual_id,
+        "entrypoint_sha256": script_digest,
+        "qa_config_sha256": config_digest,
+    }
 
 
 if __name__ == "__main__":
-    print("QA MyAAC config.lua SHA-256:", verify())
+    print("QA MyAAC config.lua SHA-256:", verify()["qa_config_sha256"])

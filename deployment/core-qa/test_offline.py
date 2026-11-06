@@ -1,5 +1,6 @@
 """Offline checks for the QA login/port contract and Compose isolation."""
 
+import hashlib
 import json
 import os
 import runpy
@@ -9,11 +10,21 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from preflight import assert_no_resources, assert_source
+from preflight import assert_no_resources, assert_source, redact, run_preflight
 from verify_myaac import verify as verify_myaac
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent.parent
+
+
+def myaac_image_available():
+    try:
+        return subprocess.run(
+            ["docker", "image", "inspect", "otbr-myaac:latest"],
+            capture_output=True, check=False,
+        ).returncode == 0
+    except OSError:
+        return False
 
 
 class CoreQaOfflineTests(unittest.TestCase):
@@ -90,6 +101,41 @@ class CoreQaOfflineTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "must match"):
                     assert_source("b" * 40)
 
+    def test_receipt_is_sanitized_and_only_written_after_full_success(self):
+        sha = "a" * 40
+        image_ids = {"database": "sha256:" + "b" * 64,
+                     "web_base": "sha256:" + "c" * 64}
+        myaac = {"entrypoint_sha256": "d" * 64,
+                 "qa_config_sha256": "e" * 64}
+        with tempfile.TemporaryDirectory() as directory:
+            receipt_path = Path(directory) / "preflight-receipt.json"
+            with patch("preflight.assert_compose", return_value="f" * 64), \
+                 patch("preflight.assert_no_resources"), \
+                 patch("preflight.assert_image_lock", return_value=image_ids), \
+                 patch("preflight.verify_myaac", return_value=myaac), \
+                 patch("preflight.assert_source", return_value=sha), \
+                 patch("preflight.assert_map", side_effect=RuntimeError("bad map")):
+                with self.assertRaisesRegex(RuntimeError, "bad map"):
+                    run_preflight(approved_revision=sha, receipt_path=receipt_path)
+            self.assertFalse(receipt_path.exists())
+            with patch("preflight.assert_compose", return_value="f" * 64), \
+                 patch("preflight.assert_no_resources"), \
+                 patch("preflight.assert_image_lock", return_value=image_ids), \
+                 patch("preflight.verify_myaac", return_value=myaac), \
+                 patch("preflight.assert_source", return_value=sha), \
+                 patch("preflight.assert_map", return_value="1" * 64):
+                digest = run_preflight(approved_revision=sha, receipt_path=receipt_path)
+            payload = receipt_path.read_text()
+            self.assertEqual(json.loads(payload)["approved_source_revision"], sha)
+            self.assertEqual(json.loads(payload)["observed_image_ids"], image_ids)
+            self.assertEqual(json.loads(payload)["compose_redacted_sha256"], "f" * 64)
+            self.assertNotIn("operational-sentinel", payload)
+            self.assertEqual(digest, hashlib.sha256(payload.encode()).hexdigest())
+        redacted = redact({"services": {"database": {"environment": {
+            "MARIADB_PASSWORD": "operational-sentinel", "CANARY_GAME_PORT": "17172"}}}})
+        self.assertNotIn("operational-sentinel", json.dumps(redacted))
+        self.assertEqual(redacted["services"]["database"]["environment"]["CANARY_GAME_PORT"], "17172")
+
     def test_compose_rejects_missing_source_revision(self):
         env = os.environ.copy()
         env.pop("SOURCE_REVISION", None)
@@ -104,8 +150,14 @@ class CoreQaOfflineTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("SOURCE_REVISION", result.stderr)
 
+    @unittest.skipUnless(myaac_image_available(),
+                         "otbr-myaac:latest absent on this host; the full preflight never skips")
     def test_pinned_myaac_entrypoint_generates_qa_game_port(self):
-        self.assertEqual(verify_myaac(),
+        env = os.environ.copy()
+        env.pop("TMPDIR", None)
+        with patch.dict(os.environ, env, clear=True):
+            receipt = verify_myaac()
+        self.assertEqual(receipt["qa_config_sha256"],
                          "a94fa69f36a5fbe59623e7ff0d4e34191f1e41295f018c8e6a9bb06adef42f63")
 
     def test_login_advertises_the_game_listener(self):

@@ -6,6 +6,8 @@ import json
 import os
 import re
 import subprocess
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from prepare import MAP_SHA256
@@ -17,6 +19,7 @@ SERVICES = {"database", "game", "web"}
 VOLUMES = {"database", "game-logs", "authored-data", "website-cache"}
 IMAGES = {"canary-core-qa-game:local", "canary-core-qa-web:local"}
 IMAGE_LOCK = json.loads((HERE / "image-lock.json").read_text())
+RECEIPT = HERE / "runtime/evidence/preflight-receipt.json"
 
 
 def command(*args, env=None):
@@ -28,6 +31,18 @@ def command(*args, env=None):
 
 def project_name(name):
     return name == PROJECT or name.startswith(PROJECT + "-") or name.startswith(PROJECT + "_")
+
+
+def redact(value):
+    if isinstance(value, dict):
+        return {
+            key: "<redacted>" if re.search(r"password|secret|token|api[_-]?key|credential", key, re.I)
+            else redact(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact(item) for item in value]
+    return value
 
 
 def assert_no_resources():
@@ -98,14 +113,19 @@ def assert_compose():
                 raise RuntimeError("QA publishes a port outside loopback")
     if services["game"]["environment"].get("CANARY_BRAIN_CONFIG") != "/etc/canary-core-qa/disabled-brain.json":
         raise RuntimeError("QA brain mode differs from the reviewed disabled config")
+    canonical = json.dumps(redact(data), sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def assert_image_lock():
+    observed = {}
     for kind in ("database", "web_base"):
         spec = IMAGE_LOCK[kind]
         actual = command("docker", "image", "inspect", spec["ref"], "--format", "{{.Id}}").strip()
         if actual != spec["id"]:
             raise RuntimeError(f"{kind} local image ID differs from image-lock.json")
+        observed[kind] = actual
+    return observed
 
 
 def assert_source(approved_revision):
@@ -114,6 +134,7 @@ def assert_source(approved_revision):
         raise RuntimeError("approved SHA, SOURCE_REVISION and checkout HEAD must match")
     if command("git", "status", "--porcelain", "--untracked-files=all").strip():
         raise RuntimeError("QA source checkout has uncommitted or untracked files")
+    return current
 
 
 def assert_map():
@@ -121,8 +142,50 @@ def assert_map():
     if not path.is_file():
         raise RuntimeError("pinned QA map is absent; run prepare.py --download-map first")
     with path.open("rb") as stream:
-        if hashlib.file_digest(stream, "sha256").hexdigest() != MAP_SHA256:
-            raise RuntimeError("QA map hash differs from the pinned release")
+        actual = hashlib.file_digest(stream, "sha256").hexdigest()
+    if actual != MAP_SHA256:
+        raise RuntimeError("QA map hash differs from the pinned release")
+    return actual
+
+
+def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha):
+    receipt = {
+        "schema_version": 1,
+        "checked_at_utc": datetime.now(timezone.utc).isoformat(),
+        "project": PROJECT,
+        "approved_source_revision": approved_revision,
+        "observed_image_ids": images,
+        "entrypoint_sha256": myaac["entrypoint_sha256"],
+        "qa_config_sha256": myaac["qa_config_sha256"],
+        "compose_redacted_sha256": compose_sha,
+        "map_sha256": map_sha,
+        "resources_absent": True,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode()
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".preflight-", delete=False) as stream:
+        temporary = Path(stream.name)
+        stream.write(content)
+        stream.flush()
+        os.fsync(stream.fileno())
+    try:
+        temporary.chmod(0o600)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return hashlib.sha256(content).hexdigest()
+
+
+def run_preflight(resources_only=False, approved_revision=None, receipt_path=RECEIPT):
+    compose_sha = assert_compose()
+    assert_no_resources()
+    images = assert_image_lock()
+    myaac = verify_myaac()
+    if resources_only:
+        return None
+    source_sha = assert_source(approved_revision)
+    map_sha = assert_map()
+    return write_receipt(receipt_path, source_sha, compose_sha, images, myaac, map_sha)
 
 
 def main():
@@ -131,16 +194,12 @@ def main():
                         help="audit Compose/resources before downloading the map; not an up gate")
     parser.add_argument("--approved-revision", help="full SHA approved for this smoke; required for the up gate")
     args = parser.parse_args()
-    assert_compose()
-    assert_no_resources()
-    assert_image_lock()
-    verify_myaac()
-    if not args.resources_only:
-        assert_source(args.approved_revision)
-        assert_map()
+    receipt_sha = run_preflight(args.resources_only, args.approved_revision)
     print("QA Compose and Docker resources are isolated; no containers were started.")
     if args.resources_only:
         print("Map check skipped; run the full preflight immediately before up.")
+    else:
+        print("Sanitized preflight receipt SHA-256:", receipt_sha)
 
 
 if __name__ == "__main__":

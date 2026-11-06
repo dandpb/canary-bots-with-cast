@@ -30,6 +30,10 @@ python3 verify_myaac.py
 python3 preflight.py --resources-only
 ```
 
+Em um host sem `otbr-myaac:latest`, somente o teste específico do entrypoint
+MyAAC informa `skip`; `verify_myaac.py` e o preflight completo exigem a imagem
+fixada e falham se ela estiver ausente.
+
 `prepare.py` cria senhas de banco exclusivas deste QA em `.env` e copia schema
 e seeds para `runtime/initdb`. Preserva a `.env` se já existir. O mapa não é
 versionado: antes de iniciar serviços, rode `python3 prepare.py --download-map`
@@ -48,6 +52,21 @@ cd deployment/core-qa
 python3 prepare.py --download-map
 export SOURCE_REVISION='COLE_O_SHA_COMPLETO_APROVADO_AQUI'
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env config -q
+python3 preflight.py --approved-revision "$SOURCE_REVISION"
+```
+
+O preflight completo grava `runtime/evidence/preflight-receipt.json` somente
+após todas as verificações passarem. O recibo contém SHA aprovado, IDs locais
+observados das imagens MariaDB e MyAAC, hashes do entrypoint e do config MyAAC
+gerado, hash do Compose renderizado com campos sensíveis redigidos, hash do mapa
+e horário UTC. Compartilhe esse recibo sanitizado com o revisor e espere o GO
+antes do primeiro `up`. O preflight não inicia serviços.
+
+Após o GO, repita o preflight imediatamente antes de subir e execute:
+
+```bash
+cd deployment/core-qa
+export SOURCE_REVISION='COLE_O_SHA_COMPLETO_APROVADO_AQUI'
 python3 preflight.py --approved-revision "$SOURCE_REVISION"
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --build --wait database game web
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env ps
