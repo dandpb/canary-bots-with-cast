@@ -23,6 +23,7 @@ commit revisado para o smoke. Estes comandos não iniciam containers:
 ```bash
 cd deployment/core-qa
 python3 prepare.py --skip-map
+export SOURCE_REVISION="$(git rev-parse HEAD)" # conferência preliminar, não é aprovação para subir
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env config -q
 python3 -m unittest -v test_offline.py
 python3 preflight.py --resources-only
@@ -44,9 +45,10 @@ Ainda não execute estes comandos sem a aprovação do responsável pelo smoke:
 ```bash
 cd deployment/core-qa
 python3 prepare.py --download-map
+export SOURCE_REVISION='COLE_O_SHA_COMPLETO_APROVADO_AQUI'
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env config -q
-python3 preflight.py
-SOURCE_REVISION="$(git rev-parse HEAD)" env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --build --wait database game web
+python3 preflight.py --approved-revision "$SOURCE_REVISION"
+env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --build --wait database game web
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env ps
 ```
 
@@ -59,9 +61,23 @@ O banco de QA nasce vazio e recebe os seeds próprios na primeira subida; contas
 criadas nele não são copiadas do ambiente operacional.
 O preflight completo exige o mapa validado e recusa containers, volumes, redes
 ou tags de imagem `canary-core-qa` já existentes, inclusive após um rollback.
+Também exige que o SHA aprovado, `SOURCE_REVISION` e HEAD sejam idênticos, com
+árvore Git limpa; nunca aceita a revisão `unknown`. Obtenha o SHA aprovado do
+responsável pela revisão após o merge. Não o substitua pelo HEAD atual sem
+conferir a aprovação.
 Nesse caso, inspecione os recursos antes de qualquer nova subida; não os remova
 automaticamente. Ele consulta o Docker somente em leitura e não acessa o
 ledger ou o provider. Repita-o imediatamente antes do primeiro `up`.
+
+`image-lock.json` registra os IDs locais da imagem base web
+`otbr-myaac:latest` e do MariaDB `11.4`. O preflight confere ambos com
+`docker image inspect`; o Compose não faz pull desses artefatos. Se qualquer
+ID mudar ou faltar, interrompa o smoke e revise a origem antes de atualizar o
+lock. O tag final web `canary-core-qa-web:local` é exclusivo do QA. No ID web
+registrado, o script `myaac-entrypoint` tem SHA-256
+`a007f92ec02398d05205c447c9645ab1add7cfb74603d3284e9f03eaf38c43e9`
+e escreve `gameProtocolPort` a partir de `CANARY_GAME_PORT`; este QA fornece
+`17172`. É um recibo de conteúdo local, não um digest de registro remoto.
 
 ## Coleta e rollback
 
@@ -70,6 +86,7 @@ de interromper o jogo. Colete o estado e os logs antes de remover os
 containers; `down` preserva todos os volumes para análise ou nova subida.
 
 ```bash
+export SOURCE_REVISION="$(git rev-parse HEAD)" # somente para renderizar o Compose no rollback
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env stop -t 180
 mkdir -p runtime/evidence
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env ps -a > runtime/evidence/containers.txt

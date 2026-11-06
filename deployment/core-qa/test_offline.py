@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from preflight import assert_no_resources
+from preflight import assert_no_resources, assert_source
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent.parent
@@ -24,7 +24,8 @@ class CoreQaOfflineTests(unittest.TestCase):
                    COMPOSE_ENV_FILES="/nonexistent/operational.env",
                    MARIADB_PASSWORD="operational-sentinel",
                    MARIADB_ROOT_PASSWORD="operational-sentinel",
-                   BOT_PLAYERS_ONLINE="997")
+                   BOT_PLAYERS_ONLINE="997",
+                   SOURCE_REVISION="0" * 40)
         with tempfile.TemporaryDirectory() as directory:
             env_file = Path(directory) / ".env"
             env_file.write_text("MARIADB_PASSWORD=qa-test-only\nMARIADB_ROOT_PASSWORD=qa-test-only\n")
@@ -57,6 +58,10 @@ class CoreQaOfflineTests(unittest.TestCase):
                          "qa-test-only")
         self.assertEqual(compose["services"]["game"]["environment"]["BOT_PLAYERS_ONLINE"],
                          "50")
+        self.assertEqual(compose["services"]["database"]["pull_policy"], "never")
+        self.assertIsNot(compose["services"]["web"]["build"].get("pull"), True)
+        self.assertEqual(compose["services"]["game"]["build"]["args"]["SOURCE_REVISION"],
+                         "0" * 40)
 
     def test_preflight_rejects_existing_qa_resource_by_label_or_name(self):
         for match in ("name", "label"):
@@ -71,6 +76,32 @@ class CoreQaOfflineTests(unittest.TestCase):
                 with patch("preflight.command", side_effect=fake_command):
                     with self.assertRaisesRegex(RuntimeError, "QA resources already exist"):
                         assert_no_resources()
+
+    def test_preflight_requires_approved_clean_source(self):
+        sha = "a" * 40
+        with patch.dict(os.environ, {"SOURCE_REVISION": sha}):
+            with patch("preflight.command", side_effect=[sha + "\n", ""]):
+                assert_source(sha)
+            with patch("preflight.command", side_effect=[sha + "\n", " M changed.py\n"]):
+                with self.assertRaisesRegex(RuntimeError, "uncommitted"):
+                    assert_source(sha)
+            with patch("preflight.command", return_value=sha + "\n"):
+                with self.assertRaisesRegex(RuntimeError, "must match"):
+                    assert_source("b" * 40)
+
+    def test_compose_rejects_missing_source_revision(self):
+        env = os.environ.copy()
+        env.pop("SOURCE_REVISION", None)
+        with tempfile.TemporaryDirectory() as directory:
+            env_file = Path(directory) / ".env"
+            env_file.write_text("MARIADB_PASSWORD=qa-test-only\nMARIADB_ROOT_PASSWORD=qa-test-only\n")
+            result = subprocess.run(
+                ["docker", "compose", "-p", "canary-core-qa", "-f", "compose.yaml",
+                 "--env-file", str(env_file), "config", "-q"],
+                cwd=HERE, env=env, text=True, capture_output=True,
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("SOURCE_REVISION", result.stderr)
 
     def test_login_advertises_the_game_listener(self):
         services = self.compose["services"]
