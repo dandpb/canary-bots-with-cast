@@ -181,7 +181,8 @@ Guarde também o comando Compose completo em `GATEWAY_COMPOSE`, incluindo a base
 e **todos os overrides ativos**. Exemplo para selecionar os arquivos da implantação:
 
 ```bash
-GATEWAY_COMPOSE=(docker compose -p canary-bots-wsl \
+GATEWAY_COMPOSE=(env COMPOSE_REMOVE_ORPHANS=0 COMPOSE_IGNORE_ORPHANS=1 \
+  docker compose -p canary-bots-wsl \
   -f /home/daniel/canary-bots-wsl/deployment/wsl/compose.yaml)
 ACTIVE_POLICY=/home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/litellm.yaml
 # Se migrado, use a política derivada e acrescente o override revisado que a monta:
