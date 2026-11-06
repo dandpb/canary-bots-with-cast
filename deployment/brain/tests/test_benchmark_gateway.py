@@ -33,7 +33,7 @@ def configured(tmp_path):
     runtime = tmp_path / "runtime"
     secrets = runtime / "secrets"
     secrets.mkdir(parents=True)
-    for kind in ("provider", "worker", "ui"):
+    for kind in ("provider", "worker", "ui", "redis"):
         path = secrets / ("litellm-" + kind + ".env")
         path.write_text("OFFLINE_VALUE=" + SENTINEL + "\n")
         path.chmod(0o600)
@@ -234,12 +234,20 @@ def test_check_does_not_echo_secret_bearing_compose_errors(
     assert "CalledProcessError" in captured.err
 
 
-@pytest.mark.parametrize("invalid", ["permissions", "symlink"])
+@pytest.mark.parametrize(
+    "invalid",
+    ["permissions", "symlink", "redis_permissions", "redis_symlink", "redis_missing"],
+)
 def test_invalid_env_destination_is_rejected_before_compose(
     configured, monkeypatch, invalid
 ):
-    private = configured[0] / "secrets/litellm-worker.env"
-    if invalid == "permissions":
+    redis = invalid.startswith("redis_")
+    private = configured[0] / (
+        "secrets/litellm-redis.env" if redis else "secrets/litellm-worker.env"
+    )
+    if invalid == "redis_missing":
+        private.unlink()
+    elif invalid.endswith("permissions"):
         private.chmod(0o640)
     else:
         destination = private.with_suffix(".original")

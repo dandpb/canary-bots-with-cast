@@ -1,10 +1,58 @@
 """Prepare the optional local gateway without replacing existing configuration."""
 
+import argparse
 import json
 import os
 import secrets
 from pathlib import Path
 from urllib.parse import quote
+
+
+def add_coordination(policy: dict[str, object]) -> None:
+    """Configure coordination/auth state without enabling response caching."""
+    for name in ("general_settings", "litellm_settings", "router_settings"):
+        section = policy.setdefault(name, {})
+        if not isinstance(section, dict):
+            raise TypeError("gateway settings must be JSON objects")
+    general = policy["general_settings"]
+    settings = policy["litellm_settings"]
+    router = policy["router_settings"]
+    assert isinstance(general, dict) and isinstance(settings, dict)
+    assert isinstance(router, dict)
+    general["coordination_redis"] = {
+        "host": "os.environ/REDIS_HOST",
+        "port": "os.environ/REDIS_PORT",
+        "password": "os.environ/REDIS_PASSWORD",
+        "db": 0,
+        "namespace": "canary-bots-wsl:litellm",
+    }
+    settings["enable_redis_auth_cache"] = True
+    settings["cache"] = False
+    router["cache_responses"] = False
+
+
+def prepare_coordination(directory: Path) -> dict[str, object]:
+    """Create a new policy; refuse to rewrite an already different target."""
+    policy = directory / "runtime/config/litellm.yaml"
+    target = policy.with_name("litellm-coordination.yaml")
+    if policy.is_symlink() or target.is_symlink():
+        raise ValueError("gateway policy files must not be symlinks")
+    original = json.loads(policy.read_text())
+    if not isinstance(original, dict):
+        raise TypeError("gateway policy must be a JSON object")
+    add_coordination(original)
+    encoded = json.dumps(original, indent=2) + "\n"
+    try:
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        if target.read_text() != encoded:
+            raise ValueError(
+                "coordination target differs; preserve and review it"
+            ) from None
+        return {"created": [], "preserved": [str(target.relative_to(directory))]}
+    with os.fdopen(descriptor, "w") as stream:
+        stream.write(encoded)
+    return {"created": [str(target.relative_to(directory))], "preserved": []}
 
 
 def prepare(directory: Path) -> dict[str, object]:
@@ -23,7 +71,7 @@ def prepare(directory: Path) -> dict[str, object]:
         db_password = db_values["POSTGRES_PASSWORD"]
     else:
         db_password = secrets.token_hex(32)
-    policy = {
+    policy: dict[str, object] = {
         "model_list": [],
         "router_settings": {
             "num_retries": 0,
@@ -45,6 +93,7 @@ def prepare(directory: Path) -> dict[str, object]:
             "custom_auth_settings": {"mode": "auto"},
         },
     }
+    add_coordination(policy)
     files = {
         config / "litellm.yaml": json.dumps(policy, indent=2) + "\n",
         private
@@ -65,6 +114,11 @@ def prepare(directory: Path) -> dict[str, object]:
             + "\n"
             "STORE_MODEL_IN_DB=True\n"
         ),
+        private / "litellm-redis.env": (
+            "REDIS_HOST=litellm-redis\nREDIS_PORT=6379\nREDIS_PASSWORD="
+            + secrets.token_hex(32)
+            + "\n"
+        ),
     }
     created, preserved = [], []
     for path, content in files.items():
@@ -80,4 +134,13 @@ def prepare(directory: Path) -> dict[str, object]:
 
 
 if __name__ == "__main__":
-    print(json.dumps(prepare(Path(__file__).resolve().parent), indent=2))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--directory", type=Path, default=Path(__file__).resolve().parent
+    )
+    parser.add_argument("--coordination", action="store_true")
+    args = parser.parse_args()
+    result = prepare(args.directory)
+    if args.coordination:
+        result["coordination"] = prepare_coordination(args.directory)
+    print(json.dumps(result, indent=2))

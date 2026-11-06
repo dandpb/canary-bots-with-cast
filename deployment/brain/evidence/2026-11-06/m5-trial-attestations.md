@@ -56,6 +56,12 @@ and [start reference](https://docs.docker.com/reference/cli/docker/compose/start
 creation does not start the game; start operates on existing containers and can
 wait for healthy services.
 
+After integration of main b33e1602f (#49 stable cwd and #50 Redis),44 targeted
+tests passed, including the invalid-parent-cwd helper using a fake Docker CLI.
+Ruff lint/format and strict mypy were checked on changed Python sources. Merge
+resolution retains Redis's synthetic fixture and all stable-cwd kwargs; the
+regression now exercises the new container/network metadata query paths.
+
 Run from stable cwd / with PYTHONPATH containing deployment/brain,
 deployment/brain/src and the installed development-tool directory:
 

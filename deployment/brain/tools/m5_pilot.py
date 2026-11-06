@@ -284,8 +284,8 @@ class TrialAttestation:
                     for source, destination, writable in bindings
                 ]
                 if sorted(
-                    row["mounts"], key=lambda item: item["Destination"]
-                ) != sorted(expected, key=lambda item: item["Destination"]):
+                    row["mounts"], key=lambda item: str(item["Destination"])
+                ) != sorted(expected, key=lambda item: str(item["Destination"])):
                     raise ValueError(
                         "trial essential mounts differ from the owned fixture"
                     )
