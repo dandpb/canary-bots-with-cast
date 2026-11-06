@@ -52,7 +52,8 @@ The optional `budget_file` shares one accounting database across isolated evalua
 Build the server executable and `bot_engine` with the repository's normal CMake/vcpkg toolchain. The library architecture and dependency ABI must match the running **game binary**, even when the host is ARM64 and that binary runs under amd64 emulation. The Python worker runs on the host or in its own container. A Python update, library reload and executable deployment are separate operations; verify the revisions actually running.
 
 ```sh
-cmake --build build --target bot_engine
+# Configured Release build; Debug uses the canary-debug executable target.
+cmake --build build --target canary bot_engine
 python3 -m venv /opt/canary-brain/venv
 /opt/canary-brain/venv/bin/pip install -r deployment/brain/requirements.lock
 /opt/canary-brain/venv/bin/pip install --no-deps ./deployment/brain
@@ -199,13 +200,23 @@ luajit tools/bot_brain/test_reload.lua
 
 `provider: "fake"` is an explicit offline fixture; it requires no key, issues no billable request and is never selected automatically. The Unix datagram integration test drives the real worker process with this fixture. Native unit tests also join the existing `canary_ut` target.
 
-Opt-in real probes use the same monthly ledger and do not send game actions:
+The legacy direct-OpenAI probe below requires a separate explicit paid opt-in
+and does not send game actions. It does not qualify the LiteLLM M5 campaign;
+use the [M5 wrapper](tools/M5_PILOT.md) for that path. Run it only where the
+existing canonical ledger is mounted, without copying the database or creating
+another monthly allowance. In WSL that authority is
+`canary-bots-wsl_brain-state:/var/lib/canary-brain/state.sqlite3`.
 
 ```sh
-.venv/bin/python deployment/brain/tools/probe.py --live \
-  --credential /etc/canary-brain/openai.env \
-  --state /var/lib/canary-brain/budget.sqlite3 \
-  --output /var/lib/canary-brain/probe.json --samples 10 --max-effort --tool-result
+CANONICAL_LEDGER=/var/lib/canary-brain/state.sqlite3
+if test -f "$CANONICAL_LEDGER"; then
+  .venv/bin/python deployment/brain/tools/probe.py --live \
+    --credential /etc/canary-brain/openai.env \
+    --state "$CANONICAL_LEDGER" \
+    --output /var/lib/canary-brain/probe.json --samples 10 --max-effort --tool-result
+else
+  printf '%s\n' 'Existing canonical ledger is not mounted; probe was not started.' >&2
+fi
 ```
 
 See [EVALUATION.md](EVALUATION.md) for measured evidence, limitations and the human playtest rubric.

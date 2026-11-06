@@ -50,16 +50,23 @@ retomariam as casas e transfeririam a decoração antes da ativação dos bots.
 
 ## Gateway LiteLLM no mesmo projeto
 
-Os serviços opcionais `litellm` e `litellm-db` pertencem ao projeto
+Os serviços opcionais `litellm`, `litellm-db` e `litellm-redis` pertencem ao projeto
 `canary-bots-wsl`, junto de database/game/brain/web. O PostgreSQL exclusivo
-persiste usuários, sessões e configurações do painel, sem publicar portas.
-Prepare os arquivos sem substituir configurações ou credenciais existentes:
+persiste usuários, sessões e configurações do painel. O Redis permanente tem
+volume próprio para coordenação/autenticação; ambos ficam sem portas no host.
+Redis não substitui o ledger SQLite nem habilita cache de respostas: preserve
+`litellm_settings.cache: false` e `router_settings.cache_responses: false`.
+Na instalação nova, prepare os arquivos e inicie o gateway como abaixo.
+Em uma atualização, os arquivos existentes são preservados: siga primeiro a
+[migração de coordenação Redis](../brain/SETUP.pt-BR.md#redis-de-coordenação-e-número-de-workers)
+para derivar a política e incluir o override ativo antes de recriar `litellm`.
+O helper `--coordination` aceita JSON; o guia também cobre políticas YAML.
 
 ```bash
 cd /home/daniel/canary-bots-wsl/deployment/wsl
 python3 setup-gateway.py
 docker compose --profile gateway up -d --build --wait litellm
-docker compose --profile gateway ps litellm litellm-db
+docker compose --profile gateway ps litellm litellm-db litellm-redis
 ```
 
 O endpoint local é `http://127.0.0.1:4000/v1`; outros serviços deste Compose podem
@@ -68,14 +75,15 @@ o container pode ficar saudável, mas as chamadas de inferência permanecem
 bloqueadas até configurar modelos e credenciais autorizados. Isso não muda o
 provider do worker existente nem inicia testes pagos.
 
-O painel fica em `http://127.0.0.1:4000/ui`: usuário `admin`, senha igual ao
+O painel fica em `http://127.0.0.1:4000/ui`: usuário padrão `admin`; a senha é
+`UI_PASSWORD` se definida em `runtime/secrets/litellm-ui.env`, senão
 `LITELLM_MASTER_KEY` do arquivo protegido `runtime/secrets/litellm-worker.env`.
 Não compartilhe essa chave. A imagem oficial inclui Prisma e executa as
 migrações na inicialização. O erro `Not connected to DB!` indica ausência
 da conexão PostgreSQL, mesmo quando as credenciais de login estão corretas.
 
 Os arquivos locais são `runtime/config/litellm.yaml` e os arquivos protegidos
-`runtime/secrets/litellm-{provider,worker,db,ui}.env`. A preparação preserva
+`runtime/secrets/litellm-{provider,worker,db,ui,redis}.env`. A preparação preserva
 senhas e `LITELLM_SALT_KEY` existentes; mantenha essa salt junto do backup do
 banco para conservar o acesso aos dados criptografados.
 Para uma configuração preexistente, acrescente explicitamente
@@ -84,7 +92,8 @@ isso permite que sessões administrativas sejam validadas pelo LiteLLM.
 A credencial do worker continua restrita às rotas e à identidade do benchmark;
 suas falhas de política nunca passam para a autenticação administrativa.
 Configure ali os aliases explícitos de OpenAI/Gemini conforme
-`deployment/brain/gateway/gateway.example.yaml`, mantendo a política do gateway.
+`deployment/brain/gateway/gateway.example.yaml`, copiando somente `model_list`
+e mantendo a política do gateway e a coordenação Redis.
 Após alterar a configuração, recrie somente `litellm` e revalide sua identidade.
 Use o serviço deste Compose para a implantação WSL; o Compose independente em
 `deployment/brain/gateway/` fica disponível para outros ambientes isolados.
@@ -137,8 +146,11 @@ não são utilizados. O volume `canary-bots-wsl_database` da primeira tentativa
 incompleta foi preservado; o banco operacional usa
 `canary-bots-wsl_database-seeded`.
 
-Para parar sem excluir dados, execute `docker compose stop -t 180`. Os logs de build
-ficam neste diretório. Não use `down -v` para uma parada normal.
+Para parar sem excluir dados, use os mesmos arquivos Compose/overrides ativos
+e `docker compose --profile ai --profile gateway stop -t 180`; os perfis incluem
+os serviços opcionais. Encerre antes os harnesses/gateways temporários por seus
+launchers, preservando logs e verificando a remoção dos CIDs próprios. Os logs
+de build ficam neste diretório. Não use `down -v` para uma parada normal.
 
 As edições de rotas feitas dentro do jogo são preservadas no volume
 `authored-data`. Uma atualização dos CSVs da imagem não substitui automaticamente
