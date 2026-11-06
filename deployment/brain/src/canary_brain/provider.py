@@ -21,7 +21,8 @@ class Prices(BaseModel):
     version: str = Field(min_length=1, max_length=80)
     input_nanousd: int = Field(ge=0)
     cached_nanousd: int = Field(ge=0)
-    cache_write_nanousd: int = Field(ge=0)
+    # None is an unqualified price, distinct from an explicitly free write (0).
+    cache_write_nanousd: int | None = Field(ge=0)
     output_nanousd: int = Field(ge=0)
 
 
@@ -40,6 +41,14 @@ class Proposal:
     reply: str
     effort: str
     tool_call: dict[str, Any] = field(default_factory=dict)
+
+
+class UnpricedCacheWrite(ValueError):
+    """Returned usage includes cache writes whose cost cannot be settled."""
+
+
+class ProviderBackoff(RuntimeError):
+    """This decision was skipped during cooldown before any transmission."""
 
 
 class Provider:
@@ -101,10 +110,11 @@ class Provider:
                 )
 
         # UTF-8 bytes bound tokenized content; leave room for API tool serialization.
+        cache_write_price = self.prices.cache_write_nanousd
         upper = (len(json.dumps(body, ensure_ascii=False).encode()) + 4096) * max(
             self.prices.input_nanousd,
             self.prices.cached_nanousd,
-            self.prices.cache_write_nanousd,
+            cache_write_price if cache_write_price is not None else 0,
         )
         upper += int(body.get("max_output_tokens", 0)) * self.prices.output_nanousd
         upper = max(1, upper)
@@ -114,7 +124,15 @@ class Provider:
         ):
             failures, retry_at = self.backoff.get(endpoint, (0, 0))
             if time.monotonic() < retry_at:
-                raise RuntimeError("provider temporarily backed off")
+                record(
+                    {
+                        "phase": "skipped",
+                        "reason": "backoff",
+                        "deadline_ms": round(timeout * 1000),
+                        "reserved_nanousd": 0,
+                    }
+                )
+                raise ProviderBackoff("provider temporarily backed off")
             self.store.reserve(
                 request_id,
                 upper,
@@ -161,10 +179,17 @@ class Provider:
                 inputs = int(usage["input_tokens"])
                 if cached + written > inputs:
                     raise TypeError("provider cache usage exceeds total input")
+                if written and cache_write_price is None:
+                    # Unknown is not free. Keep the pre-request reservation open;
+                    # cache storage/time charges cannot be inferred per token.
+                    raise UnpricedCacheWrite(
+                        "provider cache-write usage has no qualified price"
+                    )
                 spent = (
                     max(0, inputs - cached - written) * self.prices.input_nanousd
                     + cached * self.prices.cached_nanousd
-                    + written * self.prices.cache_write_nanousd
+                    + written
+                    * (cache_write_price if cache_write_price is not None else 0)
                 )
                 if endpoint == "responses":
                     spent += (
