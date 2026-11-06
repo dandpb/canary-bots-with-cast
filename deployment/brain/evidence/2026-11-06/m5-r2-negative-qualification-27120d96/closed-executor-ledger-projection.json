@@ -1,0 +1,95 @@
+{
+  "authority": "canary-bots-wsl_brain-state:/var/lib/canary-brain/state.sqlite3",
+  "month": "2026-11",
+  "snapshot_utc": "2026-11-06T18:16:10.203764+00:00",
+  "budget": {
+    "cap": 50000000000,
+    "spent": 556558825,
+    "reserved": 75456550,
+    "available": 49367984625
+  },
+  "requests": [
+    {
+      "id": "8e32e915ca5e4407a3ec55ab501bd99a",
+      "month": "2026-11",
+      "run_id": "credential-smoke-out-openai",
+      "reserved": 835375,
+      "spent": 52800,
+      "created": 1793915084.0
+    },
+    {
+      "id": "57f0becd17ab47a2ad3638987ca2f6ef",
+      "month": "2026-11",
+      "run_id": "credential-smoke-out-gemini",
+      "reserved": 2337700,
+      "spent": 161800,
+      "created": 1793915086.0
+    },
+    {
+      "id": "0127734202e044e9aa93cc3261a82647",
+      "month": "2026-11",
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "reserved": 825375,
+      "spent": 133900,
+      "created": 1793983993.0
+    },
+    {
+      "id": "742774dec9f94c4eb5c903b69bffe0aa",
+      "month": "2026-11",
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "reserved": 825500,
+      "spent": 53400,
+      "created": 1793983997.0
+    },
+    {
+      "id": "c8f2779f524c49be9da807f71eeffd58",
+      "month": "2026-11",
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "reserved": 942250,
+      "spent": null,
+      "created": 1793983998.0
+    },
+    {
+      "id": "b91f101ecf4a4d7ea2315922365e4193",
+      "month": "2026-11",
+      "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+      "reserved": 2414500,
+      "spent": 175800,
+      "created": 1793983999.0
+    },
+    {
+      "id": "952c7a462a36461485d7fe37f3ee8444",
+      "month": "2026-11",
+      "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+      "reserved": 2414800,
+      "spent": null,
+      "created": 1793984001.0
+    },
+    {
+      "id": "2ad399344ae54433b080c600156eefd6",
+      "month": "2026-11",
+      "run_id": "decisions:bdf836b5a98e4247a47cce1352fae837:65001",
+      "reserved": 825375,
+      "spent": 170900,
+      "created": 1793988960.0
+    },
+    {
+      "id": "81c26627802f4161a43d40a0d0b1f26f",
+      "month": "2026-11",
+      "run_id": "decisions:bdf836b5a98e4247a47cce1352fae837:65001",
+      "reserved": 825500,
+      "spent": 114900,
+      "created": 1793988964.0
+    },
+    {
+      "id": "847b421069fc4e19aeab9a1a3385c8d8",
+      "month": "2026-11",
+      "run_id": "decisions:bdf836b5a98e4247a47cce1352fae837:65001",
+      "reserved": 942250,
+      "spent": null,
+      "created": 1793988969.0
+    }
+  ],
+  "source_sha256": "f9c5d0bd47b9fd3dc3f1911692c2beb5c59a6cbfc2b7e7a39ab0461428bfb36a",
+  "scope": "Selected closed executor export at its own UTC cut; not a fresh monthly balance"
+}

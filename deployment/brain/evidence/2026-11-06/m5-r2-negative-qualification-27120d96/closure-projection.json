@@ -1,0 +1,98 @@
+{
+  "created_utc": "2026-11-06T18:21:30.523831+00:00",
+  "source_revision": "4c5bb9bf4b93fb11abffd7bd3020e6381296fd6d",
+  "namespace": "m5-og-r2-20261106-27120d96",
+  "one_execute_invocation": true,
+  "reinvocations": 0,
+  "harness_id": null,
+  "harness_name": "canary-bots-wsl-m5-harness-run-420159ca1bfd",
+  "harness_events": [],
+  "harness_destroy_event_observed": false,
+  "harness_absent": true,
+  "identity_limitation": "Full CID was not retained while alive. The closed launcher log retains the exact actual harness name; current inspect by that name and all-service listing prove absence. Requested historical Docker event window returned no records; the reason is not asserted.",
+  "owned_project_absence": {
+    "canary-bench-1f6dbc8750064a138fbd": {
+      "container": [],
+      "network": []
+    },
+    "canary-bench-355231aab2a226ccb3b5": {
+      "container": [],
+      "network": []
+    },
+    "canary-bench-3bde803ed4b52ea0345d": {
+      "container": [],
+      "network": []
+    },
+    "canary-bench-7a195a2dcb205d2944ce": {
+      "container": [],
+      "network": []
+    },
+    "canary-bench-86e18d3216465b41b2dd": {
+      "container": [],
+      "network": []
+    },
+    "canary-bench-c07e4f8b5add437bd295": {
+      "container": [],
+      "network": []
+    },
+    "canary-bench-e2ecc907d8af27d0ad71": {
+      "container": [],
+      "network": []
+    },
+    "canary-bench-e87eaba8bcff4fb22fbe": {
+      "container": [],
+      "network": []
+    },
+    "canary-bench-f0736f8a32e429959a3b": {
+      "container": [],
+      "network": []
+    }
+  },
+  "owned_game_or_database_events": [],
+  "gemini_R2_qualification_started": false,
+  "scored_trials_started": 0,
+  "campaign_result": null,
+  "no_game_basis": "Predeclared qualification gate failed before run_attested_campaign; campaign result is null, no game output exists, and all nine exact owned projects have no containers or networks. Empty historical events are not used as proof of no creation.",
+  "provider_model_comparison_possible": false,
+  "stop_reason_observed": "Technical/unreconciled OpenAI probe evidence rejected by the predeclared R2 gate; ValueError cause not yet attributed.",
+  "execution_error": {
+    "error_type": "ValueError",
+    "stage": "m5.probe_ledger.openai"
+  },
+  "openai_qualification": {
+    "valid": 2,
+    "late": 1,
+    "technical_invalid": 3,
+    "unknown_requests": 1,
+    "unknown_nanousd": 942250,
+    "ledger_requests": 3,
+    "root_review_required": true,
+    "failure_interpretation": "mixed",
+    "accepted_for_game": false,
+    "policy": "short_deadline_performance_recovery_v2",
+    "evidence_reconciled": false,
+    "evidence_failure": {
+      "error_type": "ValueError",
+      "stage": "m5.probe_evidence"
+    },
+    "rejection_reason": "technical_or_unreconciled_evidence"
+  },
+  "event_allowlist_sha256": "78a575a39869ad606e3ba73aff6f9eacc2f0fe166075a50534c9194794d49d4d",
+  "canonical_claim_must_remain_consumed": true,
+  "canonical_claim_count_not_read_by_collector": true,
+  "canonical_ledger_opened_by_collector": false,
+  "original_recording_opened_by_collector": false,
+  "credentials_or_gateway_logs_read": false,
+  "cleanup_commands_by_collector": [],
+  "no_outer_compose_down_or_remove_orphans": true,
+  "no_volume_or_image_or_permanent_service_changes": true,
+  "claim_and_unknown_reservations_released": false,
+  "retry_allowed": false,
+  "source_receipt_sha256": "2bfc66a66a8cbee73d6568afe249987b70f84214071dfc274a008c5c7e09ef69",
+  "execution_window": {
+    "started_utc": "2026-11-06T18:15:58.549112+00:00",
+    "finished_utc": "2026-11-06T18:16:10.673949+00:00",
+    "exit_code": 1
+  },
+  "remaining_harness_count": 0
+}

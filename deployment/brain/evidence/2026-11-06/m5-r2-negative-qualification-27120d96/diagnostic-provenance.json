@@ -1,0 +1,9 @@
+{
+  "source_projection_sha256": "0941f9c56933f269d714f9aa6adb54d66d4d4caa8f17c52aacaaa84bb870e4b4",
+  "public_projection_sha256": "6f25e0c171f47be2ee34d06db4fbf6e2d606dc12099d5725c81f11dff17f7418",
+  "source_copy_custody_sha256": "d44eb3f259212f6475a66d8d92d1a68d63b1ae56bb935905244bc8cd64ac2630",
+  "only_derived_field_changed": "copy_database",
+  "replacement": "<PRIVATE_DIAGNOSTIC_COPY>",
+  "all_usage_identity_events_and_limitations_preserved": true,
+  "no_original_or_raw_output_added": true
+}
