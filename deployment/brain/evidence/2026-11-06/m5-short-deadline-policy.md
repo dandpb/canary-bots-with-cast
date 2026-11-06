@@ -48,8 +48,12 @@ alike, even when usage is known. It is never credited as successful performance.
 A short `TimeoutError` is allowed only when the real request recorder also
 reports `failed/TimeoutError`, with `unsettled:true`, a matching ledger request
 whose `spent` remains null, and the complete original reservation intact. An
-error label alone is insufficient. Missing usage is a technical error, not a
-deadline exception. No timeout reservation is released or settled as zero.
+explicit `outer_deadline` origin and `deadline_expired_on_error:true` must be
+captured when the exception occurs, before error bookkeeping. A provider-raised
+`TimeoutError` remains technical even if subsequent ledger work takes the total
+elapsed time past the TTL. An error label alone is insufficient. Missing usage
+is a technical error, not a deadline exception. No timeout reservation is
+released or settled as zero.
 The total decision elapsed time must be an integer reaching that deadline;
 the terminal request elapsed time must be an integer between zero and the total.
 The request clock starts after reservation SQL, so it need not itself reach

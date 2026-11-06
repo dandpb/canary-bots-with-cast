@@ -1182,6 +1182,8 @@ def qualify_short_deadlines(
                     and terminal["phase"] == "failed"
                     and terminal.get("error") == "TimeoutError"
                     and terminal.get("unsettled") is True
+                    and terminal.get("deadline_expired_on_error") is True
+                    and terminal.get("timeout_origin") == "outer_deadline"
                     and cost["spent"] is None
                     and terminal["reserved_nanousd"] == cost["reserved"]
                 ):

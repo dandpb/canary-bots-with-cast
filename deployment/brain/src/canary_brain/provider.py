@@ -228,10 +228,14 @@ class Provider:
             except (Exception, asyncio.CancelledError) as error:
                 # The outer scope expires first and cancels the transmission; record
                 # the deadline miss as a timeout, not as an external cancellation.
-                failure = (
-                    "TimeoutError"
-                    if isinstance(error, asyncio.CancelledError) and deadline.expired()
-                    else type(error).__name__
+                deadline_expired_on_error = deadline.expired()
+                deadline_timeout = (
+                    isinstance(error, asyncio.CancelledError)
+                    and deadline_expired_on_error
+                )
+                failure = "TimeoutError" if deadline_timeout else type(error).__name__
+                timeout_origin = (
+                    "outer_deadline" if deadline_timeout else "provider_error"
                 )
                 self.backoff[endpoint] = (
                     failures + 1,
@@ -246,6 +250,8 @@ class Provider:
                         "error": failure,
                         "deadline_ms": round(timeout * 1000),
                         "unsettled": not settled,
+                        "deadline_expired_on_error": deadline_expired_on_error,
+                        "timeout_origin": timeout_origin,
                         "elapsed_ms": round((time.monotonic() - started) * 1000),
                     },
                 )
@@ -256,6 +262,8 @@ class Provider:
                         "deadline_ms": round(timeout * 1000),
                         "reserved_nanousd": 0 if settled else upper,
                         "unsettled": not settled,
+                        "deadline_expired_on_error": deadline_expired_on_error,
+                        "timeout_origin": timeout_origin,
                         "elapsed_ms": round((time.monotonic() - started) * 1000),
                     }
                 )

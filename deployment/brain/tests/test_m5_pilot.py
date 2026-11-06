@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import platform
+import sqlite3
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -874,6 +875,88 @@ async def test_deadline_evidence_includes_reservation_time_before_the_request_cl
         ]
         assert len(failures) == 1
         assert 0 <= failures[0]["elapsed_ms"] < 1000
+        assert failures[0]["deadline_expired_on_error"] is True
+        assert failures[0]["timeout_origin"] == "outer_deadline"
+
+
+async def test_immediate_transport_timeout_with_slow_bookkeeping_blocks_game(
+    admitted, monkeypatch
+):
+    from canary_brain.recording import ReplayReader
+
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+    fake_probe_sdk(monkeypatch, failure="early_timeout")
+    put = Store.put
+
+    def slow_error_bookkeeping(store, kind, key, data):
+        if kind == "request" and data.get("error") == "TimeoutError":
+            time.sleep(1.1)
+        return put(store, kind, key, data)
+
+    monkeypatch.setattr(Store, "put", slow_error_bookkeeping)
+
+    async def forbidden(_):
+        pytest.fail("an immediate transport timeout must block the campaign")
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", forbidden)
+    with pytest.raises(ValueError, match="technical or unreconciled"):
+        await pilot.execute(admitted)
+    result = json.loads((admitted.output / "execution-result.json").read_text())
+    probe = result["probes"]["openai"]
+    assert probe["decisions"][3]["elapsed_ms"] >= 1000
+    assert probe["qualification"]["accepted_for_game"] is False
+    worker = json.loads(admitted.probe_workers["openai"].read_text())
+    failed = [
+        event["data"]
+        for event in ReplayReader(Path(worker["recording"]["path"])).all_events(
+            probe["runs"][0]
+        )
+        if event["kind"] == "request" and event["data"].get("phase") == "failed"
+    ]
+    assert len(failed) == 1
+    assert failed[0]["elapsed_ms"] >= 1000
+    assert failed[0]["deadline_expired_on_error"] is False
+    assert failed[0]["timeout_origin"] == "provider_error"
+    assert failed[0]["reserved_nanousd"] > 0
+
+
+async def test_short_timeout_without_provenance_blocks_game(admitted, monkeypatch):
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+    fake_probe_sdk(monkeypatch)
+    decision_fixtures = pilot.decision_fixtures
+
+    async def remove_provenance(args):
+        probe = await decision_fixtures(args)
+        config = pilot.runtime.Configuration.model_validate_json(
+            args.worker_config.read_text()
+        )
+        assert config.recording is not None
+        with sqlite3.connect(config.recording.path) as db:
+            for event_id, payload in db.execute(
+                "SELECT id,data FROM replay_events WHERE kind='request'"
+            ).fetchall():
+                data = json.loads(payload)
+                if data.get("phase") == "failed":
+                    data.pop("deadline_expired_on_error")
+                    data.pop("timeout_origin")
+                    db.execute(
+                        "UPDATE replay_events SET data=? WHERE id=?",
+                        (json.dumps(data), event_id),
+                    )
+        return probe
+
+    monkeypatch.setattr(pilot, "decision_fixtures", remove_provenance)
+
+    async def forbidden(_):
+        pytest.fail("missing timeout provenance must block the campaign")
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", forbidden)
+    with pytest.raises(ValueError, match="technical or unreconciled"):
+        await pilot.execute(admitted)
+    result = json.loads((admitted.output / "execution-result.json").read_text())
+    assert result["probes"]["openai"]["qualification"]["accepted_for_game"] is False
 
 
 async def test_actual_probe_spend_above_cap_blocks_without_releasing_its_liability(
