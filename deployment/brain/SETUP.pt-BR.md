@@ -1,6 +1,7 @@
 # Configuração inicial: LiteLLM, replay e benchmark
 
-Este guia parte da implementação integrada até o PR #33, em 06/11/2026.
+Este guia descreve a configuração e as ferramentas integradas na `main`.
+Integração do código não significa aceite de uma fixture ou autorização do piloto.
 Use o código da revisão escolhida; uma imagem local antiga continua antiga
 depois de um merge. Os comandos de servidor abaixo são para Ubuntu/WSL.
 
@@ -148,6 +149,20 @@ Guarde esse hash no manifesto/configuração do participante. Alterar alias,
 modelo, deployment ou arquivo exige revalidar a identidade e iniciar outra
 campanha. As chaves `openai`/`gemini` continuam resolvidas dentro do LiteLLM.
 
+Para uma campanha pontuada, prepare um **processo privado de inferência** a partir
+de [Dockerfile.benchmark](gateway/Dockerfile.benchmark), separado do painel.
+Ele usa `CANARY_BENCHMARK_GATEWAY_ONLY=1`, mantém `STORE_MODEL_IN_DB=True` desde
+o startup e rejeita credenciais administrativas. O painel continua disponível
+para administrar as credenciais existentes; apenas o gateway as acessa.
+O worker recebe somente sua chave restrita, nunca chaves OpenAI/Gemini nem a
+conexão PostgreSQL. Fixe imagem, arquivo de política, aliases, deployment IDs e
+preços antes da revisão. Não edite rotas pelo painel durante a medição.
+
+Mantenha esse serviço temporário sob o projeto `canary-bots-wsl`, na rede privada.
+No perfil M5, o alias de rede é `gateway` e os participantes usam
+`http://gateway:4000/v1`; `litellm` continua sendo o serviço do painel na tabela
+anterior. Não publique uma nova porta para o gateway privado.
+
 ## 5. Validar o replay offline primeiro
 
 Esta etapa funciona sem servidor, credenciais ou gateway. Na raiz dos fontes:
@@ -191,8 +206,11 @@ configurações. Antes de iniciar um worker real, confira:
 
 O exemplo de preços é OpenAI e exige revisão antes de uso pago. O valor de
 `reasoning:false` só omite o parâmetro; não desliga o default do provider.
+No M5, substitua a URL pelo gateway privado descrito acima. Se a tarifa de escrita
+em cache não estiver definida, use `cache_write_nanousd:null`, não zero;
+uso positivo sem esse preço impede liquidação.
 O prazo efetivo é `min(decision_timeout, menor TTL oferecido pelo servidor)`.
-Configurar10 s não permite usar respostas depois de um TTL de1 ou1,5 s.
+Configurar 10 s não permite usar respostas depois de um TTL de 1 ou 1,5 s.
 Timeouts mantêm a reserva desconhecida e deixam o motor nativo continuar.
 
 Para gerar o arquivo do cliente sem mostrar/copiar chaves de provider,
@@ -273,42 +291,76 @@ Calcule o hash com:
 .venv/bin/canary-brain benchmark hash --fixture /caminho/fixture --world-map /caminho/otservbr.otbm
 ```
 
-Antes de `benchmark preflight`, confira que `budget_file` é o ledger existente
-e está acessível no mesmo host/mount do executor. O preflight usa Store e pode
-criar um SQLite inexistente; não o use para descobrir o caminho do orçamento.
-Docker Desktop não transforma automaticamente o Mountpoint de um volume
-retornado por `docker volume inspect` em caminho acessível pelo Python do WSL.
-
-```bash
-.venv/bin/canary-brain benchmark preflight --config /caminho/campanha.json
-```
-
 Qualifique primeiro baseline/fake gratuitamente: mesmo estado inicial, duração
 observada completa, XP confirmado no banco, caça/ressuprimento/retorno e paradas
 testadas. O runner canônico aceita `native`, `fake` e `litellm`; `fake` usa uma
 política local explícita, sem inferência de provider. `--live` ainda é necessário
 para iniciar o jogo real. Registre a política/harness e sua revisão; progresso
 do jogo real com decisões fake não é desempenho de um modelo. A [evidência #25](https://github.com/dandpb/canary-bots-with-cast/pull/25)
-é uma qualificação histórica ainda em revisão, não uma fixture aceita por padrão.
+é uma qualificação histórica, não uma fixture aceita por padrão.
 
-Para OpenAI/Gemini, declare aliases/IDs/configurações e preços revisados,
-mesmo estado inicial e memória, três repetições se esse for o plano aprovado,
-tempo pontuado, teto por run/campanha e saldo mensal. Credenciais e autorização
-para duas chamadas de smoke não autorizam automaticamente uma campanha longa.
-Depois dos gates e da autorização correspondente, o comando de execução é:
+Para o M5, use o [wrapper de admissão](tools/M5_PILOT.md), que chama o mesmo
+runner canônico após os probes de conformidade. Prepare em diretório novo:
+
+- A campanha com `native`, `openai` e `gemini`, três repetições de 1.800 s e
+  memória congelada; fixe imagens, fixture, modelos, preços e prazos.
+- Duas configurações de probes, as observações com origem declarada e o envelope
+  financeiro, incluindo custos anteriores e reservas desconhecidas.
+- Uma exportação dos fontes da revisão escolhida contendo `deployment/brain/src`
+  e `deployment/brain/tools`; registre revisão, caminho absoluto e SHA-256 dos
+  módulos Python e do próprio wrapper em `source_manifest`.
+- O `pilot.plan.json` e o admission revisado. `approved_inputs_sha256` vincula os
+  bytes de campanha, envelope, manifesto, observações e ambos os workers.
+  Mantenha a candidatura não aprovada até a revisão das evidências.
+
+O contrato completo dos campos e gates está em [M5_PILOT.md](tools/M5_PILOT.md).
+O perfil limita probes a USD0,49 por modelo e seis runs pagas a USD1 cada;
+o total, com histórico, deve caber em USD7 dentro do ledger mensal de USD50.
+O wrapper exige ainda pelo menos USD12 disponíveis na autoridade canônica.
+Esses limites são verificações do plano, não uma autorização de gasto.
+
+Execute dentro do harness com a imagem comum fixada, Docker acessível e a
+exportação montada somente para leitura no **mesmo caminho absoluto**. Monte
+diretamente `canary-bots-wsl_brain-state` em `/var/lib/canary-brain`: a autoridade
+é exatamente `state.sqlite3`, não um backup ou outro arquivo nesse volume.
+Os estados e replays das runs continuam separados do orçamento.
 
 ```bash
-.venv/bin/canary-brain benchmark run --config /caminho/campanha.json --live
+SOURCE=/caminho/absoluto/fontes-congelados
+PILOT_PLAN=/caminho/absoluto/pilot.plan.json
+PYTHONPATH="$SOURCE/deployment/brain/src" python "$SOURCE/deployment/brain/tools/m5_pilot.py" --plan "$PILOT_PLAN" --preflight
 ```
 
-`--live` pode iniciar servidor/banco isolados e inferência cobrada, inclusive
-em avaliações de decisões gravadas. Use identidade nova para outra campanha;
-retomar uma campanha mantém tentativas falhas e interrompidas no resultado.
+Esse preflight lê arquivos, ledger e metadados do próprio container, sem criar
+Store, reservar saldo, iniciar jogo ou fazer inferência. Uma candidatura ainda
+não aprovada é recusada; o comando não aprova gates automaticamente. O comando
+genérico `canary-brain benchmark preflight` tem outro contrato e pode inicializar
+Store: não o use para descobrir ou criar o ledger do M5.
+
+Somente depois dos gates e da autorização explícita do plano pago, no mesmo
+harness e com os mesmos arquivos aprovados:
+
+```bash
+PYTHONPATH="$SOURCE/deployment/brain/src" python "$SOURCE/deployment/brain/tools/m5_pilot.py" --plan "$PILOT_PLAN" --execute
+```
+
+`--execute` pode cobrar inferência já nos probes. Credenciais cadastradas ou
+um smoke anterior não autorizam a campanha. O wrapper captura os bytes antes
+de validar e executa esses mesmos bytes; mudança de fonte/configuração requer
+novo freeze e revisão. Use saída nova: ele não substitui nem repete uma tentativa.
+Falha de contrato, timeout ou custo desconhecido no probe interrompe antes do
+jogo, retém a evidência e exige revisão; não aumente TTL nem repita em silêncio.
 Registre custos, reservas, falhas, timeout por classe de TTL, decisões puladas
 por backoff, XP, mortes, intervenções e duração realmente observada. O p95
 somente das respostas concluídas não descreve os requests que estouraram prazo.
 
 ## 8. Exportar, recuperar e encerrar
+
+Para o M5, preserve `execution-result.json`, `ledger.json`, `inputs/` e os
+artefatos de cada trial. O [relatório M5](tools/M5_PILOT.md#review-the-pilot-offline)
+cruza replay, parada do supervisor, personagem salvo, imagens/limpeza e saldo
+canônico; ele é separado do HTML visual do replay. Seu resultado descreve o
+piloto e inconsistências, sem declarar vencedor ou fechar a issue automaticamente.
 
 Na raiz dos fontes, liste o replay e copie um ID real da saída para `RUN_ID`.
 Se abriu outro terminal, defina `REPLAY_QA` com o diretório criado na etapa5:
@@ -329,7 +381,11 @@ sobrescrever um par completo. Para backup de SQLite ativo, use a API de backup
 ou pare o produtor; copiar só o `.sqlite3` ignora o WAL.
 
 QA temporária deve preservar logs/evidências antes de remover seus containers.
-Use `--rm` ou a limpeza do runner e confirme com `docker ps -a`.
+Use `--rm` ou a limpeza em `finally` do runner e confirme com `docker ps -a`.
+Confira também a remoção do gateway privado e do harness após a revisão;
+remova somente os containers temporários identificados, preservando serviços
+ativos, imagens, volumes e a autoridade financeira. `resources_cleaned` deve
+refletir a conferência real, não uma suposição do relatório.
 Para parar a implantação mantendo dados, use `docker compose stop -t 180`;
 não use `down -v` como limpeza normal.
 
