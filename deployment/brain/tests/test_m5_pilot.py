@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import platform
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -86,10 +87,17 @@ def fake_probe_sdk(monkeypatch, failure="timeout", mutate=None):
             calls.append(body)
             if self.count == 1 and failure == "long_timeout":
                 await asyncio.sleep(6)
+            if self.count == 1 and failure == "late_long_response":
+                # Deliberately starve the loop to test a cooperative timer miss.
+                time.sleep(5.02)  # noqa: ASYNC251
+            if self.count == 3 and failure == "late_short_response":
+                time.sleep(1.02)  # noqa: ASYNC251 - same blocking SDK regression
             if self.count == 3 and failure == "timeout":
                 await asyncio.sleep(2)
             if self.count == 3 and failure == "auth":
                 raise PermissionError("offline denied")
+            if self.count == 3 and failure == "early_timeout":
+                raise TimeoutError("offline early transport error")
             name = body["model"].removeprefix("alias-")
             options = body["tools"][0]["parameters"]["properties"]["candidate_id"][
                 "enum"
@@ -656,7 +664,17 @@ def test_short_deadline_envelope_retains_prior_unknown_liability(admitted):
     assert not admitted.output.exists()
 
 
-@pytest.mark.parametrize("fault", ["route", "schema", "long_timeout"])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "route",
+        "schema",
+        "long_timeout",
+        "late_long_response",
+        "late_short_response",
+        "early_timeout",
+    ],
+)
 async def test_deadline_policy_cannot_waive_long_or_response_contract_failures(
     admitted, monkeypatch, fault
 ):
@@ -680,6 +698,11 @@ async def test_deadline_policy_cannot_waive_long_or_response_contract_failures(
     result = json.loads((admitted.output / "execution-result.json").read_text())
     assert result["campaign"] is None
     assert result["probes"]["openai"]["qualification"]["accepted_for_game"] is False
+    if fault in {"late_long_response", "late_short_response"}:
+        assert (
+            result["probes"]["openai"]["qualification"]["rejection_reason"]
+            == "positive_timing_unqualified"
+        )
 
 
 @pytest.mark.parametrize(
@@ -798,6 +821,47 @@ async def test_prospective_deadline_policy_also_accepts_all_five_responses(
         assert gate["short_contract_coverage_complete"] and gate["long_valid"] == 2
         assert gate["unknown_requests"] == gate["late"] == gate["causal_backoff"] == 0
         assert gate["ledger_requests"] == 5
+
+
+async def test_deadline_evidence_includes_reservation_time_before_the_request_clock(
+    admitted, monkeypatch
+):
+    from canary_brain.recording import ReplayReader
+
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+    fake_probe_sdk(monkeypatch)
+    reserve = Store.reserve
+    counts = {}
+
+    def slow_reservation(store, identity, amount, month, endpoint="", **kwargs):
+        run = kwargs.get("run_id")
+        counts[run] = counts.get(run, 0) + 1
+        if endpoint == "responses" and counts[run] == 3:
+            time.sleep(0.12)
+        return reserve(store, identity, amount, month, endpoint, **kwargs)
+
+    monkeypatch.setattr(Store, "reserve", slow_reservation)
+
+    async def game(_):
+        return {"offline": True}
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", game)
+    result = await pilot.execute(admitted)
+    for name, path in admitted.probe_workers.items():
+        probe = result["probes"][name]
+        assert probe["qualification"]["accepted_for_game"]
+        assert probe["decisions"][3]["elapsed_ms"] >= 1000
+        worker = json.loads(path.read_text())
+        failures = [
+            event["data"]
+            for event in ReplayReader(Path(worker["recording"]["path"])).all_events(
+                probe["runs"][0]
+            )
+            if event["kind"] == "request" and event["data"].get("phase") == "failed"
+        ]
+        assert len(failures) == 1
+        assert 0 <= failures[0]["elapsed_ms"] < 1000
 
 
 async def test_actual_probe_spend_above_cap_blocks_without_releasing_its_liability(

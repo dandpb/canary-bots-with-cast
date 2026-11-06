@@ -53,6 +53,11 @@ CANONICAL_LEDGER_FILE = Path("/var/lib/canary-brain/state.sqlite3")
 SHORT_DEADLINE_POLICY = "short_deadline_performance_v1"
 SHORT_DEADLINE_TOTAL_CAP = 6_980_214_600
 
+
+class ProbeTimingError(ValueError):
+    """A purported positive response lacks timing evidence within its deadline."""
+
+
 # Request only these fields. Full inspect and Config.Env can contain credentials.
 CONTAINER_METADATA = (
     '{"id":{{json .Id}},"image":{{json .Image}},'
@@ -1129,6 +1134,17 @@ def qualify_short_deadlines(
                 ):
                     raise ValueError("probe reservation differs from the ledger")
                 if row["valid"]:
+                    elapsed = (row.get("elapsed_ms"), terminal.get("elapsed_ms"))
+                    if (
+                        any(
+                            type(value) is not int or value < 0 or value > deadline
+                            for value in elapsed
+                        )
+                        or elapsed[0] < elapsed[1]
+                    ):
+                        raise ProbeTimingError(
+                            "positive probe timing is outside its deadline"
+                        )
                     if (
                         terminal["phase"] != "finished"
                         or cost["spent"] is None
@@ -1155,6 +1171,21 @@ def qualify_short_deadlines(
                     and cost["spent"] is None
                     and terminal["reserved_nanousd"] == cost["reserved"]
                 ):
+                    total_ms, request_ms = (
+                        row.get("elapsed_ms"),
+                        terminal.get("elapsed_ms"),
+                    )
+                    # The outer deadline includes reservation SQL; the request
+                    # clock starts afterward and can legitimately be shorter.
+                    if (
+                        type(total_ms) is not int
+                        or total_ms < deadline
+                        or type(request_ms) is not int
+                        or not 0 <= request_ms <= total_ms
+                    ):
+                        raise ValueError(
+                            "short timeout does not demonstrate deadline expiry"
+                        )
                     late += 1
                     last_timeout = True
                     outcome = "deadline_negative_unknown_charge"
@@ -1336,13 +1367,16 @@ async def execute_admitted(
                             plan.canonical_ledger_file,
                         )
                     )
-                except (ValueError, TypeError, KeyError, sqlite3.Error):
+                except (ValueError, TypeError, KeyError, sqlite3.Error) as error:
                     probe["qualification"].update(
                         {
                             "accepted_for_game": False,
                             "policy": SHORT_DEADLINE_POLICY,
                             "evidence_reconciled": False,
                             "root_review_required": True,
+                            "rejection_reason": "positive_timing_unqualified"
+                            if isinstance(error, ProbeTimingError)
+                            else "technical_or_unreconciled_evidence",
                         }
                     )
             result["probes"][name] = probe

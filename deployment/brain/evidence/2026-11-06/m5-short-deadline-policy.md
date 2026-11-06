@@ -38,12 +38,22 @@ technical error blocks the game, including one occurring at a short deadline.
 Each positive summary must match its one recorded `model_proposed` choice;
 negative summaries must remain false and contain neither a choice nor a recorded
 proposal. Requested observations and memory must match the frozen inputs.
+Positive responses also require integer elapsed evidence within the candidate
+deadline in both the total decision summary and the terminal request event;
+the total cannot be shorter than its request. A synchronous stall can prevent
+an asyncio timer from firing before a late result returns. Such a purported
+success blocks with `positive_timing_unqualified`, for long and short cases
+alike, even when usage is known. It is never credited as successful performance.
 
 A short `TimeoutError` is allowed only when the real request recorder also
 reports `failed/TimeoutError`, with `unsettled:true`, a matching ledger request
 whose `spent` remains null, and the complete original reservation intact. An
 error label alone is insufficient. Missing usage is a technical error, not a
 deadline exception. No timeout reservation is released or settled as zero.
+The total decision elapsed time must be an integer reaching that deadline;
+the terminal request elapsed time must be an integer between zero and the total.
+The request clock starts after reservation SQL, so it need not itself reach
+the full TTL. An immediate transport `TimeoutError` is not deadline performance.
 
 The next short opportunity may be skipped by the existing controller backoff.
 It is allowed only after a reconciled timeout, with a recorded `skipped/backoff`
@@ -85,7 +95,7 @@ needed for these checks.
 Verification on the prospective patch: the new continuation test first failed
 on the unchanged executor's `conformance failed` gate, then passed with this
 policy. The combined pilot, report, attestation, gateway and budget suite passed
-127 tests (41 pilot tests, including the original strict-mode regressions).
+131 tests (45 pilot tests, including the original strict-mode regressions).
 Ruff lint/format, mypy for both tools and `git diff --check` passed. These are
 offline application-boundary checks, not evidence of a real provider's latency,
 cost or gameplay performance.
@@ -95,3 +105,11 @@ prospective patch: a skip labeled valid and a settled schema failure relabeled
 as a valid offered choice without a recorded proposal. Both new regressions
 failed by reaching the simulated game before the fix, then passed with the
 proposal/negative-state reconciliation above.
+The temporal review also reproduced synchronous SDK stalls beyond the long
+and short deadlines while the canonical evaluator still returned valid choices.
+Both regressions reached the simulated game before the elapsed-time guard and
+were blocked afterward, without changing the provider or scheduler.
+An immediate SDK `TimeoutError` also reached the simulated game before the
+negative elapsed-time check. Its regression now blocks, while a control with
+120ms reservation overhead accepts a genuine outer deadline whose request
+clock legitimately measures less than the TTL.
