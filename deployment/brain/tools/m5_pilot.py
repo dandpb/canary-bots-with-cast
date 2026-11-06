@@ -18,7 +18,10 @@ import re
 import socket
 import sqlite3
 import subprocess
+import tempfile
+import threading
 import time
+from _thread import LockType
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -47,6 +50,270 @@ GATES = {
 }
 CANONICAL_VOLUME = "canary-bots-wsl_brain-state"
 CANONICAL_LEDGER_FILE = Path("/var/lib/canary-brain/state.sqlite3")
+
+# Request only these fields. Full inspect and Config.Env can contain credentials.
+CONTAINER_METADATA = (
+    '{"id":{{json .Id}},"image":{{json .Image}},'
+    '"project":{{json (index .Config.Labels "com.docker.compose.project")}},'
+    '"service":{{json (index .Config.Labels "com.docker.compose.service")}},'
+    '"oneoff":{{json (index .Config.Labels "com.docker.compose.oneoff")}},'
+    '"state":{{json .State.Status}},'
+    '"port_bindings":{{json .HostConfig.PortBindings}},'
+    '"ports":{{json .NetworkSettings.Ports}},'
+    '"network_mode":{{json .HostConfig.NetworkMode}},'
+    '"networks":{{json .NetworkSettings.Networks}},"mounts":{{json .Mounts}}}'
+)
+NETWORK_METADATA = (
+    '{"id":{{json .Id}},"name":{{json .Name}},"internal":{{json .Internal}},'
+    '"scope":{{json .Scope}},"driver":{{json .Driver}},'
+    '"project":{{json (index .Labels "com.docker.compose.project")}},'
+    '"containers":{{json .Containers}}}'
+)
+
+
+def docker_metadata(*arguments: str) -> str:
+    return subprocess.check_output(
+        ["docker", *arguments], text=True, cwd="/", timeout=20
+    )
+
+
+def project_ids(project: str, kind: str) -> list[str]:
+    if re.fullmatch(r"canary-bench-[a-f0-9]{20}", project) is None:
+        raise ValueError("attestation requires an exact owned trial project")
+    arguments = (
+        ["container", "ls", "--all", "--quiet", "--no-trunc"]
+        if kind == "container"
+        else ["network", "ls", "--quiet", "--no-trunc"]
+    )
+    values = docker_metadata(
+        *arguments, "--filter", "label=com.docker.compose.project=" + project
+    ).split()
+    if any(re.fullmatch(r"[a-f0-9]{64}", value) is None for value in values):
+        raise ValueError("Docker returned an invalid resource identity")
+    return values
+
+
+def resource_metadata(identity: str, kind: str) -> dict[str, Any]:
+    raw = json.loads(
+        docker_metadata(
+            kind,
+            "inspect",
+            "--format",
+            CONTAINER_METADATA if kind == "container" else NETWORK_METADATA,
+            identity,
+        )
+    )
+    if raw.get("id") != identity:
+        raise ValueError("Docker inspect returned a different resource identity")
+    # Rebuild the public record as well: unexpected mock/runtime fields cannot
+    # enter evidence through a nested object or a future Docker field addition.
+    common = {key: raw.get(key) for key in ("id", "project")}
+    if kind == "network":
+        return {
+            **common,
+            **{key: raw.get(key) for key in ("name", "internal", "scope", "driver")},
+            "container_ids": sorted((raw.get("containers") or {}).keys()),
+        }
+    return {
+        **common,
+        **{
+            key: raw.get(key)
+            for key in ("image", "service", "oneoff", "state", "network_mode")
+        },
+        "host_ports": any((raw.get("port_bindings") or {}).values())
+        or any((raw.get("ports") or {}).values()),
+        "networks": {
+            name: value.get("NetworkID")
+            for name, value in (raw.get("networks") or {}).items()
+        },
+        "mounts": [
+            {key: mount.get(key) for key in ("Type", "Source", "Destination", "RW")}
+            for mount in raw.get("mounts", [])
+        ],
+    }
+
+
+def replace_evidence(path: Path, data: Any) -> None:
+    descriptor, temporary = tempfile.mkstemp(prefix="." + path.name, dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w") as target:
+            os.fchmod(target.fileno(), 0o600)
+            json.dump(data, target, indent=2)
+            target.write("\n")
+            target.flush()
+            os.fsync(target.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+class TrialAttestation:
+    """Observed image/scope/cleanup evidence for one canonical trial only."""
+
+    def __init__(self, fixture: Any, aggregate: dict[str, Any], lock: LockType) -> None:
+        self.fixture, self.aggregate, self.lock = fixture, aggregate, lock
+        experiment = fixture.experiment
+        runs = {
+            experiment.output / f"{participant.name}-{repetition}": (
+                f"{experiment.name}:{participant.name}:{repetition}"
+            )
+            for participant in experiment.participants
+            for repetition in range(experiment.repetitions)
+        }
+        self.run_id = runs[fixture.directory]
+        expected = (
+            "canary-bench-" + hashlib.sha256(self.run_id.encode()).hexdigest()[:20]
+        )
+        if fixture.project != expected:
+            raise ValueError("trial project does not match its run identity")
+        self.data: dict[str, Any] = {
+            "run_id": self.run_id,
+            "project": fixture.project,
+            "images_verified": False,
+            "resources_cleaned": False,
+            "failures": [],
+        }
+
+    def persist(self) -> None:
+        with self.lock:
+            self.aggregate[self.run_id] = self.data
+            replace_evidence(
+                self.fixture.directory / "trial-attestation.json", self.data
+            )
+            replace_evidence(
+                self.fixture.experiment.output / "trial-attestations.json",
+                {"trials": self.aggregate},
+            )
+
+    def failure(self, phase: str, error: BaseException) -> None:
+        self.data["failures"].append(
+            {"phase": phase, "error_type": type(error).__name__}
+        )
+        self.persist()
+
+    def resources(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        return (
+            [
+                resource_metadata(identity, "container")
+                for identity in project_ids(self.fixture.project, "container")
+            ],
+            [
+                resource_metadata(identity, "network")
+                for identity in project_ids(self.fixture.project, "network")
+            ],
+        )
+
+    def verify_images(self, *, running: bool) -> None:
+        try:
+            before = self.data.get("containers")
+            containers, networks = self.resources()
+            self.data.update({"containers": containers, "networks": networks})
+            project = self.fixture.project
+            if len(containers) != 2 or {row["service"] for row in containers} != {
+                "game",
+                "database",
+            }:
+                raise ValueError("trial must contain exactly its game and database")
+            if len(networks) != 1:
+                raise ValueError("trial must have exactly one isolated network")
+            network = networks[0]
+            if (
+                network["project"] != project
+                or network["name"] != project + "_default"
+                or network["internal"] is not True
+                or network["scope"] != "local"
+                or network["driver"] != "bridge"
+                or not set(network["container_ids"])
+                <= {row["id"] for row in containers}
+            ):
+                raise ValueError("trial network is not exclusively owned and internal")
+            compose = json.loads(self.fixture.compose.read_text())
+            for row in containers:
+                service = row["service"]
+                if (
+                    row["project"] != project
+                    or row["oneoff"] != "False"
+                    or row["host_ports"]
+                ):
+                    raise ValueError("trial container scope or host ports differ")
+                if row["image"] != getattr(self.fixture.experiment, service + "_image"):
+                    raise ValueError("trial image differs from the admitted image")
+                if row["state"] != (
+                    "running" if running or service == "database" else "created"
+                ):
+                    raise ValueError("trial container has an unexpected state")
+                if row["network_mode"] != network["name"] or set(row["networks"]) != {
+                    network["name"]
+                }:
+                    raise ValueError("trial container network scope differs")
+                if running and row["networks"][network["name"]] != network["id"]:
+                    raise ValueError("trial container joined a different network")
+                expected = []
+                for binding in compose["services"][service]["volumes"]:
+                    fields = binding.split(":")
+                    expected.append(
+                        {
+                            "Type": "bind",
+                            "Source": fields[0],
+                            "Destination": fields[1],
+                            "RW": len(fields) == 2 or fields[2] != "ro",
+                        }
+                    )
+                if sorted(
+                    row["mounts"], key=lambda item: item["Destination"]
+                ) != sorted(expected, key=lambda item: item["Destination"]):
+                    raise ValueError(
+                        "trial essential mounts differ from the owned fixture"
+                    )
+            if before and {row["id"] for row in before} != {
+                row["id"] for row in containers
+            }:
+                raise ValueError(
+                    "trial containers changed after the pre-start attestation"
+                )
+            self.data.update(
+                {
+                    "containers": containers,
+                    "networks": networks,
+                    "images_verified": True,
+                    "verified_before_game_start": True,
+                    "game_image": next(
+                        row["image"] for row in containers if row["service"] == "game"
+                    ),
+                    "database_image": next(
+                        row["image"]
+                        for row in containers
+                        if row["service"] == "database"
+                    ),
+                }
+            )
+            self.persist()
+        except BaseException as error:
+            self.data["images_verified"] = False
+            self.failure("running_images" if running else "pre_start_images", error)
+            raise
+
+    def cleanup(self, close_error: BaseException | None) -> None:
+        self.data["resources_cleaned"] = False
+        if close_error:
+            self.data["failures"].append(
+                {"phase": "canonical_close", "error_type": type(close_error).__name__}
+            )
+        try:
+            containers, networks = self.resources()
+            self.data["remaining_containers"], self.data["remaining_networks"] = (
+                containers,
+                networks,
+            )
+            self.data["resources_cleaned"] = (
+                close_error is None and not containers and not networks
+            )
+            self.persist()
+            if not self.data["resources_cleaned"]:
+                raise RuntimeError("trial cleanup could not be verified")
+        except BaseException as error:
+            self.failure("cleanup_verification", error)
+            raise
 
 
 class Plan(BaseModel):
@@ -181,10 +448,14 @@ def container_identity() -> tuple[str, list[dict[str, Any]]]:
             ["docker", "inspect", "--format", "{{json .Mounts}}", name],
             cwd="/",
             text=True,
+            timeout=20,
         )
     )
     image = subprocess.check_output(
-        ["docker", "inspect", "--format", "{{.Image}}", name], cwd="/", text=True
+        ["docker", "inspect", "--format", "{{.Image}}", name],
+        cwd="/",
+        text=True,
+        timeout=20,
     ).strip()
     return image, mounts
 
@@ -576,8 +847,14 @@ async def observe_status(
 async def run_attested_campaign(experiment: benchmark.Experiment) -> Any:
     original_run = runtime.run
     active = None
+    attestations: dict[str, Any] = {}
+    attestation_lock = threading.Lock()
 
     class AttestedFixture(benchmark.DockerFixture):
+        def __init__(self, experiment: Any, directory: Path, identity: str) -> None:
+            super().__init__(experiment, directory, identity)
+            self.attestation = TrialAttestation(self, attestations, attestation_lock)
+
         def prepare(self, participant: Any) -> None:
             nonlocal active
             active = self
@@ -586,22 +863,32 @@ async def run_attested_campaign(experiment: benchmark.Experiment) -> Any:
             compose["networks"] = {"default": {"internal": True}}
             compose["services"]["game"]["volumes"].append(f"{self.directory}:/m5")
             self.compose.write_text(json.dumps(compose))
+            self.attestation.persist()
 
-        def start_database(self) -> None:
-            super().start_database()
-            actual = subprocess.check_output(
-                [
-                    "docker",
-                    "inspect",
-                    self.project + "-database-1",
-                    "--format",
-                    "{{.Image}}",
-                ],
-                cwd="/",
-                text=True,
-            ).strip()
-            if actual != experiment.database_image:
-                raise ValueError("database image differs from the pinned campaign")
+        def start_game(self) -> None:
+            # No game observation (and thus no model request) can precede this
+            # inspection. `start` preserves the exact container created here.
+            try:
+                self.command("create", "--no-build", "game", timeout=120)
+                self.attestation.verify_images(running=False)
+                self.command("start", "--wait", "game")
+                self.attestation.verify_images(running=True)
+            except BaseException as error:
+                self.attestation.failure("game_start", error)
+                raise
+
+        def close(self) -> None:
+            close_error = None
+            try:
+                super().close()
+            except BaseException as error:  # noqa: BLE001 - verify cleanup even on cancellation, then re-raise
+                close_error = error
+            try:
+                self.attestation.cleanup(close_error)
+            except BaseException as error:
+                if close_error is not None:
+                    raise close_error from error
+                raise
 
     async def observed_worker(
         configuration: runtime.Configuration, stopped: asyncio.Event
@@ -628,6 +915,8 @@ async def run_attested_campaign(experiment: benchmark.Experiment) -> Any:
                     configuration.state_file.parent / "status-observer-error.json",
                     {"error_type": type(endings[0]).__name__},
                 )
+                if active is not None:
+                    active.attestation.failure("observer", endings[0])
                 raise RuntimeError(  # noqa: TRY004 - propagate an asynchronous task failure
                     "passive status observer failed; run evidence is incomplete"
                 )

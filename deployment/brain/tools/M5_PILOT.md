@@ -77,6 +77,23 @@ Each scored participant receives the same isolated internal game/DB network,
 it issues only status queries, not gameplay orders. The canonical runner owns
 service teardown; observer tasks are cancelled/joined and patched hooks restored.
 
+Before game start, the wrapper creates the game container without starting it
+and inspects actual game/database IDs, image content IDs, selected Compose
+labels, host ports, bind mounts and the single internal project network. A failed
+check prevents the first game observation/model request. `start --wait` uses the
+created container; a second inspection rejects replacement IDs or unexpected
+running/network state. Docker queries use cwd `/` and bounded timeouts. No full
+inspect, `Config.Env` or authentication header is requested or exported.
+
+Each trial writes mode0600 `trial-attestation.json`; the campaign also writes
+`trial-attestations.json`, a `trials` map keyed by canonical run ID. These contain
+observed identities and error types, not exception messages. After the canonical
+project-scoped `down` runs once, inspection lists containers/networks bearing the
+exact trial project label. A leftover, inspection error or close failure keeps
+`resources_cleaned:false` and propagates; the wrapper never broadens teardown or
+deletes a leftover again. Observer errors retain their error file and an
+attestation failure entry. Compose declarations cannot set `images_verified`.
+
 A deadline is a negative performance result, distinct from protocol/identity/
 usage failures. Probe output records valid, late and unknown counts separately.
 Mixed deadline/technical failures are labeled `mixed`, retaining both counts.
@@ -95,7 +112,9 @@ Passive observer errors stop the worker, mark incomplete evidence and propagate
 through canonical teardown instead of silently qualifying a completed run.
 
 Offline tests cover admission/source binding, missing/copied ledger rejection,
-shared caps, no replacement, hook restoration and deadline liability retention.
+shared caps, no replacement, hook restoration, deadline liability retention,
+actual image/scope/mount rejection, retained foreign/active leftovers, close/query
+failure, metadata redaction and combined observer/attestation failure.
 The tests do not qualify a live Docker deployment, account or paid campaign.
 
 ## Review the pilot offline
@@ -113,7 +132,8 @@ Do not omit probes because they are outside the nine scored runs.
 `--ledger` is the wrapper's scoped `ledger.json`, not a SQLite copy or LiteLLM's
 cost estimate. Its global monthly header, month and aware UTC snapshot timestamp
 come from the same transaction as its selected request rows. Unknown charges
-remain liabilities. Supply actual image/cleanup attestations: either a
+remain liabilities. Use the wrapper's automatic `game/trial-attestations.json`.
+The reporter also accepts reviewed external image/cleanup attestations: either a
 `trials` map keyed by run ID or global `game_image`, `database_image`,
 `images_verified` and `resources_cleaned` fields. Do not fill these from intent.
 
@@ -122,7 +142,7 @@ PYTHONPATH="$SOURCE/deployment/brain/src" python "$SOURCE/deployment/brain/tools
   --recording /absolute/pilot/game/recording.sqlite3 \
   --experiment /absolute/report-experiment.json \
   --trials-root /absolute/pilot/game \
-  --attestation /absolute/trial-attestation.json \
+  --attestation /absolute/pilot/game/trial-attestations.json \
   --ledger /absolute/pilot/ledger.json --output /absolute/new-report
 ```
 
