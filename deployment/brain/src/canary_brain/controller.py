@@ -11,7 +11,14 @@ from typing import Any, Protocol
 
 from .benchmark_stops import Stops
 from .learning import Policy, episode_reward
-from .protocol import Message, Observation, Outcome, Telemetry, intent_for
+from .protocol import (
+    Message,
+    Observation,
+    Outcome,
+    Telemetry,
+    TelemetryStatus,
+    intent_for,
+)
 from .provider import Proposal
 from .recording import Recorder, attribution, request_context
 from .store import BudgetExceeded, Store
@@ -47,6 +54,7 @@ class Controller:
         observe_only: bool = False,
         require_benchmark_bridge: bool = False,
         benchmark_stops: Stops | None = None,
+        require_telemetry_delivery: bool = False,
     ) -> None:
         if mode not in {"shadow", "active"}:
             raise ValueError("controller mode must be shadow or active")
@@ -60,7 +68,8 @@ class Controller:
             observe_only,
         )
         self.require_benchmark_bridge = require_benchmark_bridge
-        self.bridge_ready = not require_benchmark_bridge
+        self.require_telemetry_delivery = require_telemetry_delivery
+        self.bridge_ready = not (require_benchmark_bridge or require_telemetry_delivery)
         self.benchmark_stops = benchmark_stops
         self.latest: dict[int, Observation] = {}
         self.pending: dict[tuple[int, str], asyncio.Task[None]] = {}
@@ -119,6 +128,24 @@ class Controller:
         self.pending[key] = asyncio.create_task(guarded())
 
     async def handle(self, packet: dict[str, Any]) -> None:
+        if packet.get("type") == "telemetry_status":
+            if self.recorder is None:
+                return
+            bot = packet.get("bot_id")
+            if type(bot) is int and (
+                bot not in self.recorder.manifests
+                or (self.roster is not None and bot not in self.roster)
+            ):
+                return
+            try:
+                status = TelemetryStatus.model_validate(packet)
+            except ValueError:
+                affected = [bot] if type(bot) is int else self.recorder.manifests
+                for identifier in affected:
+                    self.recorder.native_delivery_error(identifier, "schema")
+                return
+            self.recorder.native_delivery(status)
+            return
         if packet.get("type") == "telemetry":
             telemetry = Telemetry.model_validate(packet)
             if self.benchmark_stops and (
@@ -144,11 +171,17 @@ class Controller:
                 and isinstance(world, str)
                 and 0 < len(world) <= 80
             ):
-                if self.require_benchmark_bridge:
+                if self.require_benchmark_bridge or self.require_telemetry_delivery:
                     capabilities = packet.get("capabilities", {})
                     self.bridge_ready = (
-                        capabilities.get("lifecycle_telemetry") == 1
-                        and capabilities.get("keep_awake") is True
+                        not self.require_benchmark_bridge
+                        or (
+                            capabilities.get("lifecycle_telemetry") == 1
+                            and capabilities.get("keep_awake") is True
+                        )
+                    ) and (
+                        not self.require_telemetry_delivery
+                        or capabilities.get("telemetry_delivery") == 1
                     )
                     self.store.put("bridge", "benchmark", {"ready": self.bridge_ready})
                 self._world(world)

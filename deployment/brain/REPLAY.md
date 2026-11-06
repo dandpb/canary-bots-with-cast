@@ -40,6 +40,53 @@ Movement is sampled at the configured cadence, with additional samples on floor,
 
 The updated native library emits cumulative per-world death counters and lifecycle/ownership telemetry. Older servers can supply observation replays, but death/ownership metrics are unavailable. Controlled live experiments require the new bridge capabilities and `keep_awake: true`; the native baseline uses shadow mode with the same awake policy.
 
+### Native telemetry delivery and benchmark completion
+
+Build and deploy the matching server/library and worker before a supervised
+benchmark. `benchmark_supervision:true` automatically requires the native hello
+capability `telemetry_delivery:1`; there is no JSON switch to bypass its tail
+check. Non-supervised legacy workers retain their previous recording contract.
+A healthy process or an OpenAI/Gemini probe does not qualify this game transport.
+
+The server retains only lifecycle/death telemetry in an immutable FIFO per bot:
+64 frames and 64 KiB. Observations, intents and their leases keep their existing
+routes and deadlines. A failed nonblocking send retains the same sequence/frame;
+a newer frame cannot pass it. Flush attempts are bounded to two per bot per
+tick and stop at the first failure. Overflow drops the new frame explicitly;
+overflow and discard counters remain sticky for that native world. Shutdown
+never waits indefinitely for a dead worker and attempts to report discarded
+pending frames before destroying the channel.
+
+Inspect the replay's `native_telemetry_status` lifecycle events. They contain
+the world/bot identity, native capture time, issued and kernel-accepted
+sequences, queued frames/bytes and overflow/discard counters. Transient send
+errors are not counted as lost frames while retained in the FIFO. The status
+does not report individual send errno, retry totals or a queue high-water mark.
+**Kernel acceptance is not a durable SQLite acknowledgement.** The recorder
+must also receive the required sequence and successfully close/flush without
+gaps, errors or local queue loss.
+
+At the observed horizon, the worker freezes the first genuine observation that
+covers it and records `horizon-final-sample` immediately. It pauses new model
+work and cancels/drains requests already in flight; unresolved charges retain
+their reservations. A delivery status captured at or after that observation
+must show an empty queue, no overflow/discard and equal issued/accepted
+sequences of at least one. The first such status freezes the required sequence;
+later publications do not move the target. Confirmation waits at most three
+seconds, with gaps, world changes, budget stops and external stops taking
+precedence. Missing, invalid or unconfirmed tail evidence prevents `completed`.
+It produces `native_transport_unconfirmed` when its bounded wait expires.
+
+Transport confirmation is a lifecycle event, separate from the frozen sample.
+Post-horizon observations and outcomes remain nested diagnostics and cannot
+inflate XP or objective results; a late outcome has unknown causal timing.
+Telemetry captured before or at the target still counts even when received
+late, so a queued pre-horizon death is preserved. Telemetry captured after the
+target remains diagnostic. Existing active-time metrics use receipt time and
+retain that limitation; the outbox does not reconstruct missing history or
+change old recordings. Requalify the corrected transport with a free isolated
+native run before admitting another paid comparison.
+
 The supervision console exposes `/replay` when recording is enabled. The separate `replay serve` command binds only to loopback and remains read-only. Its APIs paginate events; time seeks use indexed sample checkpoints. The primary endpoints are `/api/replays`, `/api/replay`, `/api/replay/seek`, `/api/replay/events`, `/api/replay/track`, `/api/replay/timeline` and `/api/replay/summary`.
 
 ## Configure LiteLLM

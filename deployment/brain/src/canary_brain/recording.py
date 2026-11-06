@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .protocol import Observation
+from .protocol import Observation, TelemetryStatus
 from .sqlite_files import prepare_database, sqlite_operation
 
 SCHEMA = 1
@@ -459,6 +459,9 @@ class Recorder:
         self.samples: dict[int, tuple[str, int, int, int, int]] = {}
         self.last_state: dict[int, tuple[int, bool, int, str]] = {}
         self.native: dict[int, tuple[str, int]] = {}
+        self.delivery: dict[int, TelemetryStatus] = {}
+        self.delivery_invalid: set[int] = set()
+        self.horizons: dict[int, Observation] = {}
         self.queue: queue.Queue[dict[str, Any] | None] = queue.Queue(config.queue_size)
         self.dropped: dict[int, int] = {}
         self.errors = 0
@@ -493,6 +496,15 @@ class Recorder:
         if kind not in KINDS:
             raise ValueError("unknown recording event kind")
         cleaned = public_data(data)
+        if bot in self.horizons and kind in {"sample", "level", "outcome"}:
+            cleaned = {
+                "phase": "post_horizon_" + kind,
+                "data": cleaned,
+                "temporal_attribution": "unknown"
+                if kind == "outcome"
+                else "after_target",
+            }
+            kind = "lifecycle"
         if len(canonical(cleaned).encode()) > 65536:
             self.dropped[bot] = self.dropped.get(bot, 0) + 1
             return False
@@ -511,6 +523,21 @@ class Recorder:
         except queue.Full:
             self.dropped[bot] = self.dropped.get(bot, 0) + 1
             return False
+        return True
+
+    def freeze_horizon(self, observation: Observation) -> bool:
+        """Record the actual target now; later state cannot inflate its score."""
+        bot = observation.bot.id
+        if bot in self.horizons:
+            return self.horizons[bot] == observation
+        if not self.emit(
+            bot,
+            "sample",
+            observation.model_dump(exclude={"lease", "messages"}),
+            "horizon-final-sample",
+        ):
+            return False
+        self.horizons[bot] = observation
         return True
 
     def observe(self, observation: Observation) -> None:
@@ -600,11 +627,76 @@ class Recorder:
                     "missing": sequence - previous[1] - 1,
                 },
             )
+        payload = {"world": world, **data}
+        cutoff = self.horizons.get(bot)
+        if cutoff and (
+            cutoff.world != world
+            or not isinstance(data.get("captured_ms"), int)
+            or data["captured_ms"] > cutoff.captured_ms
+        ):
+            payload = {"phase": "post_horizon_telemetry", "data": payload}
         self.emit(
             bot,
             "lifecycle",
-            {"world": world, **data},
+            payload,
             f"native:{world}:{bot}:{sequence}",
+        )
+
+    def native_delivery(self, status: TelemetryStatus) -> None:
+        previous = self.delivery.get(status.bot_id)
+        if (
+            previous
+            and previous.world == status.world
+            and any(
+                getattr(status, field) < getattr(previous, field)
+                for field in (
+                    "captured_ms",
+                    "issued_sequence",
+                    "accepted_sequence",
+                    "overflow_frames",
+                    "discarded_frames",
+                )
+            )
+        ):
+            self.native_delivery_error(status.bot_id, "counter_regression")
+        overflow, discarded = status.overflow_frames, status.discarded_frames
+        if previous and previous.world == status.world:
+            overflow -= previous.overflow_frames
+            discarded -= previous.discarded_frames
+        if overflow > 0 or discarded > 0:
+            self.emit(
+                status.bot_id,
+                "gap",
+                {
+                    "reason": "native_telemetry_delivery_loss",
+                    "world": status.world,
+                    "overflow_frames": max(0, overflow),
+                    "discarded_frames": max(0, discarded),
+                },
+                f"native-delivery-loss:{status.world}:{status.bot_id}:"
+                f"{status.overflow_frames}:{status.discarded_frames}",
+            )
+        self.delivery[status.bot_id] = status
+        self.emit(
+            status.bot_id,
+            "lifecycle",
+            {
+                "phase": "native_telemetry_status",
+                **status.model_dump(exclude={"version", "type", "bot_id"}),
+            },
+        )
+
+    def native_delivery_error(
+        self, bot: int, reason: Literal["schema", "counter_regression"]
+    ) -> None:
+        self.delivery_invalid.add(bot)
+        self.emit(
+            bot,
+            "lifecycle",
+            {
+                "phase": "native_telemetry_status_invalid",
+                "reason": reason,
+            },
         )
 
     def health(self) -> dict[str, Any]:

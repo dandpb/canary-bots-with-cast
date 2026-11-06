@@ -3,6 +3,51 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from .protocol import Observation, TelemetryStatus
+
+
+@dataclass
+class TelemetryTail:
+    """Freeze the real horizon observation, then one producer delivery watermark."""
+
+    observation: Observation
+    deadline: float
+    required_sequence: int | None = None
+    cutoff: TelemetryStatus | None = None
+
+    def confirm(
+        self,
+        status: TelemetryStatus | None,
+        received: tuple[str, int] | None,
+        *,
+        invalid: bool = False,
+    ) -> bool:
+        if (
+            invalid
+            or status is None
+            or status.world != self.observation.world
+            or status.bot_id != self.observation.bot.id
+            or status.overflow_frames
+            or status.discarded_frames
+        ):
+            return False
+        if self.required_sequence is None:
+            if (
+                status.captured_ms < self.observation.captured_ms
+                or status.pending_frames
+                or status.pending_bytes
+                or status.issued_sequence < 1
+                or status.issued_sequence != status.accepted_sequence
+            ):
+                return False
+            self.required_sequence = status.issued_sequence
+            self.cutoff = status
+        return (
+            received is not None
+            and received[0] == self.observation.world
+            and received[1] >= self.required_sequence
+        )
+
 
 @dataclass
 class Stops:

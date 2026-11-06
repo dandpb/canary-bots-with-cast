@@ -15,7 +15,7 @@ from typing import Any, Literal
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .benchmark_stops import Stops
+from .benchmark_stops import Stops, TelemetryTail
 from .controller import Controller
 from .gateway import GatewayConfiguration, GatewayProvider
 from .operator_http import OperatorServer
@@ -161,6 +161,8 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
     operator: OperatorServer | None = None
     recorder: Recorder | None = None
     benchmark_stops: Stops | None = None
+    tail: TelemetryTail | None = None
+    tail_observed: float | None = None
     previous_signals: dict[signal.Signals, Any] = {}
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -284,6 +286,7 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 and any(m.experiment for m in configuration.recording.manifests)
             ),
             benchmark_stops=benchmark_stops,
+            require_telemetry_delivery=configuration.benchmark_supervision,
         )
         if configuration.memory_mode != "existing":
             import random
@@ -317,6 +320,8 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             if benchmark_stops:
                 now = time.monotonic()
                 reason = benchmark_stops.check(now)
+                if tail and controller.world != tail.observation.world:
+                    reason = "world_changed"
                 if benchmark_stops.start is None and now - launched > 240:
                     reason = "startup_timeout"
                 if reason in {
@@ -333,26 +338,77 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                         failure == "recording_gap" and reason == "world_changed"
                     ):
                         reason = failure
+                if reason == "completed" and recorder:
+                    if tail is None:
+                        snapshot = active_controller.latest.get(configuration.bots[0])
+                        if snapshot is None:
+                            reason = "native_transport_unconfirmed"
+                        else:
+                            # Freeze the actual observed horizon and deadline before
+                            # cancellation can await SQL or an in-flight provider.
+                            tail = TelemetryTail(snapshot, deadline=now + 3.0)
+                            tail_observed = (
+                                benchmark_stops.last - benchmark_stops.start
+                                if benchmark_stops.last is not None
+                                and benchmark_stops.start is not None
+                                else None
+                            )
+                            if not recorder.freeze_horizon(snapshot):
+                                reason = "recorder_error"
+                            else:
+                                recorder.emit(
+                                    snapshot.bot.id,
+                                    "lifecycle",
+                                    {
+                                        "phase": "native_telemetry_tail_wait",
+                                        "world": snapshot.world,
+                                        "target_captured_ms": snapshot.captured_ms,
+                                        "observed_seconds": tail_observed,
+                                    },
+                                )
+                                active_controller.observe_only = True
+                                await active_controller.close()
+                                # Re-evaluate all stop priorities and elapsed time;
+                                # an operator stop during cancellation must win.
+                                continue
+                    elif now >= tail.deadline:
+                        reason = "native_transport_unconfirmed"
+                    elif tail.confirm(
+                        recorder.delivery.get(tail.observation.bot.id),
+                        recorder.native.get(tail.observation.bot.id),
+                        invalid=tail.observation.bot.id in recorder.delivery_invalid,
+                    ):
+                        recorder.emit(
+                            tail.observation.bot.id,
+                            "lifecycle",
+                            {
+                                "phase": "native_telemetry_tail_confirmed",
+                                "world": tail.observation.world,
+                                "target_captured_ms": tail.observation.captured_ms,
+                                "required_sequence": tail.required_sequence,
+                                "status": tail.cutoff.model_dump()
+                                if tail.cutoff
+                                else None,
+                            },
+                        )
+                    else:
+                        reason = None
+                        remaining = min(0.05, tail.deadline - now)
                 if reason:
                     details = {
                         "reason": reason,
                         "elapsed_seconds": now - benchmark_stops.start
                         if benchmark_stops.start is not None
                         else None,
-                        "observed_seconds": benchmark_stops.last - benchmark_stops.start
-                        if benchmark_stops.last is not None
-                        and benchmark_stops.start is not None
-                        else None,
+                        "observed_seconds": tail_observed
+                        if tail
+                        else (
+                            benchmark_stops.last - benchmark_stops.start
+                            if benchmark_stops.last is not None
+                            and benchmark_stops.start is not None
+                            else None
+                        ),
                     }
-                    if reason == "completed" and recorder:
-                        snapshot = active_controller.latest.get(configuration.bots[0])
-                        if snapshot:
-                            recorder.emit(
-                                snapshot.bot.id,
-                                "sample",
-                                snapshot.model_dump(exclude={"lease", "messages"}),
-                                "horizon-final-sample",
-                            )
                     store.put("run_stop", "end", details)
                     if recorder:
                         recorder.emit(
@@ -371,14 +427,15 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                     if remaining <= 0:
                         stopped.set()
                         break
-            if time.monotonic() - last_maintenance >= 60:
+            if tail is None and time.monotonic() - last_maintenance >= 60:
                 store.prune()
                 if ledger.path != store.path:
                     ledger.prune()
                 last_maintenance = time.monotonic()
             if controller.world:
                 send({"version": 1, "type": "heartbeat", "world": controller.world})
-                controller.reconcile()
+                if tail is None:
+                    controller.reconcile()
             try:
                 await asyncio.wait_for(stopped.wait(), timeout=min(1, remaining))
             except TimeoutError:
@@ -407,9 +464,32 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
         if recorder is not None:
             await asyncio.to_thread(recorder.close)
             if benchmark_stops:
+                ending = store.get("run_stop", "end") or {}
                 failure = recording_failure(recorder)
+                if ending.get("reason") == "completed":
+                    if (
+                        benchmark_stops.reason == "world_changed"
+                        or (
+                            tail
+                            and controller
+                            and controller.world != tail.observation.world
+                        )
+                    ) and failure in {None, "recording_gap"}:
+                        failure = "world_changed"
+                    if failure is None and store.get(
+                        "budget_stop", str(configuration.bots[0])
+                    ):
+                        failure = "budget_stop"
+                    if failure is None and (
+                        tail is None
+                        or not tail.confirm(
+                            recorder.delivery.get(configuration.bots[0]),
+                            recorder.native.get(configuration.bots[0]),
+                            invalid=configuration.bots[0] in recorder.delivery_invalid,
+                        )
+                    ):
+                        failure = "native_transport_unconfirmed"
                 if failure:
-                    ending = store.get("run_stop", "end") or {}
                     if (
                         failure == "recording_gap"
                         and ending.get("reason") == "world_changed"

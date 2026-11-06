@@ -501,6 +501,17 @@ para iniciar o jogo real. Registre a política/harness e sua revisão; progresso
 do jogo real com decisões fake não é desempenho de um modelo. A [evidência #25](https://github.com/dandpb/canary-bots-with-cast/pull/25)
 é uma qualificação histórica, não uma fixture aceita por padrão.
 
+Atualize servidor/biblioteca e worker juntos antes de uma rodada supervisionada.
+Com `benchmark_supervision:true`, o worker exige a capability
+`telemetry_delivery:1` no hello nativo e registra `native_telemetry_status` no
+replay. Confira fila vazia, ausência de overflow/descarte e confirmação da
+sequência final; container saudável sozinho não comprova gravação completa.
+`native_transport_unconfirmed` impede concluir a rodada, sem repetir inferência
+ou liberar reservas de custo desconhecido. A [referência do transporte e da
+cauda final](REPLAY.md#native-telemetry-delivery-and-benchmark-completion)
+explica os limites da fila, a espera de até 3 s e a compatibilidade com gravações
+não supervisionadas. Faça essa qualificação gratuitamente na QA isolada.
+
 Para o M5, use o [wrapper de admissão](tools/M5_PILOT.md), que chama o mesmo
 runner canônico após os probes de conformidade. Prepare em diretório novo:
 
