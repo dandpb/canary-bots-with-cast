@@ -4,6 +4,12 @@ These drivers use the current canonical campaign runner and a private, disposabl
 Compose project per output identity. They never read provider credentials or call
 an inference SDK. A clean committed application checkout, a new output directory,
 and pinned game/database images are required. Keep historical outputs unchanged.
+Long-lived launcher and worker processes should start from an existing Linux
+directory (for example a private directory under `/tmp`) with absolute arguments
+and `PYTHONPATH`. A DrvFS cwd can lose its mount reference while the pathname and
+inode remain present. All fixture-owned CLI calls use explicit `/` as cwd; the
+canonical runner must include the same fix. This protects stop/save/cleanup as
+well as observation.
 
 The freeze directory contains `fixture/` and `manifest.json`. In addition to the
 fixture/world hashes and image IDs, the manifest binds `native_build.source_revision`
@@ -13,17 +19,22 @@ verify those hashes in the pinned image. Application and native source revisions
 are recorded separately. A native fix creates a new image and freeze, even if the
 fixture's bytes remain equivalent.
 
-From `deployment/brain`, with this checkout installed in the active Python
-environment:
+With this checkout installed in the active Python environment, resolve paths from
+`deployment/brain`, then run from stable Linux storage. Set `FREEZE` and every
+output variable to absolute paths before launching:
 
 ```sh
-PYTHONPATH=src python ../../tests/fixture/m5_current_qualification.py \
+BRAIN_ROOT="$(pwd)"
+QA_FIXTURES="$(cd ../../tests/fixture && pwd)"
+export PYTHONPATH="$BRAIN_ROOT/src:$QA_FIXTURES"
+cd /tmp
+python "$QA_FIXTURES/m5_current_qualification.py" \
   --fixture-root "$FREEZE" --output "$NEW_NATIVE_SMOKE" --mode native --seconds 10
-PYTHONPATH=src python ../../tests/fixture/m5_current_qualification.py \
+python "$QA_FIXTURES/m5_current_qualification.py" \
   --fixture-root "$FREEZE" --output "$NEW_FAKE_SMOKE" --mode fake --seconds 10
-PYTHONPATH=src python ../../tests/fixture/m5_current_qualification.py \
+python "$QA_FIXTURES/m5_current_qualification.py" \
   --fixture-root "$FREEZE" --output "$NEW_NATIVE_RUN" --mode native --seconds 1800 --require-progress
-PYTHONPATH=src python ../../tests/fixture/m5_current_qualification.py \
+python "$QA_FIXTURES/m5_current_qualification.py" \
   --fixture-root "$FREEZE" --output "$NEW_FAKE_RUN" --mode fake --seconds 1800 --require-progress
 ```
 
@@ -49,6 +60,12 @@ private run directory mounted at `/m5`; the driver supplies this mount and recor
 read-only native status every ten seconds after second 540. Phase observations do
 not change game state. Automatic recovery remains visible as a metric and cannot
 supply the fake hunt restart evidence.
+An observer failure is recorded in `observer-error.json`, stops and flushes the
+worker, propagates an error, and rejects the run. It cannot silently remove the
+cycle evidence while the campaign continues. An auxiliary observer or external
+cleanup from an invalid attempt remains separate evidence; it never rewrites that
+attempt into a successful canonical run. Start a new output/run identity after
+fixing infrastructure.
 
 ## Separate supply and return proof
 
@@ -65,7 +82,7 @@ offered retreat. This derivative is not an equivalent-start scored trial or a
 model decision quality result.
 
 ```sh
-PYTHONPATH=src python ../../tests/fixture/m5_current_lowstock.py \
+python "$QA_FIXTURES/m5_current_lowstock.py" \
   --fixture-root "$FREEZE" --output "$NEW_SUPPLY_PROOF" \
   --game-image "$PINNED_GAME_IMAGE_ID" --source-revision "$NATIVE_BUILD_REVISION" \
   --maximum-seconds 300
