@@ -42,6 +42,7 @@ def admitted(tmp_path_factory, monkeypatch):
     root = tmp_path_factory.mktemp("pw")
     output = root / "p"
     ledger = root / "ledger.sqlite3"
+    monkeypatch.setattr(pilot, "CANONICAL_LEDGER_FILE", ledger)
     store = Store(ledger)
     history = [
         {"id": "old-openai", "spent_nanousd": 52800},
@@ -247,6 +248,26 @@ def test_missing_ledger_is_not_recreated(admitted):
         pilot.preflight(admitted)
     assert not admitted.canonical_ledger_file.exists()
     assert not admitted.output.exists()
+
+
+def test_coherently_repointed_backup_in_same_volume_is_not_authority(admitted):
+    backup = admitted.canonical_ledger_file.with_name("state-backup.sqlite3")
+    backup.write_bytes(admitted.canonical_ledger_file.read_bytes())
+    changed = admitted.model_copy(update={"canonical_ledger_file": backup})
+    campaign = json.loads(changed.campaign.read_text())
+    campaign["budget_file"] = str(backup)
+    write(changed.campaign, campaign)
+    for path in changed.probe_workers.values():
+        config = json.loads(path.read_text())
+        config["budget_file"] = str(backup)
+        write(path, config)
+    envelope = json.loads(changed.authorization.read_text())
+    envelope["canonical_authority"] = f"{pilot.CANONICAL_VOLUME}:{backup}"
+    write(changed.authorization, envelope)
+    approve_inputs(changed)
+    with pytest.raises(ValueError, match="canonical monthly ledger"):
+        pilot.preflight(changed)
+    assert not changed.output.exists()
 
 
 def test_unaccepted_gate_blocks_before_container_or_financial_reads(

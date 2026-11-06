@@ -48,6 +48,8 @@ original configuration paths or uses the audit copies as new authority.
 It reads input hashes and SQLite in read-only mode and inspects only the current
 harness's image/mount metadata. The canonical existing volume must be mounted
 directly RW as `canary-bots-wsl_brain-state`; bind copies are rejected. This
+profile fixes the ledger identity to `/var/lib/canary-brain/state.sqlite3`;
+another SQLite file in that same volume is not an accepted authority. The
 profile requires existing ledger headroom of USD12 and a global monthly cap of USD50.
 
 The paid bounds are USD0.49 per model's conformance block (one recorded bot,

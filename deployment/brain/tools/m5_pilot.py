@@ -46,6 +46,7 @@ GATES = {
     "same_canonical_ledger_available_at_least_12usd",
 }
 CANONICAL_VOLUME = "canary-bots-wsl_brain-state"
+CANONICAL_LEDGER_FILE = Path("/var/lib/canary-brain/state.sqlite3")
 
 
 class Plan(BaseModel):
@@ -58,7 +59,7 @@ class Plan(BaseModel):
     decision_fixtures: Path
     probe_workers: dict[str, Path]
     worker_image: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
-    canonical_ledger_file: Path = Path("/var/lib/canary-brain/state.sqlite3")
+    canonical_ledger_file: Path = CANONICAL_LEDGER_FILE
     canonical_volume: str = CANONICAL_VOLUME
 
 
@@ -353,7 +354,8 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
     ):
         raise ValueError("campaign and frozen source revisions differ")
     if (
-        experiment.budget_file != plan.canonical_ledger_file
+        plan.canonical_ledger_file != CANONICAL_LEDGER_FILE
+        or experiment.budget_file != plan.canonical_ledger_file
         or plan.canonical_volume != CANONICAL_VOLUME
     ):
         raise ValueError("one existing canonical monthly ledger is required")
