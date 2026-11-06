@@ -1,0 +1,95 @@
+name: canary-core-qa
+services:
+  database:
+    image: mariadb:11.4
+    pull_policy: never
+    restart: "no"
+    environment:
+      MARIADB_DATABASE: canary
+      MARIADB_USER: canary
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?QA database password required}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?QA root password required}
+    volumes:
+      - database:/var/lib/mysql
+      - ./runtime/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 120s
+
+  game:
+    image: canary-core-qa-game:local
+    build:
+      context: ../..
+      dockerfile: deployment/wsl/Dockerfile
+      target: game
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:?Reviewed source revision required}
+    restart: "no"
+    environment:
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:?QA database password required}
+      GAME_PUBLIC_IP: 127.0.0.1
+      GAME_LOGIN_PORT: 17171
+      GAME_PROTOCOL_PORT: 17172
+      GAME_STATUS_PORT: 17173
+      GAME_DISABLE_MAP_DOWNLOAD: "1"
+      BOT_PLAYERS_ONLINE: ${BOT_PLAYERS_ONLINE:-50}
+      CANARY_BRAIN_CONFIG: /etc/canary-core-qa/disabled-brain.json
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - 127.0.0.1:17171:17171
+      - 127.0.0.1:17172:17172
+      - 127.0.0.1:17173:17173
+    volumes:
+      - ./runtime/world/otservbr.otbm:/canary/data-otservbr-global/world/otservbr.otbm:ro
+      - game-logs:/canary/logs
+      - authored-data:/canary/data/bot/authored
+    healthcheck:
+      test: [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1',17173),2).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 600s
+
+  web:
+    image: canary-core-qa-web:local
+    build:
+      context: ../..
+      dockerfile: deployment/wsl/Web.Dockerfile
+      pull: false
+    restart: "no"
+    environment:
+      CANARY_DB_HOST: database
+      CANARY_DB_NAME: canary
+      CANARY_DB_USER: canary
+      CANARY_DB_PASSWORD: ${MARIADB_PASSWORD:?QA database password required}
+      CANARY_SERVER_NAME: Canary core QA
+      CANARY_SERVER_IP: 127.0.0.1
+      CANARY_LOGIN_PORT: 17171
+      CANARY_GAME_PORT: 17172
+      CANARY_STATUS_PORT: 17173
+      MYAAC_CLIENT_VERSION: 1500
+      MYAAC_SITE_URL: http://127.0.0.1:18080
+    ports:
+      - 127.0.0.1:18080:80
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - website-cache:/var/www/html/system/cache
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1/]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+volumes:
+  database:
+  game-logs:
+  authored-data:
+  website-cache:
