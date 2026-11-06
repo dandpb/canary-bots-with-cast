@@ -714,6 +714,12 @@ void BotEngine::tickBrain() {
 				session.supplyStep = ApproachingShop;
 				session.lastMove = 0;
 			}
+			if (action == "hunt" || action == "resupply" || action == "retreat" || action == "follow") {
+				// Only a newly accepted navigation intent gets a fresh per-bot attempt.
+				// Global portal quarantine and the wide-search CPU cooldown remain intact.
+				plannerReplan(*bot, bot->getPlayer());
+				s_fcConsecutiveFailures.erase(guid);
+			}
 			auto outcome = brainOutcome(brain_->world, guid, id, "accepted", "objective_started");
 			rememberOutcome(session, id, outcome);
 			brain_->channel->send(outcome);
