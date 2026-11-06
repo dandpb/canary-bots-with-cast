@@ -520,7 +520,9 @@ def synchronize_fake_startup(monkeypatch, cli, *, accept):
 
                 def wait_for(marker):
                     while not marker.exists():
-                        assert self.poll() is None, "fake CLI exited during handshake"
+                        assert self.poll() is None or marker.exists(), (
+                            "fake CLI exited during handshake"
+                        )
                         assert time.monotonic() < deadline, "fake CLI handshake failed"
                         time.sleep(0.01)
 
@@ -536,6 +538,42 @@ def synchronize_fake_startup(monkeypatch, cli, *, accept):
                 raise
 
     monkeypatch.setattr(subprocess, "Popen", SynchronizedPopen)
+
+
+@pytest.mark.parametrize("publish_ready", [True, False])
+def test_handshake_rechecks_acceptance_after_exit_poll(
+    tmp_path, monkeypatch, publish_ready
+):
+    cli = SimpleNamespace(
+        started=tmp_path / "started",
+        accept_gate=tmp_path / "accept",
+        ready=tmp_path / "ready",
+    )
+    cli.started.touch()
+
+    class ExitedPopen:
+        drained = False
+
+        def __enter__(self):
+            return self
+
+        def poll(self):
+            if publish_ready:
+                cli.ready.touch()
+            return 1
+
+        def communicate(self, *, timeout):
+            self.drained = True
+
+    monkeypatch.setattr(subprocess, "Popen", ExitedPopen)
+    synchronize_fake_startup(monkeypatch, cli, accept=True)
+    process = subprocess.Popen()
+    if publish_ready:
+        assert process.__enter__() is process
+    else:
+        with pytest.raises(AssertionError, match="exited during handshake"):
+            process.__enter__()
+        assert process.drained
 
 
 @pytest.mark.parametrize("interrupt_phase", ["create", "wait"])
