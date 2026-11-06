@@ -4086,7 +4086,13 @@ private:
 	uint32_t s_arriveFallbackCount = 0; // rolled non-depot, but nothing resolved -> fell back
 	std::unordered_map<uint32_t, std::string> s_lastRouteSource;
 	std::unordered_map<uint32_t, std::pair<size_t, int64_t>> s_routeProgress;
-	std::unordered_map<uint32_t, std::pair<uint32_t, int64_t>> s_routeWpTimer;
+	struct RouteWaypointTimer {
+		uint32_t first = 0;
+		int64_t second = 0;
+		Position target {};
+		int32_t bestDistance = -1;
+	};
+	std::unordered_map<uint32_t, RouteWaypointTimer> s_routeWpTimer;
 	// Post-action waypoint hold: guid -> time the bot may resume walking. Written by
 	// followWaypoints (bot_waypoint.cpp) AND by handleActionWaypoint (bot_tick.cpp) — which is
 	// why it is a member and not a function-local static: NPC_INTERACT's greet-and-wait is set
@@ -4556,6 +4562,7 @@ private:
 	struct PlannerHop {
 		ZPlannedHop hop;
 		Position forTarget {};
+		int64_t blacklistStamp = 0;
 	};
 	std::unordered_map<uint32_t, PlannerHop> s_plannedHop;
 	bool isPlannerWalk(const BotState& bot) const;
@@ -4619,6 +4626,7 @@ private:
 		Position from {}, to {};
 		std::vector<Position> doors;
 		bool reachable = false;
+		bool budgetExhausted = false;
 		int64_t expiry = 0;
 	};
 	std::unordered_map<uint64_t, DoorPathEntry> s_doorPathCache;
@@ -4629,14 +4637,17 @@ private:
 	// bounds sized to PATH_WIDE_DIST rather than reusing Z_DOOR_BRIDGE_*.
 	static constexpr int32_t PLANNER_LEG_RADIUS = 200;
 	static constexpr uint32_t PLANNER_LEG_BUDGET = 20000;
-	// Door-permissive reachability + the doors on the route, in walking order. Returns false when
-	// the target cannot be reached on this floor even treating openable doors as open — which is
-	// exactly the "this same-z target still needs floor hops" signal.
+	// Door-permissive reachability + the doors on the route, in walking order. False means no
+	// route was found within the bounds; budgetExhausted distinguishes an unfinished search
+	// from an exhausted frontier. Legacy callers retain the same boolean result.
 	// `bypassCache` forces a fresh BFS and overwrites the entry. Required after a stall: the walk
 	// failed against reality, so re-deriving from a cached answer computed BEFORE the failure
 	// returns the identical bad route and the bot loops against it until the 60s TTL expires.
 	bool plannerLegDoors(const Position& from, const Position& target, std::vector<Position>& outDoors,
-	                     bool bypassCache = false);
+	                     bool bypassCache = false, bool* budgetExhausted = nullptr);
+	// Fresh diagnostic search; does not consult or mutate the planner's shared cache.
+	bool tracePlannerDoors(const Position& from, const Position& target, std::vector<Position>& outDoors,
+	                       uint32_t& visited, uint32_t& expanded, bool& budgetExhausted);
 	// Bots whose next plannerLegDoors call must ignore the cache (set by plannerReplan, consumed
 	// once by planScopedWalk).
 	std::unordered_set<uint32_t> s_plannerForceFresh;
@@ -5197,6 +5208,7 @@ private:
 	// spurious-blacklist source can be found from the journal alone.
 	void zBlacklistPortal(const Position& portalPos, const char* site = "other");
 	bool zPortalBlacklisted(const Position& portalPos);
+	int64_t zPortalBlacklistStamp(const Position& portalPos);
 	// dumpnav v2: collect exact portals inside a region (same classifier as the graph build).
 	void collectNavPortalsInRegion(int32_t x1, int32_t y1, int32_t z1, int32_t x2, int32_t y2, int32_t z2, std::vector<botnav::NavPortal>& out);
 
@@ -5384,7 +5396,8 @@ private:
 	// `wide` selects the fallback search profile (4096-node pool + PATH_WIDE_DIST box) that
 	// goTo() escalates to when the chunked search fails.
 	bool botTraceLegPath(const std::shared_ptr<Player>& mover, const Position& from, const Position& to,
-		int32_t arrivalDist, std::vector<Position>& outTiles, bool wide = false);
+		int32_t arrivalDist, std::vector<Position>& outTiles, bool wide = false,
+		std::string* searchNote = nullptr);
 	// Replays goTo()'s full chunk-walk-repath loop over a leg — the faithful version, since the
 	// live walker never solves a long leg in a single search.
 	bool botTraceLegWalk(const std::shared_ptr<Player>& mover, const Position& from, const Position& to,
@@ -5424,6 +5437,10 @@ private:
 	struct WaypointFollowConfig {
 		int32_t globalTimeoutMs = 300000;
 		int32_t perWpStuckMs = 30000;
+		// Planner approaches measure time without better waypoint distance. The global
+		// timeout still measures time without an index change; authored routes keep their
+		// existing per-waypoint elapsed-time behavior unless explicitly opted in.
+		bool trackMovementProgress = false;
 		bool enableLookaheadSkip = false;
 		bool enableTeleportStand = false;
 		int32_t zChangeGraceMs = 500;
@@ -5441,6 +5458,9 @@ private:
 		bool inProgress = true;
 		bool advanced = false;
 		bool aborted = false;
+		// Cursor advancement can also mean a skip. Record the exact waypoint
+		// acknowledged by arrival/action for consumers that execute a portal.
+		std::optional<size_t> lastReachedIndex;
 	};
 	WaypointFollowResult followWaypoints(BotState& bot, const std::vector<Waypoint>& waypoints,
 		size_t& waypointIdx, uint32_t& skipCount, const WaypointFollowConfig& config);

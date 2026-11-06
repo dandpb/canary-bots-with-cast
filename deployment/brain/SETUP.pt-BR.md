@@ -163,6 +163,54 @@ No perfil M5, o alias de rede é `gateway` e os participantes usam
 `http://gateway:4000/v1`; `litellm` continua sendo o serviço do painel na tabela
 anterior. Não publique uma nova porta para o gateway privado.
 
+O [Compose privado rastreado](gateway/compose.benchmark.yaml) e o launcher abaixo
+provisionam somente esse serviço, sem iniciar worker ou enviar inferência.
+Antes, conclua a etapa 2: a rede `canary-bots-wsl_default` e o PostgreSQL do
+LiteLLM devem existir, com o schema já preparado pelo serviço UI. Reutilize os
+três env files `litellm-{provider,worker,ui}.env`, privados (`0600`), no runtime;
+o launcher só confere seus caminhos/permissões, sem ler ou exibir seus valores.
+Fixe a política revisada em um arquivo novo e não a altere durante o ensaio.
+
+Na raiz dos fontes escolhidos, em Linux/WSL:
+
+```bash
+REVISION="$(git rev-parse HEAD)"
+docker build -f deployment/brain/gateway/Dockerfile.benchmark \
+  --label "org.opencontainers.image.revision=$REVISION" \
+  -t canary-litellm-benchmark:reviewed .
+GATEWAY_IMAGE="$(docker image inspect canary-litellm-benchmark:reviewed --format '{{.Id}}')"
+GATEWAY_RUNTIME=/home/daniel/canary-bots-wsl/deployment/wsl/runtime
+GATEWAY_POLICY=/caminho/absoluto/politica-congelada.yaml
+python3 deployment/brain/tools/benchmark_gateway.py \
+  --runtime "$GATEWAY_RUNTIME" --policy "$GATEWAY_POLICY" \
+  --image "$GATEWAY_IMAGE" --revision "$REVISION" --check
+```
+
+O Dockerfile fixa a imagem base por digest; o launcher exige o content ID local
+resultante, sem pull por tag. `--check` executa somente `compose config --quiet`,
+sem imprimir configuração/env nem acessar providers. Depois, no mesmo terminal dedicado:
+
+```bash
+python3 deployment/brain/tools/benchmark_gateway.py \
+  --runtime "$GATEWAY_RUNTIME" --policy "$GATEWAY_POLICY" \
+  --image "$GATEWAY_IMAGE" --revision "$REVISION" --serve
+```
+
+Ele aguarda readiness e mantém o processo até Ctrl+C/SIGTERM. Recusa serviço ou
+alias `gateway` já ocupado, inclusive por outro projeto, sem adotar a instância.
+Durante uma mutação Docker, adia o cancelamento até a CLI terminar, em sessão
+separada. O journal privado `benchmark-gateway-<sessão>.json` registra o resultado.
+Somente após preservar e sincronizar os logs privados e confirmar a remoção dos
+CIDs próprios por UUID, labels e imagem, ele registra `cleaned`. UI, banco e
+outros serviços permanecem fora da limpeza. Se os logs não puderem ser salvos,
+tenta parar o próprio CID e o conserva para recuperar a evidência, sem removê-lo.
+Timeout/erro da CLI é resultado incerto: conserva o journal e exige recuperação
+manual, mesmo se o CID ainda não aparecer. Journals não resolvidos bloqueiam
+uma nova execução; não os apague para forçar outra tentativa. O lockfile também
+é mantido para evitar corridas. SIGKILL/queda do host exige conferir os órfãos por
+identidade antes de tentar novamente. Esse launcher não substitui o admission do M5 e não
+deve substituir um gateway já ativo durante uma campanha.
+
 ## 5. Validar o replay offline primeiro
 
 Esta etapa funciona sem servidor, credenciais ou gateway. Na raiz dos fontes:
