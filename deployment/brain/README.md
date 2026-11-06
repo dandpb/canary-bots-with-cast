@@ -2,6 +2,8 @@
 
 Start with the [Portuguese initial setup guide](SETUP.pt-BR.md) for WSL, the LiteLLM dashboard, named OpenAI/Gemini credentials, model routes, the shared ledger and an offline replay check. For recording/runner/export details, see [Replay and gameplay benchmarks](REPLAY.md). New runtime paths are opt-in; existing configurations retain their behavior.
 
+The planned M5 uses the [admission wrapper and offline evidence report](tools/M5_PILOT.md), with frozen source/input hashes and the existing canonical ledger. Integration of these tools does not approve a fixture or authorize a paid campaign.
+
 Implements [issue #1](https://github.com/dandpb/canary-bots-with-cast/issues/1) for one to three explicitly selected native bots. The feature is disabled when `data/bot/brain.json` is absent. Other bots retain their existing engine.
 
 The C++ engine owns gameplay and projects live observations. The default direct OpenAI configuration calls GPT-6 Luna: Decisions selects an offered action; Responses interprets Portuguese requests and proposes objectives. The optional `provider: "litellm"` configuration uses explicit gateway routes, including OpenAI/Gemini, and constrained Responses choices. Neither path receives administrative commands or database credentials. Movement, attacks, cooldowns and emergency healing remain local.
