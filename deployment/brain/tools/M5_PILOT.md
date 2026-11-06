@@ -17,6 +17,12 @@ Use a frozen source export and the admitted common worker image. Mount that
 source directory at the same absolute path inside the harness, and set
 `PYTHONPATH=<source_path>/deployment/brain/src`. The source manifest must hash
 all exported Python modules and `deployment/brain/tools/m5_pilot.py` itself.
+Keep source, inputs and outputs on the host WSL Linux filesystem, not a Windows
+drive under `/mnt/*`. Start the host launcher from `/`, use absolute paths and
+set the harness `working_dir` to `/`. Docker subprocesses explicitly use `/`
+so an inherited checkout cwd cannot break inspection, final save or teardown.
+Before admission, attest host `findmnt` and actual read-only source/input binds;
+source hashes/path checks alone do not establish filesystem or mount permissions.
 
 ```sh
 python /absolute/source/deployment/brain/tools/m5_pilot.py --plan /absolute/pilot.plan.json --preflight
