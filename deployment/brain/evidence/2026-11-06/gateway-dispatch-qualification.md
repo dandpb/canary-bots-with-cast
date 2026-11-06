@@ -111,6 +111,12 @@ The operator must provision the existing credential DB connection/salt and
 internal-key env files privately, mount a campaign-specific static policy
 read-only, compute its exact SHA-256, and expose no host port. The canonical
 worker/panel are separate processes; this image does not migrate their schema.
+Keep `STORE_MODEL_IN_DB=True`: the pinned vendor startup awaits
+`proxy_config.add_deployment` → `get_credentials` → CredentialAccessor upsert
+before readiness. This loads named credentials into the new process; the
+database-disabled path does not provide that bootstrap. A missing/unavailable
+credential fails closed. This cold-start dependency was checked in the pinned
+vendor source, not inferred from the test's injected credential list.
 Changing policy/image requires a new qualified campaign identity. This PR does
 not deploy that instance or grant permission for a new paid call.
 
@@ -119,3 +125,10 @@ a guarantee against arbitrary code/memory modification in that process. Normal
 model administration and DB synchronization are covered by the tests; changes
 to trusted process code/global callback implementations are outside that claim.
 The persistent UI/worker were not changed by this work.
+
+Final combination after rebasing onto main #35 (`cd021c80`):259 tests passed
+in120.99 s; strict mypy passed for19 source modules. Ruff passed for all changed
+Python files. The final code adds no provider calls beyond these isolated
+fake-upstream laboratories. The two routing issues and the native schema
+preservation are qualified within their stated boundaries; modeANY is not
+presented as equivalent to OpenAI constrained-decoding guarantees.

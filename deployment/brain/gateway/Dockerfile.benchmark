@@ -1,7 +1,7 @@
 FROM ghcr.io/berriai/litellm:v1.108.0@sha256:b59b9fd52a67891be4e8dae09ddd4e6c9265e9a8cb3f25f8dd73fbabe7659965
 WORKDIR /app
 COPY deployment/brain/src/canary_brain/gateway_policy.py /app/gateway_policy.py
-ENV PYTHONPATH=/app LITELLM_LOCAL_MODEL_COST_MAP=true CANARY_GATEWAY_CONFIG=/app/gateway.yaml CANARY_BENCHMARK_GATEWAY_ONLY=1
+ENV PYTHONPATH=/app LITELLM_LOCAL_MODEL_COST_MAP=true CANARY_GATEWAY_CONFIG=/app/gateway.yaml CANARY_BENCHMARK_GATEWAY_ONLY=1 STORE_MODEL_IN_DB=True
 # The existing gateway database/schema is provisioned separately. A temporary
 # inference-only process must not run the UI image's migration entrypoint.
 ENTRYPOINT ["litellm"]

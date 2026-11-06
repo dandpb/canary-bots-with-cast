@@ -67,16 +67,19 @@ The SDK tests use an in-process MockTransport, not a socket or provider account.
 
 Google's [FunctionDeclaration reference](https://ai.google.dev/api/generate-content#FunctionDeclaration)
 defines `parametersJsonSchema` as a JSON Schema alternative to `parameters`,
-with an additional-properties prohibition in its example. Its
-[GenerateContent function-calling guide](https://ai.google.dev/gemini-api/docs/generate-content/function-calling?authuser=0&hl=en)
-describes modeANY as forcing function prediction with schema adherence.
-The [official API proto](https://github.com/googleapis/googleapis/blob/master/google/ai/generativelanguage/v1beta/content.proto)
-also distinguishes ANY from VALIDATED, the latter allowing natural-language output.
-The newer Interactions documentation uses a different request/mode surface;
-this smoke qualifies the GenerateContent translation, not Interactions.
+with an additional-properties prohibition in its example. The authoritative
+[GenerateContent v1beta Discovery, revision20261105](https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta)
+describes ANY as forcing function prediction and restricting allowed names;
+VALIDATED explicitly documents constrained decoding while allowing text.
+The [pinned official API proto](https://github.com/googleapis/googleapis/blob/bc7e3baa28fbb223fa93782e130260fab8205bfc/google/ai/generativelanguage/v1beta/content.proto)
+has the same distinction. The former GenerateContent guide now redirects to
+Interactions; an indexed legacy excerpt claiming ANY schema adherence is not
+treated as the current normative contract.
 
-These sources describe the supported native contract. A fake endpoint proves
-preservation on the wire, not real account acceptance or perfect model behavior.
-Real-provider conformance remains necessary. Local rejection of invalid model
-output is not presented as proof of native enforcement. The smoke's explicit
-model is `gemini-3.5-flash-lite`; it is not evidence for a silently substituted model.
+The smoke proves preservation of the full JSON Schema and forced selection of
+`choose_action`. It does not prove equivalence to OpenAI `strict`, constrained
+decoding in modeANY, real account acceptance or perfect model behavior.
+Real-provider conformance remains necessary and qualifies that observed sample,
+not a stronger native guarantee. Local rejection of invalid model output is not
+presented as proof of native enforcement. The explicit model is
+`gemini-3.5-flash-lite`; it is not evidence for a silently substituted model.
