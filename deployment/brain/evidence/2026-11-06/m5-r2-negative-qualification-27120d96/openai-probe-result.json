@@ -1,0 +1,72 @@
+{
+  "mode": "real-inference-on-recorded-inputs-no-game-actions",
+  "runs": [
+    "decisions:bdf836b5a98e4247a47cce1352fae837:65001"
+  ],
+  "decisions": [
+    {
+      "valid": false,
+      "error": "ValueError",
+      "bot_id": 65001,
+      "elapsed_ms": 4093,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "hunt:399",
+      "valid": true,
+      "expected": null,
+      "matches_expected": null,
+      "bot_id": 65001,
+      "elapsed_ms": 4217,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "resupply",
+      "valid": true,
+      "expected": "resupply",
+      "matches_expected": true,
+      "bot_id": 65001,
+      "elapsed_ms": 0,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "valid": false,
+      "error": "TimeoutError",
+      "bot_id": 65001,
+      "elapsed_ms": 1018,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "valid": false,
+      "error": "ProviderBackoff",
+      "bot_id": 65001,
+      "elapsed_ms": 0,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "valid": false,
+      "error": "ProviderBackoff",
+      "bot_id": 65001,
+      "elapsed_ms": 0,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    }
+  ],
+  "qualification": {
+    "valid": 2,
+    "late": 1,
+    "technical_invalid": 3,
+    "unknown_requests": 1,
+    "unknown_nanousd": 942250,
+    "ledger_requests": 3,
+    "root_review_required": true,
+    "failure_interpretation": "mixed",
+    "accepted_for_game": false,
+    "policy": "short_deadline_performance_recovery_v2",
+    "evidence_reconciled": false,
+    "evidence_failure": {
+      "error_type": "ValueError",
+      "stage": "m5.probe_evidence"
+    },
+    "rejection_reason": "technical_or_unreconciled_evidence"
+  }
+}

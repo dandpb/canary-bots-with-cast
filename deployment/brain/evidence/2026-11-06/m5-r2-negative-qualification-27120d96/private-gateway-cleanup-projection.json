@@ -1,0 +1,22 @@
+{
+  "observed_utc": "2026-11-06T18:27:18.030599+00:00",
+  "linked_audit_files_unchanged_before_cleanup": true,
+  "closed_R2_diagnosis_completed_before_cleanup": true,
+  "private_absent": true,
+  "owner_exited": true,
+  "canonical_cleanup_phase": "cleaned",
+  "lease_free": true,
+  "permanent_count": 10,
+  "permanent_docker_healthy_count": 9,
+  "permanent_without_docker_healthcheck": [
+    "canary-bots-wsl-brain-1"
+  ],
+  "identified_M5_temporaries_remaining": [],
+  "inference_calls": 0,
+  "credential_values_read_or_exported": false,
+  "canonical_ledger_or_production_db_access": false,
+  "other_services_restarted_or_recreated": false,
+  "volumes_or_images_removed": false,
+  "source_receipt_sha256": "45f8cb31876a2dce4bb5e81cfa938088c202c2cda3590063413112df6c853b7b",
+  "permanent_running_count": 10
+}
