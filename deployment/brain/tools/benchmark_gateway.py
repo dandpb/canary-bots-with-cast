@@ -171,7 +171,7 @@ def environment(
         )
     credentials = [
         runtime / "secrets" / ("litellm-" + kind + ".env")
-        for kind in ("provider", "worker", "ui")
+        for kind in ("provider", "worker", "ui", "redis")
     ]
     files = [policy, *credentials]
     if (

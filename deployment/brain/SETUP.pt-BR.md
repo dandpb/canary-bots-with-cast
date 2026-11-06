@@ -79,8 +79,9 @@ O primeiro carregamento da população é gradual e pode demorar vários minutos
 | Supervisão do worker | `http://127.0.0.1:8091/` | Disponível ao iniciar o worker |
 | Replay independente | `http://127.0.0.1:8092/replay` | Disponível ao executar `replay serve` |
 
-MariaDB do jogo e PostgreSQL do LiteLLM são bancos separados, sem portas
-publicadas no host. Dentro de um container, `127.0.0.1` aponta para esse container.
+MariaDB do jogo, PostgreSQL do LiteLLM e Redis de coordenação são serviços
+separados, sem portas publicadas no host. Dentro de um container, `127.0.0.1`
+aponta para esse container.
 
 ## 3. Entender o login e as chaves
 
@@ -95,6 +96,7 @@ ao Git ou a relatórios. [Contrato de login do LiteLLM](https://docs.litellm.ai/
 | `runtime/secrets/litellm-worker.env` | Master key e chave restrita do worker; montado apenas no gateway |
 | `runtime/secrets/litellm-ui.env` | Conexão PostgreSQL, usuário UI e salt persistente |
 | `runtime/secrets/litellm-db.env` | Usuário/senha do PostgreSQL exclusivo |
+| `runtime/secrets/litellm-redis.env` | Endpoint interno e senha do Redis de coordenação/autenticação |
 | `runtime/secrets/litellm-provider.env` | Alternativa para credenciais por variáveis de ambiente |
 | `runtime/secrets/litellm-client.env` | Arquivo a criar para o worker: apenas `LITELLM_API_KEY` |
 | `runtime/secrets/litellm-admin.env` | Opcional, criado pelo operador: `LITELLM_ADMIN_KEY` para ferramentas administrativas |
@@ -114,6 +116,62 @@ curl --fail --silent --show-error http://127.0.0.1:4000/health/readiness
 Health confirma disponibilidade; confira também login e listagem de modelos.
 Ao consultar logs de inicialização, mantenha-os privados e remova segredos
 antes de compartilhar.
+
+### Redis de coordenação e número de workers
+
+A preparação nova também cria `litellm-redis.env`, privado (`0600`), com
+`REDIS_HOST=litellm-redis`, `REDIS_PORT=6379` e senha interna aleatória. O serviço
+`litellm-redis` pertence a `canary-bots-wsl`, usa imagem fixada por digest e não
+publica porta. Ele recebe apenas seu próprio env file; as chaves de providers,
+o banco do jogo e a conexão PostgreSQL não são passados a ele.
+
+Redis usa AOF em volume próprio, `appendfsync everysec`, limite de 128 MB e
+`noeviction`, para não descartar contadores ao atingir o limite. A configuração
+com senha é criada somente em tmpfs privado dentro do container, com `0600`;
+a senha não aparece no argv. O healthcheck autenticado usa `REDISCLI_AUTH`.
+O processo roda como `redis`, com filesystem-base somente leitura, sem
+capabilities e com `no-new-privileges`. Preserve esse volume em paradas normais.
+
+O perfil configura `general_settings.coordination_redis` explicitamente, com
+referências a `REDIS_*`, banco 0 e namespace `canary-bots-wsl:litellm`.
+`litellm_settings.enable_redis_auth_cache: true` compartilha o cache de autenticação.
+Isso é diferente de cache de respostas: mantenha `litellm_settings.cache: false`
+e `router_settings.cache_responses: false` no M5. O ledger mensal canônico continua
+sendo SQLite; Redis não abre outro saldo nem substitui reservas financeiras.
+A UI recebe `NUM_WORKERS=1`; confirme também o número efetivo de processos ao
+qualificar a implantação. A existência de Redis, sozinha, não prova multiworker.
+O bloco de coordenação e a condição do aviso estão na implementação fixada do
+[LiteLLM 1.108.0](https://github.com/BerriAI/litellm/blob/v1.108.0/litellm/proxy/proxy_server.py#L5974)
+e no [endpoint de warnings](https://github.com/BerriAI/litellm/blob/v1.108.0/litellm/proxy/health_endpoints/_health_endpoints.py#L1745).
+
+Em uma atualização, a preparação preserva exatamente os env files e a política
+originais. Para gerar uma política derivada com coordenação, sem editar
+`runtime/config/litellm.yaml` nem seus aliases/retries/fallbacks:
+
+```bash
+python3 deployment/wsl/setup-gateway.py \
+  --directory /home/daniel/canary-bots-wsl/deployment/wsl --coordination
+```
+
+O novo arquivo é `runtime/config/litellm-coordination.yaml`. Uma segunda execução
+igual o preserva; se ele já existir com conteúdo diferente, o helper recusa
+sobrescrevê-lo. Na UI, monte essa nova origem em `/app/gateway.yaml:ro` por um
+override restrito; conserve o Compose e a política operacionais anteriores.
+Em instalações novas, a política padrão já inclui a coordenação.
+
+Inicie primeiro somente `litellm-redis` e confira seu healthcheck; depois recrie
+apenas a UI e o gateway privado que precisem da nova conexão/configuração. A UI
+do Compose rastreado já depende da saúde de PostgreSQL e Redis. Não reinicie jogo,
+MariaDB ou brain para essa alteração. Preserve logs e ateste os CIDs esperados
+antes/depois. Redis inacessível, cliente ainda em memória e quantidade de workers
+desconhecida são estados diferentes: verifique conexão/cliente efetivos além da
+ausência de warnings, sem desativar limites para esconder o aviso.
+
+Uma política derivada tem outro hash: fixe seus bytes e atualize os manifestos
+antes de uma nova campanha. Acrescentar Redis/env/Compose não muda os bytes da
+imagem `32b563…` qualificada anteriormente, mas exige revalidar readiness, auth,
+conexão Redis, ausência de cache de respostas e limpeza da sessão. A validade
+temporal de um recibo anterior não cobre a configuração nova.
 
 ## 4. Cadastrar credenciais e associar modelos
 
@@ -135,8 +193,11 @@ contém duas rotas, sem chaves:
 Edite `runtime/config/litellm.yaml`, inicialmente JSON válido, para adicionar
 essas entradas em `model_list`. JSON também é YAML válido. Preserve os demais
 settings: retries zero no router e LiteLLM, sem fallbacks/cache, `drop_params:false`,
-`custom_auth` e `custom_auth_settings:{mode:auto}`. O exemplo completo serve para
-uma instalação nova; preserve IDs e configurações de uma instalação existente.
+`custom_auth`, `custom_auth_settings:{mode:auto}` e o bloco de coordenação Redis.
+No WSL, copie do exemplo apenas `model_list`: o exemplo genérico não configura
+Redis nem seus env files. Se substituir a política inteira, gere depois a
+derivada com `setup-gateway.py --coordination` e monte-a no gateway. Preserve IDs
+e configurações de uma instalação existente.
 Use uma definição por alias: não duplique a mesma rota no arquivo e no banco UI.
 Rotas do arquivo aparecem no painel como configurações gerenciadas pelo arquivo.
 
@@ -167,7 +228,7 @@ O [Compose privado rastreado](gateway/compose.benchmark.yaml) e o launcher abaix
 provisionam somente esse serviço, sem iniciar worker ou enviar inferência.
 Antes, conclua a etapa 2: a rede `canary-bots-wsl_default` e o PostgreSQL do
 LiteLLM devem existir, com o schema já preparado pelo serviço UI. Reutilize os
-três env files `litellm-{provider,worker,ui}.env`, privados (`0600`), no runtime;
+quatro env files `litellm-{provider,worker,ui,redis}.env`, privados (`0600`), no runtime;
 o launcher só confere seus caminhos/permissões, sem ler ou exibir seus valores.
 Fixe a política revisada em um arquivo novo e não a altere durante o ensaio.
 
