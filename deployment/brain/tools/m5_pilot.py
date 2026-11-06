@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -18,8 +19,12 @@ import socket
 import sqlite3
 import subprocess
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 from urllib.parse import quote
@@ -34,10 +39,10 @@ from canary_brain.store import USD, Store, month_now
 
 GATES = {
     "fixture_30m_native_fake_current_runner",
-    "strict_native_provider_contract_both_models",
+    "same_candidate_schema_and_application_validation",
     "routing_immutable_before_upstream",
     "current_gateway_ids_hash_and_prices_revalidated",
-    "recorded_conformance_observations_selected",
+    "conformance_input_provenance_frozen",
     "same_canonical_ledger_available_at_least_12usd",
 }
 CANONICAL_VOLUME = "canary-bots-wsl_brain-state"
@@ -57,10 +62,47 @@ class Plan(BaseModel):
     canonical_volume: str = CANONICAL_VOLUME
 
 
+def input_paths(plan: Plan) -> dict[str, Path]:
+    return {
+        "campaign": plan.campaign,
+        "admission": plan.admission,
+        "authorization": plan.authorization,
+        "source_manifest": plan.source_manifest,
+        "decision_fixtures": plan.decision_fixtures,
+        **plan.probe_workers,
+    }
+
+
 def read_json(path: Path) -> Any:
     if not path.is_absolute() or path.is_symlink() or not path.is_file():
         raise ValueError("inputs must be existing absolute nonsymlink files")
     return json.loads(path.read_text())
+
+
+def capture_inputs(plan: Plan) -> dict[str, bytes]:
+    captured = {}
+    for name, path in input_paths(plan).items():
+        if not path.is_absolute() or path.is_symlink() or not path.is_file():
+            raise ValueError("inputs must be existing absolute nonsymlink files")
+        captured[name] = path.read_bytes()
+    return captured
+
+
+def input_hashes(captured: dict[str, bytes]) -> dict[str, str]:
+    return {name: hashlib.sha256(value).hexdigest() for name, value in captured.items()}
+
+
+@dataclass(frozen=True)
+class ImmutableJSON:
+    """Canonical CLI reads these admitted bytes instead of reopening paths."""
+
+    payload: bytes
+
+    def read_text(self) -> str:
+        return self.payload.decode("utf-8")
+
+    def stat(self) -> SimpleNamespace:
+        return SimpleNamespace(st_size=len(self.payload))
 
 
 def file_hash(path: Path) -> str:
@@ -195,16 +237,24 @@ def ledger_snapshot(
 
 
 def ledger_export(
-    plan: Plan, additional_runs: list[str] | None = None
+    plan: Plan,
+    additional_runs: list[str] | None = None,
+    captured: dict[str, bytes] | None = None,
 ) -> dict[str, Any]:
     """Export only pilot rows, with a global balance from one SQL snapshot."""
-    experiment = benchmark.Experiment.model_validate(read_json(plan.campaign))
-    envelope = read_json(plan.authorization)
+    data = {
+        name: json.loads(value)
+        for name, value in (
+            captured if captured is not None else capture_inputs(plan)
+        ).items()
+    }
+    experiment = benchmark.Experiment.model_validate(data["campaign"])
+    envelope = data["authorization"]
     ids = [row["id"] for row in envelope.get("historical_requests", [])]
     runs = {str(value) for value in envelope.get("additional_cost_run_ids", [])}
     runs.update(additional_runs or [])
-    for path in plan.probe_workers.values():
-        config = runtime.Configuration.model_validate(read_json(path))
+    for name in plan.probe_workers:
+        config = runtime.Configuration.model_validate(data[name])
         if config.recording is not None and config.recording.path.is_file():
             runs.update(row["id"] for row in ReplayReader(config.recording.path).runs())
     game_recording = experiment.output / "recording.sqlite3"
@@ -251,7 +301,7 @@ def ledger_export(
     }
 
 
-def preflight(plan: Plan) -> dict[str, Any]:
+def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str, Any]:
     if (
         not plan.output.is_absolute()
         or plan.output.is_symlink()
@@ -263,25 +313,29 @@ def preflight(plan: Plan) -> dict[str, Any]:
         raise ValueError(
             "pilot output must be new or empty; attempts cannot be replaced"
         )
-    admission = read_json(plan.admission)
+    captured = capture_inputs(plan) if captured is None else captured
+    hashes = input_hashes(captured)
+    data = {name: json.loads(value) for name, value in captured.items()}
+    admission = data["admission"]
     if (
         admission.get("approved") is not True
         or admission.get("read_only_preparation") is not False
         or set(admission.get("required_gates", {})) != GATES
         or not all(value is True for value in admission["required_gates"].values())
+        or admission.get("native_decoding_guarantees_equal") is not False
+        or admission.get("comparison_scope") != "configured_controller_stacks"
     ):
         raise ValueError("root admission has not accepted every free/gateway gate")
-    envelope = read_json(plan.authorization)
-    source = read_json(plan.source_manifest)
-    files = source_files(source)
-    experiment = benchmark.Experiment.model_validate(read_json(plan.campaign))
-    if (
-        admission.get("approved_campaign_sha256") != file_hash(plan.campaign)
-        or admission.get("approved_decision_fixtures_sha256")
-        != file_hash(plan.decision_fixtures)
-        or admission.get("source_revision") != source["revision"]
-    ):
+    if admission.get("approved_inputs_sha256") != {
+        name: value for name, value in hashes.items() if name != "admission"
+    }:
         raise ValueError("root admission is not bound to these exact inputs")
+    envelope = data["authorization"]
+    source = data["source_manifest"]
+    files = source_files(source)
+    experiment = benchmark.Experiment.model_validate(data["campaign"])
+    if admission.get("source_revision") != source["revision"]:
+        raise ValueError("root admission source revision differs")
     credential = experiment.gateway_credential
     if (
         credential is None
@@ -360,7 +414,7 @@ def preflight(plan: Plan) -> dict[str, Any]:
         raise ValueError(
             "the complete envelope must fit USD7 inside the shared USD50 cap"
         )
-    fixtures = read_json(plan.decision_fixtures)
+    fixtures = data["decision_fixtures"]
     if not isinstance(fixtures, list) or not 1 <= len(fixtures) <= 6:
         raise ValueError("conformance requires at most six predeclared observations")
     observations = [Observation.model_validate(row["observation"]) for row in fixtures]
@@ -370,8 +424,8 @@ def preflight(plan: Plan) -> dict[str, Any]:
         raise ValueError("probe cap must be shared by one recorded bot per model")
     if set(plan.probe_workers) != {"openai", "gemini"}:
         raise ValueError("one conformance configuration per model is required")
-    for name, path in plan.probe_workers.items():
-        config = runtime.Configuration.model_validate(read_json(path))
+    for name in plan.probe_workers:
+        config = runtime.Configuration.model_validate(data[name])
         if (
             config.provider != "litellm"
             or config.gateway != participants[name].gateway
@@ -393,14 +447,29 @@ def preflight(plan: Plan) -> dict[str, Any]:
     image, mounts = container_identity()
     if image != plan.worker_image or admission.get("common_worker_image") != image:
         raise ValueError("worker image differs from root admission")
-    if not any(
-        m.get("Type") == "volume"
-        and m.get("Name") == CANONICAL_VOLUME
-        and m.get("Destination") == str(plan.canonical_ledger_file.parent)
-        and m.get("RW") is True
-        for m in mounts
+    for target in (
+        plan.canonical_ledger_file,
+        plan.canonical_ledger_file.with_name("m5-pilot.lock"),
     ):
-        raise ValueError("canonical Docker volume is not mounted directly read-write")
+        ancestors = [
+            mount
+            for mount in mounts
+            if target.is_relative_to(Path(mount["Destination"]))
+        ]
+        effective = max(
+            ancestors,
+            key=lambda mount: len(Path(mount["Destination"]).parts),
+            default={},
+        )
+        if (
+            effective.get("Type") != "volume"
+            or effective.get("Name") != CANONICAL_VOLUME
+            or effective.get("Destination") != str(plan.canonical_ledger_file.parent)
+            or effective.get("RW") is not True
+        ):
+            raise ValueError(
+                "canonical Docker volume is missing or shadowed by another mount"
+            )
     for key, actual in (
         ("common_worker_python", platform.python_version()),
         ("openai_sdk", importlib.metadata.version("openai")),
@@ -425,21 +494,15 @@ def preflight(plan: Plan) -> dict[str, Any]:
     ]
     if envelope.get("scored", {}).get("order") != order:
         raise ValueError("declared execution order differs from canonical rotation")
-    paths = {
-        "campaign": plan.campaign,
-        "admission": plan.admission,
-        "authorization": plan.authorization,
-        "source_manifest": plan.source_manifest,
-        "decision_fixtures": plan.decision_fixtures,
-        **plan.probe_workers,
-    }
+    if any(file_hash(path) != hashes[name] for name, path in input_paths(plan).items()):
+        raise ValueError("inputs changed during read-only preflight")
     return {
         "accepted": True,
         "budget": budget,
         "order": order,
         "source_files": files,
         "source_revision": source["revision"],
-        "input_sha256": {name: file_hash(path) for name, path in paths.items()},
+        "input_sha256": hashes,
         "fixture_sha256": experiment.expected_initial_sha256,
         "new_worst_case_nanousd": 6_980_000_000,
         "historical_nanousd": historical_total,
@@ -541,11 +604,28 @@ async def run_attested_campaign(experiment: benchmark.Experiment) -> Any:
         observer = asyncio.create_task(
             observe_status(configuration, stopped, lambda: active)
         )
+        worker = asyncio.create_task(original_run(configuration, stopped))
         try:
-            await original_run(configuration, stopped)
+            await asyncio.wait((observer, worker), return_when=asyncio.FIRST_COMPLETED)
+            if observer.done():
+                await observer
+                if not stopped.is_set():
+                    raise RuntimeError(
+                        "status observer ended before the supervised worker"
+                    )
+            await worker
         finally:
+            stopped.set()
             observer.cancel()
-            await asyncio.gather(observer, return_exceptions=True)
+            endings = await asyncio.gather(observer, worker, return_exceptions=True)
+            if isinstance(endings[0], Exception):
+                write_new(
+                    configuration.state_file.parent / "status-observer-error.json",
+                    {"error_type": type(endings[0]).__name__},
+                )
+                raise RuntimeError(  # noqa: TRY004 - propagate an asynchronous task failure
+                    "passive status observer failed; run evidence is incomplete"
+                )
 
     with (
         patch.object(benchmark, "DockerFixture", AttestedFixture),
@@ -562,10 +642,39 @@ def write_new(path: Path, data: Any) -> None:
         os.fsync(stream.fileno())
 
 
+@contextmanager
+def pilot_lease(ledger: Path) -> Iterator[None]:
+    """One M5 orchestrator even if two operators select different output paths."""
+    descriptor = os.open(
+        ledger.with_name("m5-pilot.lock"),
+        os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW,
+        0o600,
+    )
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError(
+                "another M5 orchestrator holds the canonical-volume lease"
+            ) from None
+        yield
+    finally:
+        os.close(descriptor)
+
+
 async def execute(plan: Plan) -> dict[str, Any]:
-    admitted = preflight(plan)
-    source = read_json(plan.source_manifest)
-    assert_frozen_imports(source)
+    captured = capture_inputs(plan)
+    admitted = preflight(plan, captured)
+    assert_frozen_imports(json.loads(captured["source_manifest"]))
+    with pilot_lease(plan.canonical_ledger_file):
+        return await execute_admitted(plan, admitted, captured)
+
+
+async def execute_admitted(
+    plan: Plan, admitted: dict[str, Any], captured: dict[str, bytes]
+) -> dict[str, Any]:
+    data = {name: json.loads(value) for name, value in captured.items()}
+    source = data["source_manifest"]
     os.umask(0o077)
     plan.output.mkdir(parents=True, exist_ok=True, mode=0o700)
     write_new(
@@ -574,50 +683,30 @@ async def execute(plan: Plan) -> dict[str, Any]:
     )
     inputs = plan.output / "inputs"
     inputs.mkdir(mode=0o700)
-    for name, path in {
-        "campaign": plan.campaign,
-        "admission": plan.admission,
-        "authorization": plan.authorization,
-        "source_manifest": plan.source_manifest,
-        "decision_fixtures": plan.decision_fixtures,
-        **plan.probe_workers,
-    }.items():
-        payload = path.read_bytes()
+    for name, payload in captured.items():
         if hashlib.sha256(payload).hexdigest() != admitted["input_sha256"][name]:
             raise ValueError("admitted input changed before its snapshot")
         with (inputs / (name + ".json")).open("xb") as stream:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-    plan = plan.model_copy(
-        update={
-            **{
-                key: inputs / (key + ".json")
-                for key in (
-                    "campaign",
-                    "admission",
-                    "authorization",
-                    "source_manifest",
-                    "decision_fixtures",
-                )
-            },
-            "probe_workers": {
-                name: inputs / (name + ".json") for name in plan.probe_workers
-            },
-        }
-    )
-    result: dict[str, Any] = {"probes": {}, "campaign": None}
+    result: dict[str, Any] = {
+        "probes": {},
+        "campaign": None,
+        "comparison_scope": "configured_controller_stacks",
+        "native_decoding_guarantees_equal": False,
+    }
     expected_attempts = sum(
         len(Observation.model_validate(row["observation"]).actions) > 1
-        for row in read_json(plan.decision_fixtures)
+        for row in data["decision_fixtures"]
     )
     try:
         for name in ("openai", "gemini"):
             source_files(source)
             probe = await decision_fixtures(
                 argparse.Namespace(
-                    fixtures=plan.decision_fixtures,
-                    worker_config=plan.probe_workers[name],
+                    fixtures=ImmutableJSON(captured["decision_fixtures"]),
+                    worker_config=ImmutableJSON(captured[name]),
                     live=True,
                 )
             )
@@ -646,9 +735,14 @@ async def execute(plan: Plan) -> dict[str, Any]:
                     for run in probe["runs"]
                 )
             late = sum(row.get("error") == "TimeoutError" for row in probe["decisions"])
+            technical = sum(
+                not row["valid"] and row.get("error") != "TimeoutError"
+                for row in probe["decisions"]
+            )
             probe["qualification"] = {
                 "valid": sum(row["valid"] for row in probe["decisions"]),
                 "late": late,
+                "technical_invalid": technical,
                 "unknown_requests": unresolved,
                 "unknown_nanousd": unknown_nanousd,
                 "ledger_requests": count,
@@ -657,10 +751,12 @@ async def execute(plan: Plan) -> dict[str, Any]:
                     row["valid"] for row in probe["decisions"]
                 )
                 or bool(unresolved),
-                "failure_interpretation": "deadline_performance"
+                "failure_interpretation": "mixed"
+                if late and technical
+                else "deadline_performance"
                 if late
                 else "contract_or_provider"
-                if not all(row["valid"] for row in probe["decisions"])
+                if technical
                 else None,
             }
             result["probes"][name] = probe
@@ -681,7 +777,7 @@ async def execute(plan: Plan) -> dict[str, Any]:
                 )
         source_files(source)
         result["campaign"] = await run_attested_campaign(
-            benchmark.Experiment.model_validate(read_json(plan.campaign))
+            benchmark.Experiment.model_validate(data["campaign"])
         )
         return result
     except BaseException as error:
@@ -695,7 +791,9 @@ async def execute(plan: Plan) -> dict[str, Any]:
                 for probe in result["probes"].values()
                 for run in probe.get("runs", [])
             ]
-            write_new(plan.output / "ledger.json", ledger_export(plan, probe_runs))
+            write_new(
+                plan.output / "ledger.json", ledger_export(plan, probe_runs, captured)
+            )
         except Exception as error:  # noqa: BLE001 - preserve the original stage failure too
             export_failed = True
             result["ledger_export_error"] = type(error).__name__

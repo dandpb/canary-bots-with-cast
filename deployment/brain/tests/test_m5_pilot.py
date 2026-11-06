@@ -1,8 +1,10 @@
 """Admission, immutable inputs and shared accounting before any live M5 call."""
 
+import asyncio
 import json
 import platform
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from test_protocol import observation
@@ -15,6 +17,24 @@ from tools import m5_pilot as pilot
 def write(path, value):
     path.write_text(json.dumps(value))
     return path
+
+
+def approve_inputs(plan):
+    gate = json.loads(plan.admission.read_text())
+    gate.update(
+        {
+            "approved_inputs_sha256": {
+                name: value
+                for name, value in pilot.input_hashes(
+                    pilot.capture_inputs(plan)
+                ).items()
+                if name != "admission"
+            },
+            "native_decoding_guarantees_equal": False,
+            "comparison_scope": "configured_controller_stacks",
+        }
+    )
+    write(plan.admission, gate)
 
 
 @pytest.fixture
@@ -194,7 +214,7 @@ def admitted(tmp_path_factory, monkeypatch):
             ],
         ),
     )
-    return pilot.Plan(
+    plan = pilot.Plan(
         output=output,
         campaign=campaign,
         admission=admission,
@@ -205,6 +225,8 @@ def admitted(tmp_path_factory, monkeypatch):
         worker_image=image,
         canonical_ledger_file=ledger,
     )
+    approve_inputs(plan)
+    return plan
 
 
 def test_preflight_accepts_pinned_single_authority_without_creating_output(admitted):
@@ -283,6 +305,7 @@ def test_multiple_probe_bots_cannot_multiply_the_model_cap(admitted):
         admitted.decision_fixtures
     )
     write(admitted.admission, gate)
+    approve_inputs(admitted)
     with pytest.raises(ValueError, match="one recorded bot"):
         pilot.preflight(admitted)
 
@@ -327,6 +350,7 @@ def test_prior_additional_costs_also_consume_the_pilot_envelope(admitted):
     envelope = json.loads(admitted.authorization.read_text())
     envelope["additional_cost_run_ids"] = ["prior-probe"]
     write(admitted.authorization, envelope)
+    approve_inputs(admitted)
     with pytest.raises(ValueError, match="insufficient room inside USD7"):
         pilot.preflight(admitted)
 
@@ -337,6 +361,18 @@ def test_reusing_a_charged_campaign_name_is_rejected_even_in_a_new_directory(adm
     )
     with pytest.raises(ValueError, match="campaign identity already"):
         pilot.preflight(admitted)
+
+
+def test_canonical_volume_lease_blocks_another_output_and_releases_on_failure(admitted):
+    with pytest.raises(RuntimeError), pilot.pilot_lease(admitted.canonical_ledger_file):
+        with (
+            pytest.raises(ValueError, match="another M5 orchestrator"),
+            pilot.pilot_lease(admitted.canonical_ledger_file),
+        ):
+            pytest.fail("lease must be exclusive")
+        raise RuntimeError("simulated stop")
+    with pilot.pilot_lease(admitted.canonical_ledger_file):
+        pass
 
 
 async def test_conformance_failure_blocks_campaign_and_preserves_result(
@@ -431,3 +467,150 @@ async def test_deadline_is_a_retained_performance_outcome_needing_root_review(
     assert (
         next(row for row in ledger["requests"] if row["id"] == "late")["spent"] is None
     )
+
+
+@pytest.mark.parametrize("which", ["campaign", "openai"])
+def test_config_mutation_during_preflight_cannot_capture_unvalidated_new_hash(
+    admitted, monkeypatch, which
+):
+    identity = pilot.container_identity
+
+    def mutate():
+        path = (
+            admitted.campaign if which == "campaign" else admitted.probe_workers[which]
+        )
+        value = json.loads(path.read_text())
+        value.update(
+            {"run_cap_nanousd": 2_000_000_000, "campaign_cap_nanousd": 12_000_000_000}
+            if which == "campaign"
+            else {"decision_timeout": 30}
+        )
+        write(path, value)
+        return identity()
+
+    monkeypatch.setattr(pilot, "container_identity", mutate)
+    with pytest.raises(ValueError, match="inputs changed during read-only preflight"):
+        pilot.preflight(admitted)
+    assert not admitted.output.exists()
+
+
+def test_source_rehash_without_new_root_admission_is_rejected(admitted):
+    manifest = json.loads(admitted.source_manifest.read_text())
+    name = next(iter(manifest["files"]))
+    target = Path(manifest["source_path"]) / name
+    target.write_text("# changed after approval\n")
+    manifest["files"][name] = pilot.file_hash(target)
+    write(admitted.source_manifest, manifest)
+    with pytest.raises(ValueError, match="bound to these exact inputs"):
+        pilot.preflight(admitted)
+
+
+def test_file_mount_shadowing_cannot_disguise_a_copied_ledger(admitted, monkeypatch):
+    image, mounts = pilot.container_identity()
+    mounts.append(
+        {"Type": "bind", "Destination": str(admitted.canonical_ledger_file), "RW": True}
+    )
+    monkeypatch.setattr(pilot, "container_identity", lambda: (image, mounts))
+    with pytest.raises(ValueError, match="shadowed"):
+        pilot.preflight(admitted)
+
+
+async def test_execution_uses_validated_bytes_even_when_original_paths_change(
+    admitted, monkeypatch
+):
+    def change_originals(_):
+        value = json.loads(admitted.campaign.read_text())
+        value.update(
+            {"run_cap_nanousd": 2_000_000_000, "campaign_cap_nanousd": 12_000_000_000}
+        )
+        write(admitted.campaign, value)
+        value = json.loads(admitted.probe_workers["openai"].read_text())
+        value["decision_timeout"] = 30
+        write(admitted.probe_workers["openai"], value)
+        write(admitted.decision_fixtures, [])
+
+    async def probe(args):
+        config = json.loads(args.worker_config.read_text())
+        assert config.get("decision_timeout", 1.2) == 1.2
+        assert len(json.loads(args.fixtures.read_text())) == 1
+        name = config["gateway"]["provider"]
+        run = "decisions:captured:" + name
+        store = Store(admitted.canonical_ledger_file)
+        store.reserve(name, 10, month_now(), run_id=run)
+        store.settle(name, 10)
+        return {"runs": [run], "decisions": [{"valid": True}]}
+
+    async def game(config):
+        assert config.run_cap_nanousd == 1_000_000_000
+        assert config.campaign_cap_nanousd == 6_000_000_000
+        return {"completed": True}
+
+    monkeypatch.setattr(pilot, "assert_frozen_imports", change_originals)
+    monkeypatch.setattr(pilot, "decision_fixtures", probe)
+    monkeypatch.setattr(pilot, "run_attested_campaign", game)
+    result = await pilot.execute(admitted)
+    assert result["campaign"]["completed"]
+    assert (
+        json.loads((admitted.output / "inputs/campaign.json").read_text())[
+            "run_cap_nanousd"
+        ]
+        == 1_000_000_000
+    )
+
+
+async def test_observer_failure_is_not_silently_qualified_as_completed(
+    admitted, monkeypatch
+):
+    state = admitted.output / "worker.sqlite3"
+    state.parent.mkdir()
+    joined = []
+
+    async def worker(_, stop):
+        await stop.wait()
+        joined.append(True)
+
+    async def broken(*args):
+        raise RuntimeError("offline status query failure")
+
+    async def campaign(config, live):
+        await pilot.benchmark.run(SimpleNamespace(state_file=state), asyncio.Event())
+        return {"completed": True}
+
+    monkeypatch.setattr(pilot.runtime, "run", worker)
+    monkeypatch.setattr(pilot, "observe_status", broken)
+    monkeypatch.setattr(pilot.benchmark, "run_campaign", campaign)
+    config = pilot.benchmark.Experiment.model_validate_json(
+        admitted.campaign.read_text()
+    )
+    with pytest.raises(RuntimeError, match="status observer failed"):
+        await pilot.run_attested_campaign(config)
+    assert joined == [True]
+    assert (
+        json.loads((state.parent / "status-observer-error.json").read_text())[
+            "error_type"
+        ]
+        == "RuntimeError"
+    )
+
+
+async def test_mixed_deadline_and_technical_failures_remain_distinct(
+    admitted, monkeypatch
+):
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+
+    async def mixed(_):
+        return {
+            "runs": [],
+            "decisions": [
+                {"valid": False, "error": "TimeoutError"},
+                {"valid": False, "error": "ValueError"},
+            ],
+        }
+
+    monkeypatch.setattr(pilot, "decision_fixtures", mixed)
+    with pytest.raises(ValueError, match="conformance failed"):
+        await pilot.execute(admitted)
+    result = json.loads((admitted.output / "execution-result.json").read_text())
+    qualification = result["probes"]["openai"]["qualification"]
+    assert qualification["late"] == qualification["technical_invalid"] == 1
+    assert qualification["failure_interpretation"] == "mixed"

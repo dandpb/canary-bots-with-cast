@@ -22,12 +22,27 @@ Plan JSON keys: `output`, `campaign`, `admission`, `authorization`,
 `worker_image`, `canonical_ledger_file`, `canonical_volume`. Paths are absolute.
 The output may be a freshly created empty Docker bind directory; attempts use
 an exclusive execution marker and cannot be rerun or replaced automatically.
+A kernel lease on the canonical volume also excludes another M5 orchestrator
+with a different output path. Its lock file is retained to avoid inode races;
+the kernel releases ownership on close/process death.
 
 The root admission must have `approved:true`, `read_only_preparation:false`,
-all six named free/gateway gates true, and the exact
-`approved_campaign_sha256`, `approved_decision_fixtures_sha256` and
-`source_revision`. Worker-image/Python/OpenAI/Pydantic identities must match
+all six named free/gateway gates true, the exact `source_revision`, and
+`approved_inputs_sha256`: hashes of every input except admission itself
+(`campaign`, `authorization`, `source_manifest`, `decision_fixtures`, `openai`,
+`gemini`). Worker-image/Python/OpenAI/Pydantic identities must match
 admission. Candidate documents with false gates are deliberately rejected.
+The two provenance/schema gates are `conformance_input_provenance_frozen` and
+`same_candidate_schema_and_application_validation`. Admission/results declare
+`comparison_scope:"configured_controller_stacks"` and
+`native_decoding_guarantees_equal:false`: Google ANY and OpenAI strict do not
+promise identical native decoder guarantees.
+
+The wrapper captures bytes/hashes before validation, checks for concurrent
+edits, then passes the same admitted in-memory JSON to the canonical evaluator
+(`read_text`/`stat` interface) and a validated Experiment to the campaign runner.
+Audit snapshots preserve those exact bytes; execution never reopens mutable
+original configuration paths or uses the audit copies as new authority.
 
 `--preflight` makes no Store, schema, reservation, provider or game changes.
 It reads input hashes and SQLite in read-only mode and inspects only the current
@@ -49,6 +64,7 @@ service teardown; observer tasks are cancelled/joined and patched hooks restored
 
 A deadline is a negative performance result, distinct from protocol/identity/
 usage failures. Probe output records valid, late and unknown counts separately.
+Mixed deadline/technical failures are labeled `mixed`, retaining both counts.
 Any failed conformance or unresolved charge stops before game runs and requires
 root review; the wrapper never increases TTLs, retries or qualifies itself.
 
@@ -58,6 +74,10 @@ run IDs and every campaign-namespace SQL row), while its balance header includes
 all production charges/unknown reservations. Header and rows come from one SQL
 read transaction with an aware UTC timestamp. No full SQLite or key is exported.
 An export failure is recorded and prevents a successful completion claim.
+The most specific Docker mount covering the ledger/lease paths must be the
+canonical volume; an extra file/directory bind shadowing it is rejected.
+Passive observer errors stop the worker, mark incomplete evidence and propagate
+through canonical teardown instead of silently qualifying a completed run.
 
 Offline tests cover admission/source binding, missing/copied ledger rejection,
 shared caps, no replacement, hook restoration and deadline liability retention.
