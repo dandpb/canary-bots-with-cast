@@ -483,6 +483,73 @@ def test_prior_additional_costs_also_consume_the_pilot_envelope(admitted):
         pilot.preflight(admitted)
 
 
+def test_preflight_budget_and_prior_liabilities_share_one_wal_snapshot(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "budget.sqlite3"
+    connect = sqlite3.connect
+    with connect(path) as writer:
+        assert writer.execute("PRAGMA journal_mode=WAL").fetchone() == ("wal",)
+        writer.execute(
+            "CREATE TABLE requests(id TEXT PRIMARY KEY,month TEXT,run_id TEXT,"
+            "reserved INTEGER,spent INTEGER)"
+        )
+        writer.executemany(
+            "INSERT INTO requests VALUES(?,?,?,?,?)",
+            [
+                ("historical", month_now(), "historical-smoke", 50, 11),
+                ("known-zero", month_now(), "production", 30, 0),
+                ("unknown", "2000-01", "prior-probe", 400, None),
+            ],
+        )
+        writer.commit()
+        committed = False
+
+        class InterleavedReader(sqlite3.Connection):
+            def execute(self, sql, parameters=()):
+                nonlocal committed
+                cursor = super().execute(sql, parameters)
+                if not committed and sql.lstrip().startswith("SELECT"):
+                    # A second real WAL connection commits after the header read.
+                    writer.execute(
+                        "INSERT INTO requests VALUES(?,?,?,?,?)",
+                        ("concurrent", month_now(), "prior-probe", 600, None),
+                    )
+                    writer.commit()
+                    committed = True
+                return cursor
+
+        def read_only_connect(database, *, uri):
+            assert str(database).endswith("?mode=ro") and uri is True
+            return connect(database, uri=uri, factory=InterleavedReader)
+
+        monkeypatch.setattr(pilot.sqlite3, "connect", read_only_connect)
+        result = pilot.ledger_snapshot(
+            path,
+            [{"id": "historical", "spent_nanousd": 11}],
+            ["prior-probe"],
+            "unexecuted-campaign",
+        )
+        assert committed
+        assert result == {
+            "cap": 50_000_000_000,
+            "spent": 11,
+            "reserved": 400,
+            "available": 49_999_999_589,
+            "prior_extra_liability": 400,
+        }
+        # The read-only preflight leaves both existing rows and the writer's
+        # committed reservation intact; unknown remains distinct from known zero.
+        assert writer.execute(
+            "SELECT id,reserved,spent FROM requests ORDER BY id"
+        ).fetchall() == [
+            ("concurrent", 600, None),
+            ("historical", 50, 11),
+            ("known-zero", 30, 0),
+            ("unknown", 400, None),
+        ]
+
+
 def test_reusing_a_charged_campaign_name_is_rejected_even_in_a_new_directory(admitted):
     Store(admitted.canonical_ledger_file).reserve(
         "old-attempt", 1000, month_now(), run_id="qa-pilot:openai:0"

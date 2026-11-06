@@ -516,6 +516,7 @@ def ledger_snapshot(
     with sqlite3.connect(
         "file:" + quote(str(path), safe="/") + "?mode=ro", uri=True
     ) as db:
+        db.execute("BEGIN")
         spent, reserved = db.execute(
             "SELECT COALESCE(SUM(CASE WHEN month=? THEN spent ELSE 0 END),0),COALESCE(SUM(CASE WHEN spent IS NULL THEN reserved ELSE 0 END),0) FROM requests",
             (month_now(),),
