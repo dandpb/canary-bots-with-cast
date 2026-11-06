@@ -285,8 +285,10 @@ retornado por `docker volume inspect` em caminho acessível pelo Python do WSL.
 
 Qualifique primeiro baseline/fake gratuitamente: mesmo estado inicial, duração
 observada completa, XP confirmado no banco, caça/ressuprimento/retorno e paradas
-testadas. O runner canônico não aceita `fake` como participante de campanha;
-use o harness de QA apropriado e registre sua revisão. A [evidência #25](https://github.com/dandpb/canary-bots-with-cast/pull/25)
+testadas. O runner canônico aceita `native`, `fake` e `litellm`; `fake` usa uma
+política local explícita, sem inferência de provider. `--live` ainda é necessário
+para iniciar o jogo real. Registre a política/harness e sua revisão; progresso
+do jogo real com decisões fake não é desempenho de um modelo. A [evidência #25](https://github.com/dandpb/canary-bots-with-cast/pull/25)
 é uma qualificação histórica ainda em revisão, não uma fixture aceita por padrão.
 
 Para OpenAI/Gemini, declare aliases/IDs/configurações e preços revisados,
