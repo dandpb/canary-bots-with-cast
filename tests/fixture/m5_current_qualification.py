@@ -10,6 +10,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import time
@@ -56,11 +57,84 @@ def current_revision():
             name + ".py"
         ), "qualification imports must resolve from the driver application checkout"
     assert not subprocess.check_output(
-        ["git", "-C", str(ROOT), "status", "--porcelain"], text=True, timeout=30
+        ["git", "-C", str(ROOT), "status", "--porcelain"],
+        text=True,
+        timeout=30,
+        cwd="/",
     ).strip(), "qualification must freeze a clean committed application checkout"
     return subprocess.check_output(
-        ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True, timeout=30
+        ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True, timeout=30, cwd="/"
     ).strip()
+
+
+class QualificationObserverError(RuntimeError):
+    """A failed status observer makes this qualification unavailable."""
+
+
+async def read_native_status(query):
+    identity = int(
+        await asyncio.to_thread(
+            query,
+            "INSERT INTO bot_commands(bot_name,command) VALUES('Grizzle Alyronia','status');SELECT LAST_INSERT_ID();",
+        )
+    )
+    if identity <= 0:
+        raise ValueError("native status command has no valid identity")
+    for _ in range(20):
+        status = await asyncio.to_thread(
+            query,
+            f"SELECT result FROM bot_commands WHERE id={identity} AND processed=1;",
+        )
+        if status:
+            if not isinstance(status, str) or not re.fullmatch(
+                r"Bot 'Grizzle Alyronia': state=[A-Z_]+ pos=\(\d+,\d+,\d+\) active=(?:yes|no)(?: [^\r\n]*)?\s*",
+                status,
+            ):
+                raise ValueError("native status command returned an invalid result")
+            return identity, status
+        await asyncio.sleep(0.2)
+    raise TimeoutError("native status command did not produce a processed result")
+
+
+async def run_with_status_observer(configuration, stopped, run, observe):
+    worker = asyncio.create_task(run(configuration, stopped))
+    observer = asyncio.create_task(observe(configuration, stopped))
+    try:
+        completed, _ = await asyncio.wait(
+            (worker, observer), return_when=asyncio.FIRST_COMPLETED
+        )
+        if observer in completed:
+            error = (
+                RuntimeError("status observer cancelled unexpectedly")
+                if observer.cancelled()
+                else observer.exception()
+            )
+            if error is not None or not stopped.is_set():
+                error = error or RuntimeError(
+                    "status observer returned before the worker stopped"
+                )
+                (configuration.state_file.parent / "observer-error.json").write_text(
+                    json.dumps(
+                        {
+                            "error_type": type(error).__name__,
+                            "at_utc": datetime.datetime.now(datetime.UTC).isoformat(),
+                            "scope": "Qualification observer failure; worker stopped and result must be rejected",
+                        },
+                        indent=2,
+                    )
+                )
+                stopped.set()
+                await asyncio.gather(worker, return_exceptions=True)
+                raise QualificationObserverError(
+                    "Qualification status observer failed"
+                ) from error
+        await worker
+    finally:
+        stopped.set()
+        for task in (observer, worker):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(observer, worker, return_exceptions=True)
 
 
 def validate_result(
@@ -88,6 +162,10 @@ def validate_result(
         seconds=seconds,
         require_progress=require_progress,
     )
+    qualification["checks"]["status_observer_healthy"] = not (
+        state.parent / "observer-error.json"
+    ).exists()
+    qualification["accepted"] = all(qualification["checks"].values())
     return {
         **qualification,
         "summary": data,
@@ -130,6 +208,7 @@ async def execute(args):
         ],
         text=True,
         timeout=30,
+        cwd="/",
     )
     assert {
         Path(path).name: value
@@ -183,6 +262,7 @@ async def execute(args):
                     ],
                     text=True,
                     timeout=30,
+                    cwd="/",
                 ).strip()
                 assert actual == frozen["database_image_id"]
 
@@ -200,6 +280,7 @@ async def execute(args):
                     ],
                     text=True,
                     timeout=30,
+                    cwd="/",
                 ).strip()
                 assert (
                     identity
@@ -254,21 +335,7 @@ async def execute(args):
                         sql,
                     )
 
-                identity = int(
-                    await asyncio.to_thread(
-                        query,
-                        "INSERT INTO bot_commands(bot_name,command) VALUES('Grizzle Alyronia','status');SELECT LAST_INSERT_ID();",
-                    )
-                )
-                status = ""
-                for _ in range(20):
-                    status = await asyncio.to_thread(
-                        query,
-                        f"SELECT result FROM bot_commands WHERE id={identity} AND processed=1;",
-                    )
-                    if status:
-                        break
-                    await asyncio.sleep(0.2)
+                identity, status = await read_native_status(query)
                 with (configuration.state_file.parent / "phase-status.jsonl").open(
                     "a"
                 ) as stream:
@@ -287,12 +354,9 @@ async def execute(args):
     original_run = benchmark.run
 
     async def observed_worker(configuration, stopped):
-        observer = asyncio.create_task(observe_status(configuration, stopped))
-        try:
-            await original_run(configuration, stopped)
-        finally:
-            observer.cancel()
-            await asyncio.gather(observer, return_exceptions=True)
+        await run_with_status_observer(
+            configuration, stopped, original_run, observe_status
+        )
 
     benchmark.DockerFixture = AttestedFixture
     benchmark.run = observed_worker

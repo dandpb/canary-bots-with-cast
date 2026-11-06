@@ -102,6 +102,7 @@ def cleanup_evidence(project, *, timeout=15):
                 command + ["--filter", "label=com.docker.compose.project=" + project],
                 text=True,
                 timeout=timeout,
+                cwd="/",
             )
             evidence[resource] = output.splitlines()
         evidence["resources_cleaned"] = (
@@ -144,6 +145,7 @@ async def execute(args, stop):
         ["git", "-C", str(source_root), "status", "--porcelain"],
         text=True,
         timeout=30,
+        cwd="/",
     )
     assert not status.strip(), (
         "proof must freeze a clean committed application checkout"
@@ -154,6 +156,7 @@ async def execute(args, stop):
             ["git", "-C", str(source_root), "rev-parse", "HEAD"],
             text=True,
             timeout=30,
+            cwd="/",
         )
     ).strip()
     variation = derive_lowstock(args.fixture_root / "fixture", work / "fixture")
@@ -334,6 +337,7 @@ async def execute(args, stop):
                 ],
                 text=True,
                 timeout=30,
+                cwd="/",
             )
         )
         actual_images = {

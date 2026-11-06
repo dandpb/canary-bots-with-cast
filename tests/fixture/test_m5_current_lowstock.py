@@ -156,6 +156,57 @@ class LowStockGoalTests(unittest.TestCase):
             with self.assertRaises(ProcessLookupError):
                 os.kill(int(pid_file.read_text()), 0)
 
+    @unittest.skipUnless(
+        os.name == "posix", "invalid cwd regression uses Linux semantics"
+    )
+    def test_cleanup_cli_succeeds_when_parent_working_directory_is_unlinked(self):
+        """Exercise the CLI from a genuinely invalid inherited cwd, without Docker."""
+        code = """
+import json,os,sys
+from pathlib import Path
+from m5_current_lowstock import cleanup_evidence
+directory=Path(sys.argv[1]); directory.mkdir()
+os.chdir(directory); directory.rmdir()
+try:
+    os.getcwd()
+except FileNotFoundError:
+    invalid=True
+else:
+    invalid=False
+print(json.dumps({'invalid_parent_cwd':invalid,'cleanup':cleanup_evidence('canary-bench-no-real-runtime',timeout=2)}))
+"""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            executable = root / "docker"
+            cwd_log = root / "cli-cwd.jsonl"
+            executable.write_text(
+                "#!" + sys.executable + "\nimport json,os\nfrom pathlib import Path\n"
+                "with Path(os.environ['FAKE_DOCKER_CWD_LOG']).open('a') as stream:\n"
+                "    stream.write(json.dumps({'cwd':os.getcwd()})+'\\n')\n"
+            )
+            executable.chmod(0o700)
+            completed = subprocess.run(
+                [sys.executable, "-c", code, str(root / "removed-cwd")],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=5,
+                env={
+                    **os.environ,
+                    "PATH": str(root),
+                    "FAKE_DOCKER_CWD_LOG": str(cwd_log),
+                    "PYTHONPATH": os.pathsep.join(sys.path),
+                },
+            )
+            result = json.loads(completed.stdout)
+            self.assertTrue(result["invalid_parent_cwd"])
+            self.assertTrue(result["cleanup"]["resources_cleaned"])
+            self.assertEqual(
+                [json.loads(line)["cwd"] for line in cwd_log.read_text().splitlines()],
+                ["/", "/"],
+            )
+
     @unittest.skipUnless(os.name == "posix", "campaign runtime is Linux/WSL")
     def test_sigterm_reaches_executor_finally(self):
         """A real signal must stop an externally supplied Event and reach cleanup."""
