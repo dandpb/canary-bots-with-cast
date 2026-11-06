@@ -1,0 +1,34 @@
+{
+  "source_revision": "4c5bb9bf4b93fb11abffd7bd3020e6381296fd6d",
+  "source_root_final_sha256": "1db97ba8f49c798b3c933d48510358794fbc2f3bf0de09a5351a6de621546d46",
+  "validation_receipt_sha256": "c41023a92c048ad4a3931cb871aebb7a7b9e64482c7a9f0dbb502484d41db906",
+  "accepted_code_validation": true,
+  "tests": 587,
+  "subtests": 67,
+  "ruff_format_files": 154,
+  "mypy_sources": 22,
+  "checks": [
+    {
+      "name": "pytest-full",
+      "returncode": 0,
+      "seconds": 299.2164521960003
+    },
+    {
+      "name": "ruff-check",
+      "returncode": 0,
+      "seconds": 0.06401759900018078
+    },
+    {
+      "name": "ruff-format",
+      "returncode": 0,
+      "seconds": 0.06398793300013494
+    },
+    {
+      "name": "mypy",
+      "returncode": 0,
+      "seconds": 9.187839789999998
+    }
+  ],
+  "root_overall_review_pending_at_packet_stage": true,
+  "scope": "Existing source validation, not a claim of M5 comparative completion; setup/Redis integration have separate scopes"
+}

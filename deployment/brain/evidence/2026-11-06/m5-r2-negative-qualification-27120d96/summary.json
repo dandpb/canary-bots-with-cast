@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "namespace": "m5-og-r2-20261106-27120d96",
+  "source_revision": "4c5bb9bf4b93fb11abffd7bd3020e6381296fd6d",
+  "status": "qualification_rejected_before_game",
+  "qualification_accepted": false,
+  "comparative_pilot_completed": false,
+  "scored_trials_started": 0,
+  "native_trials_started": 0,
+  "gemini_R2_evaluated": false,
+  "gameplay_xp_measured": false,
+  "execution_error": {
+    "error_type": "ValueError",
+    "stage": "m5.probe_ledger.openai"
+  },
+  "probe_acceptance": {
+    "valid": 2,
+    "late": 1,
+    "technical_invalid": 3,
+    "unknown_requests": 1,
+    "unknown_nanousd": 942250,
+    "ledger_requests": 3,
+    "root_review_required": true,
+    "failure_interpretation": "mixed",
+    "accepted_for_game": false,
+    "policy": "short_deadline_performance_recovery_v2",
+    "evidence_reconciled": false,
+    "evidence_failure": {
+      "error_type": "ValueError",
+      "stage": "m5.probe_evidence"
+    },
+    "rejection_reason": "technical_or_unreconciled_evidence"
+  },
+  "observed_case_sequence": [
+    {
+      "valid": false,
+      "error": "ValueError",
+      "bot_id": 65001,
+      "elapsed_ms": 4093,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "hunt:399",
+      "valid": true,
+      "expected": null,
+      "matches_expected": null,
+      "bot_id": 65001,
+      "elapsed_ms": 4217,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "resupply",
+      "valid": true,
+      "expected": "resupply",
+      "matches_expected": true,
+      "bot_id": 65001,
+      "elapsed_ms": 0,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "valid": false,
+      "error": "TimeoutError",
+      "bot_id": 65001,
+      "elapsed_ms": 1018,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "valid": false,
+      "error": "ProviderBackoff",
+      "bot_id": 65001,
+      "elapsed_ms": 0,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "valid": false,
+      "error": "ProviderBackoff",
+      "bot_id": 65001,
+      "elapsed_ms": 0,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    }
+  ],
+  "openai_reserved_application_attempts": 3,
+  "known_new_spent_nanousd": 285800,
+  "unknown_new_reserved_nanousd": 942250,
+  "new_liability_nanousd": 1228050,
+  "prior_liability_nanousd": 3934750,
+  "cumulative_known_spent_nanousd": 863500,
+  "cumulative_unknown_reserved_nanousd": 4299300,
+  "cumulative_liability_nanousd": 5162800,
+  "financial_final": false,
+  "claim_is_not_a_billable_request": true,
+  "retry_performed": false,
+  "limitations": [
+    "Original technical_invalid=3 is a provisional aggregate; the two local backoff skips are not two additional upstream failures.",
+    "First post-request ValueError, later probe-evidence reconciliation ValueError and outer probe-ledger rejection retain distinct stages.",
+    "The first output budget equalled reasoning tokens, compatible with exhaustion before a choice; status/incomplete details/raw output/tool-call count were not persisted, so no exact truncation/guard cause is claimed.",
+    "The full harness CID was not retained; empty Docker event history alone is not proof of no games.",
+    "Code/build/setup/Redis validation does not establish nine-trial comparative acceptance; no Gemini or gameplay result is invented."
+  ],
+  "gameplay_metrics": {
+    "xp_delta": null,
+    "deaths": null,
+    "interventions": null
+  }
+}
