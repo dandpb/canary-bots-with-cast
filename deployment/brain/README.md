@@ -1,10 +1,10 @@
 # Optional intelligent party companions
 
-For durable bot-life recordings, the read-only map replay, independent gameplay experiments and the LiteLLM gateway, see [Replay and gameplay benchmarks](REPLAY.md). All new runtime paths are opt-in; existing configurations retain their behavior.
+Start with the [Portuguese initial setup guide](SETUP.pt-BR.md) for WSL, the LiteLLM dashboard, named OpenAI/Gemini credentials, model routes, the shared ledger and an offline replay check. For recording/runner/export details, see [Replay and gameplay benchmarks](REPLAY.md). New runtime paths are opt-in; existing configurations retain their behavior.
 
 Implements [issue #1](https://github.com/dandpb/canary-bots-with-cast/issues/1) for one to three explicitly selected native bots. The feature is disabled when `data/bot/brain.json` is absent. Other bots retain their existing engine.
 
-The C++ engine owns gameplay and projects live observations. A native Python worker calls **GPT-6 Luna only**: Decisions selects an offered action; Responses interprets Portuguese requests and proposes objectives. Neither API receives administrative commands or database credentials. Movement, attacks, cooldowns and emergency healing remain local.
+The C++ engine owns gameplay and projects live observations. The default direct OpenAI configuration calls GPT-6 Luna: Decisions selects an offered action; Responses interprets Portuguese requests and proposes objectives. The optional `provider: "litellm"` configuration uses explicit gateway routes, including OpenAI/Gemini, and constrained Responses choices. Neither path receives administrative commands or database credentials. Movement, attacks, cooldowns and emergency healing remain local.
 
 ## Playing
 
@@ -22,7 +22,7 @@ Replies describe proposals. Completion is recorded only after a matching server 
 ## Architecture and limits
 
 ```text
-game dispatcher → bounded observation → private Unix datagram socket → ARM64 worker
+game dispatcher → bounded observation → private Unix datagram socket → Python worker
 game validator ← versioned intent     ← offered choice / strict function call
 game outcome   → durable episode      → reward / contextual preferences
 ```
@@ -47,7 +47,7 @@ The optional `budget_file` shares one accounting database across isolated evalua
 
 ## Installation
 
-Build the `bot_engine` target with the repository's normal CMake/vcpkg toolchain. The library architecture and dependency ABI must match the running **game binary**, even when the host is ARM64 and that binary runs under amd64 emulation. The worker runs natively on the host. This change does not alter `IBotEngine` or the shared `BotState` layout.
+Build the server executable and `bot_engine` with the repository's normal CMake/vcpkg toolchain. The library architecture and dependency ABI must match the running **game binary**, even when the host is ARM64 and that binary runs under amd64 emulation. The Python worker runs on the host or in its own container. A Python update, library reload and executable deployment are separate operations; verify the revisions actually running.
 
 ```sh
 cmake --build build --target bot_engine

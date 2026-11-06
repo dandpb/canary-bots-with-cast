@@ -2,6 +2,11 @@
 
 The worker can record a selected bot's observed life and replay it without a running game or model access. The local player compares up to four runs by elapsed time or first observed level gain. It shows sampled floor-aware coordinates, XP, health, decisions, native results, interventions, settled cost and unresolved reservations. The default map is a coordinate grid; no proprietary map/client artwork is bundled.
 
+For the initial setup sequence, credential locations, OpenAI/Gemini named routes,
+WSL worker migration, canonical ledger selection and troubleshooting, start with
+the [Portuguese setup guide](SETUP.pt-BR.md). The sections below are the CLI and
+runtime reference.
+
 ## Start with an offline demonstration
 
 Use the existing brain Python environment in Linux/WSL, with the updated package installed. Choose a fresh recording filename; demo refuses to overwrite a completed run.
@@ -39,7 +44,11 @@ The supervision console exposes `/replay` when recording is enabled. The separat
 
 ## Configure LiteLLM
 
-The private proxy uses LiteLLM **1.108.0**, with the tested dependency set in `gateway/requirements.lock`. Build and run the dedicated optional deployment:
+The private proxy uses LiteLLM **1.108.0**. For the WSL installation, use the
+`gateway` profile of `canary-bots-wsl`, its UI image and dedicated PostgreSQL,
+as documented in the [setup guide](SETUP.pt-BR.md#2-preparar-servidor-e-gateway).
+The separate API-only recipe below uses `gateway/requirements.lock` and is for
+other isolated deployments; it does not provide the database-backed dashboard:
 
 ```sh
 cd deployment/brain/gateway
@@ -57,6 +66,13 @@ sha256sum runtime/gateway.yaml
 The custom worker authentication permits only inference for declared aliases, checks the gateway version, exact configuration SHA-256 and expected upstream mapping, and rejects administration and per-request routing overrides. Configure one explicit deployment per alias, zero retries at both gateway layers, no fallback/order failover, no response cache and `drop_params: false`. The gateway also refuses a configuration changed after startup. Its host publication is loopback-only. The application remains the authoritative ledger for the shared USD 50 monthly limit; gateway estimates do not settle or replace application reservations.
 
 Use `worker-replay.example.json` as the migration template, supplying the actual configuration hash, private gateway credential path, exact effective/upstream model and reviewed versioned prices. The loopback gateway address works for a worker running on the host. A containerized worker needs the gateway on its private Docker network and `http://litellm:4000/v1`; its container's loopback is not the host.
+
+The budget path is an operator-selected authority, not a new account per
+example. In the reference WSL deployment, existing charges are in
+`canary-bots-wsl_brain-state` at `/var/lib/canary-brain/state.sqlite3`.
+Preserve that ledger when enabling `budget_file`; copying an example path can
+otherwise create a second USD50 allowance. Resolve/mount the existing ledger
+before preflight, which initializes Store if the configured file is absent.
 
 All providers use the same LiteLLM-facing application adapter. Additional models require an explicit `model_list` entry and participant configuration, not another provider SDK adapter. The common decision path uses a constrained Responses function call with a reserved output-token limit. `decision_api: "decisions"` is rejected when output tokens have a nonzero price: that endpoint has no enforced output-token bound in this adapter. Input-only/free-output configurations remain opt-in and must pass conformance for the pinned gateway/model. Unsupported tools, reasoning parameters or endpoints fail rather than silently changing the task.
 

@@ -1,7 +1,12 @@
 # Canary com bots e cast no WSL
 
-Implantação local em `/home/daniel/canary-bots-wsl`, criada a partir do commit
-`7a61f9540` da `main`. O código executado fica no disco Linux; os ajustes locais são preservados.
+Para instalar do início, configurar LiteLLM com OpenAI/Gemini e preparar replay
+e benchmark, use o [guia de configuração inicial](../brain/SETUP.pt-BR.md).
+
+Implantação local em `/home/daniel/canary-bots-wsl`. O código executado fica no
+disco Linux; os ajustes locais são preservados. As validações históricas abaixo
+registram suas revisões; confira imagem/binário/configuração antes de atribuir
+uma revisão da `main` ao runtime atual.
 O projeto Compose é `canary-bots-wsl` e usa volumes próprios. O banco não publica
 porta no host. Jogo e site publicam somente em `127.0.0.1`.
 
@@ -86,10 +91,12 @@ Use o serviço deste Compose para a implantação WSL; o Compose independente em
 
 ## Worker de IA
 
-A imagem `canary-bots-wsl-brain:local` contém a implementação desta branch.
-O perfil `ai` está ativo. A credencial autorizada fica em
+O perfil `ai` usa a imagem `canary-bots-wsl-brain:local`; um merge não recompila
+essa imagem. Na configuração direta OpenAI preparada por `setup.py`, a credencial fica em
 `runtime/secrets/openai.env` com permissão `0600`, fora do Git e do contexto de
-build. O arquivo é montado apenas no worker. Não envie chaves pelo chat.
+build. O arquivo é montado apenas no worker. Para migrar ao gateway com uma
+credencial restrita e conservar o ledger, siga a [etapa do worker](../brain/SETUP.pt-BR.md#6-configurar-o-worker-com-uma-rota-litellm).
+Iniciar o provider real pode gerar consumo. Não envie chaves pelo chat.
 
 ```bash
 docker compose --profile ai up -d brain
