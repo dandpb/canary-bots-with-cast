@@ -73,9 +73,11 @@ class FakeDocker:
         self.alias_after_start = alias_after_start
         self.created = False
         self.calls = []
-        self.create_error = None
+        self.network_error_after_create = None
         self.wait_error = KeyboardInterrupt()
         self.bad_metadata = None
+        self.logs_error = None
+        self.stopped = False
         self.foreign_at_create = foreign_at_create
         self.foreign_status = None
         self.started = False
@@ -94,8 +96,6 @@ class FakeDocker:
                 self.foreign_status = self.foreign_at_create
                 return ""
             self.created = True
-            if self.create_error is not None:
-                raise self.create_error
             return ""
         if args[:2] == ["ps", "-aq"]:
             if any("io.canary.benchmark.session=" in item for item in args):
@@ -114,6 +114,8 @@ class FakeDocker:
                 }
             )
         if args[0] == "inspect" and "NetworkSettings" in args[2]:
+            if self.created and self.network_error_after_create is not None:
+                raise self.network_error_after_create
             return json.dumps({gateway.NETWORK: {"Aliases": ["gateway"]}})
         if args[0] == "inspect" and args[2] == "{{json .State}}":
             assert self.started
@@ -142,7 +144,14 @@ class FakeDocker:
             return "1"
         if args[0] == "logs":
             assert args == ["logs", IDENTITY]
+            if self.logs_error is not None:
+                raise self.logs_error
             return SENTINEL
+        if args[0] == "stop":
+            assert args[-1] == IDENTITY
+            self.stopped = True
+            self.health = {"Status": "exited"}
+            return ""
         if args[0] == "rm":
             assert args == ["rm", "--force", IDENTITY]
             self.created = False
@@ -179,6 +188,32 @@ def test_check_reads_no_env_values_and_does_not_create_runtime_files(
     assert fake.calls == [gateway.compose("config", "--quiet")]
     assert SENTINEL not in capsys.readouterr().out
     assert not (runtime / ".benchmark-gateway.lock").exists()
+
+
+@pytest.mark.parametrize("mode", ["--check", "--serve"])
+def test_host_cannot_enable_removal_of_other_project_services(
+    configured, monkeypatch, mode
+):
+    monkeypatch.setenv("COMPOSE_REMOVE_ORPHANS", "1")
+    monkeypatch.setenv("COMPOSE_IGNORE_ORPHANS", "0")
+    fake = FakeDocker()
+
+    def guarded(args, env):
+        assert env["COMPOSE_REMOVE_ORPHANS"] == "0"
+        assert env["COMPOSE_IGNORE_ORPHANS"] == "1"
+        assert "--remove-orphans" not in args
+        return fake(args, env)
+
+    monkeypatch.setattr(gateway, "invoke", guarded)
+    monkeypatch.setattr(sys, "argv", main_arguments(configured, mode))
+    if mode == "--serve":
+        with pytest.raises(SystemExit) as stopped:
+            gateway.main()
+        assert stopped.value.code == 130
+        assert fake.removals == [["rm", "--force", IDENTITY]]
+    else:
+        gateway.main()
+        assert fake.calls == [gateway.compose("config", "--quiet")]
 
 
 def test_check_does_not_echo_secret_bearing_compose_errors(
@@ -230,14 +265,14 @@ def test_preexisting_service_or_external_alias_is_preserved(
     assert not any(args[0] == "compose" for args in fake.calls)
 
 
-def test_startup_failure_after_creation_removes_only_owned_container(
+def test_nonmutating_inspection_failure_after_create_cleans_only_owned_container(
     configured, monkeypatch, capsys
 ):
     fake = FakeDocker()
-    fake.create_error = subprocess.CalledProcessError(1, ["docker"], stderr=SENTINEL)
+    fake.network_error_after_create = ValueError("invalid fake network response")
     monkeypatch.setattr(gateway, "invoke", fake)
     env = gateway.environment(*configured, IMAGE, REVISION)
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(ValueError, match="invalid fake network response"):
         gateway.serve(env)
     assert fake.removals == [["rm", "--force", IDENTITY]]
     assert not fake.created
@@ -371,21 +406,20 @@ def test_overlapping_launcher_cannot_reach_docker(configured, monkeypatch):
     assert fake.calls == []
 
 
-def test_sigterm_real_launcher_process_uses_fake_docker_and_cleans(
-    configured, tmp_path
-):
+def fake_cli(tmp_path, *, delay_create=False, lose_create_ack=False):
     """Only the launcher and a Python fake CLI execute; Docker is never invoked."""
     executable = tmp_path / "bin"
     executable.mkdir()
     state = tmp_path / "fake-state.json"
     trace = tmp_path / "fake-trace.jsonl"
     ready = tmp_path / "fake-wait-ready"
+    acknowledged = tmp_path / "fake-daemon-acknowledged"
     docker = executable / "docker"
     docker.write_text(
         "#!"
         + sys.executable
         + "\n"
-        + """import json, os, sys, time
+        + """import json, os, subprocess, sys, time
 from pathlib import Path
 args=sys.argv[1:]
 state=Path(os.environ['FAKE_STATE'])
@@ -397,7 +431,16 @@ if args[0]=='compose':
     if 'create' in args:
         assert '--no-recreate' in args and '--no-build' in args
         assert args[args.index('--pull')+1]=='never'
-        state.write_text(json.dumps({'created':True}))
+        if os.environ.get('FAKE_DELAY_CREATE')=='1':
+            daemon = "import json,sys,time; from pathlib import Path; time.sleep(1); Path(sys.argv[1]).write_text(json.dumps({'created':True})); Path(sys.argv[2]).touch()"
+            subprocess.Popen([sys.executable,'-c',daemon,str(state),os.environ['FAKE_ACK']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            Path(os.environ['FAKE_READY']).touch()
+            if os.environ.get('FAKE_LOSE_ACK')=='1':
+                print('private-offline-env-value',file=sys.stderr)
+                raise SystemExit(1)
+            while not Path(os.environ['FAKE_ACK']).exists(): time.sleep(.02)
+        else:
+            state.write_text(json.dumps({'created':True}))
 elif args[0]=='ps':
     print(identity if created else '')
 elif args[:2]==['network','inspect']:
@@ -418,6 +461,8 @@ elif args[0]=='wait':
     Path(os.environ['FAKE_READY']).touch()
     while True: time.sleep(.1)
 elif args[0]=='logs': print('private-offline-env-value')
+elif args[0]=='stop':
+    assert args[-1]==identity
 elif args[0]=='rm':
     assert args==['rm','--force',identity]
     state.write_text(json.dumps({'created':False}))
@@ -431,11 +476,28 @@ else: raise SystemExit(9)
         "FAKE_STATE": str(state),
         "FAKE_TRACE": str(trace),
         "FAKE_READY": str(ready),
+        "FAKE_ACK": str(acknowledged),
+        "FAKE_DELAY_CREATE": "1" if delay_create else "0",
+        "FAKE_LOSE_ACK": "1" if lose_create_ack else "0",
         "PYTHONDONTWRITEBYTECODE": "1",
     }
+    return SimpleNamespace(
+        environment=environment,
+        state=state,
+        trace=trace,
+        ready=ready,
+        acknowledged=acknowledged,
+    )
+
+
+@pytest.mark.parametrize("interrupt_phase", ["create", "wait"])
+def test_sigterm_real_launcher_process_uses_fake_docker_and_cleans(
+    configured, tmp_path, interrupt_phase
+):
+    cli = fake_cli(tmp_path, delay_create=interrupt_phase == "create")
     process = subprocess.Popen(
         [sys.executable, *main_arguments(configured, "--serve")],
-        env=environment,
+        env=cli.environment,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -443,7 +505,7 @@ else: raise SystemExit(9)
     )
     try:
         deadline = time.monotonic() + 15
-        while not ready.exists():
+        while not cli.ready.exists():
             assert process.poll() is None, "fake launcher exited before wait"
             assert time.monotonic() < deadline, "fake launcher never reached wait"
             time.sleep(0.02)
@@ -452,12 +514,194 @@ else: raise SystemExit(9)
         assert process.returncode == 130
         assert "owned containers cleaned" in stderr
         assert SENTINEL not in stdout + stderr
-        assert json.loads(state.read_text()) == {"created": False}
-        calls = [json.loads(line) for line in trace.read_text().splitlines()]
+        if interrupt_phase == "create":
+            deadline = time.monotonic() + 5
+            while not cli.acknowledged.exists():
+                assert time.monotonic() < deadline, "accepted fake create was lost"
+                time.sleep(0.02)
+        assert json.loads(cli.state.read_text()) == {"created": False}
+        calls = [json.loads(line) for line in cli.trace.read_text().splitlines()]
         assert [args for args in calls if args[0] == "rm"] == [
             ["rm", "--force", IDENTITY]
         ]
+        if interrupt_phase == "create":
+            assert not any(args[0] == "start" for args in calls)
     finally:
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
             process.communicate(timeout=5)
+
+
+@pytest.mark.parametrize("failure", ["capture", "write", "file_sync", "directory_sync"])
+def test_log_evidence_failure_stops_and_preserves_owned_container(
+    configured, monkeypatch, capsys, failure
+):
+    fake = FakeDocker()
+    if failure == "capture":
+        fake.logs_error = subprocess.CalledProcessError(
+            1, ["docker", "logs"], stderr=SENTINEL
+        )
+    elif failure == "write":
+        original_open = os.open
+
+        def deny_log_open(path, *args, **kwargs):
+            if Path(path).suffix == ".log":
+                raise PermissionError(SENTINEL)
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(os, "open", deny_log_open)
+    elif failure == "file_sync":
+        original_fsync = os.fsync
+
+        def deny_log_fsync(descriptor):
+            if os.readlink(f"/proc/self/fd/{descriptor}").endswith(".log"):
+                raise OSError(SENTINEL)
+            return original_fsync(descriptor)
+
+        monkeypatch.setattr(os, "fsync", deny_log_fsync)
+    else:
+        original_sync = gateway.sync_directory
+        calls = []
+
+        def deny_first_directory_sync(path):
+            calls.append(path)
+            if len(calls) == 1:
+                raise OSError(SENTINEL)
+            return original_sync(path)
+
+        monkeypatch.setattr(gateway, "sync_directory", deny_first_directory_sync)
+    monkeypatch.setattr(gateway, "invoke", fake)
+    monkeypatch.setattr(sys, "argv", main_arguments(configured, "--serve"))
+    with pytest.raises(SystemExit) as stopped:
+        gateway.main()
+    assert stopped.value.code != 0
+    assert fake.created and fake.stopped
+    assert fake.removals == []
+    captured = capsys.readouterr()
+    assert "owned containers cleaned" not in captured.err
+    assert SENTINEL not in captured.out + captured.err
+    journals = list(configured[0].glob("benchmark-gateway-*.json"))
+    assert len(journals) == 1
+    journal = json.loads(journals[0].read_text())
+    assert journal["phase"] == "evidence_incomplete"
+    assert journals[0].stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize(
+    "phase",
+    [
+        "mutation_in_flight",
+        "mutation_drained",
+        "uncertain",
+        "evidence_incomplete",
+        "corrupt",
+    ],
+)
+def test_prior_unresolved_journal_blocks_new_launch_without_docker(
+    configured, monkeypatch, phase
+):
+    path = configured[0] / ("benchmark-gateway-" + "f" * 32 + ".json")
+    content = "not-json" if phase == "corrupt" else json.dumps({"phase": phase})
+    path.write_text(content)
+    path.chmod(0o600)
+    fake = FakeDocker()
+    monkeypatch.setattr(gateway, "invoke", fake)
+    with pytest.raises(
+        ValueError, match="earlier gateway session needs manual recovery"
+    ):
+        gateway.serve(gateway.environment(*configured, IMAGE, REVISION))
+    assert fake.calls == []
+    assert path.read_text() == content
+
+
+def test_cleaned_prior_journal_allows_new_launch_without_rewriting_history(
+    configured, monkeypatch
+):
+    path = configured[0] / ("benchmark-gateway-" + "f" * 32 + ".json")
+    content = json.dumps({"phase": "cleaned", "session": "old-session"})
+    path.write_text(content)
+    path.chmod(0o600)
+    fake = FakeDocker()
+    monkeypatch.setattr(gateway, "invoke", fake)
+    with pytest.raises(KeyboardInterrupt):
+        gateway.serve(gateway.environment(*configured, IMAGE, REVISION))
+    assert fake.removals == [["rm", "--force", IDENTITY]]
+    assert path.read_text() == content
+
+
+def test_check_stays_read_only_when_prior_journal_needs_manual_recovery(
+    configured, monkeypatch
+):
+    path = configured[0] / ("benchmark-gateway-" + "f" * 32 + ".json")
+    content = json.dumps({"phase": "uncertain"})
+    path.write_text(content)
+    fake = FakeDocker()
+    monkeypatch.setattr(gateway, "invoke", fake)
+    monkeypatch.setattr(sys, "argv", main_arguments(configured, "--check"))
+    gateway.main()
+    assert fake.calls == [gateway.compose("config", "--quiet")]
+    assert path.read_text() == content
+    assert not (configured[0] / ".benchmark-gateway.lock").exists()
+
+
+@pytest.mark.parametrize("outcome", ["timeout", "lost_connection"])
+def test_uncertain_create_retains_late_resource_and_blocks_another_launch(
+    configured, tmp_path, monkeypatch, capsys, outcome
+):
+    """An accepted fake daemon request outlives its failed CLI transport."""
+    cli = fake_cli(
+        tmp_path, delay_create=True, lose_create_ack=outcome == "lost_connection"
+    )
+    env = gateway.environment(*configured, IMAGE, REVISION)
+    env.update(
+        {
+            key: value
+            for key, value in cli.environment.items()
+            if key.startswith("FAKE_") or key == "PATH"
+        }
+    )
+    if outcome == "timeout":
+        monkeypatch.setattr(gateway, "MUTATION_TIMEOUT", 0.1)
+    with pytest.raises(ValueError, match="manual recovery"):
+        gateway.invoke(
+            gateway.compose(
+                "create",
+                "--no-recreate",
+                "--no-build",
+                "--pull",
+                "never",
+                gateway.SERVICE,
+            ),
+            env,
+        )
+    with pytest.raises(ValueError, match="uncertain"):
+        gateway.cleanup(env)
+    deadline = time.monotonic() + 5
+    while not cli.acknowledged.exists():
+        assert time.monotonic() < deadline, (
+            "accepted fake daemon request never completed"
+        )
+        time.sleep(0.02)
+    assert json.loads(cli.state.read_text()) == {"created": True}
+    journal = gateway.journal_path(env)
+    assert json.loads(journal.read_text())["phase"] == "uncertain"
+    assert journal.stat().st_mode & 0o777 == 0o600
+    trace_before = cli.trace.read_bytes()
+    replacement = gateway.environment(*configured, IMAGE, REVISION)
+    replacement.update(
+        {
+            key: value
+            for key, value in cli.environment.items()
+            if key.startswith("FAKE_") or key == "PATH"
+        }
+    )
+    with pytest.raises(
+        ValueError, match="earlier gateway session needs manual recovery"
+    ):
+        gateway.serve(replacement)
+    assert cli.trace.read_bytes() == trace_before
+    calls = [json.loads(line) for line in cli.trace.read_text().splitlines()]
+    assert len(calls) == 1 and calls[0][0] == "compose" and "create" in calls[0]
+    captured = capsys.readouterr()
+    assert SENTINEL not in captured.out + captured.err
+    assert "cleaned" not in captured.out + captured.err
