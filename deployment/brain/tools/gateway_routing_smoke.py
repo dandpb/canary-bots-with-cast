@@ -141,6 +141,7 @@ async def authenticate(request, api_key):
                 "LITELLM_WORKER_KEY": "sk-fixture-worker",
                 "LITELLM_MASTER_KEY": "sk-" + secrets.token_hex(32),
                 "CANARY_GATEWAY_CONFIG": str(root / "gateway.json"),
+                "CANARY_BENCHMARK_GATEWAY_ONLY": "1",
             }
             with (root / "proxy.log").open("w") as log:
                 process = subprocess.Popen(
@@ -170,6 +171,17 @@ async def authenticate(request, api_key):
                         raise RuntimeError("Proxy readiness failed")
 
                     async def exercise():
+                        import httpx
+
+                        async with httpx.AsyncClient() as admin:
+                            denied = await admin.get(
+                                f"http://127.0.0.1:{port}/model/info",
+                                headers={
+                                    "Authorization": "Bearer "
+                                    + environment["LITELLM_MASTER_KEY"]
+                                },
+                            )
+                            assert denied.status_code == 401
                         store = Store(root / "ledger.sqlite3")
                         gateway = GatewayConfiguration(
                             base_url=f"http://127.0.0.1:{port}/v1",

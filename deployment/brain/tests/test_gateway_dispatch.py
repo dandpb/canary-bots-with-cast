@@ -56,6 +56,8 @@ def test_only_matching_native_gemini_schema_can_bypass_lossy_vendor_projection()
         "different_schema",
         "forced_choice",
         "no_closed_schema",
+        "schema_extra",
+        "candidate_extra",
     ):
         body = native_body()
         if change == "routing":
@@ -70,8 +72,12 @@ def test_only_matching_native_gemini_schema_can_bypass_lossy_vendor_projection()
             ]["additionalProperties"] = True
         elif change == "forced_choice":
             body["tool_choice"] = "auto"
-        else:
+        elif change == "no_closed_schema":
             body["tools"][0]["parameters"].pop("additionalProperties")
+        elif change == "schema_extra":
+            body["tools"][0]["parameters"]["anyOf"] = []
+        else:
+            body["tools"][0]["parameters"]["properties"]["candidate_id"]["anyOf"] = []
         with pytest.raises(ValueError):
             gateway_policy.validate_native_tools(body, "gemini/gemini-3.5-flash-lite")
 
@@ -121,6 +127,22 @@ def request():
 def test_reject_effective_routing_mutations_before_dispatch(override):
     with pytest.raises(ValueError, match="selected deployment"):
         gateway_policy.validate_dispatch(request() | override, pin())
+
+
+def test_headers_are_detached_from_selected_router_dict():
+    selected = request() | {"extra_headers": {"X-Declared": "original"}}
+    frozen = gateway_policy.DispatchPin(
+        "alias-a",
+        "openai/model-a",
+        "id-a",
+        "https://expected.invalid/v1",
+        "named-a",
+        "private-fixture",
+        json.dumps({"extra_headers": {"X-Declared": "original"}}),
+    )
+    actual = gateway_policy.validate_dispatch(selected, frozen)
+    selected["extra_headers"]["X-Declared"] = "mutated"
+    assert actual["extra_headers"] == {"X-Declared": "original"}
 
 
 def test_detach_named_credential_from_mutable_lookup():

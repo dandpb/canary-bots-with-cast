@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from gateway_smoke import free_port
-from openai import AsyncOpenAI
+from openai import APIStatusError, AsyncOpenAI
 
 from canary_brain.gateway import GatewayConfiguration, GatewayProvider
 from canary_brain.protocol import Observation
@@ -120,12 +120,35 @@ def main():
                     "turn_off_message_logging": True,
                 },
                 "general_settings": {
-                    "custom_auth": "gateway_policy.authenticate",
+                    "custom_auth": "gemini_boundary_fixture.authenticate",
                     "master_key": "os.environ/LITELLM_MASTER_KEY",
                 },
             }
             policy = work / "gateway.yaml"
             policy.write_text(json.dumps(config, sort_keys=True, separators=(",", ":")))
+            (work / "gemini_boundary_fixture.py").write_text("""
+import json, os
+from pathlib import Path
+from litellm.types.router import Deployment
+from canary_brain import gateway_policy
+assert str(Path(gateway_policy.__file__).resolve()) == os.environ['CANARY_EXPECTED_POLICY']
+async def authenticate(request,api_key):
+    from litellm.proxy.proxy_server import llm_router
+    original=json.loads(Path(os.environ['CANARY_GATEWAY_CONFIG']).read_text())['model_list'][0]
+    for item in list(llm_router.model_list): llm_router.delete_deployment(item['model_info']['id'])
+    llm_router.add_deployment(Deployment(**original))
+    result=await gateway_policy.authenticate(request,api_key)
+    mode=request.headers.get('x-fixture-mutation')
+    if mode:
+        changed=json.loads(json.dumps(original))
+        if mode=='model': changed['litellm_params']['model']='gemini/rogue'
+        elif mode=='id': changed['model_info']['id']='rogue-id'
+        elif mode=='api_base': changed['litellm_params']['api_base']='https://rogue.invalid'
+        else: raise ValueError('unsupported fixture mutation')
+        llm_router.delete_deployment('gemini-deployment')
+        llm_router.add_deployment(Deployment(**changed))
+    return result
+""")
             with (work / "proxy.log").open("w") as log:
                 process = subprocess.Popen(
                     [
@@ -141,6 +164,13 @@ def main():
                     stderr=subprocess.STDOUT,
                     env={
                         **os.environ,
+                        "PYTHONPATH": str(work)
+                        + os.pathsep
+                        + os.environ.get("PYTHONPATH", ""),
+                        "CANARY_EXPECTED_POLICY": str(
+                            Path(__file__).resolve().parents[1]
+                            / "src/canary_brain/gateway_policy.py"
+                        ),
                         "LITELLM_WORKER_KEY": "synthetic-worker",
                         "LITELLM_MASTER_KEY": "sk-" + secrets.token_hex(32),
                         "CANARY_GATEWAY_CONFIG": str(policy),
@@ -249,6 +279,36 @@ def main():
                             ledger.budget()["spent"] == 161
                             and ledger.budget()["reserved"] == 0
                         )
+                        denied = []
+                        for mutation in ("model", "id", "api_base"):
+                            async with AsyncOpenAI(
+                                base_url=gateway.base_url,
+                                api_key="synthetic-worker",
+                                max_retries=0,
+                                default_headers={"x-fixture-mutation": mutation},
+                            ) as bad_client:
+                                adapter = GatewayProvider(
+                                    ledger,
+                                    bad_client,
+                                    gateway=gateway,
+                                    decision_timeout=20,
+                                )
+                                try:
+                                    await adapter.decide(observation, {})
+                                except APIStatusError as error:
+                                    assert error.status_code == 409, error.status_code
+                                    denied.append(mutation)
+                                else:
+                                    raise AssertionError(
+                                        "mutated Gemini deployment was accepted"
+                                    )
+                            assert len(calls) == 1, (
+                                "mutated Gemini deployment reached upstream"
+                            )
+                        assert (
+                            ledger.budget()["spent"] == 161
+                            and ledger.budget()["reserved"] > 0
+                        )
                         print(
                             json.dumps(
                                 {
@@ -257,6 +317,7 @@ def main():
                                     "native_body": calls[0],
                                     "spent_fixture_nanousd": 161,
                                     "reasoning_output_tokens": 5,
+                                    "denied_before_upstream": denied,
                                 }
                             )
                         )

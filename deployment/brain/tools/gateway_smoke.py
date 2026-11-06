@@ -149,7 +149,7 @@ def main():
                 "turn_off_message_logging": True,
             },
             "general_settings": {
-                "custom_auth": "gateway_policy.authenticate",
+                "custom_auth": "canary_brain.gateway_policy.authenticate",
                 "master_key": "os.environ/LITELLM_MASTER_KEY",
             },
         }

@@ -116,6 +116,9 @@ def validate_dispatch(kwargs: dict[str, Any], pin: DispatchPin) -> dict[str, Any
     # load_credentials_from_list runs after this public hook in LiteLLM1.108.0.
     # Remove its reference and bind the authenticated snapshot to this request.
     result = dict(kwargs)
+    for name, value in controls.items():
+        result[name] = value
+    result["api_base"] = pin.api_base
     result.pop("litellm_credential_name", None)
     result["api_key"] = pin.api_key
     result["num_retries"] = 0
@@ -179,6 +182,7 @@ def validate_native_tools(body: dict[str, Any], model: str) -> None:
     schema = tools[0].get("parameters")
     if (
         not isinstance(schema, dict)
+        or set(schema) != {"type", "properties", "required", "additionalProperties"}
         or schema.get("type") != "object"
         or schema.get("required") != ["candidate_id"]
         or schema.get("additionalProperties") is not False
@@ -189,6 +193,7 @@ def validate_native_tools(body: dict[str, Any], model: str) -> None:
     candidate = schema["properties"]["candidate_id"]
     if (
         not isinstance(candidate, dict)
+        or set(candidate) != {"type", "enum"}
         or candidate.get("type") != "string"
         or not isinstance(candidate.get("enum"), list)
         or not 1 <= len(candidate["enum"]) <= 32
@@ -274,6 +279,14 @@ async def authenticate(request: Any, api_key: str | None) -> Any:
         or not expected
         or not hmac.compare_digest(api_key.removeprefix("Bearer "), expected)
     ):
+        if os.environ.get("CANARY_BENCHMARK_GATEWAY_ONLY") == "1":
+            exception = importlib.import_module("litellm.proxy._types").ProxyException
+            raise exception(
+                message="benchmark gateway requires its restricted worker credential",
+                type="auth_error",
+                param=None,
+                code=401,
+            ) from None
         # With custom_auth_settings.mode=auto, LiteLLM validates admin/session
         # keys using its normal database auth. Unknown keys are still rejected.
         raise HTTPException(status_code=401, detail="invalid worker credential")
