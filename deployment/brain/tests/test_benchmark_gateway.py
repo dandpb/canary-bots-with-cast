@@ -190,6 +190,32 @@ def test_check_reads_no_env_values_and_does_not_create_runtime_files(
     assert not (runtime / ".benchmark-gateway.lock").exists()
 
 
+@pytest.mark.parametrize("mode", ["--check", "--serve"])
+def test_host_cannot_enable_removal_of_other_project_services(
+    configured, monkeypatch, mode
+):
+    monkeypatch.setenv("COMPOSE_REMOVE_ORPHANS", "1")
+    monkeypatch.setenv("COMPOSE_IGNORE_ORPHANS", "0")
+    fake = FakeDocker()
+
+    def guarded(args, env):
+        assert env["COMPOSE_REMOVE_ORPHANS"] == "0"
+        assert env["COMPOSE_IGNORE_ORPHANS"] == "1"
+        assert "--remove-orphans" not in args
+        return fake(args, env)
+
+    monkeypatch.setattr(gateway, "invoke", guarded)
+    monkeypatch.setattr(sys, "argv", main_arguments(configured, mode))
+    if mode == "--serve":
+        with pytest.raises(SystemExit) as stopped:
+            gateway.main()
+        assert stopped.value.code == 130
+        assert fake.removals == [["rm", "--force", IDENTITY]]
+    else:
+        gateway.main()
+        assert fake.calls == [gateway.compose("config", "--quiet")]
+
+
 def test_check_does_not_echo_secret_bearing_compose_errors(
     configured, monkeypatch, capsys
 ):

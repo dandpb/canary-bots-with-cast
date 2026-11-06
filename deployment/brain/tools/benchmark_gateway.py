@@ -188,6 +188,8 @@ def environment(
     return {
         **os.environ,
         "COMPOSE_DISABLE_ENV_FILE": "1",
+        "COMPOSE_REMOVE_ORPHANS": "0",
+        "COMPOSE_IGNORE_ORPHANS": "1",
         "CANARY_GATEWAY_RUNTIME": str(runtime),
         "CANARY_GATEWAY_POLICY": str(policy),
         "CANARY_BENCHMARK_IMAGE": image,
