@@ -838,8 +838,12 @@ int32_t botSpliceStepDist(const Position& from, const Position& to, int32_t radi
 // player), so this guard had only ever been exercised walking IN.
 bool zFindDoorsOnPathImpl(const Position& from, const Position& target, int32_t radius,
                           uint32_t budget, uint32_t allowedHouseId, uint32_t fromHouseId,
-                          std::vector<Position>& outDoors) {
+	                      std::vector<Position>& outDoors, uint32_t* visited = nullptr,
+	                      uint32_t* expanded = nullptr, bool* budgetExhausted = nullptr) {
 	outDoors.clear();
+	if (visited) *visited = 0;
+	if (expanded) *expanded = 0;
+	if (budgetExhausted) *budgetExhausted = false;
 	if (from.z != target.z) {
 		return false;
 	}
@@ -889,6 +893,9 @@ bool zFindDoorsOnPathImpl(const Position& from, const Position& target, int32_t 
 			queue.push_back(np);
 		}
 	}
+	if (visited) *visited = static_cast<uint32_t>(parent.size());
+	if (expanded) *expanded = static_cast<uint32_t>(head);
+	if (budgetExhausted) *budgetExhausted = !reached && head < queue.size() && parent.size() >= budget;
 	if (!reached) {
 		return false;
 	}
@@ -1333,7 +1340,7 @@ bool BotEngine::zFindDoorsOnPath(const Position& from, const Position& target, s
 // tiles plus the map and current door states; it carries none of the per-bot coupling that keeps
 // finished ROUTES uncacheable (portal blacklist, just-used-portal guard).
 bool BotEngine::plannerLegDoors(const Position& from, const Position& target, std::vector<Position>& outDoors,
-                                bool bypassCache) {
+	                             bool bypassCache) {
 	outDoors.clear();
 	if (from.z != target.z) {
 		return false;
@@ -1383,6 +1390,14 @@ bool BotEngine::plannerLegDoors(const Position& from, const Position& target, st
 	e.expiry = now + DOOR_PATH_TTL_MS;
 	s_doorPathCache.emplace(key, std::move(e));
 	return reachable;
+}
+
+bool BotEngine::tracePlannerDoors(const Position& from, const Position& target, std::vector<Position>& outDoors,
+                                  uint32_t& visited, uint32_t& expanded, bool& budgetExhausted) {
+	const uint32_t allowedHouse = zHouseIdAt(target.x, target.y, target.z);
+	const uint32_t fromHouse = zHouseIdAt(from.x, from.y, from.z);
+	return zFindDoorsOnPathImpl(from, target, PLANNER_LEG_RADIUS, PLANNER_LEG_BUDGET,
+	                            allowedHouse, fromHouse, outDoors, &visited, &expanded, &budgetExhausted);
 }
 
 // Kept for goToWithDoors' same-floor callers: the FIRST door on the route, or false if the route
@@ -2453,6 +2468,11 @@ bool BotEngine::zPortalBlacklisted(const Position& portalPos) {
 		return false;
 	}
 	return true;
+}
+
+int64_t BotEngine::zPortalBlacklistStamp(const Position& portalPos) {
+	if (!zPortalBlacklisted(portalPos)) return 0;
+	return s_zPortalBlacklist.at(botTileKey(portalPos));
 }
 
 void BotEngine::zBlacklistPortal(const Position& portalPos, const char* site) {
