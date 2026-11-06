@@ -391,6 +391,7 @@ configurações. Antes de iniciar um worker real, confira:
 | `gateway.version` | Versão implantada; implementação qualificada: `1.108.0` |
 | `gateway.prices` | Tarifas revisadas e datadas; não copiar uma tarifa OpenAI para Gemini |
 | `gateway.decision_reasoning_effort` | Opcional, somente decisões OpenAI Responses; ausente ou `null` preserva a omissão legada |
+| `gateway.decision_max_output_tokens` | Inteiro estrito de 256 a 4096; padrão 256. Teto maior somente para decisões OpenAI Responses |
 | `credential_file` | Caminho interno para arquivo com `LITELLM_API_KEY` |
 | `budget_file` | Ledger mensal canônico já existente |
 | `recording.path` | Outro SQLite, separado de estado e orçamento |
@@ -408,6 +409,30 @@ lista esses seis valores e `medium` como padrão quando omitido; `minimal` não
 está listado. Outros modelos OpenAI exigem conferir seu suporte antes de
 escolher um valor. Alterar esforço exige novo perfil congelado e novos hashes
 antes de uma execução paga; não modifica campanhas anteriores.
+
+Para manter o raciocínio padrão e testar mais espaço de saída em OpenAI
+Responses, ajuste estes campos no bloco `gateway` existente:
+
+```json
+{
+  "decision_api": "responses",
+  "reasoning": false,
+  "decision_reasoning_effort": null,
+  "decision_max_output_tokens": 2048
+}
+```
+
+O teto de 2048 é uma configuração experimental local a qualificar, não uma
+garantia de escolha aceita. O intervalo configurável de 256 a 4096 é um limite
+deste aplicativo; Gemini e os demais providers conservam 256. O
+[`max_output_tokens` inclui raciocínio e saída visível](https://developers.openai.com/api/docs/guides/reasoning),
+e a resposta ainda pode terminar incompleta. A reserva usa o teto configurado
+antes da transmissão; a liquidação usa o consumo retornado, sem cobrar o teto
+por inteiro nem somar os tokens de raciocínio novamente. O prazo efetivo e os
+limites de conversa/reflexão continuam iguais. Mudar esse teto exige novo
+perfil congelado e qualificação prospectiva; não reaproveite a aprovação de
+um perfil `none` para certificar raciocínio padrão com saída maior.
+
 No M5, substitua a URL pelo gateway privado descrito acima. Se a tarifa de escrita
 em cache não estiver definida, use `cache_write_nanousd:null`, não zero;
 uso positivo sem esse preço impede liquidação.
