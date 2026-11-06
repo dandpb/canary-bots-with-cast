@@ -20,6 +20,7 @@ class Docker:
         self.failure = None
         self.leftover = None
         self.before_start = None
+        self.image_ids = {}
 
     def container(self, fixture, service, state):
         compose = json.loads(fixture.compose.read_text())
@@ -40,7 +41,10 @@ class Docker:
             "project": fixture.project,
             "service": service,
             "oneoff": "False",
-            "image": getattr(fixture.experiment, service + "_image"),
+            "image": self.image_ids.get(
+                getattr(fixture.experiment, service + "_image"),
+                getattr(fixture.experiment, service + "_image"),
+            ),
             "state": state,
             "network_mode": network,
             "networks": {network: {"NetworkID": "c" * 64}},
@@ -93,6 +97,10 @@ class Docker:
         assert kwargs == {"text": True, "cwd": "/", "timeout": 20}
         assert arguments[0] == "docker"
         kind, operation = arguments[1:3]
+        if kind == "image":
+            assert operation == "inspect"
+            assert arguments[3:5] == ["--format", "{{.Id}}"]
+            return self.image_ids[arguments[-1]]
         rows = self.containers if kind == "container" else self.networks
         if operation == "ls":
             assert (
@@ -215,6 +223,112 @@ async def test_real_metadata_precedes_game_start_and_reporter_gets_private_scope
     assert len(rows) == 1
     assert rows[0]["images_verified"] is True and rows[0]["resources_cleaned"] is True
     assert rows[0]["game_image"] == experiment.game_image
+
+
+async def test_manifest_digest_resolves_to_container_config_id_before_start(
+    setup, monkeypatch
+):
+    experiment, engine = setup
+    experiment.game_image = "registry.example/game@sha256:" + "3" * 64
+    experiment.database_image = "registry.example/database@sha256:" + "4" * 64
+    engine.image_ids = {
+        experiment.game_image: "sha256:" + "1" * 64,
+        experiment.database_image: "sha256:" + "2" * 64,
+    }
+
+    async def action(trial):
+        trial.start_game()
+
+    await run_trial(monkeypatch, experiment, action)
+    result = record(experiment)
+    assert result["images_verified"] is True
+    assert result["game_image"] == experiment.game_image
+    assert result["database_image"] == experiment.database_image
+    assert {row["image"] for row in result["containers"]} == set(
+        engine.image_ids.values()
+    )
+    assert (
+        len(
+            [
+                call
+                for call in engine.calls
+                if call[0] == "docker" and call[1][1] == "image"
+            ]
+        )
+        == 4
+    )
+    from tools import m5_report
+
+    rows = m5_report.trials_from_root(
+        experiment.output,
+        {"plan": experiment.model_dump(mode="json"), "preflight": {"character": {}}},
+        json.loads((experiment.output / "trial-attestations.json").read_text()),
+    )
+    assert rows[0]["game_image"] == experiment.game_image
+
+
+async def test_manifest_digest_with_different_container_content_stops_before_start(
+    setup, monkeypatch
+):
+    experiment, engine = setup
+    experiment.game_image = "registry.example/game@sha256:" + "3" * 64
+    engine.image_ids[experiment.game_image] = "sha256:" + "1" * 64
+    command = engine.command
+
+    def wrong_content(trial, *args, **kwargs):
+        value = command(trial, *args, **kwargs)
+        if args[0] == "create":
+            engine.containers["b" * 64]["image"] = "sha256:" + "9" * 64
+        return value
+
+    engine.command = wrong_content
+
+    async def action(trial):
+        trial.start_game()
+
+    with pytest.raises(ValueError, match="image differs"):
+        await run_trial(monkeypatch, experiment, action)
+    assert record(experiment)["images_verified"] is False
+    assert not any(
+        call[0] == "compose" and call[1][0] == "start" for call in engine.calls
+    )
+
+
+async def test_prepare_fails_before_attempt_directory_and_keeps_aggregate_evidence(
+    setup, monkeypatch
+):
+    experiment, engine = setup
+    original_prepare = pilot.benchmark.DockerFixture.prepare
+
+    def fail_prepare(self, participant):
+        raise OSError("private prepare failure")
+
+    monkeypatch.setattr(pilot.benchmark.DockerFixture, "prepare", fail_prepare)
+
+    async def campaign(config, live):
+        identity = f"{config.name}:native:0"
+        trial = pilot.benchmark.DockerFixture(
+            config,
+            config.output / "native-0",
+            hashlib.sha256(identity.encode()).hexdigest(),
+        )
+        engine.owner = trial
+        try:
+            trial.prepare(config.participants[0])
+        finally:
+            trial.close()
+
+    monkeypatch.setattr(pilot.benchmark, "run_campaign", campaign)
+    try:
+        with pytest.raises(OSError, match="private prepare failure"):
+            await pilot.run_attested_campaign(experiment)
+    finally:
+        monkeypatch.setattr(pilot.benchmark.DockerFixture, "prepare", original_prepare)
+    assert not (experiment.output / "native-0").exists()
+    result = record(experiment)
+    assert result["resources_cleaned"] is True
+    assert result["remaining_containers"] == []
+    assert result["remaining_networks"] == []
 
 
 @pytest.mark.parametrize(
