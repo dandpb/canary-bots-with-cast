@@ -8,9 +8,11 @@ services:
       - ${CANARY_GATEWAY_RUNTIME:?existing runtime directory is required}/secrets/litellm-provider.env
       - ${CANARY_GATEWAY_RUNTIME}/secrets/litellm-worker.env
       - ${CANARY_GATEWAY_RUNTIME}/secrets/litellm-ui.env
+      - ${CANARY_GATEWAY_RUNTIME}/secrets/litellm-redis.env
     environment:
       CANARY_BENCHMARK_GATEWAY_ONLY: "1"
       STORE_MODEL_IN_DB: "True"
+      NUM_WORKERS: "1"
     labels:
       io.canary.benchmark.role: private-gateway
       io.canary.benchmark.session: ${CANARY_BENCHMARK_SESSION:?launcher identity is required}

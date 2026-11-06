@@ -125,6 +125,7 @@ def invoke(arguments: list[str], environment: dict[str, str]) -> str:
             try:
                 completed = subprocess.run(
                     ["docker", *arguments],
+                    cwd="/",
                     env=environment,
                     check=False,
                     capture_output=True,
@@ -146,6 +147,7 @@ def invoke(arguments: list[str], environment: dict[str, str]) -> str:
     else:
         completed = subprocess.run(
             ["docker", *arguments],
+            cwd="/",
             env=environment,
             check=True,
             capture_output=True,
@@ -171,7 +173,7 @@ def environment(
         )
     credentials = [
         runtime / "secrets" / ("litellm-" + kind + ".env")
-        for kind in ("provider", "worker", "ui")
+        for kind in ("provider", "worker", "ui", "redis")
     ]
     files = [policy, *credentials]
     if (
