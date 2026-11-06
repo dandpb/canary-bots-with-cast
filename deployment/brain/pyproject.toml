@@ -28,3 +28,13 @@ testpaths = ["tests"]
 python_version = "3.11"
 strict = true
 
+[tool.ruff.lint.per-file-ignores]
+# These historical verifiers and producer snapshots are bound by published
+# checksums. Preserve their original bytes while linting maintained code normally.
+"evidence/2026-11-06/m5-current-free-attempts/verify_bundle.py" = ["I001"]
+"evidence/2026-11-06/m5-navigation-diagnostics/verify_bundle.py" = ["I001"]
+"evidence/2026-11-06/m5-final-free-qualified/native/producer-driver.py" = ["I001"]
+"evidence/2026-11-06/m5-final-free-qualified/fake/producer-driver.py" = ["I001"]
+"evidence/2026-11-06/m5-final-interrupted-attempts/native/producer-driver.py" = ["I001"]
+"evidence/2026-11-06/m5-final-interrupted-attempts/fake/producer-driver.py" = ["I001"]
+

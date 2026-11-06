@@ -8,6 +8,7 @@ import subprocess
 from types import SimpleNamespace
 
 import pytest
+
 from tools import m5_pilot as pilot
 
 
