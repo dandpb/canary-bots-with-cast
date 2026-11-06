@@ -880,10 +880,9 @@ def validate_none_prior_rows(db: sqlite3.Connection) -> None:
         row["id"]: row["run_id"]
         for row in none_reference()["prior_requests_as_observed"]
     }
-    runs = sorted(
-        set(expected.values())
-        - {"credential-smoke-out-openai", "credential-smoke-out-gemini"}
-    )
+    # All five prior runs, both credential smokes included: an extra request in
+    # any of them must fail the exact-ten check instead of escaping the liability.
+    runs = sorted(set(expected.values()))
     rows = db.execute(
         "SELECT id,run_id,reserved,spent FROM requests WHERE id IN ("
         + ",".join("?" for _ in expected)

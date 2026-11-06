@@ -884,3 +884,37 @@ def test_none_historical_amounts_cannot_be_coerced_or_forged(none_plan, spent):
     )
     with pytest.raises(ValueError, match="explicit-none requires exact"):
         pilot.preflight(none_plan)
+
+
+def none_grants(plan):
+    with closing(sqlite3.connect(plan.canonical_ledger_file)) as db:
+        return db.execute(
+            "SELECT COUNT(*) FROM records WHERE kind=? AND key=?",
+            ("m5_openai_none_v3", "single_use"),
+        ).fetchone()[0]
+
+
+@pytest.mark.parametrize(
+    "smoke_run", ["credential-smoke-out-openai", "credential-smoke-out-gemini"]
+)
+def test_none_rejects_an_eleventh_request_hidden_in_a_credential_smoke_run(
+    none_plan, smoke_run
+):
+    # Ten reviewed rows carry 5,162,800 nanoUSD; one unknown smoke reservation of
+    # 100,000,000 makes 105,162,800 + 6,980,000,000 = 7,085,162,800 > USD7.
+    with closing(sqlite3.connect(none_plan.canonical_ledger_file)) as db, db:
+        db.execute(
+            "INSERT INTO requests(id,month,reserved,spent,endpoint,run_id) VALUES(?,?,?,?,?,?)",
+            ("extra-smoke", month_now(), 100_000_000, None, "responses", smoke_run),
+        )
+    with pytest.raises(ValueError, match="ten exact prior"):
+        pilot.preflight(none_plan)
+    with pytest.raises(ValueError, match="ten exact prior"):
+        claim(none_plan)
+    assert none_grants(none_plan) == 0
+
+
+def test_none_exact_ten_rows_still_admit_and_claim_once(none_plan):
+    assert pilot.preflight(none_plan)["historical_nanousd"] == 5_162_800
+    assert claim(none_plan)["historical_nanousd"] == 5_162_800
+    assert none_grants(none_plan) == 1
