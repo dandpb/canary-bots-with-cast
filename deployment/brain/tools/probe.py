@@ -6,11 +6,12 @@ import json
 import time
 from pathlib import Path
 
+from openai import AsyncOpenAI
+
 from canary_brain.protocol import Observation
 from canary_brain.provider import Provider
 from canary_brain.runtime import read_credential
 from canary_brain.store import Store
-from openai import AsyncOpenAI
 
 
 async def probe(args: argparse.Namespace) -> None:
