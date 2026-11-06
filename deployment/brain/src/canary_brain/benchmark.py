@@ -10,6 +10,7 @@ import re
 import secrets
 import shutil
 import signal
+import sqlite3
 import subprocess
 import time
 from collections.abc import Iterator
@@ -32,6 +33,7 @@ from .recording import (
 )
 from .replay import campaign
 from .runtime import Configuration, run
+from .sqlite_files import failure_metadata
 from .store import USD, Store
 
 
@@ -998,6 +1000,8 @@ async def evaluate_decisions(
             }
         except Exception as error:  # noqa: BLE001 - provider exceptions may contain credentials
             row = {"valid": False, "error": type(error).__name__}
+            if isinstance(error, sqlite3.Error):
+                row["sqlite_failure"] = failure_metadata(error, "decision_fixture")
         rows.append(
             {
                 **row,
