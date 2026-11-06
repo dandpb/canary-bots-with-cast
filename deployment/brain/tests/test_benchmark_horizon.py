@@ -103,7 +103,9 @@ async def test_runner_waits_for_the_workers_observed_horizon(
             to_thread=asyncio.to_thread,
             Event=asyncio.Event,
             gather=asyncio.gather,
+            shield=asyncio.shield,
             CancelledError=asyncio.CancelledError,
+            current_task=asyncio.current_task,
             get_running_loop=asyncio.get_running_loop,
         ),
     )
