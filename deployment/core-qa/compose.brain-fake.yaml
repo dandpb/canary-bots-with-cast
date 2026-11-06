@@ -1,0 +1,33 @@
+# QA stage 2 only: keyword fake worker for canary-core-qa. Never used by production.
+# No provider, credential, gateway, port or network; the brain-* volumes are disposable.
+services:
+  game:
+    environment:
+      CANARY_BRAIN_CONFIG: /etc/canary-core-qa/brain/server.json
+      BOT_POPULATION_REFERENCE_BOTS: "65001,65004,65003"
+    volumes:
+      - ./brain/server.json:/etc/canary-core-qa/brain/server.json:ro
+      - brain-socket:/var/lib/canary-human-qa-stage2/socket
+
+  brain:
+    image: canary-core-qa-brain:local
+    build:
+      context: ../..
+      dockerfile: deployment/wsl/Dockerfile
+      target: brain
+      args:
+        SOURCE_REVISION: ${SOURCE_REVISION:?Reviewed source revision required}
+    restart: "no"
+    network_mode: none
+    entrypoint: [canary-brain, serve, --config, /etc/canary-core-qa/brain/worker.json]
+    depends_on:
+      game:
+        condition: service_healthy
+    volumes:
+      - ./brain/worker.json:/etc/canary-core-qa/brain/worker.json:ro
+      - brain-ledger:/var/lib/canary-human-qa-stage2
+      - brain-socket:/var/lib/canary-human-qa-stage2/socket
+
+volumes:
+  brain-socket:
+  brain-ledger:

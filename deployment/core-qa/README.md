@@ -123,3 +123,48 @@ env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker co
 Não use `down -v`: isso apagaria o banco e os dados do teste. Os comandos acima
 atuam apenas no projeto `canary-core-qa`, sem parar ou recriar serviços do
 projeto operacional.
+
+## Etapa 2: worker fake (somente QA, nunca produção)
+
+A etapa 1 acima (login, jogo, party e cast) mantém o brain desligado. A etapa 2
+soma `compose.brain-fake.yaml`: liga a ponte só neste projeto e adiciona o
+serviço `brain` com `provider: fake`, que responde por palavras-chave. Ele não
+tem provider, credencial, gateway, claim, porta, variável de ambiente nem rede
+(`network_mode: none`). State, ledger e replay ficam nos volumes descartáveis
+`canary-core-qa_brain-ledger` e `canary-core-qa_brain-socket`. Os pilotos 65001
+(explorador), 65004 e 65003 entram nos 50 bots por `BOT_POPULATION_REFERENCE_BOTS`.
+O roteiro do jogador está em [ROTEIRO.md](ROTEIRO.md).
+
+```bash
+cd deployment/core-qa
+export SOURCE_REVISION='COLE_O_SHA_COMPLETO_APROVADO_AQUI'
+QA="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml -f compose.brain-fake.yaml --env-file .env"
+python3 preflight.py --brain-fake --approved-revision "$SOURCE_REVISION"
+$QA up -d --build --wait database game web brain
+$QA exec brain canary-brain status --state /var/lib/canary-human-qa-stage2/state.sqlite3
+$QA exec brain canary-brain status --state /var/lib/canary-human-qa-stage2/ledger.sqlite3
+```
+
+Passa quando: `/cavebot _global brain status` (GOD) mostra `"mode":"active"`,
+`"worker_alive":true` e roster `[65001,65004,65003]`; `/brain fique aqui` com
+piloto na party dá `Mensagem enviada ao companheiro.` e a PM `Teste: proposta
+hold; ...`; o piloto para e cerca de 30 s depois o episódio fica `completed`; o
+ledger termina com `spent` 0, `reserved` 0 e nenhuma `request`.
+
+**Kill switch.** No jogo, como GOD: `/cavebot _global brain disable` responde
+`Brain disabled; native behavior retained.`, encerra as metas com
+`cancelled/operator_disabled` e devolve os pilotos ao nativo até
+`/cavebot _global brain reload`. Se o jogo não responder, `$QA stop brain`: sem
+heartbeat por 5 s o servidor marca `worker_alive:false` e o nativo reassume;
+`$QA start brain` religa.
+
+**Rollback.** Use sempre o mesmo `$QA`, nunca `down -v`. Só os dois volumes
+`brain-*` são apagados; banco, logs e cache ficam como na etapa 1.
+
+```bash
+$QA stop -t 180
+mkdir -p runtime/evidence/brain
+$QA cp brain:/var/lib/canary-human-qa-stage2/. runtime/evidence/brain/
+$QA down
+docker volume rm canary-core-qa_brain-ledger canary-core-qa_brain-socket
+```

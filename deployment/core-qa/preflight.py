@@ -18,6 +18,9 @@ PROJECT = "canary-core-qa"
 SERVICES = {"database", "game", "web"}
 VOLUMES = {"database", "game-logs", "authored-data", "website-cache"}
 IMAGES = {"canary-core-qa-game:local", "canary-core-qa-web:local"}
+BRAIN_IMAGE = "canary-core-qa-brain:local"
+BRAIN_VOLUMES = {"brain-socket", "brain-ledger"}
+BRAIN_ROOT = Path("/var/lib/canary-human-qa-stage2")
 IMAGE_LOCK = json.loads((HERE / "image-lock.json").read_text())
 RECEIPT = HERE / "runtime/evidence/preflight-receipt.json"
 
@@ -45,7 +48,7 @@ def redact(value):
     return value
 
 
-def assert_no_resources():
+def assert_no_resources(brain_fake=False):
     kinds = (
         ("container", ["docker", "ps", "-a"]),
         ("volume", ["docker", "volume", "ls"]),
@@ -59,12 +62,27 @@ def assert_no_resources():
                           "--format", "{{.Names}}" if kind == "container" else "{{.Name}}")
         found += [f"{kind}:{name}" for name in labeled.splitlines()]
     images = set(command("docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}").splitlines())
-    found += [f"image:{image}" for image in IMAGES & images]
+    found += [f"image:{image}" for image in (IMAGES | {BRAIN_IMAGE} if brain_fake else IMAGES) & images]
     if found:
         raise RuntimeError("QA resources already exist; review before up: " + ", ".join(sorted(set(found))))
 
 
-def assert_compose():
+def assert_fake_brain(service, revision):
+    """Stage 2 only: an offline fake worker; a real provider must be impossible."""
+    if (service.get("network_mode") != "none" or service.get("ports") or service.get("environment")
+            or service.get("env_file") or service.get("image") != BRAIN_IMAGE
+            or service.get("build", {}).get("args", {}).get("SOURCE_REVISION") != revision):
+        raise RuntimeError("QA brain must be the offline fake worker without env or ports")
+    worker = json.loads((HERE / "brain/worker.json").read_text())
+    paths = [worker.get("socket_directory"), worker.get("state_file"), worker.get("budget_file"),
+             worker.get("recording", {}).get("path")]
+    if (worker.get("provider") != "fake"
+            or {"credential_file", "gateway", "operator_port", "run_cap_nanousd"} & set(worker)
+            or not all(path and Path(path).is_relative_to(BRAIN_ROOT) for path in paths)):
+        raise RuntimeError("QA worker may only use the fake provider and the disposable ledger")
+
+
+def assert_compose(brain_fake=False):
     env = os.environ.copy()
     revision = env.get("SOURCE_REVISION", "")
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
@@ -72,13 +90,16 @@ def assert_compose():
     for name in ("MARIADB_PASSWORD", "MARIADB_ROOT_PASSWORD", "BOT_PLAYERS_ONLINE"):
         env.pop(name, None)
     data = json.loads(command(
-        "docker", "compose", "-p", PROJECT, "-f", "compose.yaml", "--env-file", ".env",
+        "docker", "compose", "-p", PROJECT, "-f", "compose.yaml",
+        *(["-f", "compose.brain-fake.yaml"] if brain_fake else []), "--env-file", ".env",
         "config", "--format", "json", env=env,
     ))
-    if data.get("name") != PROJECT or set(data.get("services", {})) != SERVICES:
+    expected_volumes = VOLUMES | BRAIN_VOLUMES if brain_fake else VOLUMES
+    expected_services = SERVICES | {"brain"} if brain_fake else SERVICES
+    if data.get("name") != PROJECT or set(data.get("services", {})) != expected_services:
         raise RuntimeError("Compose project/services differ from the reviewed QA stack")
     volumes = data.get("volumes", {})
-    if set(volumes) != VOLUMES or any(
+    if set(volumes) != expected_volumes or any(
         item.get("external") or item.get("name") != f"{PROJECT}_{name}"
         for name, item in volumes.items()
     ):
@@ -102,17 +123,23 @@ def assert_compose():
     if f"FROM {IMAGE_LOCK['web_base']['ref']}" not in dockerfile.read_text().splitlines():
         raise RuntimeError("QA web base image differs from the image lock")
     runtime = (HERE / "runtime").resolve()
+    reviewed = {HERE / "brain/server.json", HERE / "brain/worker.json"} if brain_fake else set()
     for service in services.values():
         for mount in service.get("volumes", []):
-            if mount.get("type") == "bind" and not Path(mount["source"]).resolve().is_relative_to(runtime):
+            source = Path(mount.get("source", "")).resolve()
+            if mount.get("type") == "bind" and not source.is_relative_to(runtime) and not (
+                    source in reviewed and mount.get("read_only")):
                 raise RuntimeError("Compose has a bind outside the QA runtime")
-            if mount.get("type") == "volume" and mount.get("source") not in VOLUMES:
+            if mount.get("type") == "volume" and mount.get("source") not in expected_volumes:
                 raise RuntimeError("Compose mounts a foreign volume")
         for port in service.get("ports", []):
             if port.get("host_ip") != "127.0.0.1":
                 raise RuntimeError("QA publishes a port outside loopback")
-    if services["game"]["environment"].get("CANARY_BRAIN_CONFIG") != "/etc/canary-core-qa/disabled-brain.json":
-        raise RuntimeError("QA brain mode differs from the reviewed disabled config")
+    brain_config = "/etc/canary-core-qa/" + ("brain/server.json" if brain_fake else "disabled-brain.json")
+    if services["game"]["environment"].get("CANARY_BRAIN_CONFIG") != brain_config:
+        raise RuntimeError("QA brain mode differs from the reviewed config")
+    if brain_fake:
+        assert_fake_brain(services["brain"], revision)
     canonical = json.dumps(redact(data), sort_keys=True, separators=(",", ":"), allow_nan=False)
     return hashlib.sha256(canonical.encode()).hexdigest()
 
@@ -148,7 +175,7 @@ def assert_map():
     return actual
 
 
-def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha):
+def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha, brain_fake=False):
     receipt = {
         "schema_version": 1,
         "checked_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -160,6 +187,7 @@ def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha):
         "compose_redacted_sha256": compose_sha,
         "map_sha256": map_sha,
         "resources_absent": True,
+        "brain_fake": brain_fake,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     content = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode()
@@ -176,16 +204,16 @@ def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha):
     return hashlib.sha256(content).hexdigest()
 
 
-def run_preflight(resources_only=False, approved_revision=None, receipt_path=RECEIPT):
-    compose_sha = assert_compose()
-    assert_no_resources()
+def run_preflight(resources_only=False, approved_revision=None, receipt_path=RECEIPT, brain_fake=False):
+    compose_sha = assert_compose(brain_fake)
+    assert_no_resources(brain_fake)
     images = assert_image_lock()
     myaac = verify_myaac()
     if resources_only:
         return None
     source_sha = assert_source(approved_revision)
     map_sha = assert_map()
-    return write_receipt(receipt_path, source_sha, compose_sha, images, myaac, map_sha)
+    return write_receipt(receipt_path, source_sha, compose_sha, images, myaac, map_sha, brain_fake)
 
 
 def main():
@@ -193,8 +221,10 @@ def main():
     parser.add_argument("--resources-only", action="store_true",
                         help="audit Compose/resources before downloading the map; not an up gate")
     parser.add_argument("--approved-revision", help="full SHA approved for this smoke; required for the up gate")
+    parser.add_argument("--brain-fake", action="store_true",
+                        help="QA stage 2: also validate compose.brain-fake.yaml and its fake worker")
     args = parser.parse_args()
-    receipt_sha = run_preflight(args.resources_only, args.approved_revision)
+    receipt_sha = run_preflight(args.resources_only, args.approved_revision, brain_fake=args.brain_fake)
     print("QA Compose and Docker resources are isolated; no containers were started.")
     if args.resources_only:
         print("Map check skipped; run the full preflight immediately before up.")
