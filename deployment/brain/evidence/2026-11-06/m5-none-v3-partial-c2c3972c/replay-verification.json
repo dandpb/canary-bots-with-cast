@@ -1,0 +1,46 @@
+{
+  "scope": "Three available archives only; imports opened disposable databases, never originals.",
+  "checks": [
+    {
+      "archive": "replays/gemini-probe.replay.zip",
+      "archive_sha256": "a7b2e9759c58f18bde31fbee9f2aa242015f12562aea505db5423cb9f10dca32",
+      "run_id": "decisions:835e1f9a68cc47faabef1292a237f26c:65001",
+      "status": "completed",
+      "incomplete": false,
+      "event_count": 24,
+      "canonical_logical_events_sha256": "9ceba8193f6d162537b294ec2b29d87bee4532dfe573606cf1c5d308329dbc77",
+      "fresh_import_exit_code": 0,
+      "imported_logical_events_equal": true,
+      "imported_id_manifest_status_incomplete_event_count_duration_equal": true,
+      "no_physical_SQLite_hash_equality_claim": true
+    },
+    {
+      "archive": "replays/native-partial.replay.zip",
+      "archive_sha256": "393b903ff4fe6cc975f23ea3830ef98222709f365e809afd92ad67dbc6f5b5a9",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "status": "failed",
+      "incomplete": true,
+      "event_count": 411,
+      "canonical_logical_events_sha256": "10e2a3696ddf4209cd974041f5ba07764394097bf521dd1fe6531f385a7476f5",
+      "fresh_import_exit_code": 0,
+      "imported_logical_events_equal": true,
+      "imported_id_manifest_status_incomplete_event_count_duration_equal": true,
+      "no_physical_SQLite_hash_equality_claim": true
+    },
+    {
+      "archive": "replays/openai-probe.replay.zip",
+      "archive_sha256": "439a54930af2c3dedbbfdf550b3b54d5b39fc5aff80de767297776885cb836da",
+      "run_id": "decisions:b635391628be4592971f9506b98b132f:65001",
+      "status": "failed",
+      "incomplete": false,
+      "event_count": 19,
+      "canonical_logical_events_sha256": "bdbc2370633c53f6f04f78efe8ca26ac871122454fbeb96ec742cb5ea107d932",
+      "fresh_import_exit_code": 0,
+      "imported_logical_events_equal": true,
+      "imported_id_manifest_status_incomplete_event_count_duration_equal": true,
+      "no_physical_SQLite_hash_equality_claim": true
+    }
+  ],
+  "all_checks_pass": true,
+  "provider_calls": 0
+}

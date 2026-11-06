@@ -1,0 +1,135 @@
+{
+  "source_receipt_sha256": "c3bba75e9181f4a8605591a0c5727f5f1e955f203a869dc23b8c9bce254aa5ec",
+  "created_utc": "2026-11-06T20:00:07.824281+00:00",
+  "scope": "One explicitly authorized None V3 invocation, both qualifications accepted, native:0 failed with recording_gap; no replacement or reinvocation.",
+  "execution_exit_code": 1,
+  "execution_started_utc": "2026-11-06T19:49:48.057691+00:00",
+  "execution_finished_utc": "2026-11-06T19:54:20.093900+00:00",
+  "campaign_result": {
+    "campaign": null,
+    "comparison_scope": "configured_controller_stacks",
+    "native_decoding_guarantees_equal": false,
+    "error_type": "RuntimeError",
+    "failure": {
+      "error_type": "RuntimeError",
+      "stage": "m5.campaign"
+    }
+  },
+  "exact_projects_after_close": [
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "project": "canary-bench-b3774a86d1c06e64413f",
+      "containers": [],
+      "networks": []
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:0",
+      "project": "canary-bench-eee7a82ebd82c2238ece",
+      "containers": [],
+      "networks": []
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:0",
+      "project": "canary-bench-e40060d45dc13af502a1",
+      "containers": [],
+      "networks": []
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:1",
+      "project": "canary-bench-916388e59b34d8893a03",
+      "containers": [],
+      "networks": []
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:1",
+      "project": "canary-bench-1161c1e9dd8e5621c2dd",
+      "containers": [],
+      "networks": []
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:1",
+      "project": "canary-bench-b26d47149633b0a71936",
+      "containers": [],
+      "networks": []
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:2",
+      "project": "canary-bench-b2b24a92271306dc18d7",
+      "containers": [],
+      "networks": []
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:2",
+      "project": "canary-bench-1073378455c0227fbd2e",
+      "containers": [],
+      "networks": []
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:2",
+      "project": "canary-bench-8db023b0be8533e2ae47",
+      "containers": [],
+      "networks": []
+    }
+  ],
+  "actual_full_cids": {
+    "harness": "8dab97bc37581b9ee5c1158acaae78bde8baa2a7fe2f1ff2bf747566319bd01a",
+    "private_gateway": "b4fd66f455cebe7e7aecf51cd690ee97c5a81df7448d1ff7e5969208a5d02814"
+  },
+  "exact_cids_absent": {
+    "harness": [],
+    "private_gateway": []
+  },
+  "private_gateway_resources_cleaned": true,
+  "private_gateway_journal_phase": "cleaned",
+  "native_trial": {
+    "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+    "project": "canary-bench-b3774a86d1c06e64413f",
+    "images_verified": true,
+    "resources_cleaned": true,
+    "game_image": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+    "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+    "verified_before_game_start": true,
+    "failures": [],
+    "remaining_containers": [],
+    "remaining_networks": []
+  },
+  "native_containers": [
+    {
+      "id": "a9c923d3d2a8a4f43e69ab135771d881aa7aa30a54a029b3be9f911a6c57ad56",
+      "project": "canary-bench-b3774a86d1c06e64413f",
+      "image": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+      "service": "game",
+      "host_ports": false,
+      "networks": {
+        "canary-bench-b3774a86d1c06e64413f_default": "f623267bfe5f669bdb0ecc1e0ec6a90255433025783b4c89b92a496a0958dbc6"
+      }
+    },
+    {
+      "id": "6ea09ec8fcd3702ce2a1083c6792b12f976123c62068db96936988aa1e009736",
+      "project": "canary-bench-b3774a86d1c06e64413f",
+      "image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+      "service": "database",
+      "host_ports": false,
+      "networks": {
+        "canary-bench-b3774a86d1c06e64413f_default": "f623267bfe5f669bdb0ecc1e0ec6a90255433025783b4c89b92a496a0958dbc6"
+      }
+    }
+  ],
+  "native_networks": [
+    {
+      "id": "f623267bfe5f669bdb0ecc1e0ec6a90255433025783b4c89b92a496a0958dbc6",
+      "project": "canary-bench-b3774a86d1c06e64413f",
+      "name": "canary-bench-b3774a86d1c06e64413f_default",
+      "internal": true,
+      "scope": "local",
+      "driver": "bridge",
+      "container_ids": [
+        "6ea09ec8fcd3702ce2a1083c6792b12f976123c62068db96936988aa1e009736",
+        "a9c923d3d2a8a4f43e69ab135771d881aa7aa30a54a029b3be9f911a6c57ad56"
+      ]
+    }
+  ],
+  "host_mount_paths_process_ids_commands_and_private_log_paths_omitted": true,
+  "not_started_scope": "Owner/wrapper outcome and one actual trial inventory; empty projects alone are not historical proof of never-started games.",
+  "remaining_eight_not_started_reported_by_owner": true
+}

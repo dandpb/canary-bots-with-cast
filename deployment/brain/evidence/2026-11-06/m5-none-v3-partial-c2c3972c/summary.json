@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "campaign": "m5-none-v3-20261106-c2c3972c",
+  "source_revision": "7f2904e5827edc67997d309d453fa1d7371523cc",
+  "controller_profile": "openai_none_gemini_default_v1",
+  "comparison_scope": "configured_controller_stacks",
+  "native_decoding_guarantees_equal": false,
+  "comparative_pilot_completed": false,
+  "expected_runs": [
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "participant": "native",
+      "repetition": 0
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:0",
+      "participant": "openai",
+      "repetition": 0
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:0",
+      "participant": "gemini",
+      "repetition": 0
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:1",
+      "participant": "native",
+      "repetition": 1
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:1",
+      "participant": "openai",
+      "repetition": 1
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:1",
+      "participant": "gemini",
+      "repetition": 1
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:2",
+      "participant": "native",
+      "repetition": 2
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:2",
+      "participant": "openai",
+      "repetition": 2
+    },
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:2",
+      "participant": "gemini",
+      "repetition": 2
+    }
+  ],
+  "partial_native_runs": 1,
+  "completed_game_runs": 0,
+  "ai_game_runs_started": 0,
+  "not_started_reported_by_owner": [
+    "m5-none-v3-20261106-c2c3972c:openai:0",
+    "m5-none-v3-20261106-c2c3972c:gemini:0",
+    "m5-none-v3-20261106-c2c3972c:native:1",
+    "m5-none-v3-20261106-c2c3972c:openai:1",
+    "m5-none-v3-20261106-c2c3972c:gemini:1",
+    "m5-none-v3-20261106-c2c3972c:native:2",
+    "m5-none-v3-20261106-c2c3972c:openai:2",
+    "m5-none-v3-20261106-c2c3972c:gemini:2"
+  ],
+  "not_started_gameplay_metrics": null,
+  "both_current_probes_accepted_for_game": true,
+  "native_fragment": {
+    "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+    "status": "failed",
+    "stop_reason": "recording_gap",
+    "sample_span_ms": 220803,
+    "requested_seconds": 1800,
+    "sample_count": 183,
+    "recorded_envelope_ms": 239689,
+    "worker_clocks": {
+      "reason": "recording_gap",
+      "elapsed_seconds": 221.87192558100105,
+      "observed_seconds": 221.78822725899954
+    },
+    "xp_delta_observed": 0,
+    "deaths_observed_fragment": 0,
+    "interventions_observed_fragment": 0,
+    "automatic_recoveries_requested": 0,
+    "gaps": 1,
+    "final_saved_character_available": false,
+    "llm_requests": 0,
+    "usage_settled_nanousd": 0,
+    "not_a_full_horizon_or_hunt_resupply_acceptance": true
+  },
+  "report_ready_for_review": false,
+  "report_findings_count": 12,
+  "financial_totals_complete": true,
+  "financial_final": false,
+  "known_spent_nanousd": 1981700,
+  "unknown_reserved_nanousd": 5245675,
+  "complete_liability_nanousd": 7227375,
+  "complete_cap_nanousd": 7000000000,
+  "gameplay_cost_not_attributed_from_probe_totals": true,
+  "no_retry_or_new_execution_authorized": true
+}

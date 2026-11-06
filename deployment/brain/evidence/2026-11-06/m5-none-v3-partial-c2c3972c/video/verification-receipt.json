@@ -1,0 +1,24 @@
+{
+  "scope": "partial native sampled-map replay, not AI gameplay or full horizon",
+  "rendered_after_all_scored_trials_closed": true,
+  "sample_span_ms": 220803,
+  "recorded_envelope_ms": 239689,
+  "video_seconds": 4.0,
+  "frames": 96,
+  "fps": 24,
+  "requested_speed": 60,
+  "video_sha256": "c3eb452f148cd568a3889dfcccc6390cbfba006e3ae834ef9400aae8ae7691d4",
+  "sidecar_sha256": "196c91a27f877140668b16a0fd619bd8be3cb79d9a2d89c22c9a0629c341dd7e",
+  "ffprobe_checked": true,
+  "visual_review": "first_middle_final_frames_checked",
+  "visual_frames": [
+    0,
+    48,
+    95
+  ],
+  "visual_findings": [
+    "Initial frame accurately has no observed position.",
+    "Middle frame shows native movement with XP98800 and health100percent.",
+    "Final frame shows run_failed and gap/last-known state at the retained position; no hidden motion reconstructed."
+  ]
+}
