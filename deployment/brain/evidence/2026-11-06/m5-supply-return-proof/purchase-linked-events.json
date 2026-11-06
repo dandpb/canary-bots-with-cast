@@ -1,0 +1,71 @@
+[
+  {
+    "id": 9,
+    "key": "intent:51dc49bdaf054e03b43e596ab301ac3c",
+    "segment": "5769b62171534ae6b9581d69a3efb389",
+    "t_ms": 15805,
+    "wall": 1793970315.148728,
+    "kind": "intent",
+    "data": {
+      "action_id": "51dc49bdaf054e03b43e596ab301ac3c",
+      "bot_id": 65001,
+      "candidate_id": "resupply",
+      "decision_id": "f34b083a1c1d43c1a24e088fb5f0aa77",
+      "expires_ms": 152634265,
+      "mode": "active",
+      "objective_generation": 0,
+      "observation_sequence": 1,
+      "operator": false,
+      "type": "intent",
+      "version": 1,
+      "world": "1-152629207328837"
+    }
+  },
+  {
+    "id": 10,
+    "key": "outcome:1-152629207328837:51dc49bdaf054e03b43e596ab301ac3c:accepted",
+    "segment": "5769b62171534ae6b9581d69a3efb389",
+    "t_ms": 15879,
+    "wall": 1793970315.2235162,
+    "kind": "outcome",
+    "data": {
+      "action_id": "51dc49bdaf054e03b43e596ab301ac3c",
+      "bot_id": 65001,
+      "metrics": {},
+      "reason": "objective_started",
+      "status": "accepted",
+      "type": "outcome",
+      "version": 1,
+      "world": "1-152629207328837"
+    }
+  },
+  {
+    "id": 132,
+    "key": "outcome:1-152629207328837:51dc49bdaf054e03b43e596ab301ac3c:completed",
+    "segment": "5769b62171534ae6b9581d69a3efb389",
+    "t_ms": 60514,
+    "wall": 1793970360.0174725,
+    "kind": "outcome",
+    "data": {
+      "action_id": "51dc49bdaf054e03b43e596ab301ac3c",
+      "bot_id": 65001,
+      "metrics": {
+        "danger": 0.0,
+        "deaths": 0.0,
+        "defeats_delta": 0.0,
+        "elapsed_seconds": 44.647,
+        "level": 20.0,
+        "party_distance": 0.0,
+        "party_size": 1.0,
+        "progress": 1.0,
+        "supply_delta": 38.0,
+        "xp_delta": 0.0
+      },
+      "reason": "supplies_bought",
+      "status": "completed",
+      "type": "outcome",
+      "version": 1,
+      "world": "1-152629207328837"
+    }
+  }
+]

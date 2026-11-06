@@ -1,0 +1,55 @@
+{
+  "application_source_revision": "1e25dc174b6a50af276983697df2ca4a5764f255",
+  "main_revision": "92e0084db43b6df2f49614ec56a823a64370e104",
+  "native_source_revision": "d43050147bc13d8024bdc66b641b127c31253b7c",
+  "freeze": "<FROZEN_FIXTURE>",
+  "game_image": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+  "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+  "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+  "scope": "Two free functional windows in parallel, isolated projects/DBs/binds/networks; not latency comparison or paid inference",
+  "processes": [
+    {
+      "mode": "native",
+      "pid": 495472,
+      "output": "<NATIVE_ATTEMPT>",
+      "stdout": "<NATIVE_ATTEMPT>.stdout.log",
+      "command": [
+        "/tmp/canary-replay-venv/bin/python",
+        "<FROZEN_APPLICATION>/tests/fixture/m5_current_qualification.py",
+        "--fixture-root",
+        "<FROZEN_FIXTURE>",
+        "--output",
+        "<NATIVE_ATTEMPT>",
+        "--mode",
+        "native",
+        "--seconds",
+        "1800",
+        "--require-progress"
+      ],
+      "launched_utc": "2026-11-06T13:12:23.521018+00:00",
+      "earliest_end_without_startup": "2026-11-06T13:42:23.521018+00:00"
+    },
+    {
+      "mode": "fake",
+      "pid": 495473,
+      "output": "<FAKE_ATTEMPT>",
+      "stdout": "<FAKE_ATTEMPT>.stdout.log",
+      "command": [
+        "/tmp/canary-replay-venv/bin/python",
+        "<FROZEN_APPLICATION>/tests/fixture/m5_current_qualification.py",
+        "--fixture-root",
+        "<FROZEN_FIXTURE>",
+        "--output",
+        "<FAKE_ATTEMPT>",
+        "--mode",
+        "fake",
+        "--seconds",
+        "1800",
+        "--require-progress"
+      ],
+      "launched_utc": "2026-11-06T13:12:23.521576+00:00",
+      "earliest_end_without_startup": "2026-11-06T13:42:23.521576+00:00"
+    }
+  ]
+}

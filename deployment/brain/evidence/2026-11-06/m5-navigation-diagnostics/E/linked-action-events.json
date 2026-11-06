@@ -1,0 +1,42 @@
+[
+  {
+    "id": 30,
+    "key": "intent:4a63877478064b24af3fd41e17fe51b3",
+    "segment": "03d71557542846f5b23892c36ac13ab1",
+    "t_ms": 24597,
+    "wall": 1793966937.559687,
+    "kind": "intent",
+    "data": {
+      "action_id": "4a63877478064b24af3fd41e17fe51b3",
+      "bot_id": 65001,
+      "candidate_id": "hunt:399",
+      "decision_id": "",
+      "expires_ms": 149273903,
+      "mode": "active",
+      "objective_generation": 1,
+      "observation_sequence": 32,
+      "operator": true,
+      "type": "intent",
+      "version": 1,
+      "world": "1-149259863728288"
+    }
+  },
+  {
+    "id": 35,
+    "key": "outcome:1-149259863728288:4a63877478064b24af3fd41e17fe51b3:accepted",
+    "segment": "03d71557542846f5b23892c36ac13ab1",
+    "t_ms": 24715,
+    "wall": 1793966937.6774936,
+    "kind": "outcome",
+    "data": {
+      "action_id": "4a63877478064b24af3fd41e17fe51b3",
+      "bot_id": 65001,
+      "metrics": {},
+      "reason": "objective_started",
+      "status": "accepted",
+      "type": "outcome",
+      "version": 1,
+      "world": "1-149259863728288"
+    }
+  }
+]

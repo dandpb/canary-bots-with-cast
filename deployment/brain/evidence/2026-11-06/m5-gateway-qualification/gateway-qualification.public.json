@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "receipt_id": "gateway-onboarding-20261106T123857Z-cef7b211",
+  "scope": "private gateway operational qualification without inference",
+  "observation_utc": "2026-11-06T12:40:38.224903+00:00",
+  "receipt_generated_utc": "2026-11-06T12:44:57.710886+00:00",
+  "source": {
+    "revision": "f4bfbdc90eeee966fcc911ce82cd8e1c56b2115f",
+    "reviewed_patch_head": "8cc02c57712bcb712e50d23aece765993b969430",
+    "files_sha256": {
+      "deployment/brain/gateway/Dockerfile.benchmark": "d6120d2a1811a6b98de9cb4883a5a0f9eab7acb0fcdd31d19f0f27dbdb5dd73d",
+      "deployment/brain/gateway/compose.benchmark.yaml": "118550eab9c05268cdd3eedaa9a7f08360d4de96ba8d81d5acdb286853586f40",
+      "deployment/brain/src/canary_brain/gateway_policy.py": "64203739480646dd2687bb14c1309a849ad3e78c6b9f415c3a683097185b088d",
+      "deployment/brain/tools/benchmark_gateway.py": "388923c721292efc3fa1449c6d2258facab2bb825c162f0778bd2053630bc6f9"
+    }
+  },
+  "gateway": {
+    "litellm_version": "1.108.0",
+    "base_image": "ghcr.io/berriai/litellm:v1.108.0@sha256:b59b9fd52a67891be4e8dae09ddd4e6c9265e9a8cb3f25f8dd73fbabe7659965",
+    "qualified_local_image_id": "sha256:32b5633550be14d4ae685fa7e903190b9a713109ab4995b33f986f536b9c5e47",
+    "policy_sha256": "d48d546fb5789eb23d9e94efbc750aa3ea654b09d66422a2dec750126bf8b316",
+    "loaded_module_sha256": "64203739480646dd2687bb14c1309a849ad3e78c6b9f415c3a683097185b088d",
+    "compose_project": "canary-bots-wsl",
+    "service": "benchmark-gateway",
+    "network_alias": "gateway",
+    "internal_base_url": "http://gateway:4000/v1",
+    "host_ports_exposed": false,
+    "policy_mount_readonly": true,
+    "inference_only_mode": true,
+    "store_model_in_db": true
+  },
+  "http_checks": {
+    "method": "GET",
+    "readiness_path": "/health/readiness",
+    "readiness_status": 200,
+    "administrative_path": "/model/info",
+    "anonymous_admin_status": 401,
+    "master_admin_status": 401,
+    "worker_admin_status": 403
+  },
+  "lifecycle_checks": {
+    "previous_temporary_gateway_removed": true,
+    "previous_logs_preserved_before_removal": true,
+    "sigterm_launcher_exit_code": 130,
+    "first_session_journal_phase": "cleaned",
+    "first_session_container_absent": true,
+    "first_session_label_query_empty": true,
+    "alias_free_after_first_stop": true,
+    "new_session_identity_distinct": true,
+    "new_session_ready_at_observation": true
+  },
+  "persistent_services": {
+    "count": 9,
+    "comparison_fields": [
+      "container_id",
+      "started_at",
+      "running"
+    ],
+    "unchanged": true
+  },
+  "m5": {
+    "inference_requests_sent_by_qualification": 0,
+    "paid_campaign_requests_at_observation": 0
+  },
+  "evidence_references": [
+    {
+      "artifact": "manifest.json",
+      "sha256": "c11c98ca49637ff9f484001e63645ecc55e29075742511b6083776db925978d8"
+    },
+    {
+      "artifact": "qualification.json",
+      "sha256": "d4244a8858a09eb09204e02adee65f22e974ddfc681d291fb81a3759b907921b"
+    },
+    {
+      "artifact": "attestation-1.json",
+      "sha256": "2b64ac1f4c0cd24b4f155022c7ce3c8d59a6e50a447da85bbdc3fe120607e751"
+    },
+    {
+      "artifact": "attestation-2.json",
+      "sha256": "5f5bccfca1605aae07d5b04b2f832812a4faecc2e41267b762d8f4e8b5d35681"
+    },
+    {
+      "artifact": "cleanup-1.json",
+      "sha256": "011c53a81505a7074d39de0d67845795f13677a9e9051eb7aa0819bd29931463"
+    },
+    {
+      "artifact": "old-absence.json",
+      "sha256": "aaa86e8b7a5fd6c400c2bb76225ebded1464ef3b990b52d990941811faa4bc03"
+    },
+    {
+      "artifact": "old-cleanup.json",
+      "sha256": "2a570df402853c1ecc9f47a2b6594e4f642cacfe5e0b948422bdd56b11b87d53"
+    },
+    {
+      "artifact": "final-live-check.json",
+      "sha256": "2fcb546ea8e9c7ffe19146265d75612ca848ab6f0237c2042a3c99a44afb5b45"
+    },
+    {
+      "artifact": "journal-1-cleaned.json",
+      "sha256": "9b3dbcc594c58aae7d4fa156b1c978082f16e4bb4a0c3017d220584674027714"
+    }
+  ],
+  "limitations": [
+    "Point-in-time operational result; this receipt does not make a current availability assertion.",
+    "Provider inference, gameplay quality and comparative model performance require their separate benchmark gates."
+  ]
+}

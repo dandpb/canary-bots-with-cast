@@ -1,0 +1,86 @@
+{
+  "read_only_status_transitions": [
+    {
+      "elapsed": 540.1562806479924,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32431,32294,8) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[script=77 'Wasp Cave Thais Spear' phase=PATROLLING kills=77 wp=6] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 610.2691632999922,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32428,32314,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[script=77 'Wasp Cave Thais Spear' phase=LEAVING kills=97 wp=1] target=yes fc=0 travel=none"
+    },
+    {
+      "elapsed": 710.5215095989988,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32348,32225,8) active=yes town=Thais(8) voc=4 hp=363/365 mana=95/95 hunt=[script=77 'Wasp Cave Thais Spear' phase=RESUPPLYING kills=104 wp=0] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 760.6039792590018,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32347,32222,8) active=yes town=Thais(8) voc=4 hp=363/365 mana=95/95 hunt=[script=77 'Wasp Cave Thais Spear' phase=PREPARING kills=0 wp=0] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 920.827256945995,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32415,32214,7) active=yes town=Thais(8) voc=4 hp=363/365 mana=95/95 hunt=[script=77 'Wasp Cave Thais Spear' phase=TRAVEL_TO kills=0 wp=1] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 990.9997610360006,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32440,32307,9) active=yes town=Thais(8) voc=4 hp=363/365 mana=65/95 hunt=[script=77 'Wasp Cave Thais Spear' phase=PATROLLING kills=2 wp=15] target=yes fc=0 travel=none"
+    },
+    {
+      "elapsed": 1341.3320441129908,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32420,32313,7) active=yes town=Thais(8) voc=4 hp=363/365 mana=95/95 hunt=[script=77 'Wasp Cave Thais Spear' phase=LEAVING kills=94 wp=1] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1441.4770372539933,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32347,32222,8) active=yes town=Thais(8) voc=4 hp=363/365 mana=95/95 hunt=[script=77 'Wasp Cave Thais Spear' phase=RESUPPLYING kills=99 wp=0] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1501.538593239995,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32347,32224,8) active=yes town=Thais(8) voc=4 hp=363/365 mana=95/95 hunt=[script=399 'Thais Paw Collector' phase=PREPARING kills=0 wp=0] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1661.7678377859993,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32399,32211,7) active=yes town=Thais(8) voc=4 hp=363/365 mana=95/95 hunt=[script=399 'Thais Paw Collector' phase=TRAVEL_TO kills=0 wp=0] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1701.8067482199986,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32371,32187,7) active=yes town=Thais(8) voc=4 hp=363/365 mana=95/95 hunt=[script=399 'Thais Paw Collector' phase=PATROLLING kills=0 wp=0] target=no fc=0 travel=none"
+    }
+  ],
+  "first_live_audit": {
+    "xp": 98800,
+    "hpmax": 365,
+    "manamax": 95,
+    "hp": 365,
+    "mana": 95,
+    "level": 20,
+    "bank": 10000,
+    "money": 0,
+    "potions": 40,
+    "position": [
+      32369,
+      32241,
+      7
+    ],
+    "at": 1793885916189
+  },
+  "last_live_audit": {
+    "xp": 106447,
+    "hpmax": 365,
+    "manamax": 95,
+    "hp": 363,
+    "mana": 95,
+    "level": 20,
+    "bank": 10000,
+    "money": 0,
+    "potions": 40,
+    "position": [
+      32272,
+      32147,
+      7
+    ],
+    "at": 1793887854371
+  },
+  "audit_samples": 1952,
+  "bank_debit": 0,
+  "potions_gained": 0,
+  "limits": "Status starts after 540 observed seconds and samples every 10 seconds; unobserved transitions are not reconstructed. Hunt phase RESUPPLYING alone does not prove a purchase."
+}

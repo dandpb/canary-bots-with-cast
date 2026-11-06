@@ -1,0 +1,17 @@
+{
+  "scope": "References to independent read-only native-B and supply-B recomputation; full private audit outputs are not raw public DBs",
+  "artifact_sha256": {
+    "preservation-and-pins.json": "1ab42e478900e1a64ae84a9a3c088bdc5bb73e8a8434bb43fc7d2321007d6dac",
+    "independent-results.json": "957875fb4efb112614520c094164747cb0dfb7b61413dea3571d5ad2f7753c13",
+    "copy-manifest.json": "9c8f841e67f3120662adaa2b28653f432e79625aec4516abf1121e06e0644122"
+  },
+  "findings": 0,
+  "native_timed_gate_recomputed": true,
+  "supply_14_checks_recomputed": true,
+  "original_recording_sources_unchanged": true,
+  "limits": [
+    "SQL saved-character in free30 contains XP/level/position only; memory HP/potions are not post-save SQL evidence.",
+    "Runtime image and cleanup receipts were inspected as existing files; this auditor did not query Docker afresh.",
+    "Fake-B independent review is separate; per-run postrun receipt and public archive verify its values."
+  ]
+}

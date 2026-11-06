@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "campaign": "m5-current-native-17b62eabb7",
+  "horizon_seconds": 1800,
+  "horizon_tolerance_seconds": 5,
+  "maximum_completed_seconds": 1805,
+  "ready_for_review": true,
+  "financial_totals_complete": true,
+  "expected_attempts": 1,
+  "recorded_attempts": 1,
+  "reviewed_attempts": 1,
+  "settled_nanousd": 0,
+  "unknown_nanousd": 0,
+  "additional_cost_run_ids": [],
+  "unplanned_cost_run_ids": [],
+  "unplanned_spent_nanousd": 0,
+  "unplanned_unknown_nanousd": 0,
+  "ledger_snapshot_month": "2026-11",
+  "ledger_snapshot_utc": "2026-11-06T11:40:55.088080+00:00",
+  "total_cap_nanousd": 1000000000,
+  "monthly_snapshot": {
+    "cap": 50000000000,
+    "spent": 0,
+    "reserved": 0,
+    "available": 50000000000
+  },
+  "runs": [
+    {
+      "run_id": "m5-current-native-17b62eabb7:native:0",
+      "participant": "native",
+      "repetition": 0,
+      "status": "completed",
+      "stop_reason": "completed",
+      "observed_span_ms": 1800493,
+      "metrics": {
+        "version": 2,
+        "xp_delta": 8349,
+        "xp_per_wall_hour": 16693.427855592883,
+        "xp_per_active_hour": 16711.025315843406,
+        "active_ms": 1798597,
+        "wall_ms": 1800493,
+        "calendar_elapsed_ms": 1807554,
+        "duration_ms": 1821232,
+        "deaths": 0,
+        "initial_native_deaths_excluded": 0,
+        "deaths_observed": true,
+        "interventions": 0,
+        "intervention_free_ms": 1821232,
+        "intervention_free_censored": true,
+        "automatic_recoveries_requested": 0,
+        "model_decisions": 0,
+        "valid_proposals": 0,
+        "policy_overrides": 0,
+        "accepted_actions": 0,
+        "completed_actions": 0,
+        "failed_actions": 0,
+        "provider_failures": 0,
+        "spent_nanousd": 0,
+        "reserved_nanousd": 0,
+        "xp_per_dollar": null,
+        "latency_p50_ms": null,
+        "latency_p95_ms": null,
+        "gaps": 0,
+        "gap_times": [],
+        "levels": [],
+        "milestones": [],
+        "native_control_ms": 1798597,
+        "native_fallback_ms": 0,
+        "stalled_ms": null,
+        "confirmed_objective_defeats": 0,
+        "limitations": [
+          "Sampled observations; hidden events are not reconstructed.",
+          "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+          "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+        ]
+      },
+      "ledger_spent_nanousd": 0,
+      "ledger_unknown_nanousd": 0,
+      "xp_per_settled_dollar": null,
+      "requests": [],
+      "skipped_requests": [],
+      "latency": {
+        "by_deadline_ms": {},
+        "native_fallback_events_by_type": {},
+        "exact_backoff_skips": null,
+        "observed_provider_backoff_events": 0,
+        "backoff_by_deadline_ms": null,
+        "runtime_error_fallbacks_unclassified": 0,
+        "backoff_limitation": "ProviderBackoff is distinct when declared by the instrumented source. Generic RuntimeError remains ambiguous; lifecycle events without decision/deadline identity cannot establish TTL attribution."
+      }
+    }
+  ],
+  "participants": [
+    {
+      "participant": "native",
+      "attempts": 1,
+      "completed": 1,
+      "xp_per_wall_hour_values": [
+        16693.427855592883
+      ],
+      "xp_per_wall_hour_median": 16693.427855592883,
+      "xp_per_wall_hour_min": 16693.427855592883,
+      "xp_per_wall_hour_max": 16693.427855592883
+    }
+  ],
+  "findings": [],
+  "verdict": "descriptive_pilot_no_winner",
+  "limitations": [
+    "The independent run is the sample unit; repeated frames are not extra samples.",
+    "Completed-response latency is deadline-censored; inspect failures by deadline.",
+    "Generic RuntimeError fallback is not an exact backoff count; instrumented ProviderBackoff is reported separately. TTL attribution requires additional identity.",
+    "Usage-priced costs are not provider invoice reconciliation.",
+    "This checker does not establish fixture hunt/resupply acceptance or human/AFK safety."
+  ],
+  "input_sha256": {
+    "<REVIEW_BUNDLE>/native/native.replay.zip": "522839e01e7cb11954f00e8065ea64e1790e4486770b513f7187fa93eb5ec58c",
+    "<REVIEW_BUNDLE>/native/experiment.json": "f97e92170e2e160aba02411a888e6c7e276522dc4a59d46464b5a36127e41821",
+    "<REVIEW_BUNDLE>/native/offline-ledger-export.json": "73a5c2a60ead85478370319c5a6e71315733ff4969c6bc0471e3e90917c7012e",
+    "<REVIEW_BUNDLE>/native/trials.json": "569d1e18050bea3e1fd2e255af268201bb44f1fe762956a9d9150a320da3605f"
+  }
+}

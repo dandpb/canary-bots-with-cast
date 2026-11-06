@@ -1,0 +1,17 @@
+{
+  "cleanup-receipt.json": "d153ad4e665b99a538b8eaa064a0c415bf9d651b2969741d4c560ed0f79609b9",
+  "goal-proof.json": "c1e18a9f1ca112e78f35da4a25d3ffe337eed1fa764b251bc6428f9eb59d06bd",
+  "preflight-A-receipt.json": "4b520a4daaabed0c69f06bf73a63783f9dcbb11f3b3f44cbaa5218a5347690c7",
+  "private-cost-receipt.json": "c729ed1ff985eb70f8016923cd7095f91a0cca451886dd0236834ce7100244fc",
+  "proof-plan.json": "834af2029493274bcf10cc49b36c9490932c7862775e716a1782b2b974e6efbd",
+  "purchase-linked-events.json": "f4624278f7e8238f8460905150833f1329a3d7a44986fe794b42df00482d5391",
+  "purchase.json": "1ac5eee03cbf1ece1031dbcd0bae2b330ebb8feab6a534994fb548fbb7891977",
+  "README.md": "69d0b172f4afec03f41eb70d1f7ffc84957662a390dceed4f03a6eaad482554f",
+  "return-linked-events.json": "fb30197ccda187103f2fac5f918264435ae4d75170a87ed170fc49634c841944",
+  "return.json": "1f93877a3c715453c68336fdefcbbb1c7f57518866844a18595f3ea8b0816d58",
+  "runtime-images.json": "5c2131266fcb5206b497502b9d8f6c92dd2566c49ed71ee938ba6de9b7c4da51",
+  "source-sha256.json": "90a4e331c9cf89d4941eab4b2f55bc1b1892c107fae26ab3b1a69d4ade492eaa",
+  "summary.json": "904f0a4da359ec73eca0622d6fca60e1c9e4e67943931696318736605803a806",
+  "supply-b.replay.zip": "3a5684c72292a83b07f563a27ef9adca2162846d0953c37758d9e4c943df925a",
+  "verify_bundle.py": "c426283718aa68f3c08e1f5c876ab94f7f4a0cd286b5d3968a42f42821fdf862"
+}

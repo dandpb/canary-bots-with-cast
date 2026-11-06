@@ -1,0 +1,11 @@
+{
+  "captured_utc": "2026-11-06T11:28:04.668549+00:00",
+  "run_id": "m5-current-fake-d6226a4777:fake:0",
+  "project": "canary-bench-635b55b02350ff406f22",
+  "recording_status": "failed",
+  "owned_containers_remaining": [],
+  "owned_networks_remaining": [],
+  "resources_cleaned": true,
+  "inspection": "docker ps -a and network ls by exact Compose project label; no deletion",
+  "bind_data_preserved": true
+}

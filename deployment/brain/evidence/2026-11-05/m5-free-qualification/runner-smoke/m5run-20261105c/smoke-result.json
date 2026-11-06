@@ -1,0 +1,13 @@
+{
+  "source_revision": "ea70dd40d36c5cd6aafd64075b5b99c7faee47ec",
+  "driver_sha256": "0b81861717fcd6a35add067df7da4201264e1fb3b62eb7935807c0c66d23be32",
+  "game_image": "sha256:885acba76a8cb98d1dfe5d098a98f009194739a2844cdb7cf7d5a34d4d9a5bc3",
+  "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+  "configured_seconds": 10,
+  "recorded_seconds": 10.349,
+  "status": "completed",
+  "incomplete": false,
+  "inference_requests": 0,
+  "scope": "Real campaign runner, native-only, short integration smoke; not another 30-minute qualification or an inference/account-access test."
+}

@@ -1,0 +1,7 @@
+{
+  "algorithm": "sha256",
+  "files": {
+    "README.md": "b5b301e8c47c33270cdad7d33db7402ba2cbf7e1f5e14f0cdff5e8bdf2672743",
+    "redis-qualification.public.json": "0427cc01ec0755e3e297b1469c8dfd91d74b4418de7100801f1c66932824c759"
+  }
+}

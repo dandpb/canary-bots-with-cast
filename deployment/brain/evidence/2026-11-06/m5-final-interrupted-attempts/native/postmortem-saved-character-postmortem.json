@@ -1,0 +1,20 @@
+{
+  "scope": "Postmortem copied DB read, not canonical saved-character export or a new game run",
+  "mode": "native",
+  "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "captured_utc": "2026-11-06T13:44:05.582088+00:00",
+  "character": {
+    "id": 65001,
+    "level": 20,
+    "experience": 101220,
+    "health": 365,
+    "healthmax": 365,
+    "mana": 95,
+    "manamax": 95,
+    "balance": 10000,
+    "posx": 32329,
+    "posy": 32144,
+    "posz": 7,
+    "potions": 40
+  }
+}

@@ -1,0 +1,28 @@
+[
+  {
+    "operation": "pause",
+    "position": [
+      32374,
+      32092,
+      7
+    ],
+    "result": {
+      "status": "requested",
+      "phase": "waiting_hold"
+    },
+    "purpose": "diagnostic setup, prevent automatic hunt while verbose is enabled"
+  },
+  {
+    "operation": "hunt:399",
+    "position": [
+      32374,
+      32092,
+      7
+    ],
+    "result": {
+      "action_id": "4a63877478064b24af3fd41e17fe51b3",
+      "status": "requested"
+    },
+    "purpose": "explicit single fourth-hunt restart reproduction, not a scored choice"
+  }
+]

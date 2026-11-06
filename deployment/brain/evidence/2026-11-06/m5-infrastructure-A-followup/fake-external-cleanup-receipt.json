@@ -1,0 +1,23 @@
+{
+  "scope": "External fallback only after original worker exit; canonical artifacts remain unchanged",
+  "mode": "fake",
+  "requested_horizon_seconds": 1800,
+  "worker_exit_observed_utc": "2026-11-06T13:35:29.498420+00:00",
+  "performed_after_original_worker_exit": true,
+  "canonical_saved_character_present": false,
+  "external_saved_character": {
+    "id": 65001,
+    "level": 20,
+    "experience": 101612,
+    "posx": 32329,
+    "posy": 32144,
+    "posz": 7
+  },
+  "resources_cleaned": true,
+  "ended_utc": "2026-11-06T13:35:35.701162+00:00",
+  "source_sha256": "9c7558df48357095c03069cbd0701702724eade011684f2d0d317def2937abff",
+  "containers_before_count": 2,
+  "remaining_container_count": 0,
+  "remaining_network_count": 0,
+  "qualification_accepted": false
+}

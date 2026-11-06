@@ -1,0 +1,7 @@
+{
+  "resources_cleaned": true,
+  "source_artifact": "runs/fake-0/resources-cleaned.json",
+  "source_sha256": "e9d5da71d25a8827ced7680930571162ec22c66db4cdf5fd1d8da4e7dd711434",
+  "remaining_container_count": 0,
+  "remaining_network_count": 0
+}

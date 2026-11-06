@@ -1,0 +1,40 @@
+{
+  "parser": "hunt=[script=... phase=PHASE], not the outer state field",
+  "phase_counts": {
+    "PATROLLING": 54,
+    "LEAVING": 18,
+    "RESUPPLYING": 8,
+    "PREPARING": 25,
+    "TRAVEL_TO": 14
+  },
+  "ordered_hunt_phase_cycle_observed": true,
+  "ordered_evidence": [
+    {
+      "elapsed_seconds": 541.0190247330174,
+      "command_id": 1,
+      "script_id": 77,
+      "hunt_phase": "PATROLLING"
+    },
+    {
+      "elapsed_seconds": 647.6117359570053,
+      "command_id": 11,
+      "script_id": 77,
+      "hunt_phase": "LEAVING"
+    },
+    {
+      "elapsed_seconds": 743.0139192299976,
+      "command_id": 20,
+      "script_id": 77,
+      "hunt_phase": "RESUPPLYING"
+    },
+    {
+      "elapsed_seconds": 1020.2140265070193,
+      "command_id": 46,
+      "script_id": 77,
+      "hunt_phase": "PATROLLING"
+    }
+  ],
+  "purchase_confirmed": false,
+  "limitation": "Native hunt phases do not prove NPC purchase; model-managed hunts may not populate native hunt state.",
+  "clock": "Observer elapsed field from phase-status.jsonl; not aligned to replay t_ms"
+}

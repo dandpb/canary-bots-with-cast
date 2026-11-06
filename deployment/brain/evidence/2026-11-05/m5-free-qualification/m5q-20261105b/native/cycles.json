@@ -1,0 +1,118 @@
+{
+  "read_only_status_transitions": [
+    {
+      "elapsed": 564.8872405509901,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32494,32172,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=65/95 hunt=[script=399 'Thais Paw Collector' phase=PATROLLING kills=37 wp=29] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 985.5411180709925,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32273,32280,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=65/95 hunt=[script=399 'Thais Paw Collector' phase=LEAVING kills=77 wp=0] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 995.5575665009965,
+      "status": "Bot 'Grizzle Alyronia': state=HUNTING pos=(32282,32265,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=65/95 hunt=[script=399 'Thais Paw Collector' phase=RESUPPLYING kills=77 wp=0] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1115.6766562819976,
+      "status": "Bot 'Grizzle Alyronia': state=IDLE pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1145.716035888996,
+      "status": "Bot 'Grizzle Alyronia': state=DWELLING pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1175.7497097239975,
+      "status": "Bot 'Grizzle Alyronia': state=IDLE pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1185.758532369,
+      "status": "Bot 'Grizzle Alyronia': state=DWELLING pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1255.8333302239917,
+      "status": "Bot 'Grizzle Alyronia': state=IDLE pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1265.846850461996,
+      "status": "Bot 'Grizzle Alyronia': state=DWELLING pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1335.9178044099972,
+      "status": "Bot 'Grizzle Alyronia': state=IDLE pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1345.9394816029962,
+      "status": "Bot 'Grizzle Alyronia': state=DWELLING pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1426.0164550560003,
+      "status": "Bot 'Grizzle Alyronia': state=IDLE pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1436.031085783994,
+      "status": "Bot 'Grizzle Alyronia': state=DWELLING pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=85/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1476.0649648789986,
+      "status": "Bot 'Grizzle Alyronia': state=IDLE pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=85/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1486.0761480149959,
+      "status": "Bot 'Grizzle Alyronia': state=DWELLING pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=85/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1546.1454900509998,
+      "status": "Bot 'Grizzle Alyronia': state=IDLE pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=85/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1556.1605384110007,
+      "status": "Bot 'Grizzle Alyronia': state=DWELLING pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=85/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1626.2640303149965,
+      "status": "Bot 'Grizzle Alyronia': state=IDLE pos=(32352,32226,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=65/95 hunt=[none] target=no fc=0 travel=none"
+    },
+    {
+      "elapsed": 1636.2738731089921,
+      "status": ""
+    }
+  ],
+  "first_live_audit": {
+    "level": 20,
+    "mana": 95,
+    "xp": 98800,
+    "potions": 40,
+    "manamax": 95,
+    "money": 0,
+    "bank": 10000,
+    "hp": 365,
+    "hpmax": 365,
+    "at": 1793884060100,
+    "position": [
+      32369,
+      32241,
+      7
+    ]
+  },
+  "last_live_audit": {
+    "level": 20,
+    "mana": 65,
+    "xp": 101116,
+    "potions": 40,
+    "manamax": 95,
+    "money": 0,
+    "bank": 10000,
+    "hp": 365,
+    "hpmax": 365,
+    "at": 1793885821528,
+    "position": [
+      32352,
+      32226,
+      7
+    ]
+  },
+  "audit_samples": 1774,
+  "bank_debit": 0,
+  "potions_gained": 0,
+  "limits": "Status starts after 540 observed seconds and samples every 10 seconds; unobserved transitions are not reconstructed. Hunt phase RESUPPLYING alone does not prove a purchase."
+}

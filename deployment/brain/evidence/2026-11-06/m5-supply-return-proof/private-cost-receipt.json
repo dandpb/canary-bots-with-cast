@@ -1,0 +1,11 @@
+{
+  "authority": "private_offline_proof_state_only",
+  "canonical_ledger_accessed": false,
+  "request_count": 0,
+  "spent_nanousd": 0,
+  "reserved_nanousd": 0,
+  "sdk_requests_absent": true,
+  "method": "SQLite read-only URI, one read transaction; only requests aggregate",
+  "database_sha256": "aa10515955a96d11ea75aa27dfb749e491151fe2ecc5b8f4b442089bb0636cc0",
+  "at_utc": "2026-11-06T13:14:14.503059+00:00"
+}

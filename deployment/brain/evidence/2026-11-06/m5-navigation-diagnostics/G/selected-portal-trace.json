@@ -1,0 +1,87 @@
+{
+  "source": "portal-live-checkpoint.log",
+  "source_sha256": "ae2c10b9a114075fae432347da62df323cf2a987e730560e32a40524a5647272",
+  "selection": "only direct_astar profile and door_bfs result lines",
+  "lines": [
+    {
+      "source_line": 245,
+      "text": "  door_bfs=budget_exhausted visited=20002 expanded=19829 budget=20000 radius=200 doors=0"
+    },
+    {
+      "source_line": 246,
+      "text": "  direct_astar profile=stock arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=441 budget=512 radius=50"
+    },
+    {
+      "source_line": 247,
+      "text": "  direct_astar profile=stock arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=441 budget=512 radius=50"
+    },
+    {
+      "source_line": 248,
+      "text": "  direct_astar profile=wide arrival=0 result=reached tiles=166 reason=reached created=541 closed=299 budget=4096 radius=200"
+    },
+    {
+      "source_line": 250,
+      "text": "  direct_astar profile=wide arrival=2 result=reached tiles=164 reason=reached created=535 closed=297 budget=4096 radius=200"
+    },
+    {
+      "source_line": 254,
+      "text": "  door_bfs=budget_exhausted visited=20002 expanded=19829 budget=20000 radius=200 doors=0"
+    },
+    {
+      "source_line": 255,
+      "text": "  direct_astar profile=stock arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=441 budget=512 radius=50"
+    },
+    {
+      "source_line": 256,
+      "text": "  direct_astar profile=stock arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=441 budget=512 radius=50"
+    },
+    {
+      "source_line": 257,
+      "text": "  direct_astar profile=wide arrival=0 result=reached tiles=166 reason=reached created=541 closed=299 budget=4096 radius=200"
+    },
+    {
+      "source_line": 259,
+      "text": "  direct_astar profile=wide arrival=2 result=reached tiles=164 reason=reached created=535 closed=297 budget=4096 radius=200"
+    },
+    {
+      "source_line": 264,
+      "text": "  door_bfs=budget_exhausted visited=20002 expanded=19617 budget=20000 radius=200 doors=0"
+    },
+    {
+      "source_line": 265,
+      "text": "  direct_astar profile=stock arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=442 budget=512 radius=50"
+    },
+    {
+      "source_line": 266,
+      "text": "  direct_astar profile=stock arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=442 budget=512 radius=50"
+    },
+    {
+      "source_line": 267,
+      "text": "  direct_astar profile=wide arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=4096 closed=3873 budget=4096 radius=200"
+    },
+    {
+      "source_line": 268,
+      "text": "  direct_astar profile=wide arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=4096 closed=3873 budget=4096 radius=200"
+    },
+    {
+      "source_line": 271,
+      "text": "  door_bfs=budget_exhausted visited=20002 expanded=19617 budget=20000 radius=200 doors=0"
+    },
+    {
+      "source_line": 272,
+      "text": "  direct_astar profile=stock arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=442 budget=512 radius=50"
+    },
+    {
+      "source_line": 273,
+      "text": "  direct_astar profile=stock arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=442 budget=512 radius=50"
+    },
+    {
+      "source_line": 274,
+      "text": "  direct_astar profile=wide arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=4096 closed=3873 budget=4096 radius=200"
+    },
+    {
+      "source_line": 275,
+      "text": "  direct_astar profile=wide arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=4096 closed=3873 budget=4096 radius=200"
+    }
+  ]
+}

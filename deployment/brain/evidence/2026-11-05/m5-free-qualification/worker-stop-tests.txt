@@ -1,0 +1,11 @@
+test_early_runtime_exit_is_not_a_completed_horizon (test_m5_worker_stop.WorkerStopTests.test_early_runtime_exit_is_not_a_completed_horizon) ... ok
+test_fake_stops_after_real_thirty_second_missing_proposal_window (test_m5_worker_stop.WorkerStopTests.test_fake_stops_after_real_thirty_second_missing_proposal_window) ... ok
+test_fake_stops_on_stall_with_scaled_test_threshold (test_m5_worker_stop.WorkerStopTests.test_fake_stops_on_stall_with_scaled_test_threshold) ... ok
+test_native_and_fake_stop_after_observation_loss (test_m5_worker_stop.WorkerStopTests.test_native_and_fake_stop_after_observation_loss) ... ok
+test_native_and_fake_stop_on_cumulative_deaths (test_m5_worker_stop.WorkerStopTests.test_native_and_fake_stop_on_cumulative_deaths) ... ok
+test_native_and_fake_stop_on_generation_change (test_m5_worker_stop.WorkerStopTests.test_native_and_fake_stop_on_generation_change) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 62.768s
+
+OK

@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "receipt_id": "litellm-coordination-redis-20261106",
+  "observed_utc": "2026-11-06T14:09:23.163239+00:00",
+  "sealed_utc": "2026-11-06T14:18:39.133424+00:00",
+  "source": {
+    "revision": "b33e1602fa03120e5c9e37e6e2b19679f2d7ed12",
+    "reviewed_patch_head": "ac3c6e65038634ada017628c6504220553d9e764",
+    "pull_request": "https://github.com/dandpb/canary-bots-with-cast/pull/50",
+    "files_sha256": {
+      "deployment/brain/gateway/Dockerfile.benchmark": "d6120d2a1811a6b98de9cb4883a5a0f9eab7acb0fcdd31d19f0f27dbdb5dd73d",
+      "deployment/brain/gateway/compose.benchmark.yaml": "a02f9159dd95a04689e4eabc0b9991f074d006df2f9f7cae2e022247ada7b402",
+      "deployment/brain/src/canary_brain/gateway_policy.py": "64203739480646dd2687bb14c1309a849ad3e78c6b9f415c3a683097185b088d",
+      "deployment/brain/tools/benchmark_gateway.py": "9f613f11cd2a15683a4316c508cfd3f568931b8daac0adeba82cf2b9c8f86fe9",
+      "deployment/wsl/compose.yaml": "4da413fab6c25bd558a512c78d2bc4ec479b3cac7dab08ac5d8c0878c7152763",
+      "deployment/wsl/setup-gateway.py": "20d3047172f873f046b0e5dcfc8f0c29ad6b5f82ce82ea5ea83cd4443cbba97b"
+    }
+  },
+  "runtime": {
+    "litellm_version": "1.108.0",
+    "redis_version": "7.4.12",
+    "redis_image": "redis:7.4-alpine@sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b",
+    "ui_image_id": "sha256:5bc955dd82b996db85f971a701907f3b6e60ec86de5d6814267e3744399952cf",
+    "private_gateway_image_id": "sha256:6c8fe99746613f76ba9496f1fb101c94d37ce6cb7c4f950904bf98589e5286d4",
+    "policy_sha256": "7dfb6687f71b079d7e5e0ab81f0a88d81e6e932470d11cb64ef589832ae0f844",
+    "previous_policy_sha256": "d48d546fb5789eb23d9e94efbc750aa3ea654b09d66422a2dec750126bf8b316",
+    "model_route_projection_sha256": "d32f25161251a7cf7ab268d2d93cb7ea310095ff39238d24c4d847d1844e2582",
+    "compose_project": "canary-bots-wsl",
+    "redis_service": "litellm-redis",
+    "redis_is_permanent": true,
+    "private_gateway_service": "benchmark-gateway",
+    "private_network_alias": "gateway",
+    "private_base_url": "http://gateway:4000/v1",
+    "redis_host_ports_exposed": false,
+    "private_gateway_host_ports_exposed": false,
+    "configured_workers_each": 1,
+    "coordination_namespace": "canary-bots-wsl:litellm",
+    "coordination_db": 0,
+    "response_cache_enabled": false,
+    "num_retries": 0,
+    "fallbacks": []
+  },
+  "redis_proof": {
+    "authenticated_ping": "PONG",
+    "anonymous_ping_denied": true,
+    "password_config_mode": "0600",
+    "nonroot": true,
+    "proxy_owned_connections_excluding_diagnostics": {
+      "canary-bots-wsl-litellm-1": 11,
+      "canary-bots-wsl-benchmark-gateway-1": 4
+    },
+    "shared_atomic_counter": {
+      "producer_container": "ui",
+      "consumer_container": "private",
+      "initial": 41,
+      "after_other_process_increment": 42,
+      "observed_back": 42,
+      "ttl_before_cleanup_seconds": 59,
+      "own_probe_removed": true
+    },
+    "direct_runtime_handle_ping_via_private_admin_http": false,
+    "scope": "Authenticated transport from each proxy container, shared atomic state in separate processes, and existing non-diagnostic proxy connections."
+  },
+  "auth": {
+    "ui": {
+      "anonymous": 401,
+      "master": 200,
+      "worker": 403
+    },
+    "private_after_ui_authorized_requests": {
+      "anonymous": 401,
+      "master": 401,
+      "worker": 403
+    },
+    "hot_shared_admin_cache_entries": 1,
+    "hot_shared_admin_cache_ttl_seconds_observed": [
+      17
+    ],
+    "hot_shared_admin_cache_namespace_matched": true
+  },
+  "warning": {
+    "before_no_redis": true,
+    "after_no_redis": false,
+    "suppression_enabled": false,
+    "readiness_http_status": 200,
+    "response_cache_object": null,
+    "browser_observed_text": "No active warnings",
+    "ignored_or_snoozed_settings_changed": false
+  },
+  "lifecycle": {
+    "private_sigterm_exit_code": 130,
+    "private_journal_phase": "cleaned",
+    "stopped_private_container_absent": true,
+    "permanent_redis_retained": true,
+    "new_private_session_ready": true,
+    "cleanup_scope": "Verified launcher identity and its session container only; retain permanent Redis/UI."
+  },
+  "preservation": {
+    "original_non_target_services_unchanged": 8,
+    "ui_recreation_authorized": true,
+    "original_policy_preserved": true,
+    "four_existing_secret_files_preserved_by_metadata": true,
+    "model_routes_unchanged": true,
+    "canonical_ledger_writes": 0,
+    "original_snapshot_cutoff_utc": "2026-11-06T12:40:38.224903+00:00",
+    "financial_metadata_snapshot_utc": "2026-11-06T14:18:37.579736+00:00",
+    "preexisting_unknown_count_at_cutoff": 86,
+    "later_production_unknown_count": 3,
+    "original_per_id_export_available": false,
+    "liability_evidence_limit": "The original export retained aggregates, not individual production IDs. Current unsettled records created before its cutoff match the original aggregate; later production liabilities are not attributed to a cause."
+  },
+  "inference_requests_sent_by_qualification": 0,
+  "paid_m5_campaign_requests": 0,
+  "candidate_pins_need_refresh": true,
+  "candidate_plan_edited": false,
+  "evidence_references": [
+    {
+      "artifact": "rollout-manifest.json",
+      "sha256": "5ab24a50162ca0d0878525d5fa02aaebe93c34e8f6e443b4edac1aa7f76a16b9"
+    },
+    {
+      "artifact": "redis-feedback-before.json",
+      "sha256": "ee179df378ab9769985b0f565e5f461d3b88dea3665c118dedd0b37e52b0d1f5"
+    },
+    {
+      "artifact": "redis-feedback-after.json",
+      "sha256": "7948f041fc5c24948894cb2d77b0651bb89d35208e7fcde673f34cc82fe39102"
+    },
+    {
+      "artifact": "redis-up.json",
+      "sha256": "83a37c3b9ea06854cdb603e521db5f05b710175a6c6bd9d56d2413d5869894ba"
+    },
+    {
+      "artifact": "verification.json",
+      "sha256": "409f58a581a01627701b50cd8bc47c406672e60a655f16808978b40c0c0a7926"
+    },
+    {
+      "artifact": "redis-lifecycle.json",
+      "sha256": "cb4b0065af60c0cc4faa93922266b3a1cb579ba3f4455cb4701dbdf3d7fa7f9a"
+    },
+    {
+      "artifact": "browser-ui-verification.json",
+      "sha256": "33934f67327b26f5070a207e45ca15921ad59ee6875c51993fa375ba2bf92f4d"
+    },
+    {
+      "artifact": "gateway-admission-pins.json",
+      "sha256": "ffde45b9a58e2e5f7b3f4ce675aa4581f7c53cbc929914809fce2ba01071d993"
+    },
+    {
+      "artifact": "final-result.json",
+      "sha256": "049d5bc49389f5a4c68aefabb6636f58e65cf363f560f133c6b5c27923ec43ad"
+    }
+  ],
+  "limitations": [
+    "Point-in-time infrastructure qualification. Provider inference, gameplay and the comparative pilot retain their separate gates."
+  ]
+}
