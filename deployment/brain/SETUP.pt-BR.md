@@ -198,11 +198,17 @@ python3 deployment/brain/tools/benchmark_gateway.py \
 
 Ele aguarda readiness e mantém o processo até Ctrl+C/SIGTERM. Recusa serviço ou
 alias `gateway` já ocupado, inclusive por outro projeto, sem adotar a instância.
-Ao encerrar ou falhar, guarda logs privados `benchmark-gateway-<sessão>.log` no
-runtime e remove somente CIDs próprios verificados por UUID, labels e imagem;
-confirma a remoção sem parar UI, banco ou outros serviços. O lockfile é mantido
-para evitar corridas. SIGKILL/queda do host exige conferir os órfãos por identidade
-antes de tentar novamente. Esse launcher não substitui o admission do M5 e não
+Durante uma mutação Docker, adia o cancelamento até a CLI terminar, em sessão
+separada. O journal privado `benchmark-gateway-<sessão>.json` registra o resultado.
+Somente após preservar e sincronizar os logs privados e confirmar a remoção dos
+CIDs próprios por UUID, labels e imagem, ele registra `cleaned`. UI, banco e
+outros serviços permanecem fora da limpeza. Se os logs não puderem ser salvos,
+tenta parar o próprio CID e o conserva para recuperar a evidência, sem removê-lo.
+Timeout/erro da CLI é resultado incerto: conserva o journal e exige recuperação
+manual, mesmo se o CID ainda não aparecer. Journals não resolvidos bloqueiam
+uma nova execução; não os apague para forçar outra tentativa. O lockfile também
+é mantido para evitar corridas. SIGKILL/queda do host exige conferir os órfãos por
+identidade antes de tentar novamente. Esse launcher não substitui o admission do M5 e não
 deve substituir um gateway já ativo durante uma campanha.
 
 ## 5. Validar o replay offline primeiro
