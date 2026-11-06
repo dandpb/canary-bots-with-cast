@@ -1,0 +1,36 @@
+name: canary-bots-wsl
+services:
+  benchmark-gateway:
+    image: ${CANARY_BENCHMARK_IMAGE:?immutable gateway image ID is required}
+    pull_policy: never
+    restart: "no"
+    env_file:
+      - ${CANARY_GATEWAY_RUNTIME:?existing runtime directory is required}/secrets/litellm-provider.env
+      - ${CANARY_GATEWAY_RUNTIME}/secrets/litellm-worker.env
+      - ${CANARY_GATEWAY_RUNTIME}/secrets/litellm-ui.env
+    environment:
+      CANARY_BENCHMARK_GATEWAY_ONLY: "1"
+      STORE_MODEL_IN_DB: "True"
+    labels:
+      io.canary.benchmark.role: private-gateway
+      io.canary.benchmark.session: ${CANARY_BENCHMARK_SESSION:?launcher identity is required}
+      org.opencontainers.image.revision: ${CANARY_SOURCE_REVISION:?source revision is required}
+    volumes:
+      - type: bind
+        source: ${CANARY_GATEWAY_POLICY:?frozen gateway policy is required}
+        target: /app/gateway.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      default:
+        aliases: [gateway]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/readiness',timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+networks:
+  default:
+    external: true
+    name: canary-bots-wsl_default
