@@ -225,9 +225,10 @@ class TrialAttestation:
                 or network["driver"] != "bridge"
                 or not set(network["container_ids"])
                 <= {row["id"] for row in containers}
+                or not {row["id"] for row in containers if row["state"] == "running"}
+                <= set(network["container_ids"])
             ):
                 raise ValueError("trial network is not exclusively owned and internal")
-            compose = json.loads(self.fixture.compose.read_text())
             for row in containers:
                 service = row["service"]
                 if (
@@ -246,19 +247,42 @@ class TrialAttestation:
                     network["name"]
                 }:
                     raise ValueError("trial container network scope differs")
-                if running and row["networks"][network["name"]] != network["id"]:
+                joined = row["networks"][network["name"]]
+                if (
+                    row["state"] == "running" and joined != network["id"]
+                ) or joined not in {None, "", network["id"]}:
                     raise ValueError("trial container joined a different network")
-                expected = []
-                for binding in compose["services"][service]["volumes"]:
-                    fields = binding.split(":")
-                    expected.append(
-                        {
-                            "Type": "bind",
-                            "Source": fields[0],
-                            "Destination": fields[1],
-                            "RW": len(fields) == 2 or fields[2] != "ro",
-                        }
+                directory = self.fixture.directory
+                bindings = (
+                    [
+                        (directory / "database", "/var/lib/mysql", True),
+                        (directory / "initdb", "/docker-entrypoint-initdb.d", False),
+                    ]
+                    if service == "database"
+                    else [
+                        (directory / "config", "/etc/canary-brain", False),
+                        (directory / "socket", str(directory / "socket"), True),
+                        (
+                            self.fixture.experiment.world_map,
+                            "/canary/data-otservbr-global/world/otservbr.otbm",
+                            False,
+                        ),
+                        (directory, "/m5", True),
+                    ]
+                )
+                if service == "game" and (directory / "authored").is_dir():
+                    bindings.append(
+                        (directory / "authored", "/canary/data/bot/authored", True)
                     )
+                expected = [
+                    {
+                        "Type": "bind",
+                        "Source": str(source),
+                        "Destination": destination,
+                        "RW": writable,
+                    }
+                    for source, destination, writable in bindings
+                ]
                 if sorted(
                     row["mounts"], key=lambda item: item["Destination"]
                 ) != sorted(expected, key=lambda item: item["Destination"]):

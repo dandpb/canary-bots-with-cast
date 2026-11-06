@@ -78,6 +78,7 @@ class Docker:
             if self.before_start:
                 self.before_start()
             self.containers["b" * 64]["state"] = "running"
+            self.networks["c" * 64]["containers"]["b" * 64] = {}
         elif arguments[0] == "down":
             if self.failure:
                 raise self.failure
@@ -216,7 +217,19 @@ async def test_real_metadata_precedes_game_start_and_reporter_gets_private_scope
     assert rows[0]["game_image"] == experiment.game_image
 
 
-@pytest.mark.parametrize("problem", ["image", "project", "ports", "mount", "network"])
+@pytest.mark.parametrize(
+    "problem",
+    [
+        "image",
+        "project",
+        "ports",
+        "mount",
+        "network",
+        "database_network",
+        "database_endpoint",
+        "declared_foreign_mount",
+    ],
+)
 async def test_unproven_identity_scope_or_mount_stops_before_game_and_api(
     setup, monkeypatch, problem
 ):
@@ -235,6 +248,19 @@ async def test_unproven_identity_scope_or_mount_stops_before_game_and_api(
                 row["port_bindings"] = {"7171/tcp": [{"HostPort": "7171"}]}
             elif problem == "mount":
                 row["mounts"][0]["Source"] = "/production/data"
+            elif problem == "declared_foreign_mount":
+                row["mounts"][0]["Source"] = "/production/data"
+                compose = json.loads(trial.compose.read_text())
+                compose["services"]["game"]["volumes"][0] = (
+                    "/production/data:/etc/canary-brain:ro"
+                )
+                trial.compose.write_text(json.dumps(compose))
+            elif problem == "database_network":
+                engine.containers["a" * 64]["networks"][trial.project + "_default"][
+                    "NetworkID"
+                ] = "d" * 64
+            elif problem == "database_endpoint":
+                engine.networks["c" * 64]["containers"].clear()
             else:
                 engine.networks["c" * 64]["internal"] = False
         return result
@@ -374,6 +400,8 @@ async def test_different_container_after_start_invalidates_images(setup, monkeyp
             game = engine.containers.pop("b" * 64)
             game["id"] = "d" * 64
             engine.containers[game["id"]] = game
+            engine.networks["c" * 64]["containers"].pop("b" * 64)
+            engine.networks["c" * 64]["containers"][game["id"]] = {}
         return value
 
     engine.command = replace_after_start

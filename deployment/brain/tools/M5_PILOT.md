@@ -79,7 +79,10 @@ service teardown; observer tasks are cancelled/joined and patched hooks restored
 
 Before game start, the wrapper creates the game container without starting it
 and inspects actual game/database IDs, image content IDs, selected Compose
-labels, host ports, bind mounts and the single internal project network. A failed
+labels, host ports, bind mounts and the single internal project network. The
+already-running database must have the owned NetworkID and an endpoint before
+game start; mounts must match canonical trial/world paths, not mutable Compose
+declarations. A failed
 check prevents the first game observation/model request. `start --wait` uses the
 created container; a second inspection rejects replacement IDs or unexpected
 running/network state. Docker queries use cwd `/` and bounded timeouts. No full

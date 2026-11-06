@@ -22,6 +22,9 @@ copy, perform broader deletion, or add retries.
   field-specific Docker templates, then the exact created service is started.
   Running IDs/network are checked again. Before-start verification prevents
   model calls from preceding the image/scope gate.
+  Every already-running container, including the database, must have the owned
+  NetworkID and endpoint even at the pre-start gate. Mount expectations are
+  anchored to canonical trial/world paths, independently of mutable Compose.
 - Actual safe metadata is captured in0600 per-trial trial-attestation.json and
   aggregate game/trial-attestations.json. The aggregate trials map is keyed by
   canonical run_id and can be passed directly to m5_report.py --attestation.
@@ -43,6 +46,15 @@ provider is contacted. Cases cover pre-start ordering, real-image mismatch,
 foreign labels, host ports, altered mount, external network, changed container
 ID, active/foreign leftovers, close failure, inspection timeout, redaction,
 observer+cleanup errors, input capture and lease release.
+Independent review reproduced two initial P2 cases (running database in a
+different network; matching foreign mounts in both Compose and actual metadata).
+Both are now rejected before game start by dedicated regressions.
+
+CLI semantics were checked against Docker's official
+[create reference](https://docs.docker.com/reference/cli/docker/compose/create/)
+and [start reference](https://docs.docker.com/reference/cli/docker/compose/start/):
+creation does not start the game; start operates on existing containers and can
+wait for healthy services.
 
 Run from stable cwd / with PYTHONPATH containing deployment/brain,
 deployment/brain/src and the installed development-tool directory:
