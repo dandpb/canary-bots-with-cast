@@ -1,0 +1,79 @@
+{
+  "accepted": false,
+  "paid_pilot_admitted": false,
+  "cause_of_cancellation": "unresolved; operator_stop alone does not prove an operator-issued signal",
+  "producer_revision": "1e25dc174b6a50af276983697df2ca4a5764f255",
+  "evaluator_revision": "26d2e9667a36059a66635335f667c6deb2717728",
+  "trials": [
+    {
+      "mode": "native",
+      "run_id": "m5-current-native-0d1c0f9cc1:native:0",
+      "recording_status": "interrupted",
+      "stop": {
+        "reason": "operator_stop"
+      },
+      "sampled_seconds": 1338.798,
+      "xp_delta": 2420,
+      "saved_xp_postmortem": 101220,
+      "deaths": 0,
+      "gaps": 0,
+      "interventions": 0,
+      "automatic_recoveries_requested": 0,
+      "inference_requests": 0,
+      "partial_status_rows": 5,
+      "last_status_elapsed": 582.191531303979,
+      "orchestrator_failures": [
+        {
+          "id": 2452,
+          "key": "orchestrator-failure",
+          "segment": "orchestrator",
+          "t_ms": 1356455,
+          "wall": 1793972128.3228831,
+          "kind": "lifecycle",
+          "data": {
+            "category": "CancelledError",
+            "classification": "infrastructure_or_operator_interruption",
+            "phase": "run_failed"
+          }
+        }
+      ],
+      "event_count": 2453,
+      "accepted": false
+    },
+    {
+      "mode": "fake",
+      "run_id": "m5-current-fake-33215d2b04:fake:0",
+      "recording_status": "interrupted",
+      "stop": {
+        "reason": "operator_stop"
+      },
+      "sampled_seconds": 1338.79,
+      "xp_delta": 2812,
+      "saved_xp_postmortem": 101612,
+      "deaths": 0,
+      "gaps": 0,
+      "interventions": 0,
+      "automatic_recoveries_requested": 0,
+      "inference_requests": 0,
+      "partial_status_rows": 5,
+      "last_status_elapsed": 581.5416013069917,
+      "orchestrator_failures": [
+        {
+          "id": 4512,
+          "key": "orchestrator-failure",
+          "segment": "orchestrator",
+          "t_ms": 1356611,
+          "wall": 1793972128.6735997,
+          "kind": "lifecycle",
+          "data": {
+            "category": "CancelledError",
+            "classification": "infrastructure_or_operator_interruption",
+            "phase": "run_failed"
+          }
+        }
+      ],
+      "event_count": 4262,
+      "accepted": false
+    }
+  ]
+}

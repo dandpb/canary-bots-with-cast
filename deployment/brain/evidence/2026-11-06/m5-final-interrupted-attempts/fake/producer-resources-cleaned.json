@@ -1,0 +1,11 @@
+{
+  "project": "canary-bench-8561f871e5c3207dd028",
+  "resources_cleaned": false,
+  "containers": [
+    "86c4d0e676e3 canary-bench-8561f871e5c3207dd028-game-1",
+    "49aa3643e874 canary-bench-8561f871e5c3207dd028-database-1"
+  ],
+  "networks": [
+    "531a8a6ed208 canary-bench-8561f871e5c3207dd028_default"
+  ]
+}

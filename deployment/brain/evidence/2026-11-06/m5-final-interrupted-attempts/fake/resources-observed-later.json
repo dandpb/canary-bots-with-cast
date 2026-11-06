@@ -1,0 +1,8 @@
+{
+  "project": "canary-bench-8561f871e5c3207dd028",
+  "captured_utc": "2026-11-06T13:49:01.122741+00:00",
+  "containers": "",
+  "networks": "",
+  "resources_absent": true,
+  "scope": "Later scoped observation only; producer cleanup false remains unchanged and no actor is inferred"
+}

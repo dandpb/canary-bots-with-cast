@@ -1,0 +1,26 @@
+{
+  "records": [
+    {
+      "kind": "bridge",
+      "key": "benchmark",
+      "data": {
+        "ready": true
+      }
+    },
+    {
+      "kind": "run_clock",
+      "key": "start",
+      "data": {
+        "monotonic": 153091.571297309,
+        "wall": 1793970779.829007
+      }
+    },
+    {
+      "kind": "run_stop",
+      "key": "end",
+      "data": {
+        "reason": "operator_stop"
+      }
+    }
+  ]
+}
