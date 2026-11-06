@@ -23,7 +23,7 @@ import threading
 import time
 from _thread import LockType
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,6 +38,7 @@ from canary_brain import benchmark, runtime
 from canary_brain.protocol import Observation
 from canary_brain.recording import ReplayReader, digest, public_data
 from canary_brain.replay_cli import decision_fixtures
+from canary_brain.sqlite_files import failure_metadata, sqlite_operation
 from canary_brain.store import USD, Store, month_now
 
 GATES = {
@@ -513,9 +514,13 @@ def ledger_snapshot(
 ) -> dict[str, int]:
     if not path.is_file() or path.is_symlink():
         raise ValueError("the canonical ledger must already exist")
-    with sqlite3.connect(
-        "file:" + quote(str(path), safe="/") + "?mode=ro", uri=True
-    ) as db:
+    with (
+        sqlite_operation("m5.ledger_snapshot"),
+        closing(
+            sqlite3.connect("file:" + quote(str(path), safe="/") + "?mode=ro", uri=True)
+        ) as db,
+        db,
+    ):
         db.execute("BEGIN")
         spent, reserved = db.execute(
             "SELECT COALESCE(SUM(CASE WHEN month=? THEN spent ELSE 0 END),0),COALESCE(SUM(CASE WHEN spent IS NULL THEN reserved ELSE 0 END),0) FROM requests",
@@ -576,10 +581,14 @@ def ledger_export(
     for name in plan.probe_workers:
         config = runtime.Configuration.model_validate(data[name])
         if config.recording is not None and config.recording.path.is_file():
-            runs.update(row["id"] for row in ReplayReader(config.recording.path).runs())
+            with sqlite_operation("m5.ledger_export.probe_recording"):
+                runs.update(
+                    row["id"] for row in ReplayReader(config.recording.path).runs()
+                )
     game_recording = experiment.output / "recording.sqlite3"
     if game_recording.is_file():
-        runs.update(row["id"] for row in ReplayReader(game_recording).runs())
+        with sqlite_operation("m5.ledger_export.game_recording"):
+            runs.update(row["id"] for row in ReplayReader(game_recording).runs())
     month = month_now()
     query = "SELECT id,month,run_id,reserved,spent,created FROM requests WHERE run_id LIKE ?"
     parameters: list[Any] = [experiment.name + ":%"]
@@ -587,10 +596,16 @@ def ledger_export(
         if values:
             query += f" OR {column} IN ({','.join('?' for _ in values)})"
             parameters.extend(values)
-    with sqlite3.connect(
-        "file:" + quote(str(plan.canonical_ledger_file), safe="/") + "?mode=ro",
-        uri=True,
-    ) as db:
+    with (
+        sqlite_operation("m5.ledger_export.canonical"),
+        closing(
+            sqlite3.connect(
+                "file:" + quote(str(plan.canonical_ledger_file), safe="/") + "?mode=ro",
+                uri=True,
+            )
+        ) as db,
+        db,
+    ):
         db.execute("BEGIN")
         spent, reserved = db.execute(
             "SELECT COALESCE(SUM(CASE WHEN month=? THEN spent ELSE 0 END),0),COALESCE(SUM(CASE WHEN spent IS NULL THEN reserved ELSE 0 END),0) FROM requests",
@@ -1063,7 +1078,13 @@ def qualify_short_deadlines(
             if data["decision_id"] not in requests:
                 raise ValueError("unattributed probe request")
             requests[data["decision_id"]].append(data)
-    with sqlite3.connect(ledger.resolve().as_uri() + "?mode=ro", uri=True) as db:
+    with (
+        sqlite_operation("m5.probe_evidence"),
+        closing(
+            sqlite3.connect(ledger.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as db,
+        db,
+    ):
         liabilities = {
             identity: {"reserved": reserved, "spent": spent, "endpoint": endpoint}
             for identity, reserved, spent, endpoint in db.execute(
@@ -1087,6 +1108,8 @@ def qualify_short_deadlines(
         ):
             raise ValueError("probe observation differs from the frozen input")
         emitted = requests[decision["decision_id"]]
+        if any("diagnostic_failure" in event for event in emitted):
+            raise ValueError("financial diagnostic storage failed during the probe")
         proposed_choices = proposals[decision["decision_id"]]
         if row["valid"] is True:
             if proposed_choices != [row.get("choice")] or "error" in row:
@@ -1311,8 +1334,10 @@ async def execute_admitted(
         len(Observation.model_validate(row["observation"]).actions) > 1
         for row in data["decision_fixtures"]
     )
+    stage = "m5.probes"
     try:
         for name in ("openai", "gemini"):
+            stage = "m5.probe." + name
             source_files(source)
             probe = await decision_fixtures(
                 argparse.Namespace(
@@ -1321,10 +1346,21 @@ async def execute_admitted(
                     live=True,
                 )
             )
-            with sqlite3.connect(
-                "file:" + quote(str(plan.canonical_ledger_file), safe="/") + "?mode=ro",
-                uri=True,
-            ) as db:
+            # Preserve the completed evaluator output even if reconciliation fails.
+            result["probes"][name] = probe
+            stage = "m5.probe_ledger." + name
+            with (
+                sqlite_operation(stage),
+                closing(
+                    sqlite3.connect(
+                        "file:"
+                        + quote(str(plan.canonical_ledger_file), safe="/")
+                        + "?mode=ro",
+                        uri=True,
+                    )
+                ) as db,
+                db,
+            ):
                 unresolved = sum(
                     db.execute(
                         "SELECT COUNT(*) FROM requests WHERE run_id=? AND spent IS NULL",
@@ -1391,6 +1427,9 @@ async def execute_admitted(
                             "policy": SHORT_DEADLINE_POLICY,
                             "evidence_reconciled": False,
                             "root_review_required": True,
+                            "evidence_failure": failure_metadata(
+                                error, "m5.probe_evidence"
+                            ),
                             "rejection_reason": "positive_timing_unqualified"
                             if isinstance(error, ProbeTimingError)
                             else "technical_or_unreconciled_evidence",
@@ -1419,12 +1458,14 @@ async def execute_admitted(
                     "conformance has unknown charges; retain reservations and stop"
                 )
         source_files(source)
+        stage = "m5.campaign"
         result["campaign"] = await run_attested_campaign(
             benchmark.Experiment.model_validate(data["campaign"])
         )
         return result
     except BaseException as error:
         result["error_type"] = type(error).__name__
+        result["failure"] = failure_metadata(error, stage)
         raise
     finally:
         export_failed = False
@@ -1440,6 +1481,9 @@ async def execute_admitted(
         except Exception as error:  # noqa: BLE001 - preserve the original stage failure too
             export_failed = True
             result["ledger_export_error"] = type(error).__name__
+            result["ledger_export_failure"] = failure_metadata(
+                error, "m5.ledger_export"
+            )
         write_new(plan.output / "execution-result.json", result)
         if export_failed and "error_type" not in result:
             raise RuntimeError("financial export failed; root review is required")

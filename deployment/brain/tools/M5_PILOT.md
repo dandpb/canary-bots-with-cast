@@ -39,6 +39,16 @@ A kernel lease on the canonical volume also excludes another M5 orchestrator
 with a different output path. Its lock file is retained to avoid inode races;
 the kernel releases ownership on close/process death.
 
+SQLite failures stop admission and preserve the original attempt. Results expose
+only safe result codes/names and operation stages, including a separately failing
+financial export; they never export exception text. Completed probe summaries are
+retained before ledger reconciliation. An auxiliary diagnostic-write failure is
+an infrastructure blocker even when the original request hit its deadline.
+See [SQLite descriptor and diagnostic safety](../evidence/2026-11-06/sqlite-posix-lock-safety.md).
+The frozen source export must include the new `canary_brain/sqlite_files.py`
+module with the other Python modules. This fix does not authorize replaying or
+replacing a charged attempt; a fresh execution requires separate root admission.
+
 The root admission must have `approved:true`, `read_only_preparation:false`,
 all six named free/gateway gates true, the exact `source_revision`, and
 `approved_inputs_sha256`: hashes of every input except admission itself

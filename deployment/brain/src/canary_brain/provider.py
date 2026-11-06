@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .protocol import Observation
 from .recording import Recorder, request_context
+from .sqlite_files import failure_metadata
 from .store import Store, month_now
 
 MODEL = "gpt-6-luna"
@@ -150,9 +151,11 @@ class Provider:
             )
             started = time.monotonic()
             settled = False
+            stage = "provider.transmit"
             try:
                 async with asyncio.timeout(timeout):
                     data = await self._transmit(endpoint, body)
+                stage = "provider.usage"
                 usage = data.get("usage")
                 if (
                     not isinstance(usage, dict)
@@ -195,8 +198,10 @@ class Provider:
                     spent += (
                         int(usage.get("output_tokens", 0)) * self.prices.output_nanousd
                     )
+                stage = "provider.settle"
                 self.store.settle(request_id, spent)
                 settled = True
+                stage = "provider.request_metadata"
                 self.store.put(
                     "request",
                     request_id,
@@ -221,6 +226,7 @@ class Provider:
                         "gateway": data.get("gateway", {}),
                     }
                 )
+                stage = "provider.identity"
                 if data.get("model") != self.model:
                     raise ValueError("unexpected provider model")
                 self.backoff.pop(endpoint, None)
@@ -241,32 +247,37 @@ class Provider:
                     failures + 1,
                     time.monotonic() + min(60, 2 ** min(failures, 6)),
                 )
-                # Do not print exception text: authentication errors may contain key fragments.
-                self.store.put(
-                    "request",
-                    request_id,
-                    {
-                        "endpoint": endpoint,
-                        "error": failure,
-                        "deadline_ms": round(timeout * 1000),
-                        "unsettled": not settled,
-                        "deadline_expired_on_error": deadline_expired_on_error,
-                        "timeout_origin": timeout_origin,
-                        "elapsed_ms": round((time.monotonic() - started) * 1000),
-                    },
-                )
-                record(
-                    {
-                        "phase": "failed",
-                        "error": failure,
-                        "deadline_ms": round(timeout * 1000),
-                        "reserved_nanousd": 0 if settled else upper,
-                        "unsettled": not settled,
-                        "deadline_expired_on_error": deadline_expired_on_error,
-                        "timeout_origin": timeout_origin,
-                        "elapsed_ms": round((time.monotonic() - started) * 1000),
-                    }
-                )
+                # Capture the original stage/code before auxiliary storage can fail.
+                diagnostic = {
+                    "endpoint": endpoint,
+                    "error": failure,
+                    "deadline_ms": round(timeout * 1000),
+                    "unsettled": not settled,
+                    "deadline_expired_on_error": deadline_expired_on_error,
+                    "timeout_origin": timeout_origin,
+                    "elapsed_ms": round((time.monotonic() - started) * 1000),
+                    **failure_metadata(error, stage),
+                }
+                try:
+                    self.store.put("request", request_id, diagnostic)
+                except Exception as diagnostic_error:  # noqa: BLE001 - preserve the primary outcome and reservation
+                    diagnostic["diagnostic_failure"] = failure_metadata(
+                        diagnostic_error, "provider.failure_metadata"
+                    )
+                try:
+                    record(
+                        {
+                            **diagnostic,
+                            "phase": "failed",
+                            "reserved_nanousd": 0 if settled else upper,
+                            "failure_elapsed_ms": diagnostic["elapsed_ms"],
+                            "elapsed_ms": round((time.monotonic() - started) * 1000),
+                        }
+                    )
+                except Exception as recording_error:  # noqa: BLE001 - retain the primary failure if recording is unavailable too
+                    error.add_note(
+                        "terminal recorder failed: " + type(recording_error).__name__
+                    )
                 raise
 
     async def decide(

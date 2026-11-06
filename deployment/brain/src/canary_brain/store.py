@@ -1,7 +1,6 @@
 """Private worker persistence. Money is integer nanodollars, never binary float."""
 
 import json
-import os
 import sqlite3
 import threading
 from collections.abc import Iterator
@@ -10,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
+
+from .sqlite_files import prepare_database, sqlite_operation
 
 USD = 1_000_000_000
 
@@ -28,11 +29,8 @@ class Store:
         self._transaction = threading.local()
         if path.is_symlink():
             raise ValueError("state file must not be a symlink")
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        descriptor = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
-        os.close(descriptor)
-        os.chmod(path, 0o600)
-        with self.connection() as db:
+        prepare_database(path)
+        with self.connection(stage="store.initialize") as db:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
                 CREATE TABLE IF NOT EXISTS requests (
@@ -55,17 +53,20 @@ class Store:
             db.execute("CREATE INDEX IF NOT EXISTS requests_run ON requests(run_id)")
 
     @contextmanager
-    def connection(self) -> Iterator[sqlite3.Connection]:
-        active = getattr(self._transaction, "connection", None)
-        if active is not None:
-            yield active
-            return
-        db = sqlite3.connect(self.path, timeout=0.2)
-        try:
-            with db:
-                yield db
-        finally:
-            db.close()
+    def connection(
+        self, *, stage: str = "store.connection"
+    ) -> Iterator[sqlite3.Connection]:
+        with sqlite_operation(stage):
+            active = getattr(self._transaction, "connection", None)
+            if active is not None:
+                yield active
+                return
+            db = sqlite3.connect(self.path, timeout=0.2)
+            try:
+                with db:
+                    yield db
+            finally:
+                db.close()
 
     @contextmanager
     def atomic(self) -> Iterator[None]:
@@ -93,7 +94,7 @@ class Store:
     ) -> None:
         if amount <= 0:
             raise ValueError("reservation must be positive")
-        with self.connection() as db:
+        with self.connection(stage="store.reserve") as db:
             db.execute("BEGIN IMMEDIATE")
             # Unsettled requests from previous months remain liabilities.
             used = db.execute(
@@ -120,7 +121,7 @@ class Store:
     def settle(self, request_id: str, spent: int) -> None:
         if spent < 0:
             raise ValueError("spend must be nonnegative")
-        with self.connection() as db:
+        with self.connection(stage="store.settle") as db:
             row = db.execute(
                 "SELECT reserved,spent FROM requests WHERE id=?", (request_id,)
             ).fetchone()
@@ -149,7 +150,7 @@ class Store:
 
     def put(self, kind: str, key: str, data: dict[str, Any]) -> None:
         encoded = json.dumps(data, separators=(",", ":"), allow_nan=False)
-        with self.connection() as db:
+        with self.connection(stage="store.put") as db:
             db.execute(
                 "INSERT INTO records VALUES(?,?,?) ON CONFLICT(kind,key) DO UPDATE SET data=excluded.data",
                 (kind, key, encoded),

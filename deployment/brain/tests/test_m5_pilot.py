@@ -66,7 +66,7 @@ def admit_short_deadline_policy(plan):
     approve_inputs(plan)
 
 
-def fake_probe_sdk(monkeypatch, failure="timeout", mutate=None):
+def fake_probe_sdk(monkeypatch, failure="timeout", mutate=None, before=None):
     """Replace only the SDK boundary; keep provider, recorder and ledger real."""
     from canary_brain import replay_cli
 
@@ -86,6 +86,8 @@ def fake_probe_sdk(monkeypatch, failure="timeout", mutate=None):
         async def create(self, **body):
             self.count += 1
             calls.append(body)
+            if before is not None:
+                before(self.count)
             if self.count == 1 and failure == "long_timeout":
                 await asyncio.sleep(6)
             if self.count == 1 and failure == "late_long_response":
@@ -706,6 +708,158 @@ async def test_admitted_short_deadlines_and_causal_backoff_reach_campaign_once(
     with pytest.raises(ValueError, match="new or empty"):
         await pilot.execute(admitted)
     assert len(calls) == 6
+
+
+async def test_all_ledger_readers_close_before_next_model_and_final_export(
+    admitted, monkeypatch
+):
+    from canary_brain import replay_cli
+
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+    fake_probe_sdk(monkeypatch)
+    connect = sqlite3.connect
+    handles, closed = [], set()
+
+    class TrackedConnection(sqlite3.Connection):
+        def close(self):
+            closed.add(id(self))
+            return super().close()
+
+    def tracking_connect(database, *args, **kwargs):
+        tracked = "mode=ro" in str(database) and str(
+            admitted.canonical_ledger_file
+        ) in str(database)
+        if tracked:
+            kwargs["factory"] = TrackedConnection
+        connection = connect(database, *args, **kwargs)
+        if tracked:
+            handles.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", tracking_connect)
+    client = replay_cli.AsyncOpenAI
+
+    def next_model(**kwargs):
+        assert all(id(handle) in closed for handle in handles)
+        return client(**kwargs)
+
+    monkeypatch.setattr(replay_cli, "AsyncOpenAI", next_model)
+
+    async def game(_):
+        assert all(id(handle) in closed for handle in handles)
+        return {"offline": True}
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", game)
+    result = await pilot.execute(admitted)
+    assert result["campaign"] == {"offline": True}
+    assert len(handles) >= 6 and all(id(handle) in closed for handle in handles)
+    assert (admitted.output / "ledger.json").is_file()
+
+
+async def test_timeout_with_failed_financial_diagnostics_blocks_game(
+    admitted, monkeypatch
+):
+    from canary_brain.recording import ReplayReader
+
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+    locker = sqlite3.connect(admitted.canonical_ledger_file)
+
+    def lock_during_request(count):
+        if count == 3:
+            locker.execute("BEGIN IMMEDIATE")
+
+    fake_probe_sdk(monkeypatch, before=lock_during_request)
+    actual = pilot.decision_fixtures
+
+    async def fixture(args):
+        try:
+            return await actual(args)
+        finally:
+            locker.rollback()
+
+    monkeypatch.setattr(pilot, "decision_fixtures", fixture)
+
+    async def forbidden(_):
+        pytest.fail(
+            "observed storage failure cannot qualify as deadline-only performance"
+        )
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", forbidden)
+    try:
+        with pytest.raises(ValueError, match="technical or unreconciled"):
+            await pilot.execute(admitted)
+    finally:
+        locker.close()
+    result = json.loads((admitted.output / "execution-result.json").read_text())
+    probe = result["probes"]["openai"]
+    assert probe["decisions"][3]["error"] == "TimeoutError"
+    assert probe["qualification"]["accepted_for_game"] is False
+    config = json.loads(admitted.probe_workers["openai"].read_text())
+    failures = [
+        event["data"]
+        for event in ReplayReader(Path(config["recording"]["path"])).all_events(
+            probe["runs"][0]
+        )
+        if event["kind"] == "request" and event["data"].get("phase") == "failed"
+    ]
+    assert (
+        len(failures) == 1
+        and failures[0]["diagnostic_failure"]["sqlite_errorcode"] == sqlite3.SQLITE_BUSY
+    )
+    assert failures[0]["timeout_origin"] == "outer_deadline"
+    ledger = json.loads((admitted.output / "ledger.json").read_text())
+    assert any(
+        row["spent"] is None and row["reserved"] > 0 for row in ledger["requests"]
+    )
+
+
+async def test_sqlite_failure_retains_completed_probe_and_safe_phase_metadata(
+    admitted, monkeypatch
+):
+    from canary_brain import replay_cli
+
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+    fake_probe_sdk(monkeypatch, failure="none")
+    client, connect = replay_cli.AsyncOpenAI, sqlite3.connect
+    models_started = 0
+
+    def next_model(**kwargs):
+        nonlocal models_started
+        models_started += 1
+        return client(**kwargs)
+
+    def fail_second_reconciliation(database, *args, **kwargs):
+        if (
+            models_started == 2
+            and "mode=ro" in str(database)
+            and str(admitted.canonical_ledger_file) in str(database)
+        ):
+            error = sqlite3.OperationalError(
+                "sk-synthetic-message-must-never-be-exported"
+            )
+            vars(error).update(
+                sqlite_errorcode=sqlite3.SQLITE_CANTOPEN,
+                sqlite_errorname="SQLITE_CANTOPEN",
+            )
+            raise error
+        return connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(replay_cli, "AsyncOpenAI", next_model)
+    monkeypatch.setattr(sqlite3, "connect", fail_second_reconciliation)
+    with pytest.raises(sqlite3.OperationalError):
+        await pilot.execute(admitted)
+    serialized = (admitted.output / "execution-result.json").read_text()
+    result = json.loads(serialized)
+    assert set(result["probes"]) == {"openai", "gemini"}
+    assert len(result["probes"]["gemini"]["decisions"]) == 6
+    assert result["failure"]["sqlite_errorcode"] == sqlite3.SQLITE_CANTOPEN
+    assert result["failure"]["stage"] == "m5.probe_ledger.gemini"
+    assert result["ledger_export_failure"]["stage"] == "m5.ledger_export.canonical"
+    assert result["ledger_export_failure"]["sqlite_errorname"] == "SQLITE_CANTOPEN"
+    assert "sk-synthetic-message" not in serialized
 
 
 @pytest.mark.parametrize("failure", ["usage", "auth"])

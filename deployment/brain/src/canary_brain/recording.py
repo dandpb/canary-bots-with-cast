@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import json
-import os
 import queue
 import re
 import sqlite3
@@ -20,6 +19,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from .protocol import Observation
+from .sqlite_files import prepare_database, sqlite_operation
 
 SCHEMA = 1
 request_context: contextvars.ContextVar[tuple[int, str]] = contextvars.ContextVar(
@@ -119,10 +119,7 @@ class RecordingStore:
         self.path = path
         if path.is_symlink():
             raise ValueError("recording path must not be a symlink")
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
-        os.close(fd)
-        os.chmod(path, 0o600)
+        prepare_database(path)
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
             if version not in (0, SCHEMA):
@@ -156,13 +153,14 @@ class RecordingStore:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        db = sqlite3.connect(self.path, timeout=0.2)
-        db.execute("PRAGMA foreign_keys=ON")
-        try:
-            with db:
-                yield db
-        finally:
-            db.close()
+        with sqlite_operation("recording.write"):
+            db = sqlite3.connect(self.path, timeout=0.2)
+            try:
+                db.execute("PRAGMA foreign_keys=ON")
+                with db:
+                    yield db
+            finally:
+                db.close()
 
     def begin(self, manifest: Manifest) -> tuple[int, float | None]:
         encoded = canonical(manifest.model_dump())
@@ -290,17 +288,18 @@ class ReplayReader:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        if self._connection is not None:
-            yield self._connection
-            return
-        db = sqlite3.connect(
-            self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.2
-        )
-        try:
-            db.execute("BEGIN")
-            yield db
-        finally:
-            db.close()
+        with sqlite_operation("recording.read"):
+            if self._connection is not None:
+                yield self._connection
+                return
+            db = sqlite3.connect(
+                self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.2
+            )
+            try:
+                db.execute("BEGIN")
+                yield db
+            finally:
+                db.close()
 
     @contextmanager
     def snapshot(self) -> Iterator[ReplayReader]:
