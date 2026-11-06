@@ -3,7 +3,7 @@
   "provider": "litellm",
   "socket_directory": "/run/canary-brain-wsl",
   "state_file": "/var/lib/canary-brain/state.sqlite3",
-  "budget_file": "/var/lib/canary-brain/budget.sqlite3",
+  "budget_file": "/var/lib/canary-brain/state.sqlite3",
   "credential_file": "/etc/canary-brain/gateway.env",
   "bots": [65001],
   "operator_port": 8091,

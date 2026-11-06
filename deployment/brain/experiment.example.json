@@ -3,7 +3,7 @@
   "output": "/tmp/canary-bench",
   "fixture": "/home/daniel/benchmark-fixture",
   "world_map": "/home/daniel/maps/otservbr.otbm",
-  "budget_file": "/var/lib/canary-brain/budget.sqlite3",
+  "budget_file": "/var/lib/canary-brain/state.sqlite3",
   "gateway_credential": "/etc/canary-brain/gateway.env",
   "game_image": "sha256:REPLACE_WITH_PINNED_GAME_IMAGE_SHA256",
   "database_image": "mariadb@sha256:REPLACE_WITH_PINNED_DATABASE_IMAGE_SHA256",

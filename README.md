@@ -78,6 +78,9 @@ Behavior, commands, and tuning: **[data/scripts/lib/BOT_SYSTEM_DOCS.md](data/scr
 Complete developer documentation (architecture, behavior internals, performance,
 and tuning) for continuing development: **[data/scripts/lib/BOT_SYSTEM_DOCS_EXTENDED.md](data/scripts/lib/BOT_SYSTEM_DOCS_EXTENDED.md)**.
 
+Initial WSL setup, LiteLLM OpenAI/Gemini credentials, replay and benchmark preparation:
+**[Guia de configuração inicial em português](deployment/brain/SETUP.pt-BR.md)**.
+
 ## 🎥 Demo
 
 Clips of the bot system in action — 720p/60fps (the two ~5-minute "tour" clips are 480p/60fps). Click any clip to play.
