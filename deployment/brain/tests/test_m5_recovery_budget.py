@@ -414,3 +414,170 @@ async def test_failed_recovery_keeps_its_claim(recovery, monkeypatch):
         await pilot.execute(recovery)
     with pytest.raises(ValueError, match="already been claimed"):
         claim_offline(recovery)
+
+
+R2_RUN = "decisions:bdf836b5a98e4247a47cce1352fae837:65001"
+
+
+def m5_liability(plan, namespaces=()):
+    runs = [OPENAI_RUN, GEMINI_RUN, R2_RUN]
+    with closing(sqlite3.connect(plan.canonical_ledger_file)) as db:
+        total = db.execute(
+            "SELECT COALESCE(SUM(COALESCE(spent,reserved)),0) FROM requests "
+            "WHERE id IN (?,?) OR run_id IN (?,?,?)",
+            [row["id"] for row in HISTORICAL] + runs,
+        ).fetchone()[0]
+        for namespace in namespaces:
+            total += db.execute(
+                "SELECT COALESCE(SUM(COALESCE(spent,reserved)),0) FROM requests "
+                "WHERE run_id LIKE ?",
+                (namespace + ":%",),
+            ).fetchone()[0]
+    return total
+
+
+def consume_recovery_like_r2(recovery):
+    """Claim V2, then record the three R2 reservations in the temporary ledger."""
+    claim_offline(recovery)
+    with closing(sqlite3.connect(recovery.canonical_ledger_file)) as db, db:
+        db.executemany(
+            "INSERT INTO requests(id,month,reserved,spent,endpoint,run_id) VALUES(?,?,?,?,?,?)",
+            [
+                ("r2-1", month_now(), 825_375, 170_900, "responses", R2_RUN),
+                ("r2-2", month_now(), 825_500, 114_900, "responses", R2_RUN),
+                ("r2-unknown", month_now(), 942_250, None, "responses", R2_RUN),
+            ],
+        )
+    assert m5_liability(recovery) == 5_162_800
+
+
+def admit_other_policy(plan, policy, namespace, historical):
+    change_json(
+        plan,
+        plan.admission,
+        lambda data: data.update(probe_outcome_policy=policy),
+    )
+    change_json(plan, plan.campaign, lambda data: data.update(name=namespace))
+    change_json(
+        plan,
+        plan.authorization,
+        lambda data: data.update(
+            max_total_nanousd=(
+                pilot.SHORT_DEADLINE_TOTAL_CAP if policy else 7_000_000_000
+            ),
+            historical_requests=historical,
+            additional_cost_run_ids=[],
+        ),
+    )
+
+
+@pytest.mark.parametrize("policy", ["short_deadline_performance_v1", None])
+@pytest.mark.parametrize("historical", [[], HISTORICAL], ids=["none", "e65"])
+def test_v1_and_legacy_cannot_admit_a_new_namespace_after_the_recovery_claim(
+    recovery, policy, historical
+):
+    consume_recovery_like_r2(recovery)
+    admit_other_policy(recovery, policy, "qa-after-recovery", historical)
+    # Before this gate, this admission counted at most USD0.0002146 of the
+    # USD0.0051628 M5 liability, for a USD6.9851628 cumulative worst case.
+    with pytest.raises(ValueError, match="already been claimed"):
+        pilot.preflight(recovery)
+
+
+@pytest.mark.parametrize("policy", ["short_deadline_performance_v1", None])
+def test_no_sequential_blocks_are_admitted_after_the_recovery_claim(recovery, policy):
+    # Match the monthly headroom of the 18:14 read-only snapshot before R2.
+    available = pilot.preflight(recovery)["budget"]["available"]
+    with closing(sqlite3.connect(recovery.canonical_ledger_file)) as db, db:
+        db.execute(
+            "INSERT INTO requests(id,month,reserved,spent,endpoint,run_id) VALUES(?,?,?,?,?,?)",
+            (
+                "production",
+                month_now(),
+                available - 49_369_212_675,
+                available - 49_369_212_675,
+                "responses",
+                "production",
+            ),
+        )
+    consume_recovery_like_r2(recovery)
+    namespaces, refusal = [], ""
+    for index in range(10):
+        namespace = f"qa-sequential-{index}"
+        admit_other_policy(recovery, policy, namespace, [])
+        try:
+            pilot.preflight(recovery)
+        except ValueError as error:
+            refusal = str(error)
+            break
+        namespaces.append(namespace)
+        # Each admitted block may spend its complete USD6.98 worst case.
+        with closing(sqlite3.connect(recovery.canonical_ledger_file)) as db, db:
+            db.execute(
+                "INSERT INTO requests(id,month,reserved,spent,endpoint,run_id) VALUES(?,?,?,?,?,?)",
+                (
+                    namespace,
+                    month_now(),
+                    6_980_000_000,
+                    6_980_000_000,
+                    "responses",
+                    namespace + ":decisions",
+                ),
+            )
+    # Before this gate: six blocks, USD41.8851628 of M5 liability, then only
+    # the USD12 monthly headroom stopped the next admission.
+    assert namespaces == [] and "already been claimed" in refusal, (
+        len(namespaces),
+        m5_liability(recovery, namespaces),
+        refusal,
+    )
+
+
+@pytest.mark.parametrize("policy", ["short_deadline_performance_v1", None])
+def test_v1_and_legacy_without_a_recovery_claim_are_still_admitted(recovery, policy):
+    admit_other_policy(recovery, policy, "qa-unclaimed", HISTORICAL)
+    result = pilot.preflight(recovery)
+    assert result["accepted"] is True
+    assert result["historical_nanousd"] == 214_600
+
+
+@pytest.mark.parametrize("policy", ["short_deadline_performance_v1", None])
+async def test_v1_and_legacy_recheck_the_claim_under_the_lease(
+    recovery, monkeypatch, policy
+):
+    admit_other_policy(recovery, policy, "qa-race", HISTORICAL)
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    real_preflight = pilot.preflight
+
+    def preflight_then_concurrent_claim(plan, captured):
+        result = real_preflight(plan, captured)
+        # A V2 orchestrator commits its claim after this read-only preflight.
+        with closing(sqlite3.connect(plan.canonical_ledger_file)) as db, db:
+            db.execute(
+                "INSERT INTO records(kind,key,data) VALUES(?,?,?)",
+                (pilot.RECOVERY_CLAIM_KIND, pilot.RECOVERY_CLAIM_KEY, "{}"),
+            )
+        return result
+
+    async def forbidden(*_):
+        raise AssertionError("no probe may start")
+
+    monkeypatch.setattr(pilot, "preflight", preflight_then_concurrent_claim)
+    monkeypatch.setattr(pilot, "execute_admitted", forbidden)
+    with pytest.raises(ValueError, match="already been claimed"):
+        await pilot.execute(recovery)
+
+
+@pytest.mark.parametrize("policy", ["short_deadline_performance_v1", None])
+async def test_v1_and_legacy_execute_with_the_ledger_read_under_the_lease(
+    recovery, monkeypatch, policy
+):
+    admit_other_policy(recovery, policy, "qa-unclaimed", HISTORICAL)
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+
+    async def offline(plan, admitted, captured):
+        assert admitted["historical_nanousd"] == 214_600
+        return {"offline": True}
+
+    monkeypatch.setattr(pilot, "execute_admitted", offline)
+    assert await pilot.execute(recovery) == {"offline": True}

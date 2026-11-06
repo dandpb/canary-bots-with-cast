@@ -552,8 +552,13 @@ def _ledger_snapshot_in_transaction(
     require_additional_runs: bool,
 ) -> dict[str, int]:
     """Check the complete envelope against one established SQL transaction."""
+    # The consumed V2 claim closes every M5 admission, V1 and legacy included.
+    # The table guard only serves ledgers that never stored any record.
     if (
-        require_additional_runs
+        db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='records'"
+        ).fetchone()
+        is not None
         and db.execute(
             "SELECT 1 FROM records WHERE kind=? AND key=?",
             (RECOVERY_CLAIM_KIND, RECOVERY_CLAIM_KEY),
@@ -784,6 +789,34 @@ def claim_recovery(
     return {"budget": budget, "historical_nanousd": historical_total}
 
 
+def admitted_budget(
+    ledger: Path, envelope: dict[str, Any], policy: str | None, namespace: str
+) -> tuple[dict[str, int], int]:
+    """Check the admitted envelope against the ledger as it is now."""
+    historical = envelope.get("historical_requests", [])
+    budget = ledger_snapshot(
+        ledger,
+        historical,
+        envelope.get("additional_cost_run_ids", []),
+        namespace,
+        require_additional_runs=policy == RECOVERY_POLICY,
+    )
+    historical_total = sum(row["spent_nanousd"] for row in historical)
+    historical_total += budget.pop("prior_extra_liability")
+    if (
+        policy == SHORT_DEADLINE_POLICY
+        and historical_total + 6_980_000_000 > SHORT_DEADLINE_TOTAL_CAP
+    ):
+        raise ValueError(
+            "prior charges exceed the prospective complete liability envelope"
+        )
+    if historical_total + 6_980_000_000 > 7 * USD:
+        raise ValueError("prior pilot charges leave insufficient room inside USD7")
+    if budget["available"] < 12 * USD:
+        raise ValueError("monthly ledger lacks the admitted USD12 headroom")
+    return budget, historical_total
+
+
 def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str, Any]:
     if (
         not plan.output.is_absolute()
@@ -969,25 +1002,9 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
     ):
         if admission.get(key) != actual:
             raise ValueError("worker dependency versions differ from root admission")
-    budget = ledger_snapshot(
-        plan.canonical_ledger_file,
-        historical,
-        envelope.get("additional_cost_run_ids", []),
-        experiment.name,
-        require_additional_runs=policy == RECOVERY_POLICY,
+    budget, historical_total = admitted_budget(
+        plan.canonical_ledger_file, envelope, policy, experiment.name
     )
-    historical_total += budget.pop("prior_extra_liability")
-    if (
-        policy == SHORT_DEADLINE_POLICY
-        and historical_total + 6_980_000_000 > SHORT_DEADLINE_TOTAL_CAP
-    ):
-        raise ValueError(
-            "prior charges exceed the prospective complete liability envelope"
-        )
-    if historical_total + 6_980_000_000 > 7 * USD:
-        raise ValueError("prior pilot charges leave insufficient room inside USD7")
-    if budget["available"] < 12 * USD:
-        raise ValueError("monthly ledger lacks the admitted USD12 headroom")
     order = [
         [p.name for p in experiment.participants[i:] + experiment.participants[:i]]
         for i in range(3)
@@ -1457,6 +1474,16 @@ async def execute(plan: Plan) -> dict[str, Any]:
             == RECOVERY_POLICY
         ):
             admitted.update(claim_recovery(plan, captured, admitted))
+        else:
+            # Recheck the ledger under the lease: preflight ran before it, and a
+            # V2 claim or new charges may have been committed since then.
+            budget, historical_total = admitted_budget(
+                plan.canonical_ledger_file,
+                json.loads(captured["authorization"]),
+                json.loads(captured["admission"]).get("probe_outcome_policy"),
+                json.loads(captured["campaign"])["name"],
+            )
+            admitted.update(budget=budget, historical_nanousd=historical_total)
         return await execute_admitted(plan, admitted, captured)
 
 
