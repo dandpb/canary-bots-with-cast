@@ -23,7 +23,7 @@ commit revisado para o smoke. Estes comandos não iniciam containers:
 ```bash
 cd deployment/core-qa
 python3 prepare.py --skip-map
-docker compose config -q
+env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env config -q
 python3 -m unittest -v test_offline.py
 ```
 
@@ -43,9 +43,9 @@ Ainda não execute estes comandos sem a aprovação do responsável pelo smoke:
 ```bash
 cd deployment/core-qa
 python3 prepare.py --download-map
-docker compose config -q
-SOURCE_REVISION="$(git rev-parse HEAD)" docker compose up -d --build --wait database game web
-docker compose ps
+env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env config -q
+SOURCE_REVISION="$(git rev-parse HEAD)" env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --build --wait database game web
+env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env ps
 ```
 
 Abra o site em `http://127.0.0.1:18080/` e use o endpoint HTTP de login no
@@ -63,11 +63,11 @@ de interromper o jogo. Colete o estado e os logs antes de remover os
 containers; `down` preserva todos os volumes para análise ou nova subida.
 
 ```bash
-docker compose stop -t 180
+env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env stop -t 180
 mkdir -p runtime/evidence
-docker compose ps -a > runtime/evidence/containers.txt
-docker compose logs --no-color --timestamps database game web > runtime/evidence/services.log 2>&1
-docker compose down
+env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env ps -a > runtime/evidence/containers.txt
+env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env logs --no-color --timestamps database game web > runtime/evidence/services.log 2>&1
+env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env down
 ```
 
 Não use `down -v`: isso apagaria o banco e os dados do teste. Os comandos acima

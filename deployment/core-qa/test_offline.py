@@ -17,11 +17,22 @@ class CoreQaOfflineTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         env = os.environ.copy()
-        env.update(MARIADB_PASSWORD="qa-test-only", MARIADB_ROOT_PASSWORD="qa-test-only")
-        result = subprocess.run(
-            ["docker", "compose", "-f", str(HERE / "compose.yaml"), "config", "--format", "json"],
-            cwd=HERE, env=env, text=True, capture_output=True, check=True,
-        )
+        env.update(COMPOSE_PROJECT_NAME="canary-bots-wsl",
+                   COMPOSE_FILE=str(SOURCE / "deployment/wsl/compose.yaml"),
+                   COMPOSE_ENV_FILES="/nonexistent/operational.env",
+                   MARIADB_PASSWORD="operational-sentinel",
+                   MARIADB_ROOT_PASSWORD="operational-sentinel",
+                   BOT_PLAYERS_ONLINE="997")
+        with tempfile.TemporaryDirectory() as directory:
+            env_file = Path(directory) / ".env"
+            env_file.write_text("MARIADB_PASSWORD=qa-test-only\nMARIADB_ROOT_PASSWORD=qa-test-only\n")
+            result = subprocess.run(
+                ["env", "-u", "MARIADB_PASSWORD", "-u", "MARIADB_ROOT_PASSWORD",
+                 "-u", "BOT_PLAYERS_ONLINE", "docker", "compose",
+                 "-p", "canary-core-qa", "-f", "compose.yaml",
+                 "--env-file", str(env_file), "config", "--format", "json"],
+                cwd=HERE, env=env, text=True, capture_output=True, check=True,
+            )
         cls.compose = json.loads(result.stdout)
 
     def test_project_and_resources_are_isolated(self):
@@ -40,6 +51,10 @@ class CoreQaOfflineTests(unittest.TestCase):
                 self.assertEqual(port["host_ip"], "127.0.0.1")
         self.assertNotIn("brain", compose["services"])
         self.assertNotIn("litellm", compose["services"])
+        self.assertEqual(compose["services"]["database"]["environment"]["MARIADB_PASSWORD"],
+                         "qa-test-only")
+        self.assertEqual(compose["services"]["game"]["environment"]["BOT_PLAYERS_ONLINE"],
+                         "50")
 
     def test_login_advertises_the_game_listener(self):
         services = self.compose["services"]
