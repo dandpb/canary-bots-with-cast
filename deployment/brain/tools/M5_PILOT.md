@@ -24,6 +24,12 @@ Use a frozen source export and the admitted common worker image. Mount that
 source directory at the same absolute path inside the harness, and set
 `PYTHONPATH=<source_path>/deployment/brain/src`. The source manifest must hash
 all exported Python modules and `deployment/brain/tools/m5_pilot.py` itself.
+For `openai_none_performance_v3`, also include
+`deployment/brain/tools/m5_openai_none_reference.v2.json`; its reviewed SHA256
+must be `ee78816aa2d48d965806b8202ee12370d1d8d6c042d264d342daa2a30ebc97f3`.
+The complete tracked `src`/`tools` export now has 43 files (42 runtime files plus
+this document); count alone never replaces per-file hashes. Preserve older
+closed exports and prepare a new manifest for this profile.
 Keep source, inputs and outputs on the host WSL Linux filesystem, not a Windows
 drive under `/mnt/*`. Start the host launcher from `/`, use absolute paths and
 set the harness `working_dir` to `/`. Docker subprocesses explicitly use `/`
@@ -120,6 +126,26 @@ call, after rechecking the complete envelope under an immediate SQL transaction.
 The claim remains after failure and blocks a second recovery namespace. It
 preserves the original v1 ceiling and requires new frozen inputs and root GO.
 
+Once that V2 grant is consumed, legacy/V1/V2 admissions are closed; a new
+namespace, fallback policy or cleared input document cannot reopen them.
+The separate [`openai_none_performance_v3` contract](../evidence/2026-11-06/m5-openai-none-v3-contract.md)
+admits only the new `controller_profile:"openai_none_gemini_default_v1"`.
+It requires explicit OpenAI `decision_reasoning_effort:"none"` and legacy
+Gemini absence/null in both probe and scored configurations. All other
+functional fields, input fixtures, models, images, prices and deadlines must
+match the immutable reference; matching two newly edited configurations is
+insufficient. Admission must additionally pin `gateway_image` and
+`gateway_route_projection_sha256` to that reference.
+
+V3 requires the consumed V2 grant, all ten prior request identities in their
+three exact probe runs/two historical requests, and a separate absent global
+`records(m5_openai_none_v3,single_use)` grant. Preflight remains read-only.
+Execution rechecks current liabilities/headroom and inputs under the lease and
+an immediate transaction, commits the new grant before any SDK entry, and
+retains it after failure or process death. A consumed V3 grant also closes all
+older policies. This code is preparation, not a new paid GO or a successful
+replacement for either closed default-profile attempt.
+
 Each scored participant receives the same isolated internal game/DB network,
 `<trial-directory>:/m5` audit mount and passive status query cadence
 (after 540 s, every 10 s). The observer is qualified for fixture-G Grizzle 65001;
@@ -149,8 +175,12 @@ attestation failure entry. Compose declarations cannot set `images_verified`.
 A deadline is a negative performance result, distinct from protocol/identity/
 usage failures. Probe output records valid, late and unknown counts separately.
 Mixed deadline/technical failures are labeled `mixed`, retaining both counts.
-Any failed conformance or unresolved charge stops before game runs and requires
-root review; the wrapper never increases TTLs, retries or qualifies itself.
+The default strict policy stops on failed conformance or unresolved charges.
+An explicitly admitted performance policy accepts only its reconciled short
+deadline/causal-backoff negatives within the complete liability cap; it retains
+unknown reservations and `financial_final:false`. Technical failures or failed
+long conformance still stop before games. The wrapper never increases TTLs,
+retries or qualifies itself.
 
 `execution-result.json` preserves stage outputs/errors. `ledger.json` exports
 only relevant rows (historical IDs, probe recordings/returned IDs, declared extra

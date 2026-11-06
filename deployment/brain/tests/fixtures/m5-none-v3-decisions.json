@@ -1,0 +1,574 @@
+[
+  {
+    "scenario": "recorded-hunt-first",
+    "observation": {
+      "actions": [
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+          "id": "hunt:77",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Thais Paw Collector",
+          "id": "hunt:399",
+          "ttl_ms": 5000
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 100,
+        "name": "Grizzle Alyronia",
+        "objective": "follow",
+        "objective_defeats": 0,
+        "objective_running": false,
+        "position": [
+          32369,
+          32241,
+          7
+        ],
+        "potions": 40,
+        "state": "IDLE",
+        "vocation": 4,
+        "xp": 98800
+      },
+      "captured_ms": 143392124,
+      "mode": "shadow",
+      "nearby": [],
+      "objective_generation": 0,
+      "party": null,
+      "sequence": 1,
+      "type": "observation",
+      "version": 1,
+      "world": "1-143392066740173",
+      "lease": "decision-only-no-game-intent"
+    },
+    "memory": {},
+    "provenance": {
+      "kind": "recorded-checkpoint-with-declared-controller-projection",
+      "source_run_id": "m5-current-native-17b62eabb7:native:0",
+      "source_driver_revision": "c9e447c5",
+      "source_status": "running",
+      "source_incomplete": false,
+      "event_id": 4,
+      "event_key": "sample:1-143392066740173:1",
+      "t_ms": 20701,
+      "checkpoint_sha256": "7b5dd025d3612e6d0c3ca00a0ac71e430540b9dd3d6b2841e81733e7a4d0a8d3",
+      "changes": [
+        "Transport lease placeholder restored for Observation schema; excluded from model input",
+        "Frozen empty memory declared for both providers",
+        {
+          "controller_catalog_projection": {
+            "source_revision": "5e0be6ce811ff2e808ca0072cb388355313108b0",
+            "removed_candidate_ids": [
+              "continue",
+              "hold"
+            ],
+            "note": "Mirrors hold/idle/running-objective catalog restrictions only; not a claim that the controller requested inference here"
+          }
+        }
+      ],
+      "candidate_scope": "native offered catalog, not a claimed recorded model request",
+      "qualification": "Pending complete free run gate; no provider or game call made by extraction",
+      "controller_would_skip_running_safe_observation": false,
+      "model_input_sha256": "03ee1b7c8955c24d706d55f757579efa3ee0fb6f85ec71628186392fc162d900"
+    }
+  },
+  {
+    "scenario": "recorded-hunt-second",
+    "observation": {
+      "actions": [
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+          "id": "hunt:77",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Thais Paw Collector",
+          "id": "hunt:399",
+          "ttl_ms": 5000
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 100,
+        "name": "Grizzle Alyronia",
+        "objective": "follow",
+        "objective_defeats": 0,
+        "objective_running": false,
+        "position": [
+          32369,
+          32241,
+          7
+        ],
+        "potions": 40,
+        "state": "IDLE",
+        "vocation": 4,
+        "xp": 98800
+      },
+      "captured_ms": 143398141,
+      "mode": "shadow",
+      "nearby": [],
+      "objective_generation": 0,
+      "party": null,
+      "sequence": 21,
+      "type": "observation",
+      "version": 1,
+      "world": "1-143392066740173",
+      "lease": "decision-only-no-game-intent"
+    },
+    "memory": {},
+    "provenance": {
+      "kind": "recorded-checkpoint-with-declared-controller-projection",
+      "source_run_id": "m5-current-native-17b62eabb7:native:0",
+      "source_driver_revision": "c9e447c5",
+      "source_status": "running",
+      "source_incomplete": false,
+      "event_id": 15,
+      "event_key": "sample:1-143392066740173:21",
+      "t_ms": 26646,
+      "checkpoint_sha256": "29fa52865fa31a05731f9b6975a98f4da224117f9c223493654f9c7635ce75ab",
+      "changes": [
+        "Transport lease placeholder restored for Observation schema; excluded from model input",
+        "Frozen empty memory declared for both providers",
+        {
+          "controller_catalog_projection": {
+            "source_revision": "5e0be6ce811ff2e808ca0072cb388355313108b0",
+            "removed_candidate_ids": [
+              "continue",
+              "hold"
+            ],
+            "note": "Mirrors hold/idle/running-objective catalog restrictions only; not a claim that the controller requested inference here"
+          }
+        }
+      ],
+      "candidate_scope": "native offered catalog, not a claimed recorded model request",
+      "qualification": "Pending complete free run gate; no provider or game call made by extraction",
+      "controller_would_skip_running_safe_observation": false,
+      "model_input_sha256": "9400b7a171c936b1046aefc6298e785451232e57a4421586393469e075919f68"
+    }
+  },
+  {
+    "scenario": "recorded-low-stock-supply",
+    "observation": {
+      "actions": [
+        {
+          "action": "resupply",
+          "description": "Walk to the town shop to replenish supplies and return",
+          "id": "resupply",
+          "ttl_ms": 5000
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 100,
+        "name": "Grizzle Alyronia",
+        "objective": "follow",
+        "objective_defeats": 0,
+        "objective_running": false,
+        "position": [
+          32369,
+          32241,
+          7
+        ],
+        "potions": 2,
+        "state": "IDLE",
+        "vocation": 4,
+        "xp": 98800
+      },
+      "captured_ms": 76302854,
+      "mode": "active",
+      "nearby": [],
+      "objective_generation": 0,
+      "party": null,
+      "sequence": 1,
+      "type": "observation",
+      "version": 1,
+      "world": "1-76302790830814",
+      "lease": "decision-only-no-game-intent"
+    },
+    "memory": {},
+    "provenance": {
+      "kind": "recorded-checkpoint-with-declared-controller-projection",
+      "source_archive_sha256": "5f3fbb56500482a5c9ffd7d8675656520805e33ec5b4040f7b3f473d4b2e06c6",
+      "source_run_id": "m5q-20261105f:fake",
+      "source_driver_revision": "6818b1e46f8f5db0082903fd0d63276de42a0711",
+      "source_initial_sha256": "1d6e3ca67ee5dd36ff8566395a35701255c2622ee2d9f244ce63fb84634a9b6d",
+      "source_status": "completed",
+      "event_id": 4,
+      "event_key": "sample:1-76302790830814:1",
+      "t_ms": 13247,
+      "checkpoint_sha256": "731231c50cb7ae71423a230ca201ac0b7f9e3d55a6d119086bdfe9184d7c0b21",
+      "changes": [
+        "Transport lease placeholder restored; excluded from model input",
+        "Frozen empty memory declared for both providers",
+        {
+          "controller_catalog_projection": {
+            "source_revision": "5e0be6ce811ff2e808ca0072cb388355313108b0",
+            "removed_candidate_ids": [
+              "continue",
+              "hold"
+            ],
+            "note": "Mirrors hold/idle/running-objective catalog restrictions only; not a claim that the controller requested inference here"
+          }
+        }
+      ],
+      "scope": "decision contract only, no game command or counterfactual outcome",
+      "controller_would_skip_running_safe_observation": false,
+      "model_input_sha256": "ff31b563ec062484857a1caffc4dbf7a2d22c5c0cea9576f864c42994f26e859",
+      "expected_inference_calls": 0
+    },
+    "expected": "resupply"
+  },
+  {
+    "scenario": "synthetic-low-hp-from-recorded-checkpoint",
+    "observation": {
+      "actions": [
+        {
+          "action": "retreat",
+          "description": "Disengage and return to the leader or town temple for the next activity",
+          "id": "retreat",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Thais Paw Collector",
+          "id": "hunt:399",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "target",
+          "description": "Prioritize visible monster Snake",
+          "id": "target:1342193542",
+          "ttl_ms": 1000
+        },
+        {
+          "action": "target",
+          "description": "Prioritize visible monster Skunk",
+          "id": "target:1342193610",
+          "ttl_ms": 1000
+        },
+        {
+          "action": "target",
+          "description": "Prioritize visible monster Skunk",
+          "id": "target:1342193609",
+          "ttl_ms": 1000
+        },
+        {
+          "action": "target",
+          "description": "Prioritize visible monster Skunk",
+          "id": "target:1342193608",
+          "ttl_ms": 1000
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 12,
+        "id": 65001,
+        "level": 20,
+        "mana": 68,
+        "name": "Grizzle Alyronia",
+        "objective": "follow",
+        "objective_defeats": 0,
+        "objective_running": false,
+        "position": [
+          32353,
+          32293,
+          7
+        ],
+        "potions": 0,
+        "state": "HUNTING",
+        "vocation": 4,
+        "xp": 102154
+      },
+      "captured_ms": 144094289,
+      "mode": "shadow",
+      "nearby": [
+        {
+          "id": 1342193542,
+          "name": "Snake",
+          "position": [
+            32356,
+            32289,
+            7
+          ]
+        },
+        {
+          "id": 1342193610,
+          "name": "Skunk",
+          "position": [
+            32357,
+            32294,
+            7
+          ]
+        },
+        {
+          "id": 1342193609,
+          "name": "Skunk",
+          "position": [
+            32355,
+            32295,
+            7
+          ]
+        },
+        {
+          "id": 1342193608,
+          "name": "Skunk",
+          "position": [
+            32353,
+            32294,
+            7
+          ]
+        }
+      ],
+      "objective_generation": 0,
+      "party": null,
+      "sequence": 2334,
+      "type": "observation",
+      "version": 1,
+      "world": "1-143392066740173",
+      "lease": "decision-only-no-game-intent"
+    },
+    "memory": {},
+    "provenance": {
+      "kind": "synthetic-modification-of-recorded-checkpoint",
+      "source_run_id": "m5-current-native-17b62eabb7:native:0",
+      "source_driver_revision": "c9e447c5",
+      "source_status": "running",
+      "source_incomplete": false,
+      "event_id": 1289,
+      "event_key": "sample:1-143392066740173:2334",
+      "t_ms": 722793,
+      "checkpoint_sha256": "8d1509eba1df39511d1bc6d514bc8a12217671609cd0402d6f51169985038d41",
+      "changes": [
+        "Transport lease placeholder restored for Observation schema; excluded from model input",
+        {
+          "bot.health": {
+            "from": 99,
+            "to": 12
+          }
+        },
+        {
+          "bot.potions": {
+            "from": 40,
+            "to": 0
+          }
+        },
+        "Frozen empty memory declared for both providers",
+        {
+          "controller_catalog_projection": {
+            "source_revision": "5e0be6ce811ff2e808ca0072cb388355313108b0",
+            "removed_candidate_ids": [
+              "continue",
+              "hold"
+            ],
+            "note": "Mirrors hold/idle/running-objective catalog restrictions only; not a claim that the controller requested inference here"
+          }
+        }
+      ],
+      "candidate_scope": "native offered catalog, not a claimed recorded model request",
+      "qualification": "Pending complete free run gate; no provider or game call made by extraction",
+      "controller_would_skip_running_safe_observation": false,
+      "model_input_sha256": "a43d89e5c6be544f5c9c590829095728eca55edf6a13d35f306112cccca1b62a"
+    },
+    "expected": "retreat"
+  },
+  {
+    "scenario": "synthetic-travel-label-from-recorded-running-objective",
+    "observation": {
+      "actions": [
+        {
+          "action": "continue",
+          "description": "Continue the current useful objective",
+          "id": "continue",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "retreat",
+          "description": "Disengage and return to the leader or town temple for the next activity",
+          "id": "retreat",
+          "ttl_ms": 1500
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 100,
+        "name": "Grizzle Alyronia",
+        "objective": "resupply",
+        "objective_defeats": 0,
+        "objective_running": true,
+        "position": [
+          32371,
+          32236,
+          7
+        ],
+        "potions": 2,
+        "state": "TRAVELING",
+        "vocation": 4,
+        "xp": 98800
+      },
+      "captured_ms": 76305564,
+      "mode": "active",
+      "nearby": [],
+      "objective_generation": 1,
+      "party": null,
+      "sequence": 11,
+      "type": "observation",
+      "version": 1,
+      "world": "1-76302790830814",
+      "lease": "decision-only-no-game-intent"
+    },
+    "memory": {},
+    "provenance": {
+      "kind": "synthetic-modification-of-recorded-checkpoint",
+      "source_archive_sha256": "5f3fbb56500482a5c9ffd7d8675656520805e33ec5b4040f7b3f473d4b2e06c6",
+      "source_run_id": "m5q-20261105f:fake",
+      "source_driver_revision": "6818b1e46f8f5db0082903fd0d63276de42a0711",
+      "source_initial_sha256": "1d6e3ca67ee5dd36ff8566395a35701255c2622ee2d9f244ce63fb84634a9b6d",
+      "source_status": "completed",
+      "event_id": 16,
+      "event_key": "sample:1-76302790830814:11",
+      "t_ms": 15954,
+      "checkpoint_sha256": "47841bf67a2deeb23db543596306b24594e8fc0f4f5a0a8d2488ffcf37f92e3d",
+      "changes": [
+        "Transport lease placeholder restored; excluded from model input",
+        "Frozen empty memory declared for both providers",
+        {
+          "bot.state": {
+            "from": "IDLE",
+            "to": "TRAVELING"
+          }
+        },
+        {
+          "controller_catalog_projection": {
+            "source_revision": "5e0be6ce811ff2e808ca0072cb388355313108b0",
+            "removed_candidate_ids": [
+              "hold"
+            ],
+            "note": "Mirrors hold/idle/running-objective catalog restrictions only; not a claim that the controller requested inference here"
+          }
+        }
+      ],
+      "scope": "decision contract only, no game command or counterfactual outcome",
+      "controller_would_skip_running_safe_observation": true,
+      "model_input_sha256": "ef9dcefaac5c178ca91107c4a853a8b4471c667fe2e8243d7b09d1b01646c7ac"
+    }
+  },
+  {
+    "scenario": "recorded-tactical-ttl-boundary",
+    "observation": {
+      "actions": [
+        {
+          "action": "retreat",
+          "description": "Disengage and return to the leader or town temple for the next activity",
+          "id": "retreat",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Thais Paw Collector",
+          "id": "hunt:399",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "target",
+          "description": "Prioritize visible monster Dog",
+          "id": "target:1342193060",
+          "ttl_ms": 1000
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 100,
+        "name": "Grizzle Alyronia",
+        "objective": "follow",
+        "objective_defeats": 0,
+        "objective_running": false,
+        "position": [
+          32369,
+          32222,
+          7
+        ],
+        "potions": 40,
+        "state": "HUNTING",
+        "vocation": 4,
+        "xp": 98800
+      },
+      "captured_ms": 143416184,
+      "mode": "shadow",
+      "nearby": [
+        {
+          "id": 1342193060,
+          "name": "Dog",
+          "position": [
+            32363,
+            32217,
+            7
+          ]
+        }
+      ],
+      "objective_generation": 0,
+      "party": null,
+      "sequence": 81,
+      "type": "observation",
+      "version": 1,
+      "world": "1-143392066740173",
+      "lease": "decision-only-no-game-intent"
+    },
+    "memory": {},
+    "provenance": {
+      "kind": "recorded-checkpoint-with-declared-controller-projection",
+      "source_run_id": "m5-current-native-17b62eabb7:native:0",
+      "source_driver_revision": "c9e447c5",
+      "source_status": "running",
+      "source_incomplete": false,
+      "event_id": 47,
+      "event_key": "sample:1-143392066740173:81",
+      "t_ms": 44689,
+      "checkpoint_sha256": "87efdcafad7aa453f940447820501c527b8f0daa743f6408f786242ad851c4eb",
+      "changes": [
+        "Transport lease placeholder restored for Observation schema; excluded from model input",
+        "Frozen empty memory declared for both providers",
+        {
+          "controller_catalog_projection": {
+            "source_revision": "5e0be6ce811ff2e808ca0072cb388355313108b0",
+            "removed_candidate_ids": [
+              "continue",
+              "hold"
+            ],
+            "note": "Mirrors hold/idle/running-objective catalog restrictions only; not a claim that the controller requested inference here"
+          }
+        }
+      ],
+      "candidate_scope": "native offered catalog, not a claimed recorded model request",
+      "qualification": "Pending complete free run gate; no provider or game call made by extraction",
+      "note": "Actual offered target TTL evaluates adapter deadline; no intent is emitted or claimed expired",
+      "controller_would_skip_running_safe_observation": false,
+      "model_input_sha256": "58a487f21f7dd42d43ca3f4d38bfd6e151894da6b58257cbbddf4e93b4719b4a"
+    }
+  }
+]

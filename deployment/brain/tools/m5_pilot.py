@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import copy
 import fcntl
 import hashlib
 import importlib.metadata
@@ -54,7 +55,15 @@ CANONICAL_LEDGER_FILE = Path("/var/lib/canary-brain/state.sqlite3")
 SHORT_DEADLINE_POLICY = "short_deadline_performance_v1"
 SHORT_DEADLINE_TOTAL_CAP = 6_980_214_600
 RECOVERY_POLICY = "short_deadline_performance_recovery_v2"
-PERFORMANCE_POLICIES = frozenset({SHORT_DEADLINE_POLICY, RECOVERY_POLICY})
+NONE_POLICY = "openai_none_performance_v3"
+NONE_PROFILE = "openai_none_gemini_default_v1"
+NONE_REFERENCE_PATH = "deployment/brain/tools/m5_openai_none_reference.v2.json"
+NONE_REFERENCE_SHA256 = (
+    "ee78816aa2d48d965806b8202ee12370d1d8d6c042d264d342daa2a30ebc97f3"
+)
+NONE_CLAIM_KIND = "m5_openai_none_v3"
+NONE_GATEWAY_CREDENTIAL_FILE = Path("/etc/canary-brain/gateway.env")
+PERFORMANCE_POLICIES = frozenset({SHORT_DEADLINE_POLICY, RECOVERY_POLICY, NONE_POLICY})
 RECOVERY_PREVIOUS_NAMESPACE = "m5-og-20261106-dae4b84b"
 RECOVERY_PRIOR_RUNS = frozenset(
     {
@@ -68,6 +77,17 @@ RECOVERY_HISTORICAL = {
 }
 RECOVERY_CLAIM_KIND = "m5_recovery_v2"
 RECOVERY_CLAIM_KEY = "single_use"
+
+
+def none_reference() -> dict[str, Any]:
+    """Read the reviewed functional contract from this frozen source export."""
+    payload = Path(__file__).with_name("m5_openai_none_reference.v2.json").read_bytes()
+    if hashlib.sha256(payload).hexdigest() != NONE_REFERENCE_SHA256:
+        raise ValueError("explicit-none functional reference bytes changed")
+    reference = json.loads(payload)
+    if not isinstance(reference, dict):
+        raise TypeError("explicit-none functional reference must be an object")
+    return reference
 
 
 class ProbeTimingError(ValueError):
@@ -489,6 +509,14 @@ def assert_frozen_imports(manifest: dict[str, Any]) -> None:
     source = Path(manifest["source_path"]).resolve()
     if Path(__file__).resolve() != source / "deployment/brain/tools/m5_pilot.py":
         raise ValueError("execute the wrapper from the frozen source export")
+    if NONE_REFERENCE_PATH in manifest["files"]:
+        reference = Path(__file__).with_name("m5_openai_none_reference.v2.json")
+        if (
+            reference.is_symlink()
+            or reference.resolve() != source / NONE_REFERENCE_PATH
+        ):
+            raise ValueError("functional reference must use the frozen source export")
+        none_reference()
     for module in (benchmark, runtime):
         if module.__file__ is None:
             raise ValueError("canonical runner module has no source file")
@@ -528,6 +556,7 @@ def ledger_snapshot(
     namespace: str,
     *,
     require_additional_runs: bool = False,
+    policy: str | None = None,
 ) -> dict[str, int]:
     if not path.is_file() or path.is_symlink():
         raise ValueError("the canonical ledger must already exist")
@@ -540,7 +569,7 @@ def ledger_snapshot(
     ):
         db.execute("BEGIN")
         return _ledger_snapshot_in_transaction(
-            db, historical, additional_runs, namespace, require_additional_runs
+            db, historical, additional_runs, namespace, require_additional_runs, policy
         )
 
 
@@ -550,21 +579,40 @@ def _ledger_snapshot_in_transaction(
     additional_runs: list[str],
     namespace: str,
     require_additional_runs: bool,
+    policy: str | None = None,
 ) -> dict[str, int]:
     """Check the complete envelope against one established SQL transaction."""
-    # The consumed V2 claim closes every M5 admission, V1 and legacy included.
+    # Consumed grants close all older policies; only the reviewed new profile
+    # may use its separate grant after V2 has been consumed.
     # The table guard only serves ledgers that never stored any record.
-    if (
+    records_exist = (
         db.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='records'"
         ).fetchone()
         is not None
+    )
+    recovery_claimed = (
+        records_exist
         and db.execute(
             "SELECT 1 FROM records WHERE kind=? AND key=?",
             (RECOVERY_CLAIM_KIND, RECOVERY_CLAIM_KEY),
         ).fetchone()
         is not None
+    )
+    if (
+        records_exist
+        and db.execute(
+            "SELECT 1 FROM records WHERE kind=? AND key=?",
+            (NONE_CLAIM_KIND, RECOVERY_CLAIM_KEY),
+        ).fetchone()
+        is not None
     ):
+        raise ValueError("explicit-none profile has already been claimed")
+    if policy == NONE_POLICY:
+        if not recovery_claimed:
+            raise ValueError("explicit-none requires the consumed recovery claim")
+        validate_none_prior_rows(db)
+    elif recovery_claimed:
         raise ValueError("recovery has already been claimed")
     spent, reserved = db.execute(
         "SELECT COALESCE(SUM(CASE WHEN month=? THEN spent ELSE 0 END),0),COALESCE(SUM(CASE WHEN spent IS NULL THEN reserved ELSE 0 END),0) FROM requests",
@@ -789,6 +837,187 @@ def claim_recovery(
     return {"budget": budget, "historical_nanousd": historical_total}
 
 
+def validate_none_envelope(envelope: dict[str, Any], namespace: str) -> None:
+    """The new profile carries all three closed probes inside the same USD7."""
+    reference = none_reference()
+    historical = envelope.get("historical_requests")
+    additional = envelope.get("additional_cost_run_ids")
+    expected_runs = {
+        row["run_id"]
+        for row in reference["prior_requests_as_observed"]
+        if row["id"] not in RECOVERY_HISTORICAL
+    }
+    if (
+        type(envelope.get("max_total_nanousd")) is not int
+        or envelope["max_total_nanousd"] != 7 * USD
+        or type(envelope.get("canonical_monthly_cap_nanousd")) is not int
+        or envelope["canonical_monthly_cap_nanousd"] != 50 * USD
+        or not isinstance(historical, list)
+        or len(historical) != 2
+        or any(
+            not isinstance(row, dict)
+            or not isinstance(row.get("id"), str)
+            or type(row.get("spent_nanousd")) is not int
+            for row in historical
+        )
+        or {row["id"]: row["spent_nanousd"] for row in historical}
+        != RECOVERY_HISTORICAL
+        or not isinstance(additional, list)
+        or len(additional) != 3
+        or any(not isinstance(value, str) for value in additional)
+        or set(additional) != expected_runs
+    ):
+        raise ValueError(
+            "explicit-none requires exact USD7/USD50, historical IDs and three prior runs"
+        )
+    if namespace.casefold() in reference["old_namespaces_denied_case_insensitive"]:
+        raise ValueError("explicit-none requires a fresh campaign namespace")
+
+
+def validate_none_prior_rows(db: sqlite3.Connection) -> None:
+    """Validate every prior identity and money type before SQLite can coerce sums."""
+    expected = {
+        row["id"]: row["run_id"]
+        for row in none_reference()["prior_requests_as_observed"]
+    }
+    runs = sorted(
+        set(expected.values())
+        - {"credential-smoke-out-openai", "credential-smoke-out-gemini"}
+    )
+    rows = db.execute(
+        "SELECT id,run_id,reserved,spent FROM requests WHERE id IN ("
+        + ",".join("?" for _ in expected)
+        + ") OR run_id IN ("
+        + ",".join("?" for _ in runs)
+        + ")",
+        [*expected, *runs],
+    ).fetchall()
+    if {row[0]: row[1] for row in rows} != expected or len(rows) != len(expected):
+        raise ValueError(
+            "explicit-none requires all ten exact prior request IDs and run associations"
+        )
+    if any(
+        type(reserved) is not int
+        or reserved <= 0
+        or (spent is not None and (type(spent) is not int or spent < 0))
+        for _, _, reserved, spent in rows
+    ):
+        raise ValueError("invalid explicit-none prior money amount")
+
+
+def same_json(left: Any, right: Any) -> bool:
+    """Functional equality never treats booleans or coerced numbers as aliases."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(
+            same_json(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            same_json(a, b) for a, b in zip(left, right, strict=True)
+        )
+    return bool(left == right)
+
+
+def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("explicit-none inputs contain a duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def validate_none_configuration(
+    plan: Plan, captured: dict[str, bytes], files: dict[str, str]
+) -> None:
+    """Allow exactly the reviewed default-to-none delta, before model coercion."""
+    reference = none_reference()
+    data = {
+        name: json.loads(value, object_pairs_hook=unique_json_object)
+        for name, value in captured.items()
+    }
+    admission = data["admission"]
+    if admission.get("controller_profile") != NONE_PROFILE:
+        raise ValueError("explicit-none requires its exact controller profile")
+    if files.get(NONE_REFERENCE_PATH) != NONE_REFERENCE_SHA256:
+        raise ValueError(
+            "explicit-none reference is missing from the frozen source manifest"
+        )
+    for key, expected in {
+        "common_worker_image": reference["images"]["worker"],
+        "gateway_image": reference["images"]["gateway"],
+        "gateway_route_projection_sha256": reference["gateway_route_projection_sha256"],
+        **reference["worker_dependency_versions"],
+    }.items():
+        if not same_json(admission.get(key), expected):
+            raise ValueError("explicit-none images, routes or dependencies changed")
+    if plan.worker_image != reference["images"]["worker"]:
+        raise ValueError("explicit-none worker image changed")
+    campaign = copy.deepcopy(data["campaign"])
+    for key in reference["allowed_identity_exclusions"]["campaign"]:
+        if key not in campaign:
+            raise ValueError("explicit-none campaign identity field is missing")
+        del campaign[key]
+    expected_campaign = copy.deepcopy(reference["functional_campaign"])
+    expected_campaign["budget_file"] = str(CANONICAL_LEDGER_FILE)
+    expected_campaign["participants"][1]["gateway"]["decision_reasoning_effort"] = (
+        "none"
+    )
+    # Only Gemini's absent/null effort retains its legacy omission semantics.
+    gemini_gateway = campaign.get("participants", [{}, {}, {}])[-1].get("gateway", {})
+    if gemini_gateway.get("decision_reasoning_effort") is None:
+        gemini_gateway.pop("decision_reasoning_effort", None)
+    if not same_json(campaign, expected_campaign):
+        raise ValueError(
+            "explicit-none campaign differs from the reviewed functional reference"
+        )
+    if (
+        hashlib.sha256(captured["decision_fixtures"]).hexdigest()
+        != reference["decision_fixtures_sha256"]
+    ):
+        raise ValueError("explicit-none decision fixture bytes changed")
+    raw_campaign = data["campaign"]
+    if (
+        benchmark.fixture_hash(
+            Path(raw_campaign["fixture"]), Path(raw_campaign["world_map"])
+        )
+        != reference["fixture_sha256"]
+        or file_hash(Path(raw_campaign["world_map"])) != reference["world_sha256"]
+    ):
+        raise ValueError("explicit-none fixture or world bytes changed")
+    for name in ("openai", "gemini"):
+        probe = copy.deepcopy(data[name])
+        for key in reference["allowed_identity_exclusions"]["probe"]:
+            if key not in probe or not owned_output(Path(probe[key]), plan.output):
+                raise ValueError(
+                    "explicit-none probe paths must be owned by the fresh output"
+                )
+            del probe[key]
+        recording = probe.get("recording", {})
+        for key in reference["allowed_identity_exclusions"]["probe_recording"]:
+            if key not in recording:
+                raise ValueError("explicit-none recording identity is missing")
+            if key == "path" and not owned_output(Path(recording[key]), plan.output):
+                raise ValueError(
+                    "explicit-none recording must be owned by the fresh output"
+                )
+            del recording[key]
+        expected_probe = copy.deepcopy(reference["functional_probe_controls"])
+        expected_probe["budget_file"] = str(CANONICAL_LEDGER_FILE)
+        expected_probe["credential_file"] = str(NONE_GATEWAY_CREDENTIAL_FILE)
+        expected_probe["gateway"] = copy.deepcopy(reference["gateway_profiles"][name])
+        if name == "openai":
+            expected_probe["gateway"]["decision_reasoning_effort"] = "none"
+        elif probe.get("gateway", {}).get("decision_reasoning_effort") is None:
+            probe["gateway"].pop("decision_reasoning_effort", None)
+        if not same_json(probe, expected_probe):
+            raise ValueError(
+                "explicit-none probe differs from the reviewed functional reference"
+            )
+
+
 def admitted_budget(
     ledger: Path, envelope: dict[str, Any], policy: str | None, namespace: str
 ) -> tuple[dict[str, int], int]:
@@ -799,7 +1028,8 @@ def admitted_budget(
         historical,
         envelope.get("additional_cost_run_ids", []),
         namespace,
-        require_additional_runs=policy == RECOVERY_POLICY,
+        require_additional_runs=policy in {RECOVERY_POLICY, NONE_POLICY},
+        policy=policy,
     )
     historical_total = sum(row["spent_nanousd"] for row in historical)
     historical_total += budget.pop("prior_extra_liability")
@@ -815,6 +1045,77 @@ def admitted_budget(
     if budget["available"] < 12 * USD:
         raise ValueError("monthly ledger lacks the admitted USD12 headroom")
     return budget, historical_total
+
+
+def claim_none_profile(
+    plan: Plan, captured: dict[str, bytes], admitted: dict[str, Any]
+) -> dict[str, Any]:
+    """Commit this one new controller-profile grant before entering any SDK."""
+    hashes = input_hashes(captured)
+    if hashes != admitted["input_sha256"] or any(
+        file_hash(path) != hashes[name] for name, path in input_paths(plan).items()
+    ):
+        raise ValueError("explicit-none inputs changed after admission")
+    data = {name: json.loads(value) for name, value in captured.items()}
+    if data["admission"].get("probe_outcome_policy") != NONE_POLICY:
+        raise ValueError("explicit-none claim requires its exact policy")
+    validate_none_configuration(plan, captured, source_files(data["source_manifest"]))
+    envelope = data["authorization"]
+    namespace = data["campaign"]["name"]
+    validate_none_envelope(envelope, namespace)
+    if (
+        not plan.canonical_ledger_file.is_file()
+        or plan.canonical_ledger_file.is_symlink()
+    ):
+        raise ValueError("the canonical ledger must already exist")
+    with (
+        sqlite_operation("m5.claim_none_profile"),
+        closing(
+            sqlite3.connect(
+                "file:" + quote(str(plan.canonical_ledger_file), safe="/") + "?mode=rw",
+                uri=True,
+            )
+        ) as db,
+        db,
+    ):
+        db.execute("PRAGMA synchronous=FULL")
+        db.execute("BEGIN IMMEDIATE")
+        budget = _ledger_snapshot_in_transaction(
+            db,
+            envelope["historical_requests"],
+            envelope["additional_cost_run_ids"],
+            namespace,
+            True,
+            NONE_POLICY,
+        )
+        liability = sum(row["spent_nanousd"] for row in envelope["historical_requests"])
+        liability += budget.pop("prior_extra_liability")
+        if liability + 6_980_000_000 > 7 * USD:
+            raise ValueError("prior pilot charges leave insufficient room inside USD7")
+        if budget["available"] < 12 * USD:
+            raise ValueError("monthly ledger lacks the admitted USD12 headroom")
+        db.execute(
+            "INSERT INTO records(kind,key,data) VALUES(?,?,?)",
+            (
+                NONE_CLAIM_KIND,
+                RECOVERY_CLAIM_KEY,
+                json.dumps(
+                    {
+                        "policy": NONE_POLICY,
+                        "controller_profile": NONE_PROFILE,
+                        "namespace": namespace,
+                        "input_sha256": hashes,
+                        "source_revision": data["source_manifest"]["revision"],
+                        "functional_reference_sha256": NONE_REFERENCE_SHA256,
+                        "prior_run_ids": sorted(envelope["additional_cost_run_ids"]),
+                        "historical_nanousd": liability,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ),
+        )
+    return {"budget": budget, "historical_nanousd": liability}
 
 
 def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str, Any]:
@@ -834,7 +1135,7 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
     data = {name: json.loads(value) for name, value in captured.items()}
     admission = data["admission"]
     policy = admission.get("probe_outcome_policy")
-    if policy not in (None, SHORT_DEADLINE_POLICY, RECOVERY_POLICY):
+    if policy not in (None, SHORT_DEADLINE_POLICY, RECOVERY_POLICY, NONE_POLICY):
         raise ValueError("unknown prospectively admitted probe outcome policy")
     if (
         admission.get("approved") is not True
@@ -852,9 +1153,13 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
     envelope = data["authorization"]
     source = data["source_manifest"]
     files = source_files(source)
+    if policy == NONE_POLICY:
+        validate_none_configuration(plan, captured, files)
     experiment = benchmark.Experiment.model_validate(data["campaign"])
     if policy == RECOVERY_POLICY:
         validate_recovery_envelope(envelope, experiment.name)
+    if policy == NONE_POLICY:
+        validate_none_envelope(envelope, experiment.name)
     if admission.get("source_revision") != source["revision"]:
         raise ValueError("root admission source revision differs")
     credential = experiment.gateway_credential
@@ -1469,10 +1774,10 @@ async def execute(plan: Plan) -> dict[str, Any]:
     admitted = preflight(plan, captured)
     assert_frozen_imports(json.loads(captured["source_manifest"]))
     with pilot_lease(plan.canonical_ledger_file):
-        if (
-            json.loads(captured["admission"]).get("probe_outcome_policy")
-            == RECOVERY_POLICY
-        ):
+        policy = json.loads(captured["admission"]).get("probe_outcome_policy")
+        if policy == NONE_POLICY:
+            admitted.update(claim_none_profile(plan, captured, admitted))
+        elif policy == RECOVERY_POLICY:
             admitted.update(claim_recovery(plan, captured, admitted))
         else:
             # Recheck the ledger under the lease: preflight ran before it, and a
