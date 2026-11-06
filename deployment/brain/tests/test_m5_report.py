@@ -244,6 +244,67 @@ def test_legacy_tolerance_does_not_accept_a_37ms_short_completed_run():
     assert not result["ready_for_review"]
 
 
+@pytest.mark.parametrize("require_completed", [False, True])
+@pytest.mark.parametrize(
+    "seconds,span,accepted",
+    [
+        (1800, 1800, True),
+        (1800, 1805, True),
+        (1800, 1805.001, False),
+        (1800, 3600, False),
+        (10, 15, True),
+        (10, 15.001, False),
+    ],
+)
+def test_completed_horizon_has_a_five_second_upper_bound(
+    seconds, span, accepted, require_completed
+):
+    args = evidence()
+    args[0]["plan"]["seconds"] = seconds
+    for index in range(2):
+        args[1][index]["events"][-2]["t_ms"] = round(span * 1000)
+        args[2][index].update(elapsed_seconds=span, observed_seconds=span)
+    result = reporter.review(*args, require_completed=require_completed)
+    assert result["ready_for_review"] is accepted
+    assert ("horizon_exceeded" in codes(result)) is not accepted
+    assert result["maximum_completed_seconds"] == seconds + 5
+
+
+@pytest.mark.parametrize("field", ["elapsed_seconds", "observed_seconds"])
+def test_worker_clock_overrun_alone_blocks_completed_acceptance(field):
+    args = evidence()
+    args[2][0][field] = 3600
+    assert "horizon_exceeded" in codes(reporter.review(*args))
+
+
+def test_sample_span_overrun_alone_blocks_completed_acceptance():
+    args = evidence()
+    args[1][0]["events"][-2]["t_ms"] = 3600000
+    assert "horizon_exceeded" in codes(reporter.review(*args))
+
+
+@pytest.mark.parametrize(
+    "reason,status", [("stalled", "failed"), ("budget_stop", "budget_stop")]
+)
+def test_upper_horizon_gate_does_not_relabel_failed_or_budget_outcomes(reason, status):
+    args = evidence()
+    args[1][0].update(status=status)
+    args[1][0]["events"][-1]["data"]["reason"] = reason
+    args[1][0]["events"][-2]["t_ms"] = 3600000
+    args[2][0].update(reason=reason, elapsed_seconds=3600, observed_seconds=3600)
+    result = reporter.review(*args)
+    assert result["ready_for_review"]
+    assert result["runs"][0]["status"] == status
+    assert "horizon_exceeded" not in codes(result)
+
+
+def test_tolerance_cannot_be_enlarged_to_conceal_a_double_length_run():
+    args = evidence()
+    args[0]["horizon_tolerance_seconds"] = 1800
+    with pytest.raises(ValueError, match="zero to five seconds"):
+        reporter.review(*args)
+
+
 def test_unknown_timeout_remains_a_liability_and_is_not_success_latency():
     args = evidence()
     failed = next(

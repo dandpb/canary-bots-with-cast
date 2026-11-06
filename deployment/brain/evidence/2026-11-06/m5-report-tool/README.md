@@ -100,6 +100,16 @@ saved XP and `reason=completed`. Without it, predeclared gameplay stops such as
 `deaths_limit`, `stalled`, `proposal_timeout` and `budget_stop` remain measured
 failed/budget outcomes. They are not discarded or relabeled successful.
 
+Every `completed` attempt, with or without `--require-completed`, must have its
+observed sample span and both worker clocks within
+`[plan.seconds, plan.seconds + horizon_tolerance_seconds]`. The default upper
+tolerance is five seconds: a1800-second run must cover1800–1805 seconds, and a
+10-second smoke10–15 seconds. A stricter tolerance can be predeclared alongside
+`plan` in the review envelope as `horizon_tolerance_seconds` in the range0–5.
+A larger value is rejected so an overrunning run cannot gain extra XP/time and
+still pass as the intended horizon. Failed/budget outcomes remain visible and
+are not subjected to completed-run acceptance.
+
 Exit0 means evidence consistency passed, exit2 means review findings. Missing
 attempts, mismatched fingerprints, gaps, short completed horizons, saved XP/level
 differences, image/cleanup gaps, inconsistent costs and cap excesses produce
@@ -170,3 +180,10 @@ because that input attestation did not explicitly supply `images_verified` or
 `resources_cleaned`; those flags were not invented to make it pass. Private
 review artifacts: `/home/daniel/canary-maintenance/m5-report-smoke-20261106T104425Z`.
 No game database, live provider or monthly ledger was opened by the report tool.
+
+An independent PR review then reproduced an overlong `completed` attempt being
+accepted: only the lower horizon bound had been checked. The follow-up fixes
+the upper bound for both default and free-qualification modes, including the
+sample span and each clock independently.42 reporter regressions and47 combined
+report/backoff/cache tests passed, along with Ruff and strict mypy. The3600-second
+case now fails against a1800-second plan;1805 seconds passes and1805.001 fails.

@@ -206,6 +206,16 @@ def review(
     require_completed: bool = False,
 ) -> dict[str, Any]:
     plan = experiment["plan"]
+    tolerance = experiment.get("horizon_tolerance_seconds", 5)
+    if (
+        type(tolerance) not in (int, float)
+        or not math.isfinite(tolerance)
+        or not 0 <= tolerance <= 5
+    ):
+        raise ValueError(
+            "Completed-horizon tolerance must be predeclared within zero to five seconds"
+        )
+    maximum_seconds = plan["seconds"] + tolerance
     expected = expected_runs(plan)
     participants = {p["name"]: p for p in plan["participants"]}
     findings: list[dict[str, Any]] = []
@@ -364,6 +374,18 @@ def review(
                     "horizon_short",
                     identity,
                     "Completion requires sample span and both worker clocks to reach the exact horizon",
+                )
+            if observed_ms > maximum_seconds * 1000 or any(
+                isinstance(v, (int, float))
+                and not isinstance(v, bool)
+                and math.isfinite(v)
+                and v > maximum_seconds
+                for v in clocks
+            ):
+                flag(
+                    "horizon_exceeded",
+                    identity,
+                    "Completed sample span and worker clocks exceed the predeclared horizon tolerance",
                 )
         elif require_completed:
             flag(
@@ -599,6 +621,9 @@ def review(
     return {
         "schema_version": 1,
         "campaign": plan["name"],
+        "horizon_seconds": plan["seconds"],
+        "horizon_tolerance_seconds": tolerance,
+        "maximum_completed_seconds": maximum_seconds,
         "ready_for_review": not findings,
         "financial_totals_complete": not any(
             f["code"]
