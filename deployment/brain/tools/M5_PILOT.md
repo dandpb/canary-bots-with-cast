@@ -71,6 +71,18 @@ probes and declared additional prior costs also consume the USD7 envelope.
 Single-candidate observations select locally and are counted as zero model
 attempts. Other observations must each produce exactly one ledger request.
 
+That is the default strict policy. Before any paid call, root may instead admit
+`probe_outcome_policy:"short_deadline_performance_v1"`. This frozen opt-in
+requires two 5-second model-choice responses to pass the existing route, usage
+and application contract, while short deadlines and their causal backoff remain
+negative controller-stack results. It does not retry probes or change deadlines.
+Its authorization envelope must set `max_total_nanousd:6980214600`, including
+historical and declared prior liabilities; each probe block remains capped at
+USD0.49. Unknown timeout charges retain their complete reservations and are
+reported as financially unfinished. See the [prospective contract](../evidence/2026-11-06/m5-short-deadline-policy.md)
+for evidence reconciliation and blocking conditions. Without this explicit
+policy, invalid decisions or unknown charges still stop before the game.
+
 Each scored participant receives the same isolated internal game/DB network,
 `<trial-directory>:/m5` audit mount and passive status query cadence
 (after 540 s, every 10 s). The observer is qualified for fixture-G Grizzle 65001;
