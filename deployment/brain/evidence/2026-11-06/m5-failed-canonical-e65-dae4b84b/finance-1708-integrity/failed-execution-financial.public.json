@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "campaign": "m5-og-20261106-dae4b84b",
+  "attempt_status": "failed_before_scored_game",
+  "snapshot_utc": "2026-11-06T17:08:42.922142+00:00",
+  "month": "2026-11",
+  "authority": "canary-bots-wsl_brain-state:/var/lib/canary-brain/state.sqlite3",
+  "canonical_budget_nanousd": {
+    "cap": 50000000000,
+    "spent": 539540325,
+    "reserved": 73038550,
+    "available": 49387421125
+  },
+  "providers": {
+    "openai": {
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "requests": [
+        {
+          "request_id": "0127734202e044e9aa93cc3261a82647",
+          "reserved_nanousd": 825375,
+          "spent_nanousd": 133900,
+          "state": "settled",
+          "recorded_phases": [
+            "reserved",
+            "finished"
+          ],
+          "recorded_error_classes": [],
+          "missing_terminal": false
+        },
+        {
+          "request_id": "742774dec9f94c4eb5c903b69bffe0aa",
+          "reserved_nanousd": 825500,
+          "spent_nanousd": 53400,
+          "state": "settled",
+          "recorded_phases": [
+            "reserved",
+            "finished"
+          ],
+          "recorded_error_classes": [],
+          "missing_terminal": false
+        },
+        {
+          "request_id": "c8f2779f524c49be9da807f71eeffd58",
+          "reserved_nanousd": 942250,
+          "spent_nanousd": null,
+          "state": "unknown",
+          "recorded_phases": [
+            "reserved",
+            "failed"
+          ],
+          "recorded_error_classes": [
+            "TimeoutError"
+          ],
+          "missing_terminal": false
+        }
+      ],
+      "request_count": 3,
+      "settled_requests": 2,
+      "unknown_requests": 1,
+      "known_spent_nanousd": 187300,
+      "unknown_reserved_nanousd": 942250,
+      "liability_nanousd": 1129550,
+      "within_probe_cap": true,
+      "financial_final": false,
+      "recording_sha256": "0edc8b7f4520ba97a59c48111a42b4a1c6a689ff468a9968f14e8f9b0e1750de"
+    },
+    "gemini": {
+      "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+      "requests": [
+        {
+          "request_id": "b91f101ecf4a4d7ea2315922365e4193",
+          "reserved_nanousd": 2414500,
+          "spent_nanousd": 175800,
+          "state": "settled",
+          "recorded_phases": [
+            "reserved",
+            "finished"
+          ],
+          "recorded_error_classes": [],
+          "missing_terminal": false
+        },
+        {
+          "request_id": "952c7a462a36461485d7fe37f3ee8444",
+          "reserved_nanousd": 2414800,
+          "spent_nanousd": null,
+          "state": "unknown",
+          "recorded_phases": [
+            "reserved"
+          ],
+          "recorded_error_classes": [],
+          "missing_terminal": true
+        }
+      ],
+      "request_count": 2,
+      "settled_requests": 1,
+      "unknown_requests": 1,
+      "known_spent_nanousd": 175800,
+      "unknown_reserved_nanousd": 2414800,
+      "liability_nanousd": 2590600,
+      "within_probe_cap": true,
+      "financial_final": false,
+      "recording_sha256": "044f50250fb68890db0e44bce01a1d8e98f2d203733bf5a03eaa025cebab3f04"
+    }
+  },
+  "attempt_request_count": 5,
+  "attempt_known_spent_nanousd": 363100,
+  "attempt_unknown_reserved_nanousd": 3357050,
+  "attempt_liability_nanousd": 3720150,
+  "historical_requests": 2,
+  "historical_known_spent_nanousd": 214600,
+  "pilot_including_historical_liability_nanousd": 3934750,
+  "scored_game_ledger_requests": 0,
+  "financial_final": false,
+  "total_unknown_requests_in_authority": 92,
+  "total_unknown_reserved_nanousd": 73038550,
+  "unknown_semantics": "Unsettled reservations are liabilities, not zero spend or evidence of an active upstream request.",
+  "sqlite_check": {
+    "kind": "integrity_check",
+    "results": [
+      "ok"
+    ]
+  },
+  "baseline_comparison": {
+    "reference_snapshot_utc": "2026-11-06T17:02:36.713727+00:00",
+    "reference_private_financial_export_sha256": "35992266220dcfc2896190172f636b4262e666baa660c3a12e01067b548abb79",
+    "scope": "Only the financial columns captured at the reference cut; no earlier complete baseline is asserted.",
+    "reference_row_count": 10126,
+    "current_row_count": 10211,
+    "row_count_nondecrease": true,
+    "missing_reference_rows": 0,
+    "known_rows_at_reference": 10034,
+    "known_rows_with_identical_financial_values": 10034,
+    "unknown_rows_at_reference": 92,
+    "unknown_rows_still_identical": 92,
+    "unknown_rows_now_settled": 0,
+    "prior_selected_request_count": 7,
+    "prior_selected_rows_identical": true
+  },
+  "filesystem_metadata": {
+    "reader_uid": 0,
+    "reader_euid": 0,
+    "sqlite_version": "3.46.1",
+    "directory": {
+      "exists": true,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o755",
+      "size": 4096
+    },
+    "database": {
+      "exists": true,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o600",
+      "size": 7168000
+    },
+    "wal": {
+      "exists": true,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o600",
+      "size": 0
+    },
+    "shm": {
+      "exists": true,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o600",
+      "size": 32768
+    },
+    "metadata_not_transactional": true
+  },
+  "authority_container_id": "13ad6bb04ce1a4cb360124bacc8386e577875bb40cb6d9572bb5d7b232937e17",
+  "authority_started_at": "2026-11-06T16:34:04.171104657Z",
+  "source_mount_readonly": false,
+  "reader_lifecycle": {
+    "container_created": false,
+    "container_removed": false,
+    "used_existing_brain": true,
+    "connection_readonly": true
+  },
+  "original_failure_exception": {
+    "class": "OperationalError",
+    "sqlite_errorcode": null,
+    "sqlite_errorname": null,
+    "detail_source": "Executor retained the class only; exact original SQLite message/code is unavailable in financial evidence. Arbitrary KV/state was not queried."
+  },
+  "findings": [],
+  "canonical_snapshot_sha256": "7c93705c81d1136ac94e9cc636fb7d94903aeec5019e27bd1177b27f313f158d",
+  "read_only_sql_sha256": "1bcd666ab567f7c170f76107f074e7bf24d49b8aeebf0bbc6200c035ce02cb65",
+  "read_only_reader_source_sha256": "afe6059c8b5cca14139e14fa5fd5eec6655a99a9a6f16643cf3a5315338ca288",
+  "financial_audit_provider_calls": 0,
+  "financial_audit_gateway_api_calls": 0,
+  "canonical_ledger_writes": 0,
+  "reservations_released_or_settled_by_audit": 0,
+  "execution_retry_performed": false,
+  "interpretation": "No Gemini-zero claim and no campaign qualification. Reconcile the failed single invocation; do not retry under its original authorization."
+}

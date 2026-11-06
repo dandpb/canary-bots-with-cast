@@ -1,0 +1,190 @@
+{
+  "provider": "gemini",
+  "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+  "recording_status_preserved": "failed",
+  "original_manifest": {
+    "bot_id": 65001,
+    "configuration_sha256": null,
+    "experiment": "decision-fixtures:3f5394354a1a43ef8072c99256c4cbb3",
+    "initial_sha256": "21d2d01e6f8911370360b10ae463c992ff8e3ee77a9714b41be549c1fcb56ca1",
+    "lineage": "decision-fixture:65001",
+    "memory_mode": "frozen",
+    "model": "gemini-3.5-flash-lite",
+    "participant": "canary-gemini",
+    "provider": "gemini",
+    "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+    "sample_ms": 1000,
+    "scenario": "recorded-decisions-real-inference",
+    "source_revision": "unknown",
+    "synthetic": true,
+    "version": 1
+  },
+  "fixture_scope": "Synthetic decision fixtures, not gameplay or an XP counterfactual",
+  "scored_gameplay": false,
+  "gameplay_xp_measured": false,
+  "event_count": 16,
+  "event_kinds": {
+    "segment": 2,
+    "decision": 8,
+    "request": 6
+  },
+  "request_phase_counts": {
+    "reserved": 2,
+    "finished": 1,
+    "skipped": 3
+  },
+  "reserved_http_attempts": 2,
+  "reserved_request_ids": [
+    "952c7a462a36461485d7fe37f3ee8444",
+    "b91f101ecf4a4d7ea2315922365e4193"
+  ],
+  "reserved_without_recorded_terminal": [
+    "952c7a462a36461485d7fe37f3ee8444"
+  ],
+  "request_events": [
+    {
+      "id": 3,
+      "key": "request:b91f101ecf4a4d7ea2315922365e4193:reserved",
+      "segment": "e32af3729a6d420ea1fb5d57f71fa54c",
+      "t_ms": 43,
+      "wall": 1793983999.7803574,
+      "kind": "request",
+      "data": {
+        "deadline_ms": 5000,
+        "decision_id": "b701dcbb606f4d3da83620648b286d9b",
+        "endpoint": "responses",
+        "phase": "reserved",
+        "pricing_version": "official-standard-text-2026-11-06-gemini",
+        "request_id": "b91f101ecf4a4d7ea2315922365e4193",
+        "requested_model": "canary-gemini",
+        "reserved_nanousd": 2414500
+      }
+    },
+    {
+      "id": 4,
+      "key": "request:b91f101ecf4a4d7ea2315922365e4193:finished",
+      "segment": "e32af3729a6d420ea1fb5d57f71fa54c",
+      "t_ms": 1263,
+      "wall": 1793984001.0001833,
+      "kind": "request",
+      "data": {
+        "decision_id": "b701dcbb606f4d3da83620648b286d9b",
+        "effective_model": "gemini-3.5-flash-lite",
+        "elapsed_ms": 1220,
+        "endpoint": "responses",
+        "gateway": {
+          "deployment_id": "canary-gemini-flash-lite-20261105",
+          "identity_source": "pinned_gateway_mapping",
+          "observed_model": "canary-gemini",
+          "request_id": "a20915fc-4137-404a-ae1c-86aa46466c36",
+          "version": "1.108.0"
+        },
+        "phase": "finished",
+        "pricing_version": "official-standard-text-2026-11-06-gemini",
+        "provider_request_id": "resp_ctKSmLqf_1VJjCkHCGz8g6CVySyJC78c_1VeoVMS6QcfbNMqmqzCC2wb-c6MuXco1k1yh3epv6RBlKnmSv49vBa4K2DiWAVGTsLacdrO-47ix5Jn__tusF2FmarkGfyhYYRqHE1KTftc-2yG0_-JnFn0Vj7B6QQxcyAQpIDHclwZhm9UoOKaNF6YpVAvIkQ3Ma6FAgwRZBzqNCwRF4TfKxdX6xqRLTUgXjBySiensrgjjeWJDguVU6PgnLXWEXunYXBhrlqGuErBuM3HBLUXJX0n3avXnPyCRvcujyWZxCBQtONbBO-C0ISvPm-HXszhr4zQYu0kh8V3kZWl87Eb",
+        "request_id": "b91f101ecf4a4d7ea2315922365e4193",
+        "requested_model": "canary-gemini",
+        "reserved_nanousd": 0,
+        "spent_nanousd": 175800,
+        "usage": {
+          "cost": null,
+          "input_tokens": 411,
+          "input_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0,
+            "cached_tokens_details": null,
+            "image_tokens": null,
+            "text_tokens": 411,
+            "video_tokens": null
+          },
+          "output_tokens": 21,
+          "output_tokens_details": {
+            "audio_tokens": null,
+            "reasoning_tokens": 0,
+            "text_tokens": 21
+          },
+          "total_tokens": 432
+        }
+      }
+    },
+    {
+      "id": 7,
+      "key": "request:952c7a462a36461485d7fe37f3ee8444:reserved",
+      "segment": "e32af3729a6d420ea1fb5d57f71fa54c",
+      "t_ms": 1286,
+      "wall": 1793984001.023687,
+      "kind": "request",
+      "data": {
+        "deadline_ms": 5000,
+        "decision_id": "6ead0a8c947d4031bf09f816628f3eb4",
+        "endpoint": "responses",
+        "phase": "reserved",
+        "pricing_version": "official-standard-text-2026-11-06-gemini",
+        "request_id": "952c7a462a36461485d7fe37f3ee8444",
+        "requested_model": "canary-gemini",
+        "reserved_nanousd": 2414800
+      }
+    },
+    {
+      "id": 11,
+      "key": "request:1f1dc7d4caaf49838551e3af1eab4252:skipped",
+      "segment": "e32af3729a6d420ea1fb5d57f71fa54c",
+      "t_ms": 2315,
+      "wall": 1793984002.052713,
+      "kind": "request",
+      "data": {
+        "deadline_ms": 1000,
+        "decision_id": "378553d7aa024a849937be8281ed2d47",
+        "endpoint": "responses",
+        "phase": "skipped",
+        "pricing_version": "official-standard-text-2026-11-06-gemini",
+        "reason": "backoff",
+        "request_id": "1f1dc7d4caaf49838551e3af1eab4252",
+        "requested_model": "canary-gemini",
+        "reserved_nanousd": 0
+      }
+    },
+    {
+      "id": 13,
+      "key": "request:0cab19a8271043b1a4c2424472f46a3c:skipped",
+      "segment": "e32af3729a6d420ea1fb5d57f71fa54c",
+      "t_ms": 2316,
+      "wall": 1793984002.0530236,
+      "kind": "request",
+      "data": {
+        "deadline_ms": 1500,
+        "decision_id": "f4202bae402c4446995f6926682515ea",
+        "endpoint": "responses",
+        "phase": "skipped",
+        "pricing_version": "official-standard-text-2026-11-06-gemini",
+        "reason": "backoff",
+        "request_id": "0cab19a8271043b1a4c2424472f46a3c",
+        "requested_model": "canary-gemini",
+        "reserved_nanousd": 0
+      }
+    },
+    {
+      "id": 15,
+      "key": "request:7b19e9ad4d84420282f51eb4baa02db2:skipped",
+      "segment": "e32af3729a6d420ea1fb5d57f71fa54c",
+      "t_ms": 2316,
+      "wall": 1793984002.0533504,
+      "kind": "request",
+      "data": {
+        "deadline_ms": 1000,
+        "decision_id": "8a480b5755a84aa5b54e55906f4e8a58",
+        "endpoint": "responses",
+        "phase": "skipped",
+        "pricing_version": "official-standard-text-2026-11-06-gemini",
+        "reason": "backoff",
+        "request_id": "7b19e9ad4d84420282f51eb4baa02db2",
+        "requested_model": "canary-gemini",
+        "reserved_nanousd": 0
+      }
+    }
+  ],
+  "archive": "gemini/gemini-decisions.replay.zip",
+  "archive_sha256": "bd5d42db1deb8caecd1ac5f75c7832de9ef187891eb96206e416c80d8484330e",
+  "original_recording_sha256": "87fb8292f8b4a36045f7a12767075e65f3392d9b5c9e9431c2b513d2d05189f7",
+  "qualified_gameplay": false
+}

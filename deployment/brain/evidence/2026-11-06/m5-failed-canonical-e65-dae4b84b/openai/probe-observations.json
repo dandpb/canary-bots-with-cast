@@ -1,0 +1,261 @@
+{
+  "provider": "openai",
+  "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+  "recording_status_preserved": "failed",
+  "original_manifest": {
+    "bot_id": 65001,
+    "configuration_sha256": null,
+    "experiment": "decision-fixtures:e9b235a5fcd24566b020fc332cd44e0d",
+    "initial_sha256": "21d2d01e6f8911370360b10ae463c992ff8e3ee77a9714b41be549c1fcb56ca1",
+    "lineage": "decision-fixture:65001",
+    "memory_mode": "frozen",
+    "model": "gpt-6-luna",
+    "participant": "canary-openai",
+    "provider": "openai",
+    "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+    "sample_ms": 1000,
+    "scenario": "recorded-decisions-real-inference",
+    "source_revision": "unknown",
+    "synthetic": true,
+    "version": 1
+  },
+  "fixture_scope": "Synthetic decision fixtures, not gameplay or an XP counterfactual",
+  "scored_gameplay": false,
+  "gameplay_xp_measured": false,
+  "event_count": 19,
+  "event_kinds": {
+    "segment": 2,
+    "decision": 9,
+    "request": 8
+  },
+  "request_phase_counts": {
+    "reserved": 3,
+    "finished": 2,
+    "failed": 1,
+    "skipped": 2
+  },
+  "reserved_http_attempts": 3,
+  "reserved_request_ids": [
+    "0127734202e044e9aa93cc3261a82647",
+    "742774dec9f94c4eb5c903b69bffe0aa",
+    "c8f2779f524c49be9da807f71eeffd58"
+  ],
+  "reserved_without_recorded_terminal": [],
+  "request_events": [
+    {
+      "id": 3,
+      "key": "request:0127734202e044e9aa93cc3261a82647:reserved",
+      "segment": "c7b6581f244d4b719836b4c2c7b657e3",
+      "t_ms": 74,
+      "wall": 1793983993.3562431,
+      "kind": "request",
+      "data": {
+        "deadline_ms": 5000,
+        "decision_id": "ed9cdb6382e947ef81d32ad1310bfd71",
+        "endpoint": "responses",
+        "phase": "reserved",
+        "pricing_version": "official-standard-text-2026-11-06-openai",
+        "request_id": "0127734202e044e9aa93cc3261a82647",
+        "requested_model": "canary-openai",
+        "reserved_nanousd": 825375
+      }
+    },
+    {
+      "id": 4,
+      "key": "request:0127734202e044e9aa93cc3261a82647:finished",
+      "segment": "c7b6581f244d4b719836b4c2c7b657e3",
+      "t_ms": 4213,
+      "wall": 1793983997.4946613,
+      "kind": "request",
+      "data": {
+        "decision_id": "ed9cdb6382e947ef81d32ad1310bfd71",
+        "effective_model": "gpt-6-luna",
+        "elapsed_ms": 4138,
+        "endpoint": "responses",
+        "gateway": {
+          "deployment_id": "canary-openai-luna-20261105",
+          "identity_source": "pinned_gateway_mapping",
+          "observed_model": "canary-openai",
+          "request_id": "c0d5dc3c-d369-48dd-8300-2cecdddf183a",
+          "version": "1.108.0"
+        },
+        "phase": "finished",
+        "pricing_version": "official-standard-text-2026-11-06-openai",
+        "provider_request_id": "resp_iTznP25Eoqibux9G1cjqV6z0f4O7eVdULhAdyRjWEimzBLBNzbx9rVpXTXoV-V6CQAiwZI_7dcUv3SV0NdS2_bv-PFAMdVJ_jpcT1MkfJuHw63ptKMBHItk9Iua4aa4kV_b6cl5i-0C2TU8X4BR7b2627hnJxUIXrKHBzx5I3cWiCIVb6sugOzqkwiHB_ViHPWNsZ3cTE_7diwn2RGuZEnQfkduVX0Dox-dXkAxJooQRVdKc4np9wO3ZD68hcP5hWf8GyWNBPaQAKv_Uc5wbHqBzDi5zqqeKr7ITofjZm6skhH5GQz1ZByb_vXd2AvMQBqUXuupngAwUdhEIJwtRc8-3fOcTLvFXjsGRV-PZfaHo93HDtcUd39perFoyn-AjTvII",
+        "request_id": "0127734202e044e9aa93cc3261a82647",
+        "requested_model": "canary-openai",
+        "reserved_nanousd": 0,
+        "spent_nanousd": 133900,
+        "usage": {
+          "cost": null,
+          "input_tokens": 429,
+          "input_tokens_details": {
+            "audio_tokens": null,
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "cached_tokens_details": null,
+            "image_tokens": null,
+            "text_tokens": null,
+            "video_tokens": null
+          },
+          "output_tokens": 182,
+          "output_tokens_details": {
+            "audio_tokens": null,
+            "reasoning_tokens": 159,
+            "text_tokens": null
+          },
+          "total_tokens": 611
+        }
+      }
+    },
+    {
+      "id": 7,
+      "key": "request:742774dec9f94c4eb5c903b69bffe0aa:reserved",
+      "segment": "c7b6581f244d4b719836b4c2c7b657e3",
+      "t_ms": 4235,
+      "wall": 1793983997.5170767,
+      "kind": "request",
+      "data": {
+        "deadline_ms": 5000,
+        "decision_id": "f4ca9fa71d3342c597fefc03247dd0ae",
+        "endpoint": "responses",
+        "phase": "reserved",
+        "pricing_version": "official-standard-text-2026-11-06-openai",
+        "request_id": "742774dec9f94c4eb5c903b69bffe0aa",
+        "requested_model": "canary-openai",
+        "reserved_nanousd": 825500
+      }
+    },
+    {
+      "id": 8,
+      "key": "request:742774dec9f94c4eb5c903b69bffe0aa:finished",
+      "segment": "c7b6581f244d4b719836b4c2c7b657e3",
+      "t_ms": 5223,
+      "wall": 1793983998.5553071,
+      "kind": "request",
+      "data": {
+        "decision_id": "f4ca9fa71d3342c597fefc03247dd0ae",
+        "effective_model": "gpt-6-luna",
+        "elapsed_ms": 988,
+        "endpoint": "responses",
+        "gateway": {
+          "deployment_id": "canary-openai-luna-20261105",
+          "identity_source": "pinned_gateway_mapping",
+          "observed_model": "canary-openai",
+          "request_id": "3f11ea72-5d53-42fd-a814-d1b492d00d4c",
+          "version": "1.108.0"
+        },
+        "phase": "finished",
+        "pricing_version": "official-standard-text-2026-11-06-openai",
+        "provider_request_id": "resp_nvSyqWollU1U_0ex9_63OsS2mYAh8PojLAUU8nb8Ql-qiFbJ2ejtklIj8i0XlbEB4OrwjQmPZszBIas-GLCTI6j_OLo81HFQIDqI_mfyAP6LDcjuyxSSZxzegQEw_GGWm1ueNqCZQQQUOeBRE2WMJ7HZD7inVgaB3WnxDciqtJofMQQmtRd0voZLwq50fl4NWKzTem1H8dE3VIFjKwAnAjOEQv8nDWaXcshsMQJK3oXycreByGdUYIDcvotZAl8g-7mbKlgGcfmfgCx8DbB8h2nPSTSQxQUZxW_q4ftdCTDdXnwQq9Y_5HPl_9wy0dVsqz4OPhoJqyyQ3EWdqxlgS2zG0h2LQRumRJZ4yhP-MLtrUaBAikgRrj4YcvO3HFJuqcH7",
+        "request_id": "742774dec9f94c4eb5c903b69bffe0aa",
+        "requested_model": "canary-openai",
+        "reserved_nanousd": 0,
+        "spent_nanousd": 53400,
+        "usage": {
+          "cost": null,
+          "input_tokens": 429,
+          "input_tokens_details": {
+            "audio_tokens": null,
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "cached_tokens_details": null,
+            "image_tokens": null,
+            "text_tokens": null,
+            "video_tokens": null
+          },
+          "output_tokens": 21,
+          "output_tokens_details": {
+            "audio_tokens": null,
+            "reasoning_tokens": 0,
+            "text_tokens": null
+          },
+          "total_tokens": 450
+        }
+      }
+    },
+    {
+      "id": 13,
+      "key": "request:c8f2779f524c49be9da807f71eeffd58:reserved",
+      "segment": "c7b6581f244d4b719836b4c2c7b657e3",
+      "t_ms": 5249,
+      "wall": 1793983998.5816216,
+      "kind": "request",
+      "data": {
+        "deadline_ms": 1000,
+        "decision_id": "690ddf2e3bb84a8ca63fd5f448caa93a",
+        "endpoint": "responses",
+        "phase": "reserved",
+        "pricing_version": "official-standard-text-2026-11-06-openai",
+        "request_id": "c8f2779f524c49be9da807f71eeffd58",
+        "requested_model": "canary-openai",
+        "reserved_nanousd": 942250
+      }
+    },
+    {
+      "id": 14,
+      "key": "request:c8f2779f524c49be9da807f71eeffd58:failed",
+      "segment": "c7b6581f244d4b719836b4c2c7b657e3",
+      "t_ms": 6240,
+      "wall": 1793983999.572149,
+      "kind": "request",
+      "data": {
+        "deadline_expired_on_error": true,
+        "deadline_ms": 1000,
+        "decision_id": "690ddf2e3bb84a8ca63fd5f448caa93a",
+        "elapsed_ms": 990,
+        "endpoint": "responses",
+        "error": "TimeoutError",
+        "phase": "failed",
+        "pricing_version": "official-standard-text-2026-11-06-openai",
+        "request_id": "c8f2779f524c49be9da807f71eeffd58",
+        "requested_model": "canary-openai",
+        "reserved_nanousd": 942250,
+        "timeout_origin": "outer_deadline",
+        "unsettled": true
+      }
+    },
+    {
+      "id": 16,
+      "key": "request:139d76e4445c4ca399b726090d3958d6:skipped",
+      "segment": "c7b6581f244d4b719836b4c2c7b657e3",
+      "t_ms": 6240,
+      "wall": 1793983999.5727026,
+      "kind": "request",
+      "data": {
+        "deadline_ms": 1500,
+        "decision_id": "2f43dc30a1cc472d82cf513d33e5d6c6",
+        "endpoint": "responses",
+        "phase": "skipped",
+        "pricing_version": "official-standard-text-2026-11-06-openai",
+        "reason": "backoff",
+        "request_id": "139d76e4445c4ca399b726090d3958d6",
+        "requested_model": "canary-openai",
+        "reserved_nanousd": 0
+      }
+    },
+    {
+      "id": 18,
+      "key": "request:7ca92f1f529642459ccaa938bb91f38b:skipped",
+      "segment": "c7b6581f244d4b719836b4c2c7b657e3",
+      "t_ms": 6241,
+      "wall": 1793983999.5730538,
+      "kind": "request",
+      "data": {
+        "deadline_ms": 1000,
+        "decision_id": "0135bdd045324946b28a3185af52afe8",
+        "endpoint": "responses",
+        "phase": "skipped",
+        "pricing_version": "official-standard-text-2026-11-06-openai",
+        "reason": "backoff",
+        "request_id": "7ca92f1f529642459ccaa938bb91f38b",
+        "requested_model": "canary-openai",
+        "reserved_nanousd": 0
+      }
+    }
+  ],
+  "archive": "openai/openai-decisions.replay.zip",
+  "archive_sha256": "b04e8cf712b59eff4eff297440492792fdefe12af8b7c76a20ab7ca2ccf733c8",
+  "original_recording_sha256": "fe5d63273527e1121f6d84d9a6d7613dc8c69c280cc311a5615462b05ff4e7b5",
+  "qualified_gameplay": false
+}
