@@ -178,11 +178,13 @@ def container_identity() -> tuple[str, list[dict[str, Any]]]:
     name = socket.gethostname()
     mounts = json.loads(
         subprocess.check_output(
-            ["docker", "inspect", "--format", "{{json .Mounts}}", name], text=True
+            ["docker", "inspect", "--format", "{{json .Mounts}}", name],
+            cwd="/",
+            text=True,
         )
     )
     image = subprocess.check_output(
-        ["docker", "inspect", "--format", "{{.Image}}", name], text=True
+        ["docker", "inspect", "--format", "{{.Image}}", name], cwd="/", text=True
     ).strip()
     return image, mounts
 
@@ -595,6 +597,7 @@ async def run_attested_campaign(experiment: benchmark.Experiment) -> Any:
                     "--format",
                     "{{.Image}}",
                 ],
+                cwd="/",
                 text=True,
             ).strip()
             if actual != experiment.database_image:
