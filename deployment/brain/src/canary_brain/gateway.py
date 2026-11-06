@@ -24,10 +24,21 @@ class GatewayConfiguration(BaseModel):
     configuration_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     decision_api: Literal["responses", "decisions"] = "responses"
     reasoning: bool = False
+    decision_reasoning_effort: (
+        Literal["none", "low", "medium", "high", "xhigh", "max"] | None
+    ) = None
     prices: Prices
 
     @model_validator(mode="after")
     def endpoint(self) -> GatewayConfiguration:
+        if self.decision_reasoning_effort is not None and (
+            self.provider != "openai"
+            or self.decision_api != "responses"
+            or self.reasoning
+        ):
+            raise ValueError(
+                "decision_reasoning_effort requires OpenAI Responses and reasoning=false"
+            )
         if self.decision_api == "decisions" and self.prices.output_nanousd:
             raise ValueError(
                 "billable Decisions output has no enforced token bound; use responses"
@@ -68,6 +79,13 @@ class GatewayProvider(Provider):
         body = dict(body)
         if not self.gateway.reasoning:
             body.pop("reasoning", None)
+        if (
+            self.gateway.decision_reasoning_effort is not None
+            and endpoint == "responses"
+            and body.get("tool_choice") == {"type": "function", "name": "choose_action"}
+        ):
+            # Preserve the explicit decision opt-in after the legacy planning strip.
+            body["reasoning"] = {"effort": self.gateway.decision_reasoning_effort}
         raw = await resource.with_raw_response.create(
             **body,
             extra_headers={
@@ -87,6 +105,38 @@ class GatewayProvider(Provider):
             "request_id": raw.headers.get("x-litellm-call-id"),
             "version": self.gateway.version,
         }
+        if endpoint == "responses":
+            # Only bounded structural diagnostics reach the recorder, never output.
+            status = data.get("status")
+            if isinstance(status, str) and status in {
+                "completed",
+                "failed",
+                "in_progress",
+                "cancelled",
+                "queued",
+                "incomplete",
+            }:
+                data["gateway"]["response_status"] = status
+            details = data.get("incomplete_details")
+            reason = details.get("reason") if isinstance(details, dict) else None
+            if isinstance(reason, str) and reason in {
+                "max_output_tokens",
+                "max_messages",
+                "content_filter",
+                "steered",
+            }:
+                data["gateway"]["incomplete_reason"] = reason
+            output = data.get("output")
+            if isinstance(output, list):
+                calls = [
+                    item
+                    for item in output
+                    if isinstance(item, dict) and item.get("type") == "function_call"
+                ]
+                data["gateway"]["function_call_count"] = len(calls)
+                data["gateway"]["single_choose_action"] = (
+                    len(calls) == 1 and calls[0].get("name") == "choose_action"
+                )
         observed_model = data.get("model")
         data["gateway"]["observed_model"] = observed_model
         data["gateway"]["identity_source"] = (
@@ -156,6 +206,9 @@ class GatewayProvider(Provider):
             "tools": [tool],
             "tool_choice": {"type": "function", "name": "choose_action"},
         }
+        if self.gateway.decision_reasoning_effort is not None:
+            # Include these bytes in the shared pre-transmission reservation bound.
+            body["reasoning"] = {"effort": self.gateway.decision_reasoning_effort}
         if self.gateway.provider == "gemini":
             # The pinned Gemini OpenAI-tool mapper removes JSON Schema fields.
             # A provider-native override is merged after that mapping. The outer

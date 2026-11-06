@@ -9,6 +9,13 @@ It does not perform provider SDK translation or own a second financial ledger.
 For initial gateway/worker configuration, start with the
 [Portuguese setup guide](../SETUP.pt-BR.md#7-preparar-o-benchmark-e-autorizar-a-execução-paga).
 These tools being integrated does not authorize the paid pilot.
+The optional `gateway.decision_reasoning_effort` controls only OpenAI Responses
+decisions. Its default `null` preserves omission; it never implicitly disables
+the provider's default reasoning. Explicit values require `reasoning:false`
+and a newly frozen worker profile. See the [setup reference and model-specific
+support](../SETUP.pt-BR.md#4-cadastrar-credenciais-e-associar-modelos).
+This option changes neither the 256-token decision cap nor deadlines, prices,
+acceptance rules or an existing campaign's authorization.
 For a reproducible private-gateway build/serve/cleanup using tracked files,
 follow [gateway provisioning](../SETUP.pt-BR.md#4-cadastrar-credenciais-e-associar-modelos).
 The launcher refuses an existing `gateway` alias and never sends inference.
@@ -48,6 +55,17 @@ See [SQLite descriptor and diagnostic safety](../evidence/2026-11-06/sqlite-posi
 The frozen source export must include the new `canary_brain/sqlite_files.py`
 module with the other Python modules. This fix does not authorize replaying or
 replacing a charged attempt; a fresh execution requires separate root admission.
+
+Finished Responses requests record structural diagnostics in `gateway`:
+allowlisted `response_status` and `incomplete_reason`, `function_call_count`,
+and `single_choose_action` (exactly one function call named `choose_action`).
+Unknown status/reason strings are omitted. These fields contain no output text,
+arguments or raw response metadata; they do not establish a valid choice or
+successful execution. An incomplete response without the required choice
+still fails, while trustworthy usage is settled and missing usage retains its
+reservation. As documented in the [OpenAI reasoning guide](https://developers.openai.com/api/docs/guides/reasoning)
+(checked 2026-11-06), the output cap includes reasoning tokens. Reaching 256
+alone does not prove truncation, and reasoning tokens must not be billed twice.
 
 The root admission must have `approved:true`, `read_only_preparation:false`,
 all six named free/gateway gates true, the exact `source_revision`, and
