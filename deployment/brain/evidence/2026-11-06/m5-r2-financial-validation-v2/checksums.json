@@ -1,0 +1,7 @@
+{
+  ".gitattributes": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+  "README.md": "b64e29eba6a997adc5ef3ee28b11e64678f5878f2f6a025aca3fe6c219f51da7",
+  "supplement-manifest.json": "c00d2d701652b591c1dbed3a454374448925d2e638c385e3a0e4b6dec38f2b68",
+  "test_verify_financial_v2.py": "4aee7dfbba5ee514950afa182f460c7df9db3d28aa459fb1bd449a8df152bab8",
+  "verify_financial_v2.py": "98af4f9e0568dfda9d3a24c25a5bafa5ef78a08f1df839fe88745e23141360b6"
+}
