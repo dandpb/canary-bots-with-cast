@@ -31,12 +31,17 @@ elif arguments[0] == 'inspect':
     print('[]' if '{{json .Mounts}}' in arguments else 'sha256:'+'1'*64)
 elif arguments[0] == 'stop':
     print('a'*64)
+elif arguments[0] in ('container','network'):
+    if arguments[1] == 'inspect':
+        print(json.dumps({'id':arguments[-1],'project':'canary-bench-'+'e'*20}))
+    else:
+        assert arguments[1] == 'ls'
 else:
     raise SystemExit('unexpected fake Docker operation')
 """
 
 
-HELPER = r"""import asyncio, json, os, shutil, subprocess, sys
+HELPER = r"""import asyncio, hashlib, json, os, shutil, subprocess, sys
 from pathlib import Path
 from unittest.mock import patch
 from canary_brain import benchmark, runtime
@@ -103,10 +108,14 @@ elif mode == 'pilot_identity':
 elif mode == 'pilot_attestation':
     async def fake_campaign(config, live):
         assert live
-        harness = benchmark.DockerFixture(config,base/'attested','e'*32)
+        config.output.mkdir()
+        run_id = f'{config.name}:native:0'
+        harness = benchmark.DockerFixture(config,config.output/'native-0',hashlib.sha256(run_id.encode()).hexdigest())
         harness.prepare(config.participants[0])
         harness.start_database()
         harness.close()
+        assert pilot.resource_metadata('a'*64,'container')['id'] == 'a'*64
+        assert pilot.resource_metadata('b'*64,'network')['id'] == 'b'*64
         return {'offline_fake_only':True}
     with patch.object(benchmark,'run_campaign',fake_campaign):
         assert asyncio.run(pilot.run_attested_campaign(experiment)) == {'offline_fake_only':True}
@@ -168,6 +177,13 @@ def test_docker_subprocesses_use_stable_cwd_from_invalid_parent(tmp_path, mode):
     elif mode == "pilot_identity":
         assert len(calls) == 2 and all(args[0] == "inspect" for args in calls)
     elif mode == "pilot_attestation":
-        assert any(args[0] == "inspect" and args[-1] == "{{.Image}}" for args in calls)
+        assert all(
+            any(args[:2] == [kind, "inspect"] for args in calls)
+            for kind in ("container", "network")
+        )
+        assert all(
+            any(args[:2] == [kind, "ls"] for args in calls)
+            for kind in ("container", "network")
+        )
     else:
         assert any(args[0] == "stop" for args in calls)

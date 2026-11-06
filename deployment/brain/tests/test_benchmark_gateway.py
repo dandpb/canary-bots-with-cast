@@ -414,7 +414,7 @@ def test_overlapping_launcher_cannot_reach_docker(configured, monkeypatch):
     assert fake.calls == []
 
 
-def fake_cli(tmp_path, *, delay_create=False, lose_create_ack=False):
+def fake_cli(tmp_path, *, delay_create=False, lose_create_ack=False, gate_create=False):
     """Only the launcher and a Python fake CLI execute; Docker is never invoked."""
     executable = tmp_path / "bin"
     executable.mkdir()
@@ -422,6 +422,8 @@ def fake_cli(tmp_path, *, delay_create=False, lose_create_ack=False):
     trace = tmp_path / "fake-trace.jsonl"
     ready = tmp_path / "fake-wait-ready"
     acknowledged = tmp_path / "fake-daemon-acknowledged"
+    started = tmp_path / "fake-cli-started"
+    accept_gate = tmp_path / "fake-accept-gate"
     docker = executable / "docker"
     docker.write_text(
         "#!"
@@ -439,6 +441,10 @@ if args[0]=='compose':
     if 'create' in args:
         assert '--no-recreate' in args and '--no-build' in args
         assert args[args.index('--pull')+1]=='never'
+        if os.environ.get('FAKE_ACCEPT_GATE'):
+            time.sleep(.2)
+            Path(os.environ['FAKE_STARTED']).touch()
+            while not Path(os.environ['FAKE_ACCEPT_GATE']).exists(): time.sleep(.01)
         if os.environ.get('FAKE_DELAY_CREATE')=='1':
             daemon = "import json,sys,time; from pathlib import Path; time.sleep(1); Path(sys.argv[1]).write_text(json.dumps({'created':True})); Path(sys.argv[2]).touch()"
             subprocess.Popen([sys.executable,'-c',daemon,str(state),os.environ['FAKE_ACK']], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -487,6 +493,8 @@ else: raise SystemExit(9)
         "FAKE_ACK": str(acknowledged),
         "FAKE_DELAY_CREATE": "1" if delay_create else "0",
         "FAKE_LOSE_ACK": "1" if lose_create_ack else "0",
+        "FAKE_STARTED": str(started),
+        "FAKE_ACCEPT_GATE": str(accept_gate) if gate_create else "",
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return SimpleNamespace(
@@ -495,7 +503,77 @@ else: raise SystemExit(9)
         trace=trace,
         ready=ready,
         acknowledged=acknowledged,
+        started=started,
+        accept_gate=accept_gate,
     )
+
+
+def synchronize_fake_startup(monkeypatch, cli, *, accept):
+    """Coordinate fake acceptance before run.communicate starts its unchanged timeout."""
+    original = subprocess.Popen
+
+    class SynchronizedPopen(original):
+        def __enter__(self):
+            process = super().__enter__()
+            try:
+                deadline = time.monotonic() + 15
+
+                def wait_for(marker):
+                    while not marker.exists():
+                        assert self.poll() is None or marker.exists(), (
+                            "fake CLI exited during handshake"
+                        )
+                        assert time.monotonic() < deadline, "fake CLI handshake failed"
+                        time.sleep(0.01)
+
+                wait_for(cli.started)
+                if accept:
+                    cli.accept_gate.touch()
+                    wait_for(cli.ready)
+                return process
+            except BaseException:
+                if self.poll() is None:
+                    self.kill()
+                self.communicate(timeout=5)
+                raise
+
+    monkeypatch.setattr(subprocess, "Popen", SynchronizedPopen)
+
+
+@pytest.mark.parametrize("publish_ready", [True, False])
+def test_handshake_rechecks_acceptance_after_exit_poll(
+    tmp_path, monkeypatch, publish_ready
+):
+    cli = SimpleNamespace(
+        started=tmp_path / "started",
+        accept_gate=tmp_path / "accept",
+        ready=tmp_path / "ready",
+    )
+    cli.started.touch()
+
+    class ExitedPopen:
+        drained = False
+
+        def __enter__(self):
+            return self
+
+        def poll(self):
+            if publish_ready:
+                cli.ready.touch()
+            return 1
+
+        def communicate(self, *, timeout):
+            self.drained = True
+
+    monkeypatch.setattr(subprocess, "Popen", ExitedPopen)
+    synchronize_fake_startup(monkeypatch, cli, accept=True)
+    process = subprocess.Popen()
+    if publish_ready:
+        assert process.__enter__() is process
+    else:
+        with pytest.raises(AssertionError, match="exited during handshake"):
+            process.__enter__()
+        assert process.drained
 
 
 @pytest.mark.parametrize("interrupt_phase", ["create", "wait"])
@@ -658,7 +736,10 @@ def test_uncertain_create_retains_late_resource_and_blocks_another_launch(
 ):
     """An accepted fake daemon request outlives its failed CLI transport."""
     cli = fake_cli(
-        tmp_path, delay_create=True, lose_create_ack=outcome == "lost_connection"
+        tmp_path,
+        delay_create=True,
+        lose_create_ack=outcome == "lost_connection",
+        gate_create=True,
     )
     env = gateway.environment(*configured, IMAGE, REVISION)
     env.update(
@@ -670,6 +751,7 @@ def test_uncertain_create_retains_late_resource_and_blocks_another_launch(
     )
     if outcome == "timeout":
         monkeypatch.setattr(gateway, "MUTATION_TIMEOUT", 0.1)
+    synchronize_fake_startup(monkeypatch, cli, accept=True)
     with pytest.raises(ValueError, match="manual recovery"):
         gateway.invoke(
             gateway.compose(
@@ -713,3 +795,37 @@ def test_uncertain_create_retains_late_resource_and_blocks_another_launch(
     captured = capsys.readouterr()
     assert SENTINEL not in captured.out + captured.err
     assert "cleaned" not in captured.out + captured.err
+
+
+def test_timeout_before_fake_acceptance_is_distinct_and_remains_uncertain(
+    configured, tmp_path, monkeypatch
+):
+    cli = fake_cli(tmp_path, delay_create=True, gate_create=True)
+    env = gateway.environment(*configured, IMAGE, REVISION)
+    env.update(
+        {
+            key: value
+            for key, value in cli.environment.items()
+            if key.startswith("FAKE_") or key == "PATH"
+        }
+    )
+    monkeypatch.setattr(gateway, "MUTATION_TIMEOUT", 0.1)
+    synchronize_fake_startup(monkeypatch, cli, accept=False)
+    with pytest.raises(ValueError, match="manual recovery"):
+        gateway.invoke(
+            gateway.compose(
+                "create",
+                "--no-recreate",
+                "--no-build",
+                "--pull",
+                "never",
+                gateway.SERVICE,
+            ),
+            env,
+        )
+    assert cli.started.is_file() and not cli.accept_gate.exists()
+    assert not cli.ready.exists() and not cli.acknowledged.exists()
+    assert not cli.state.exists()
+    assert json.loads(gateway.journal_path(env).read_text())["phase"] == "uncertain"
+    with pytest.raises(ValueError, match="uncertain"):
+        gateway.cleanup(env)
