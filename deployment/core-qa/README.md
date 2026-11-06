@@ -135,15 +135,41 @@ tem provider, credencial, gateway, claim, porta, variável de ambiente nem rede
 (explorador), 65004 e 65003 entram nos 50 bots por `BOT_POPULATION_REFERENCE_BOTS`.
 O roteiro do jogador está em [ROTEIRO.md](ROTEIRO.md).
 
+A imagem `brain` usa `pull: false` e só aceita a base `python:3.12-slim` fixada
+por digest em `image-lock.json`. Se o preflight recusar a base, revise e rode
+`docker pull python@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54`
+e `docker tag python@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54 python:3.12-slim`.
+Lacuna P3: as
+dependências Python vêm do PyPI por versão fixa (`requirements.lock`), sem hashes.
+
 ```bash
 cd deployment/core-qa
 export SOURCE_REVISION='COLE_O_SHA_COMPLETO_APROVADO_AQUI'
 QA="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml -f compose.brain-fake.yaml --env-file .env"
+# Host limpo:
 python3 preflight.py --brain-fake --approved-revision "$SOURCE_REVISION"
 $QA up -d --build --wait database game web brain
-$QA exec brain canary-brain status --state /var/lib/canary-human-qa-stage2/state.sqlite3
+# Ou upgrade sobre a etapa 1 já de pé (no lugar dos dois comandos acima):
+python3 preflight.py --upgrade-from-stage1 --approved-revision "$SOURCE_REVISION"
+$QA up -d --build --wait game brain
+# Nos dois casos, depois do up:
+python3 preflight.py --record-brain-image --approved-revision "$SOURCE_REVISION"
 $QA exec brain canary-brain status --state /var/lib/canary-human-qa-stage2/ledger.sqlite3
 ```
+
+O upgrade só aceita exatamente os objetos da etapa 1: os containers
+`canary-core-qa-{database,game,web}-1`, a rede `canary-core-qa_default`, os quatro
+volumes e as tags game/web, todos com os labels Compose do projeto. Ele recusa
+qualquer objeto `canary-core-qa*` a mais, a menos ou com label errado, e também
+recusa um container, volume ou imagem `brain` que já exista. O recibo
+`runtime/evidence/stage2-upgrade-receipt.json` registra o SHA, os IDs vistos e o
+`CreatedAt` de cada volume. Só o container `game` é recriado, com nova env e
+montagens; `database` e `web` ficam. Para confirmar que os volumes são os mesmos,
+compare o recibo com
+`docker volume inspect canary-core-qa_database canary-core-qa_game-logs canary-core-qa_authored-data --format '{{.Name}} {{.CreatedAt}}'`.
+`--record-brain-image` só grava o ID da imagem `brain` quando o label
+`org.opencontainers.image.revision` dela, o container em execução e o recibo
+batem com o HEAD aprovado.
 
 Passa quando: `/cavebot _global brain status` (GOD) mostra `"mode":"active"`,
 `"worker_alive":true` e roster `[65001,65004,65003]`; `/brain fique aqui` com

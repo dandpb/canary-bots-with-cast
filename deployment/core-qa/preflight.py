@@ -23,6 +23,16 @@ BRAIN_VOLUMES = {"brain-socket", "brain-ledger"}
 BRAIN_ROOT = Path("/var/lib/canary-human-qa-stage2")
 IMAGE_LOCK = json.loads((HERE / "image-lock.json").read_text())
 RECEIPT = HERE / "runtime/evidence/preflight-receipt.json"
+UPGRADE_RECEIPT = HERE / "runtime/evidence/stage2-upgrade-receipt.json"
+# Stage-1 objects an upgrade may find: Docker listing, ID column, Compose key label, name -> key.
+STAGE1 = {
+    "container": (["docker", "ps", "-a", "--no-trunc"], "{{.ID}}\t{{.Names}}", "service",
+                  {f"{PROJECT}-{service}-1": service for service in SERVICES}),
+    "volume": (["docker", "volume", "ls"], "{{.Name}}\t{{.Name}}", "volume",
+               {f"{PROJECT}_{volume}": volume for volume in VOLUMES}),
+    "network": (["docker", "network", "ls", "--no-trunc"], "{{.ID}}\t{{.Name}}", "network",
+                {f"{PROJECT}_default": "default"}),
+}
 
 
 def command(*args, env=None):
@@ -67,6 +77,32 @@ def assert_no_resources(brain_fake=False):
         raise RuntimeError("QA resources already exist; review before up: " + ", ".join(sorted(set(found))))
 
 
+def assert_stage1_upgrade():
+    """Stage 1 -> 2 gate: exactly the stage-1 QA objects exist and no brain object does."""
+    seen = {}
+    for kind, (listing, columns, key, expected) in STAGE1.items():
+        labels = f'\t{{{{.Label "com.docker.compose.project"}}}}\t{{{{.Label "com.docker.compose.{key}"}}}}'
+        found = {}
+        for row in command(*listing, "--format", columns + labels).splitlines():
+            ident, name, project, item = (row.split("\t") + ["", "", "", ""])[:4]
+            if project == PROJECT or project_name(name):
+                if project != PROJECT or expected.get(name) != item:
+                    raise RuntimeError(f"unexpected QA {kind} {name}; stage-1 upgrade refused")
+                found[name] = ident
+        if set(found) != set(expected):
+            raise RuntimeError(f"stage-1 QA {kind}s are incomplete; upgrade refused")
+        seen[kind] = found
+    created = command("docker", "volume", "inspect", *sorted(seen["volume"]),
+                      "--format", "{{.Name}}\t{{.CreatedAt}}")
+    seen["volume"] = dict(line.split("\t", 1) for line in created.splitlines())
+    images = set(command("docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}").splitlines())
+    if BRAIN_IMAGE in images or not IMAGES <= images:
+        raise RuntimeError("stage-1 QA images differ (brain image present or game/web absent)")
+    seen["image"] = {ref: command("docker", "image", "inspect", ref, "--format", "{{.Id}}").strip()
+                     for ref in sorted(IMAGES)}
+    return seen
+
+
 def assert_fake_brain(service, revision):
     """Stage 2 only: an offline fake worker; a real provider must be impossible."""
     if (service.get("network_mode") != "none" or service.get("ports") or service.get("environment")
@@ -76,6 +112,10 @@ def assert_fake_brain(service, revision):
     worker = json.loads((HERE / "brain/worker.json").read_text())
     paths = [worker.get("socket_directory"), worker.get("state_file"), worker.get("budget_file"),
              worker.get("recording", {}).get("path")]
+    if service.get("build", {}).get("pull") is True or (
+            f"FROM {IMAGE_LOCK['brain_base']['ref']} AS brain"
+            not in (HERE.parent / "wsl/Dockerfile").read_text().splitlines()):
+        raise RuntimeError("QA brain build differs from the locked base image")
     if (worker.get("provider") != "fake"
             or {"credential_file", "gateway", "operator_port", "run_cap_nanousd"} & set(worker)
             or not all(path and Path(path).is_relative_to(BRAIN_ROOT) for path in paths)):
@@ -144,8 +184,15 @@ def assert_compose(brain_fake=False):
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def assert_image_lock():
+def assert_image_lock(brain=False):
     observed = {}
+    if brain:  # the brain build uses pull: false; only the locked local base is accepted
+        spec = IMAGE_LOCK["brain_base"]
+        found = command("docker", "image", "inspect", spec["ref"], "--format", "{{.Id}}\t{{json .RepoDigests}}")
+        actual, digests = (found.strip().split("\t", 1) + ["[]"])[:2]
+        if spec["repo_digest"] not in json.loads(digests):
+            raise RuntimeError("brain base image differs from image-lock.json; pull the locked digest")
+        observed["brain_base"] = actual
     for kind in ("database", "web_base"):
         spec = IMAGE_LOCK[kind]
         actual = command("docker", "image", "inspect", spec["ref"], "--format", "{{.Id}}").strip()
@@ -175,7 +222,8 @@ def assert_map():
     return actual
 
 
-def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha, brain_fake=False):
+def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha, brain_fake=False,
+                  stage1=None):
     receipt = {
         "schema_version": 1,
         "checked_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -186,9 +234,14 @@ def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha, 
         "qa_config_sha256": myaac["qa_config_sha256"],
         "compose_redacted_sha256": compose_sha,
         "map_sha256": map_sha,
-        "resources_absent": True,
+        "resources_absent": stage1 is None,
         "brain_fake": brain_fake,
+        **({"stage1_upgrade": stage1} if stage1 else {}),
     }
+    return save_receipt(path, receipt)
+
+
+def save_receipt(path, receipt):
     path.parent.mkdir(parents=True, exist_ok=True)
     content = (json.dumps(receipt, sort_keys=True, indent=2) + "\n").encode()
     with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".preflight-", delete=False) as stream:
@@ -204,16 +257,34 @@ def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha, 
     return hashlib.sha256(content).hexdigest()
 
 
-def run_preflight(resources_only=False, approved_revision=None, receipt_path=RECEIPT, brain_fake=False):
-    compose_sha = assert_compose(brain_fake)
-    assert_no_resources(brain_fake)
-    images = assert_image_lock()
+def record_brain_image(approved_revision, receipt_path=UPGRADE_RECEIPT):
+    """After the stage-2 up: bind the built brain image and its source label to the receipt."""
+    source = assert_source(approved_revision)
+    receipt = json.loads(receipt_path.read_text())
+    label = '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+    image_id, revision = (command("docker", "image", "inspect", BRAIN_IMAGE, "--format",
+                                  "{{.Id}}\t" + label).strip().split("\t") + [""])[:2]
+    running = command("docker", "inspect", f"{PROJECT}-brain-1", "--format", "{{.Image}}").strip()
+    if receipt.get("approved_source_revision") != source or revision != source or running != image_id:
+        raise RuntimeError("brain image, its source label and the receipt must match the approved HEAD")
+    receipt["brain_image"] = {"id": image_id, "source_revision": revision}
+    return save_receipt(receipt_path, receipt)
+
+
+def run_preflight(resources_only=False, approved_revision=None, receipt_path=None, brain_fake=False,
+                  upgrade=False):
+    compose_sha = assert_compose(brain_fake or upgrade)
+    stage1 = assert_stage1_upgrade() if upgrade else None
+    if not upgrade:
+        assert_no_resources(brain_fake)
+    images = assert_image_lock(brain_fake or upgrade)
     myaac = verify_myaac()
     if resources_only:
         return None
     source_sha = assert_source(approved_revision)
     map_sha = assert_map()
-    return write_receipt(receipt_path, source_sha, compose_sha, images, myaac, map_sha, brain_fake)
+    return write_receipt(receipt_path or (UPGRADE_RECEIPT if upgrade else RECEIPT), source_sha,
+                         compose_sha, images, myaac, map_sha, brain_fake or upgrade, stage1)
 
 
 def main():
@@ -223,8 +294,16 @@ def main():
     parser.add_argument("--approved-revision", help="full SHA approved for this smoke; required for the up gate")
     parser.add_argument("--brain-fake", action="store_true",
                         help="QA stage 2: also validate compose.brain-fake.yaml and its fake worker")
+    parser.add_argument("--upgrade-from-stage1", action="store_true",
+                        help="QA stage 2 over a running stage 1: accept only its exact QA objects")
+    parser.add_argument("--record-brain-image", action="store_true",
+                        help="after the stage-2 up: record the built brain image in the upgrade receipt")
     args = parser.parse_args()
-    receipt_sha = run_preflight(args.resources_only, args.approved_revision, brain_fake=args.brain_fake)
+    if args.record_brain_image:
+        print("Upgrade receipt SHA-256:", record_brain_image(args.approved_revision))
+        return
+    receipt_sha = run_preflight(args.resources_only, args.approved_revision, brain_fake=args.brain_fake,
+                                upgrade=args.upgrade_from_stage1)
     print("QA Compose and Docker resources are isolated; no containers were started.")
     if args.resources_only:
         print("Map check skipped; run the full preflight immediately before up.")

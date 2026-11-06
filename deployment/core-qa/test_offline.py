@@ -11,7 +11,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from preflight import assert_fake_brain, assert_no_resources, assert_source, redact, run_preflight
+from preflight import (
+    IMAGE_LOCK,
+    assert_fake_brain,
+    assert_image_lock,
+    assert_no_resources,
+    assert_source,
+    assert_stage1_upgrade,
+    record_brain_image,
+    redact,
+    run_preflight,
+)
 from verify_myaac import verify as verify_myaac
 
 HERE = Path(__file__).resolve().parent
@@ -296,6 +306,112 @@ class BrainFakeStageTests(unittest.TestCase):
         for kind in ("volumes", "networks"):
             for item in compose.get(kind, {}).values():
                 self.assertTrue(item["name"].startswith("canary-core-qa_"))
+
+
+def docker_shim(*changes):
+    """Fake read-only Docker CLI holding a running stage-1 QA; changes are (kind, name, value|None)."""
+    qa = "canary-core-qa"
+    state = {"ps": {f"{qa}-{s}-1": (qa, s) for s in ("database", "game", "web")},
+             "volume": {f"{qa}_{v}": (qa, v) for v in ("database", "game-logs", "authored-data", "website-cache")},
+             "network": {f"{qa}_default": (qa, "default"), "bridge": ("", "")},
+             "image": {"canary-core-qa-game:local": 1, "canary-core-qa-web:local": 1, "mariadb:11.4": 1}}
+    for kind, name, value in changes:
+        state[kind].pop(name, None) if value is None else state[kind].__setitem__(name, value)
+
+    def command(*args, **_kwargs):
+        if args[1:3] == ("volume", "inspect"):
+            return "".join(f"{name}\t2026-11-06T00:00:00Z\n" for name in args[3:-2])
+        if args[1:3] == ("image", "inspect"):
+            return f"sha256:{args[3]}\n"
+        if args[1:3] == ("image", "ls"):
+            return "".join(f"{ref}\n" for ref in state["image"])
+        rows = state[args[1]].items()
+        if "--filter" in args:
+            rows = [(name, row) for name, row in rows if row[0] == qa]
+        if "\t" not in args[-1]:
+            return "".join(f"{name}\n" for name, _ in rows)
+        return "".join(f"id-{name}\t{name}\t{project}\t{key}\n" for name, (project, key) in rows)
+    return command
+
+
+class StageUpgradeTests(unittest.TestCase):
+    """Stage 1 -> 2 gate, brain base lock and brain image receipt, with a fake Docker CLI."""
+
+    def test_running_stage1_is_accepted_and_recorded(self):
+        with patch("preflight.command", side_effect=docker_shim()):
+            seen = assert_stage1_upgrade()
+        self.assertEqual(seen["container"]["canary-core-qa-game-1"], "id-canary-core-qa-game-1")
+        self.assertEqual(len(seen["volume"]), 4)
+        self.assertEqual(seen["volume"]["canary-core-qa_database"], "2026-11-06T00:00:00Z")
+        self.assertEqual(set(seen["network"]), {"canary-core-qa_default"})
+        self.assertEqual(seen["image"]["canary-core-qa-game:local"], "sha256:canary-core-qa-game:local")
+        with tempfile.TemporaryDirectory() as directory, \
+             patch("preflight.command", side_effect=docker_shim()), \
+             patch("preflight.assert_compose", return_value="f" * 64) as compose, \
+             patch("preflight.assert_image_lock", return_value={"brain_base": "sha256:base"}), \
+             patch("preflight.verify_myaac", return_value={"entrypoint_sha256": "d", "qa_config_sha256": "e"}), \
+             patch("preflight.assert_source", return_value="a" * 40), \
+             patch("preflight.assert_map", return_value="1" * 64):
+            receipt_path = Path(directory) / "upgrade.json"
+            run_preflight(approved_revision="a" * 40, receipt_path=receipt_path, upgrade=True)
+            receipt = json.loads(receipt_path.read_text())
+        compose.assert_called_once_with(True)
+        self.assertEqual((receipt["brain_fake"], receipt["resources_absent"]), (True, False))
+        self.assertEqual(receipt["stage1_upgrade"], seen)
+
+    def test_foreign_partial_or_brain_objects_refuse_the_upgrade(self):
+        qa = "canary-core-qa"
+        for change in (("ps", f"{qa}-game-1", ("canary-bots-wsl", "game")),
+                       ("ps", f"{qa}-extra-1", (qa, "extra")), ("ps", "renamed", (qa, "web")),
+                       ("ps", f"{qa}-brain-1", (qa, "brain")),
+                       ("volume", f"{qa}_brain-ledger", (qa, "brain-ledger")),
+                       ("volume", f"{qa}_database", (qa, "")), ("volume", f"{qa}_game-logs", None),
+                       ("network", f"{qa}_default", None), ("network", f"{qa}_other", ("", "")),
+                       ("image", "canary-core-qa-brain:local", 1), ("image", "canary-core-qa-web:local", None)):
+            with self.subTest(change=change), patch("preflight.command", side_effect=docker_shim(change)):
+                with self.assertRaisesRegex(RuntimeError, "upgrade refused|images differ"):
+                    assert_stage1_upgrade()
+
+    def test_fresh_gates_are_unchanged(self):
+        for brain_fake in (False, True):
+            with patch("preflight.command", side_effect=docker_shim()), \
+                 self.assertRaisesRegex(RuntimeError, "QA resources already exist"):
+                assert_no_resources(brain_fake)
+        empty = [(kind, f"canary-core-qa{sep}{name}", None) for kind, sep, names in (
+            ("ps", "-", ("database-1", "game-1", "web-1")), ("network", "_", ("default",)),
+            ("volume", "_", ("database", "game-logs", "authored-data", "website-cache")))
+            for name in names] + [("image", "canary-core-qa-game:local", None), ("image", "canary-core-qa-web:local", None)]
+        with patch("preflight.command", side_effect=docker_shim(*empty)):
+            assert_no_resources(True)
+
+    def test_brain_base_is_locked_and_the_built_image_matches_head(self):
+        locked = IMAGE_LOCK["brain_base"]["repo_digest"]
+        ids = {"database": IMAGE_LOCK["database"]["id"], "web_base": IMAGE_LOCK["web_base"]["id"]}
+
+        def inspect(digest):
+            return lambda *a, **_k: f"sha256:base\t[{json.dumps(digest)}]" if "RepoDigests" in a[-1] else (
+                ids["database"] if a[3] == "mariadb:11.4" else ids["web_base"])
+        with patch("preflight.command", side_effect=inspect(locked)):
+            self.assertEqual(assert_image_lock(brain=True)["brain_base"], "sha256:base")
+        with patch("preflight.command", side_effect=inspect("python@sha256:" + "0" * 64)), \
+             self.assertRaisesRegex(RuntimeError, "brain base"):
+            assert_image_lock(brain=True)
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "receipt.json"
+            receipt.write_text(json.dumps({"approved_source_revision": sha}))
+            for label, running in ((sha, "sha256:b"), ("c" * 40, "sha256:b"), (sha, "sha256:old")):
+                answers = lambda *a, **_k: f"sha256:b\t{label}" if a[1] == "image" else running  # noqa: B023
+                with self.subTest(label=label, running=running), \
+                     patch("preflight.assert_source", return_value=sha), \
+                     patch("preflight.command", side_effect=answers):
+                    if (label, running) == (sha, "sha256:b"):
+                        record_brain_image(sha, receipt)
+                        self.assertEqual(json.loads(receipt.read_text())["brain_image"],
+                                         {"id": "sha256:b", "source_revision": sha})
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "approved HEAD"):
+                            record_brain_image(sha, receipt)
 
 
 if __name__ == "__main__":

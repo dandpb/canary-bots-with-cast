@@ -98,6 +98,7 @@ def test_brain_command_reaches_native_ack_and_stops_on_kill_switch() -> None:
             assert episode and episode["status"] == "completed" and episode["terminal"]
 
             # Kill switch: `compose stop brain` is SIGTERM; no further intents.
+            receive(peer, 0.3)  # drop intent retransmissions queued before the ack
             worker.send_signal(signal.SIGTERM)
             assert worker.wait(timeout=10) == 0
             assert not Path(endpoint).exists()
