@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -37,11 +38,57 @@ def goal_checks(initial, saved, character, home, purchase, returned, metrics, re
         and max(abs(character[k] - home[k]) for k in ("posx", "posy")) <= 3,
         "no_recorded_gaps": metrics["gaps"] == 0,
         "no_observed_deaths": metrics["deaths"] == 0,
+        "no_operator_interventions": metrics["interventions"] == 0,
+        "no_automatic_recoveries": metrics["automatic_recoveries_requested"] == 0,
         "zero_inference": requests == 0,
     }
 
 
-async def execute(args):
+def native_build_contract(frozen, revision, image):
+    """Bind the declared native revision to the frozen image and both binaries."""
+    build = frozen["native_build"]
+    assert image == frozen["image_id"]
+    assert re.fullmatch(r"[0-9a-f]{40}", revision)
+    assert build["source_revision"] == revision
+    assert re.fullmatch(r"[0-9a-f]{64}", build["archive_sha256"])
+    hashes = build["binary_sha256"]
+    assert set(hashes) == {"canary", "libbot_engine.so"}
+    assert all(re.fullmatch(r"[0-9a-f]{64}", value) for value in hashes.values())
+    return hashes
+
+
+def cleanup_evidence(project):
+    """Inspect only resources carrying this newly generated Compose identity."""
+    evidence = {"project": project, "resources_cleaned": False}
+    try:
+        for resource, command in (
+            ("containers", ["docker", "ps", "-a", "--format", "{{.ID}} {{.Names}}"]),
+            ("networks", ["docker", "network", "ls", "--format", "{{.ID}} {{.Name}}"]),
+        ):
+            output = subprocess.check_output(
+                command + ["--filter", "label=com.docker.compose.project=" + project],
+                text=True,
+            )
+            evidence[resource] = output.splitlines()
+        evidence["resources_cleaned"] = (
+            not evidence["containers"] and not evidence["networks"]
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        evidence["inspection_error"] = type(error).__name__
+    return evidence
+
+
+def disable_recovery(controller):
+    controller.supervisor.state(65001)["automatic"] = False
+    controller.supervisor.save(65001)
+
+
+def check_interrupted(stop):
+    if stop.is_set():
+        raise InterruptedError("proof interrupted before goal")
+
+
+async def execute(args, stop):
     os.umask(0o077)
     work = args.output.resolve()
     work.mkdir(mode=0o700, exist_ok=False)
@@ -53,6 +100,9 @@ async def execute(args):
     assert args.game_image.startswith("sha256:") and len(args.game_image) == 71
     assert args.game_image == frozen["image_id"], (
         "freeze the patched game identity before proof"
+    )
+    expected_binaries = native_build_contract(
+        frozen, args.source_revision, args.game_image
     )
     source_root = Path(runtime.__file__).resolve().parents[4]
     app_revision = (
@@ -106,6 +156,7 @@ async def execute(args):
                 "database_image": frozen["database_image_id"],
                 "application_source_revision": app_revision,
                 "native_source_revision": args.source_revision,
+                "native_build": frozen["native_build"],
                 "policy": "fake: resupply below10 potions, then retreat after confirmed purchase",
                 "expected_bank_debit": 2014,
                 "expected_stock": 40,
@@ -114,12 +165,15 @@ async def execute(args):
             indent=2,
         )
     )
-    stop = asyncio.Event()
     purchase = {}
     returned = {}
     original_controller = runtime.Controller
 
     class ProofController(original_controller):
+        def __init__(self, *controller_args, **controller_kwargs):
+            super().__init__(*controller_args, **controller_kwargs)
+            disable_recovery(self)
+
         async def handle(self, packet):
             nonlocal purchase, returned
             await super().handle(packet)
@@ -212,16 +266,21 @@ async def execute(args):
         return dict(zip(("bank", "potions"), map(int, text.split()), strict=True))
 
     try:
+        check_interrupted(stop)
         await asyncio.to_thread(harness.start_database)
+        check_interrupted(stop)
         result["initial_character"] = await asyncio.to_thread(harness.character)
         result["initial_supplies"] = await asyncio.to_thread(supplies)
+        check_interrupted(stop)
         worker = asyncio.create_task(runtime.run(config, stop))
         for _ in range(100):
             if (directory / "socket/worker.sock").exists():
                 break
             if worker.done():
                 await worker
+            check_interrupted(stop)
             await asyncio.sleep(0.1)
+        check_interrupted(stop)
         await asyncio.to_thread(harness.start_game)
         runtime_rows = json.loads(
             await asyncio.to_thread(
@@ -243,16 +302,54 @@ async def execute(args):
             "game": args.game_image,
             "database": frozen["database_image_id"],
         }
-        (work / "runtime-images.json").write_text(json.dumps(actual_images, indent=2))
+        binary_output = await asyncio.to_thread(
+            harness.command,
+            "exec",
+            "-T",
+            "game",
+            "sha256sum",
+            "/canary/canary",
+            "/canary/libbot_engine.so",
+        )
+        actual_binaries = {
+            Path(path).name: digest
+            for digest, path in (line.split() for line in binary_output.splitlines())
+        }
+        assert actual_binaries == expected_binaries
+        result["images_verified"] = True
+        (work / "runtime-images.json").write_text(
+            json.dumps(
+                {
+                    "images": actual_images,
+                    "binary_sha256": actual_binaries,
+                    "native_source_revision": args.source_revision,
+                    "application_source_revision": app_revision,
+                },
+                indent=2,
+            )
+        )
         await asyncio.wait_for(worker, timeout=args.maximum_seconds + 300)
         await asyncio.to_thread(harness.stop_game)
         result["saved_character"] = await asyncio.to_thread(harness.character)
         result["saved_supplies"] = await asyncio.to_thread(supplies)
+    except (AssertionError, OSError, RuntimeError, ValueError, TimeoutError) as error:
+        result["failure"] = type(error).__name__
     finally:
         stop.set()
         if worker:
             await asyncio.gather(worker, return_exceptions=True)
-        await asyncio.to_thread(harness.close)
+        try:
+            await asyncio.to_thread(harness.close)
+        except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+            result["cleanup_error"] = type(error).__name__
+        finally:
+            cleanup = await asyncio.to_thread(cleanup_evidence, harness.project)
+            (work / "resources-cleaned.json").write_text(json.dumps(cleanup, indent=2))
+            result["resources_cleaned"] = cleanup["resources_cleaned"]
+    if "failure" in result:
+        result["goal_accepted"] = False
+        (work / "goal-proof.json").write_text(json.dumps(result, indent=2))
+        raise SystemExit(1)
     reader = ReplayReader(config.recording.path)
     run = reader.runs()[0]
     metrics = summary(reader, run["id"])["metrics"]
@@ -268,6 +365,9 @@ async def execute(args):
         metrics,
         requests,
     )
+    result["checks"]["images_verified"] = result.get("images_verified", False)
+    result["checks"]["resources_cleaned"] = result["resources_cleaned"]
+    result["checks"]["cleanup_succeeded"] = "cleanup_error" not in result
     result.update(
         purchase=purchase,
         returned=returned,
@@ -292,6 +392,11 @@ async def execute(args):
         raise SystemExit(1)
 
 
+async def run_with_signals(args, executor=None):
+    with benchmark.campaign_signals() as stopped:
+        await (executor or execute)(args, stopped)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--fixture-root", type=Path, required=True)
@@ -299,7 +404,7 @@ def main():
     parser.add_argument("--game-image", required=True)
     parser.add_argument("--source-revision", required=True)
     parser.add_argument("--maximum-seconds", type=int, default=300)
-    asyncio.run(execute(parser.parse_args()))
+    asyncio.run(run_with_signals(parser.parse_args()))
 
 
 if __name__ == "__main__":
