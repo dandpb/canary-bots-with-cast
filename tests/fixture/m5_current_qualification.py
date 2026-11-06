@@ -11,11 +11,13 @@ import json
 import os
 import sqlite3
 import subprocess
+import time
 from pathlib import Path
 
 from canary_brain import benchmark, runtime
 from canary_brain.recording import ReplayReader
 from canary_brain.replay import summary
+from canary_brain.store import Store
 
 ROOT = Path(__file__).resolve().parents[2]
 WORLD = Path("/tmp/canary-lifecycle-qa-world.otbm")
@@ -66,6 +68,8 @@ def validate_result(reader, run, seconds, state, saved, require_progress):
         "supervisor_completed": bool(stops) and stops[-1]["reason"] == "completed",
         "exact_horizon_recorded": samples[-1]["t_ms"] - samples[0]["t_ms"]
         >= seconds * 1000,
+        "bounded_recorded_duration": samples[-1]["t_ms"] - samples[0]["t_ms"]
+        <= (seconds + 5) * 1000,
         "observed_horizon": bool(stops)
         and stops[-1].get("observed_seconds", 0) >= seconds,
         "no_gaps": data["metrics"]["gaps"] == 0,
@@ -74,6 +78,24 @@ def validate_result(reader, run, seconds, state, saved, require_progress):
     }
     if require_progress:
         checks["positive_xp"] = data["metrics"]["xp_delta"] > 0
+        checks["zero_observed_deaths"] = data["metrics"]["deaths"] == 0
+        hunts = {
+            a["id"]
+            for event in samples
+            for a in event["data"].get("actions", [])
+            if a["action"] == "hunt"
+        }
+        checks["multiple_hunts_offered"] = len(hunts) >= 2
+    status_path = state.parent / "phase-status.jsonl"
+    statuses = (
+        [json.loads(line) for line in status_path.read_text().splitlines()]
+        if status_path.exists()
+        else []
+    )
+    phases = [row.get("status", "") for row in statuses]
+    native_cycle = any("phase=LEAVING" in row for row in phases) and any(
+        "state=RESUPPLYING" in row for row in phases
+    )
     return {
         "checks": checks,
         "accepted": all(checks.values()),
@@ -82,6 +104,9 @@ def validate_result(reader, run, seconds, state, saved, require_progress):
         "first_sample": samples[0],
         "last_sample": samples[-1],
         "requests": requests,
+        "native_hunt_leave_and_supply_phases_observed": native_cycle,
+        "status_observation_count": len(statuses),
+        "supply_limit": "RESUPPLYING is a native phase; purchase requires stock, bank and confirmed outcome evidence separately.",
     }
 
 
@@ -137,9 +162,12 @@ async def execute(args):
     runtime.AsyncOpenAI = forbidden
     runtime.FakeProvider = ScriptedFake
     base = benchmark.DockerFixture
+    active_fixture = None
 
     class AttestedFixture(base):
         def prepare(self, participant):
+            nonlocal active_fixture
+            active_fixture = self
             super().prepare(participant)
             compose = json.loads(self.compose.read_text())
             compose["networks"] = {"default": {"internal": True}}
@@ -161,7 +189,73 @@ async def execute(args):
                 ).strip()
                 assert actual == frozen["database_image_id"]
 
+    async def observe_status(configuration, stopped):
+        last = -100.0
+        while not stopped.is_set():
+            clock = Store(configuration.state_file).get("run_clock", "start")
+            elapsed = time.monotonic() - clock["monotonic"] if clock else None
+            if (
+                elapsed is not None
+                and elapsed >= 540
+                and elapsed - last >= 10
+                and active_fixture
+            ):
+                last = elapsed
+
+                def query(sql):
+                    return active_fixture.command(
+                        "exec",
+                        "-T",
+                        "database",
+                        "sh",
+                        "-c",
+                        'MYSQL_PWD="$MARIADB_PASSWORD" mariadb -u canary canary -N -e "$1"',
+                        "sh",
+                        sql,
+                    )
+
+                identity = int(
+                    await asyncio.to_thread(
+                        query,
+                        "INSERT INTO bot_commands(bot_name,command) VALUES('Grizzle Alyronia','status');SELECT LAST_INSERT_ID();",
+                    )
+                )
+                status = ""
+                for _ in range(20):
+                    status = await asyncio.to_thread(
+                        query,
+                        f"SELECT result FROM bot_commands WHERE id={identity} AND processed=1;",
+                    )
+                    if status:
+                        break
+                    await asyncio.sleep(0.2)
+                with (configuration.state_file.parent / "phase-status.jsonl").open(
+                    "a"
+                ) as stream:
+                    stream.write(
+                        json.dumps(
+                            {
+                                "elapsed": elapsed,
+                                "command_id": identity,
+                                "status": status,
+                            }
+                        )
+                        + "\n"
+                    )
+            await asyncio.sleep(1)
+
+    original_run = benchmark.run
+
+    async def observed_worker(configuration, stopped):
+        observer = asyncio.create_task(observe_status(configuration, stopped))
+        try:
+            await original_run(configuration, stopped)
+        finally:
+            observer.cancel()
+            await asyncio.gather(observer, return_exceptions=True)
+
     benchmark.DockerFixture = AttestedFixture
+    benchmark.run = observed_worker
     experiment = benchmark.Experiment(
         name="m5-current-"
         + args.mode

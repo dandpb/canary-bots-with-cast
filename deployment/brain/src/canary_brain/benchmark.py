@@ -653,7 +653,7 @@ async def _run_campaign(
                         break
                     clock = Store(state).get("run_clock", "start")
                     if (
-                        time.monotonic() - started > min(15, experiment.seconds / 2)
+                        time.monotonic() - started > 240
                         and clock is None
                     ):
                         raise ValueError(

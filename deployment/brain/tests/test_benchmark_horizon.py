@@ -16,8 +16,9 @@ from test_protocol import observation
 @pytest.mark.asyncio
 @pytest.mark.parametrize("premature", [False, True])
 @pytest.mark.parametrize("mode", ["native", "fake"])
+@pytest.mark.parametrize("first_observation_seconds", [2, 20])
 async def test_runner_waits_for_the_workers_observed_horizon(
-    tmp_path, monkeypatch, premature, mode
+    tmp_path, monkeypatch, premature, mode, first_observation_seconds
 ):
     config = experiment(tmp_path)
     config.participants = [benchmark.Participant(name=mode, kind=mode)]
@@ -52,7 +53,7 @@ async def test_runner_waits_for_the_workers_observed_horizon(
         (configuration.socket_directory / "worker.sock").touch()
         state = Store(configuration.state_file)
         # The service is healthy before the roster's first observation arrives.
-        while clock[0] < 2 and not stopped.is_set():
+        while clock[0] < first_observation_seconds and not stopped.is_set():
             await original_sleep(0)
         started = clock[0]
         state.put("run_clock", "start", {"monotonic": started})
