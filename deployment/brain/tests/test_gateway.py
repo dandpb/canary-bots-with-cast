@@ -138,7 +138,7 @@ def test_gateway_rejects_decisions_with_unbounded_billable_output():
         )
 
 
-@pytest.mark.parametrize("provider", ["anthropic", "test"])
+@pytest.mark.parametrize("provider", ["anthropic", "gemini", "test"])
 async def test_gateway_choice_tool_keeps_native_strict_enum_and_one_call(
     tmp_path, provider
 ):
@@ -174,6 +174,22 @@ async def test_gateway_choice_tool_keeps_native_strict_enum_and_one_call(
                 "parameters": schema,
             }
         ]
+    if provider == "gemini":
+        assert body["extra_body"] == {
+            "extra_body": {
+                "tools": [
+                    {
+                        "functionDeclarations": [
+                            {
+                                "name": "choose_action",
+                                "description": "Select one offered candidate.",
+                                "parametersJsonSchema": schema,
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
     assert body["max_output_tokens"] == 256
     assert body["parallel_tool_calls"] is False
     assert body["tool_choice"] == {"type": "function", "name": "choose_action"}

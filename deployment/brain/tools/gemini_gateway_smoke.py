@@ -1,0 +1,336 @@
+"""Pinned Gemini function JSON schema on the wire; no external network."""
+
+import asyncio
+import json
+import os
+import secrets
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+from gateway_smoke import free_port
+from openai import APIStatusError, AsyncOpenAI
+
+from canary_brain.gateway import GatewayConfiguration, GatewayProvider
+from canary_brain.protocol import Observation
+from canary_brain.provider import Prices
+from canary_brain.recording import digest
+from canary_brain.store import Store
+
+
+def main():
+    if "--inside" not in sys.argv:
+        root = Path(__file__).resolve().parents[3]
+        return subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "none",
+                "--entrypoint",
+                "python",
+                "-v",
+                f"{root}:/source:ro",
+                "-e",
+                "PYTHONPATH=/source/deployment/brain/src",
+                "sha256:6b2498fa2e23faa4a23a99420fc47bc77a87f8e19e493fac80ff02e3ddb3ff48",
+                "/source/deployment/brain/tools/gemini_gateway_smoke.py",
+                "--inside",
+            ],
+            check=False,
+        ).returncode
+    calls = []
+
+    class Upstream(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_POST(self):
+            calls.append(
+                json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            )
+            value = {
+                "candidates": [
+                    {
+                        "content": {
+                            "role": "model",
+                            "parts": [
+                                {
+                                    "functionCall": {
+                                        "name": "choose_action",
+                                        "args": {"candidate_id": "resupply"},
+                                    }
+                                }
+                            ],
+                        },
+                        "finishReason": "STOP",
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 10,
+                    "candidatesTokenCount": 2,
+                    "thoughtsTokenCount": 5,
+                    "totalTokenCount": 17,
+                },
+                "modelVersion": "gemini-3.5-flash-lite",
+            }
+            raw = json.dumps(value).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), Upstream)
+    threading.Thread(target=upstream.serve_forever, daemon=True).start()
+    try:
+        with tempfile.TemporaryDirectory(prefix="gemini-wire-") as directory:
+            work = Path(directory)
+            port = free_port()
+            config = {
+                "model_list": [
+                    {
+                        "model_name": "gemini-fixture",
+                        "litellm_params": {
+                            "model": "gemini/gemini-3.5-flash-lite",
+                            "api_base": f"http://127.0.0.1:{upstream.server_port}",
+                            "api_key": "synthetic-only",
+                            "num_retries": 0,
+                        },
+                        "model_info": {"id": "gemini-deployment"},
+                    }
+                ],
+                "router_settings": {
+                    "num_retries": 0,
+                    "max_fallbacks": 0,
+                    "fallbacks": [],
+                    "cache_responses": False,
+                },
+                "litellm_settings": {
+                    "num_retries": 0,
+                    "fallbacks": [],
+                    "cache": False,
+                    "drop_params": False,
+                    "turn_off_message_logging": True,
+                },
+                "general_settings": {
+                    "custom_auth": "gemini_boundary_fixture.authenticate",
+                    "master_key": "os.environ/LITELLM_MASTER_KEY",
+                },
+            }
+            policy = work / "gateway.yaml"
+            policy.write_text(json.dumps(config, sort_keys=True, separators=(",", ":")))
+            (work / "gemini_boundary_fixture.py").write_text("""
+import json, os
+from pathlib import Path
+from litellm.types.router import Deployment
+from canary_brain import gateway_policy
+assert str(Path(gateway_policy.__file__).resolve()) == os.environ['CANARY_EXPECTED_POLICY']
+async def authenticate(request,api_key):
+    from litellm.proxy.proxy_server import llm_router
+    original=json.loads(Path(os.environ['CANARY_GATEWAY_CONFIG']).read_text())['model_list'][0]
+    for item in list(llm_router.model_list): llm_router.delete_deployment(item['model_info']['id'])
+    llm_router.add_deployment(Deployment(**original))
+    result=await gateway_policy.authenticate(request,api_key)
+    mode=request.headers.get('x-fixture-mutation')
+    if mode:
+        changed=json.loads(json.dumps(original))
+        if mode=='model': changed['litellm_params']['model']='gemini/rogue'
+        elif mode=='id': changed['model_info']['id']='rogue-id'
+        elif mode=='api_base': changed['litellm_params']['api_base']='https://rogue.invalid'
+        else: raise ValueError('unsupported fixture mutation')
+        llm_router.delete_deployment('gemini-deployment')
+        llm_router.add_deployment(Deployment(**changed))
+    return result
+""")
+            with (work / "proxy.log").open("w") as log:
+                process = subprocess.Popen(
+                    [
+                        "litellm",
+                        "--config",
+                        str(policy),
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(port),
+                    ],
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    env={
+                        **os.environ,
+                        "PYTHONPATH": str(work)
+                        + os.pathsep
+                        + os.environ.get("PYTHONPATH", ""),
+                        "CANARY_EXPECTED_POLICY": str(
+                            Path(__file__).resolve().parents[1]
+                            / "src/canary_brain/gateway_policy.py"
+                        ),
+                        "LITELLM_WORKER_KEY": "synthetic-worker",
+                        "LITELLM_MASTER_KEY": "sk-" + secrets.token_hex(32),
+                        "CANARY_GATEWAY_CONFIG": str(policy),
+                    },
+                )
+                try:
+                    deadline = time.monotonic() + 45
+                    while True:
+                        try:
+                            urllib.request.urlopen(
+                                f"http://127.0.0.1:{port}/health/readiness", timeout=1
+                            ).close()
+                            break
+                        except OSError:
+                            assert (
+                                process.poll() is None and time.monotonic() < deadline
+                            ), "Gateway startup failed"
+                            time.sleep(0.2)
+
+                    async def exercise():
+                        gateway = GatewayConfiguration(
+                            base_url=f"http://127.0.0.1:{port}/v1",
+                            alias="gemini-fixture",
+                            effective_model="gemini-3.5-flash-lite",
+                            deployment_id="gemini-deployment",
+                            provider="gemini",
+                            upstream_model="gemini/gemini-3.5-flash-lite",
+                            version="1.108.0",
+                            configuration_sha256=digest(config),
+                            prices=Prices(
+                                version="offline",
+                                input_nanousd=7,
+                                cached_nanousd=2,
+                                cache_write_nanousd=11,
+                                output_nanousd=13,
+                            ),
+                        )
+                        ledger = Store(work / "ledger.sqlite3")
+                        async with AsyncOpenAI(
+                            base_url=gateway.base_url,
+                            api_key="synthetic-worker",
+                            max_retries=0,
+                        ) as client:
+                            adapter = GatewayProvider(
+                                ledger, client, gateway=gateway, decision_timeout=20
+                            )
+                            observation = Observation.model_validate(
+                                {
+                                    "version": 1,
+                                    "type": "observation",
+                                    "world": "fixture",
+                                    "sequence": 1,
+                                    "captured_ms": 0,
+                                    "lease": "fixture",
+                                    "objective_generation": 1,
+                                    "bot": {
+                                        "id": 7,
+                                        "name": "fixture",
+                                        "level": 20,
+                                        "vocation": 4,
+                                        "state": "HUNTING",
+                                        "position": [100, 100, 7],
+                                        "health": 30,
+                                        "mana": 30,
+                                        "potions": 1,
+                                        "xp": 98800,
+                                        "alive": True,
+                                    },
+                                    "actions": [
+                                        {
+                                            "id": "continue",
+                                            "action": "continue",
+                                            "description": "continue",
+                                            "ttl_ms": 20000,
+                                        },
+                                        {
+                                            "id": "resupply",
+                                            "action": "resupply",
+                                            "description": "resupply",
+                                            "ttl_ms": 20000,
+                                        },
+                                    ],
+                                }
+                            )
+                            assert await adapter.decide(observation, {}) == "resupply"
+                        assert len(calls) == 1
+                        declaration = calls[0]["tools"][0]["functionDeclarations"][0]
+                        schema = declaration["parametersJsonSchema"]
+                        assert schema == {
+                            "type": "object",
+                            "properties": {
+                                "candidate_id": {
+                                    "type": "string",
+                                    "enum": ["continue", "resupply"],
+                                }
+                            },
+                            "required": ["candidate_id"],
+                            "additionalProperties": False,
+                        }
+                        assert calls[0]["toolConfig"]["functionCallingConfig"] == {
+                            "mode": "ANY",
+                            "allowed_function_names": ["choose_action"],
+                        }
+                        assert calls[0]["generationConfig"]["max_output_tokens"] == 256
+                        assert (
+                            ledger.budget()["spent"] == 161
+                            and ledger.budget()["reserved"] == 0
+                        )
+                        denied = []
+                        for mutation in ("model", "id", "api_base"):
+                            async with AsyncOpenAI(
+                                base_url=gateway.base_url,
+                                api_key="synthetic-worker",
+                                max_retries=0,
+                                default_headers={"x-fixture-mutation": mutation},
+                            ) as bad_client:
+                                adapter = GatewayProvider(
+                                    ledger,
+                                    bad_client,
+                                    gateway=gateway,
+                                    decision_timeout=20,
+                                )
+                                try:
+                                    await adapter.decide(observation, {})
+                                except APIStatusError as error:
+                                    assert error.status_code == 409, error.status_code
+                                    denied.append(mutation)
+                                else:
+                                    raise AssertionError(
+                                        "mutated Gemini deployment was accepted"
+                                    )
+                            assert len(calls) == 1, (
+                                "mutated Gemini deployment reached upstream"
+                            )
+                        assert (
+                            ledger.budget()["spent"] == 161
+                            and ledger.budget()["reserved"] > 0
+                        )
+                        print(
+                            json.dumps(
+                                {
+                                    "checks": "passed",
+                                    "upstream_requests": len(calls),
+                                    "native_body": calls[0],
+                                    "spent_fixture_nanousd": 161,
+                                    "reasoning_output_tokens": 5,
+                                    "denied_before_upstream": denied,
+                                }
+                            )
+                        )
+
+                    asyncio.run(exercise())
+                finally:
+                    process.terminate()
+                    process.wait(timeout=10)
+    finally:
+        upstream.shutdown()
+        upstream.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

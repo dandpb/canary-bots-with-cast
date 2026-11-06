@@ -63,3 +63,23 @@ async def test_recognized_worker_failure_cannot_fall_through_to_native_auth(
     with pytest.raises(ProxyException) as rejected:
         await gateway_policy.authenticate(object(), "private-unit-fixture")
     assert rejected.value.code == status
+
+
+async def test_private_benchmark_gateway_never_falls_back_to_admin_auth(monkeypatch):
+    class HTTPException(Exception):
+        pass
+
+    class ProxyException(Exception):
+        def __init__(self, **kwargs):
+            self.code = kwargs["code"]
+
+    modules = {
+        "fastapi": SimpleNamespace(HTTPException=HTTPException),
+        "litellm.proxy._types": SimpleNamespace(ProxyException=ProxyException),
+    }
+    monkeypatch.setattr(gateway_policy.importlib, "import_module", modules.__getitem__)
+    monkeypatch.setenv("LITELLM_WORKER_KEY", "fixture-worker")
+    monkeypatch.setenv("CANARY_BENCHMARK_GATEWAY_ONLY", "1")
+    with pytest.raises(ProxyException) as denied:
+        await gateway_policy.authenticate(object(), "fixture-master")
+    assert denied.value.code == 401
