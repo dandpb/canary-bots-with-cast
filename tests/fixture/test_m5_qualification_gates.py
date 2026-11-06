@@ -195,6 +195,7 @@ class FullGateTests(unittest.TestCase):
         metrics=None,
         saved_xp=200,
         initial_xp=100,
+        first_sample_xp=100,
         extra=(),
         cycle=True,
         seconds=1800,
@@ -205,7 +206,7 @@ class FullGateTests(unittest.TestCase):
             {"id": "hunt:399", "action": "hunt"},
         ]
         events = (
-            [event(0, "sample", bot={"xp": 100}, actions=choices)]
+            [event(0, "sample", bot={"xp": first_sample_xp}, actions=choices)]
             + (fake_cycle() if cycle else [])
             + [
                 event(int(span * 1000), "sample", bot={"xp": 200}, actions=[]),
@@ -221,6 +222,7 @@ class FullGateTests(unittest.TestCase):
             + list(extra)
         )
         baseline_metrics = {
+            "xp_delta": 100,
             "gaps": 0,
             "deaths": 0,
             "deaths_observed": True,
@@ -276,6 +278,27 @@ class FullGateTests(unittest.TestCase):
     def test_recorded_xp_without_database_persistence_is_rejected(self):
         self.assertFalse(self.qualified(saved_xp=100)["accepted"])
         self.assertFalse(self.qualified(initial_xp=200)["accepted"])
+
+    def test_startup_only_xp_cannot_qualify_an_observed_window(self):
+        for mode in ("native", "fake"):
+            with self.subTest(mode=mode):
+                self.assertFalse(
+                    self.qualified(
+                        mode=mode, first_sample_xp=200, metrics={"xp_delta": 0}
+                    )["accepted"]
+                )
+
+    def test_observed_xp_is_positive_and_agrees_with_the_summary(self):
+        for first_xp, delta in [(300, -100), (None, 100), (100, 0), (100, 99)]:
+            with self.subTest(first=first_xp, metric=delta):
+                self.assertFalse(
+                    self.qualified(
+                        first_sample_xp=first_xp, metrics={"xp_delta": delta}
+                    )["accepted"]
+                )
+        self.assertTrue(
+            self.qualified(first_sample_xp=150, metrics={"xp_delta": 50})["accepted"]
+        )
 
     def test_progress_and_horizon_cannot_qualify_without_required_cycle(self):
         for mode in ("native", "fake"):

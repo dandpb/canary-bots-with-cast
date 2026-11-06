@@ -4,6 +4,9 @@ These drivers use the current canonical campaign runner and a private, disposabl
 Compose project per output identity. They never read provider credentials or call
 an inference SDK. A clean committed application checkout, a new output directory,
 and pinned game/database images are required. Keep historical outputs unchanged.
+The timed driver verifies that its imported `runtime` and `benchmark` modules
+resolve to that same application checkout before attesting the Git revision.
+Setting `PYTHONPATH` to another source tree must fail rather than mislabel it.
 
 The freeze directory contains `fixture/` and `manifest.json`. In addition to the
 fixture/world hashes and image IDs, the manifest binds `native_build.source_revision`
@@ -30,8 +33,10 @@ PYTHONPATH=src python ../../tests/fixture/m5_current_qualification.py \
 The long-run gate requires `completed`, exactly one supervisor stop with
 `reason=completed`, recorded/observed/elapsed clocks in 1,800–1,805 seconds, no
 recorded gaps or observed deaths, no operator intervention, zero inference
-requests, and positive XP persisted in the final database and matching the last
-sample. At least two hunts must appear in the same native observation.
+requests, positive XP between the first and last observed samples agreeing with
+the replay summary, and positive XP persisted in the final database and matching
+the last sample. XP gained only before the first observation cannot qualify the
+window. At least two hunts must appear in the same native observation.
 These progress checks are mandatory for every 1,800-second run, including when
 `--require-progress` is omitted. That flag only adds progress requirements to a
 short smoke; a smoke without it proves clocks and isolation, not gameplay progress.

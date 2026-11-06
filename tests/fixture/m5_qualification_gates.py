@@ -246,6 +246,10 @@ def qualify_run(
     span = (last["t_ms"] - first["t_ms"]) / 1000 if len(samples) >= 2 else None
     terminal = stops[0] if len(stops) == 1 else {}
     final_xp = last["data"]["bot"].get("xp") if last else None
+    first_xp = first["data"]["bot"].get("xp") if first else None
+    observed_xp_delta = (
+        final_xp - first_xp if type(first_xp) is int and type(final_xp) is int else None
+    )
     initial_xp = initial.get("experience")
     saved_xp = saved.get("experience")
     checks = {
@@ -280,6 +284,9 @@ def qualify_run(
     if require_progress:
         checks.update(
             {
+                "positive_xp_observed": observed_xp_delta is not None
+                and observed_xp_delta > 0
+                and metrics.get("xp_delta") == observed_xp_delta,
                 "positive_xp_persisted": isinstance(initial_xp, int)
                 and isinstance(saved_xp, int)
                 and saved_xp > initial_xp,
@@ -295,6 +302,8 @@ def qualify_run(
             "span_seconds": span,
             "supervisor": stops,
             "initial_db_xp": initial_xp,
+            "first_sample_xp": first_xp,
+            "observed_xp_delta": observed_xp_delta,
             "saved_db_xp": saved_xp,
             "last_sample_xp": final_xp,
             "alternatives": offers,

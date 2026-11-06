@@ -49,6 +49,12 @@ class ScriptedFake(runtime.FakeProvider):
 
 
 def current_revision():
+    package = ROOT.resolve() / "deployment/brain/src/canary_brain"
+    for name, module in (("runtime", runtime), ("benchmark", benchmark)):
+        imported = getattr(module, "__file__", None)
+        assert imported is not None and Path(imported).resolve() == package / (
+            name + ".py"
+        ), "qualification imports must resolve from the driver application checkout"
     assert not subprocess.check_output(
         ["git", "-C", str(ROOT), "status", "--porcelain"], text=True, timeout=30
     ).strip(), "qualification must freeze a clean committed application checkout"
