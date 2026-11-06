@@ -1,0 +1,723 @@
+"""Admitted M5 execution through the canonical decision/campaign runners.
+
+Preflight performs only file reads, SQL reads and inspection of this container.
+The executor never copies the monthly ledger or retries an attempt.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import hashlib
+import importlib.metadata
+import json
+import os
+import platform
+import re
+import socket
+import sqlite3
+import subprocess
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+from unittest.mock import patch
+from urllib.parse import quote
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from canary_brain import benchmark, runtime
+from canary_brain.protocol import Observation
+from canary_brain.recording import ReplayReader
+from canary_brain.replay_cli import decision_fixtures
+from canary_brain.store import USD, Store, month_now
+
+GATES = {
+    "fixture_30m_native_fake_current_runner",
+    "strict_native_provider_contract_both_models",
+    "routing_immutable_before_upstream",
+    "current_gateway_ids_hash_and_prices_revalidated",
+    "recorded_conformance_observations_selected",
+    "same_canonical_ledger_available_at_least_12usd",
+}
+CANONICAL_VOLUME = "canary-bots-wsl_brain-state"
+
+
+class Plan(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    output: Path
+    campaign: Path
+    admission: Path
+    authorization: Path
+    source_manifest: Path
+    decision_fixtures: Path
+    probe_workers: dict[str, Path]
+    worker_image: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    canonical_ledger_file: Path = Path("/var/lib/canary-brain/state.sqlite3")
+    canonical_volume: str = CANONICAL_VOLUME
+
+
+def read_json(path: Path) -> Any:
+    if not path.is_absolute() or path.is_symlink() or not path.is_file():
+        raise ValueError("inputs must be existing absolute nonsymlink files")
+    return json.loads(path.read_text())
+
+
+def file_hash(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def owned_output(path: Path, root: Path) -> bool:
+    return (
+        path.is_absolute()
+        and not path.is_symlink()
+        and path.resolve().is_relative_to(root.resolve())
+        and path.resolve() != root.resolve()
+    )
+
+
+def source_files(manifest: dict[str, Any]) -> dict[str, str]:
+    source = Path(manifest["source_path"])
+    if not source.is_absolute() or source.is_symlink():
+        raise ValueError("source export must be an absolute nonsymlink directory")
+    files: dict[str, str] = manifest["files"]
+    required = {
+        "benchmark.py",
+        "runtime.py",
+        "provider.py",
+        "gateway.py",
+        "store.py",
+        "recording.py",
+        "replay_cli.py",
+    }
+    if (
+        not required <= {Path(name).name for name in files}
+        or "deployment/brain/tools/m5_pilot.py" not in files
+    ):
+        raise ValueError("source manifest omits executable pilot sources")
+    if not {
+        path.relative_to(source).as_posix()
+        for path in (source / "deployment/brain/src").rglob("*.py")
+    } <= set(files):
+        raise ValueError("source manifest omits Python modules present in the export")
+    for name, expected in files.items():
+        relative = Path(name)
+        path = source / relative
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or path.is_symlink()
+            or not path.is_file()
+            or file_hash(path) != expected
+        ):
+            raise ValueError("frozen source bytes do not match their manifest")
+    return files
+
+
+def assert_frozen_imports(manifest: dict[str, Any]) -> None:
+    source = Path(manifest["source_path"]).resolve()
+    if Path(__file__).resolve() != source / "deployment/brain/tools/m5_pilot.py":
+        raise ValueError("execute the wrapper from the frozen source export")
+    for module in (benchmark, runtime):
+        if module.__file__ is None:
+            raise ValueError("canonical runner module has no source file")
+        if (
+            not Path(module.__file__)
+            .resolve()
+            .is_relative_to(source / "deployment/brain/src")
+        ):
+            raise ValueError(
+                "canonical runner imports must use the frozen source export"
+            )
+
+
+def container_identity() -> tuple[str, list[dict[str, Any]]]:
+    name = socket.gethostname()
+    mounts = json.loads(
+        subprocess.check_output(
+            ["docker", "inspect", "--format", "{{json .Mounts}}", name], text=True
+        )
+    )
+    image = subprocess.check_output(
+        ["docker", "inspect", "--format", "{{.Image}}", name], text=True
+    ).strip()
+    return image, mounts
+
+
+def ledger_snapshot(
+    path: Path,
+    historical: list[dict[str, Any]],
+    additional_runs: list[str],
+    namespace: str,
+) -> dict[str, int]:
+    if not path.is_file() or path.is_symlink():
+        raise ValueError("the canonical ledger must already exist")
+    with sqlite3.connect(
+        "file:" + quote(str(path), safe="/") + "?mode=ro", uri=True
+    ) as db:
+        spent, reserved = db.execute(
+            "SELECT COALESCE(SUM(CASE WHEN month=? THEN spent ELSE 0 END),0),COALESCE(SUM(CASE WHEN spent IS NULL THEN reserved ELSE 0 END),0) FROM requests",
+            (month_now(),),
+        ).fetchone()
+        if db.execute(
+            "SELECT COUNT(*) FROM requests WHERE run_id LIKE ?", (namespace + ":%",)
+        ).fetchone()[0]:
+            raise ValueError(
+                "campaign identity already has charged or reserved attempts"
+            )
+        for request in historical:
+            row = db.execute(
+                "SELECT spent FROM requests WHERE id=?", (request["id"],)
+            ).fetchone()
+            if row is None or row[0] != request["spent_nanousd"]:
+                raise ValueError(
+                    "historical envelope charges do not match the canonical ledger"
+                )
+        extra_liability = 0
+        if additional_runs:
+            query = (
+                "SELECT COALESCE(SUM(COALESCE(spent,reserved)),0) FROM requests WHERE run_id IN ("
+                + ",".join("?" for _ in additional_runs)
+                + ")"
+            )
+            parameters = list(additional_runs)
+            if historical:
+                query += " AND id NOT IN (" + ",".join("?" for _ in historical) + ")"
+                parameters.extend(row["id"] for row in historical)
+            extra_liability = db.execute(query, parameters).fetchone()[0]
+    return {
+        "cap": 50 * USD,
+        "spent": spent,
+        "reserved": reserved,
+        "available": max(0, 50 * USD - spent - reserved),
+        "prior_extra_liability": extra_liability,
+    }
+
+
+def ledger_export(
+    plan: Plan, additional_runs: list[str] | None = None
+) -> dict[str, Any]:
+    """Export only pilot rows, with a global balance from one SQL snapshot."""
+    experiment = benchmark.Experiment.model_validate(read_json(plan.campaign))
+    envelope = read_json(plan.authorization)
+    ids = [row["id"] for row in envelope.get("historical_requests", [])]
+    runs = {str(value) for value in envelope.get("additional_cost_run_ids", [])}
+    runs.update(additional_runs or [])
+    for path in plan.probe_workers.values():
+        config = runtime.Configuration.model_validate(read_json(path))
+        if config.recording is not None and config.recording.path.is_file():
+            runs.update(row["id"] for row in ReplayReader(config.recording.path).runs())
+    game_recording = experiment.output / "recording.sqlite3"
+    if game_recording.is_file():
+        runs.update(row["id"] for row in ReplayReader(game_recording).runs())
+    month = month_now()
+    query = "SELECT id,month,run_id,reserved,spent,created FROM requests WHERE run_id LIKE ?"
+    parameters: list[Any] = [experiment.name + ":%"]
+    for column, values in (("id", ids), ("run_id", sorted(runs))):
+        if values:
+            query += f" OR {column} IN ({','.join('?' for _ in values)})"
+            parameters.extend(values)
+    with sqlite3.connect(
+        "file:" + quote(str(plan.canonical_ledger_file), safe="/") + "?mode=ro",
+        uri=True,
+    ) as db:
+        db.execute("BEGIN")
+        spent, reserved = db.execute(
+            "SELECT COALESCE(SUM(CASE WHEN month=? THEN spent ELSE 0 END),0),COALESCE(SUM(CASE WHEN spent IS NULL THEN reserved ELSE 0 END),0) FROM requests",
+            (month,),
+        ).fetchone()
+        rows = db.execute(query, parameters).fetchall()
+        snapshot_utc = datetime.now(UTC).isoformat()
+    return {
+        "authority": f"{plan.canonical_volume}:{plan.canonical_ledger_file}",
+        "month": month,
+        "snapshot_utc": snapshot_utc,
+        "budget": {
+            "cap": 50 * USD,
+            "spent": spent,
+            "reserved": reserved,
+            "available": max(0, 50 * USD - spent - reserved),
+        },
+        "requests": [
+            dict(
+                zip(
+                    ("id", "month", "run_id", "reserved", "spent", "created"),
+                    row,
+                    strict=True,
+                )
+            )
+            for row in rows
+        ],
+    }
+
+
+def preflight(plan: Plan) -> dict[str, Any]:
+    if (
+        not plan.output.is_absolute()
+        or plan.output.is_symlink()
+        or (
+            plan.output.exists()
+            and (not plan.output.is_dir() or any(plan.output.iterdir()))
+        )
+    ):
+        raise ValueError(
+            "pilot output must be new or empty; attempts cannot be replaced"
+        )
+    admission = read_json(plan.admission)
+    if (
+        admission.get("approved") is not True
+        or admission.get("read_only_preparation") is not False
+        or set(admission.get("required_gates", {})) != GATES
+        or not all(value is True for value in admission["required_gates"].values())
+    ):
+        raise ValueError("root admission has not accepted every free/gateway gate")
+    envelope = read_json(plan.authorization)
+    source = read_json(plan.source_manifest)
+    files = source_files(source)
+    experiment = benchmark.Experiment.model_validate(read_json(plan.campaign))
+    if (
+        admission.get("approved_campaign_sha256") != file_hash(plan.campaign)
+        or admission.get("approved_decision_fixtures_sha256")
+        != file_hash(plan.decision_fixtures)
+        or admission.get("source_revision") != source["revision"]
+    ):
+        raise ValueError("root admission is not bound to these exact inputs")
+    credential = experiment.gateway_credential
+    if (
+        credential is None
+        or not credential.is_absolute()
+        or credential.is_symlink()
+        or not credential.is_file()
+        or credential.stat().st_mode & 0o077
+    ):
+        raise ValueError("the private client credential must already exist")
+    if experiment.bot_id != 65001:
+        raise ValueError("this status observer is qualified for fixture G bot65001")
+    if (
+        not re.fullmatch(r"[a-f0-9]{40}", source["revision"])
+        or experiment.source_revision != source["revision"]
+    ):
+        raise ValueError("campaign and frozen source revisions differ")
+    if (
+        experiment.budget_file != plan.canonical_ledger_file
+        or plan.canonical_volume != CANONICAL_VOLUME
+    ):
+        raise ValueError("one existing canonical monthly ledger is required")
+    if not owned_output(experiment.output, plan.output) or experiment.output.exists():
+        raise ValueError("game campaign output must be a new child of the pilot output")
+    if (
+        experiment.seconds != 1800
+        or experiment.repetitions != 3
+        or experiment.memory_mode != "frozen"
+        or experiment.run_cap_nanousd != USD
+        or experiment.campaign_cap_nanousd != 6 * USD
+    ):
+        raise ValueError(
+            "M5 requires three frozen 1800-second blocks with six USD1 model caps"
+        )
+    participants = {p.name: p for p in experiment.participants}
+    if (
+        len(experiment.participants) != 3
+        or set(participants) != {"native", "openai", "gemini"}
+        or participants["native"].kind != "native"
+    ):
+        raise ValueError("participants must be native, OpenAI and Gemini exactly once")
+    for name in ("openai", "gemini"):
+        mapping = participants[name].gateway
+        if (
+            participants[name].kind != "litellm"
+            or mapping is None
+            or mapping.provider != name
+        ):
+            raise ValueError("model participant and provider names must match")
+    for image in (experiment.game_image, experiment.database_image):
+        if re.fullmatch(r"sha256:[a-f0-9]{64}", image) is None:
+            raise ValueError("this pilot attests local immutable image content IDs")
+    if (
+        benchmark.fixture_hash(experiment.fixture, experiment.world_map)
+        != experiment.expected_initial_sha256
+    ):
+        raise ValueError("initial fixture bytes changed")
+    for participant in experiment.participants:
+        if (
+            len(
+                str(
+                    experiment.output / f"{participant.name}-2/socket/worker.sock"
+                ).encode()
+            )
+            >= 108
+        ):
+            raise ValueError("pilot socket paths exceed Unix limits")
+    historical = envelope.get("historical_requests", [])
+    historical_total = sum(row["spent_nanousd"] for row in historical)
+    if (
+        envelope.get("max_total_nanousd") != 7 * USD
+        or envelope.get("canonical_monthly_cap_nanousd") != 50 * USD
+        or envelope.get("canonical_authority")
+        != f"{CANONICAL_VOLUME}:{plan.canonical_ledger_file}"
+        or historical_total + 6 * USD + 980_000_000 > 7 * USD
+    ):
+        raise ValueError(
+            "the complete envelope must fit USD7 inside the shared USD50 cap"
+        )
+    fixtures = read_json(plan.decision_fixtures)
+    if not isinstance(fixtures, list) or not 1 <= len(fixtures) <= 6:
+        raise ValueError("conformance requires at most six predeclared observations")
+    observations = [Observation.model_validate(row["observation"]) for row in fixtures]
+    if not any(len(row.actions) > 1 for row in observations):
+        raise ValueError("conformance needs at least one real model-choice opportunity")
+    if len({row.bot.id for row in observations}) != 1:
+        raise ValueError("probe cap must be shared by one recorded bot per model")
+    if set(plan.probe_workers) != {"openai", "gemini"}:
+        raise ValueError("one conformance configuration per model is required")
+    for name, path in plan.probe_workers.items():
+        config = runtime.Configuration.model_validate(read_json(path))
+        if (
+            config.provider != "litellm"
+            or config.gateway != participants[name].gateway
+            or config.budget_file != plan.canonical_ledger_file
+            or config.monthly_usd != 50
+            or config.run_cap_nanousd != 490_000_000
+            or config.recording is None
+            or config.credential_file != experiment.gateway_credential
+            or set(config.bots) != {observations[0].bot.id}
+        ):
+            raise ValueError(
+                "probe identity, ledger, credential or USD0.49 cap differs"
+            )
+        if (
+            not owned_output(config.recording.path, plan.output)
+            or config.recording.path.exists()
+        ):
+            raise ValueError("probe recording must have a new pilot-owned path")
+    image, mounts = container_identity()
+    if image != plan.worker_image or admission.get("common_worker_image") != image:
+        raise ValueError("worker image differs from root admission")
+    if not any(
+        m.get("Type") == "volume"
+        and m.get("Name") == CANONICAL_VOLUME
+        and m.get("Destination") == str(plan.canonical_ledger_file.parent)
+        and m.get("RW") is True
+        for m in mounts
+    ):
+        raise ValueError("canonical Docker volume is not mounted directly read-write")
+    for key, actual in (
+        ("common_worker_python", platform.python_version()),
+        ("openai_sdk", importlib.metadata.version("openai")),
+        ("pydantic", importlib.metadata.version("pydantic")),
+    ):
+        if admission.get(key) != actual:
+            raise ValueError("worker dependency versions differ from root admission")
+    budget = ledger_snapshot(
+        plan.canonical_ledger_file,
+        historical,
+        envelope.get("additional_cost_run_ids", []),
+        experiment.name,
+    )
+    historical_total += budget.pop("prior_extra_liability")
+    if historical_total + 6_980_000_000 > 7 * USD:
+        raise ValueError("prior pilot charges leave insufficient room inside USD7")
+    if budget["available"] < 12 * USD:
+        raise ValueError("monthly ledger lacks the admitted USD12 headroom")
+    order = [
+        [p.name for p in experiment.participants[i:] + experiment.participants[:i]]
+        for i in range(3)
+    ]
+    if envelope.get("scored", {}).get("order") != order:
+        raise ValueError("declared execution order differs from canonical rotation")
+    paths = {
+        "campaign": plan.campaign,
+        "admission": plan.admission,
+        "authorization": plan.authorization,
+        "source_manifest": plan.source_manifest,
+        "decision_fixtures": plan.decision_fixtures,
+        **plan.probe_workers,
+    }
+    return {
+        "accepted": True,
+        "budget": budget,
+        "order": order,
+        "source_files": files,
+        "source_revision": source["revision"],
+        "input_sha256": {name: file_hash(path) for name, path in paths.items()},
+        "fixture_sha256": experiment.expected_initial_sha256,
+        "new_worst_case_nanousd": 6_980_000_000,
+        "historical_nanousd": historical_total,
+    }
+
+
+async def observe_status(
+    configuration: runtime.Configuration, stopped: asyncio.Event, active: Any
+) -> None:
+    last = -100.0
+    while not stopped.is_set():
+        clock = Store(configuration.state_file).get("run_clock", "start")
+        elapsed = time.monotonic() - clock["monotonic"] if clock else None
+        fixture = active()
+        if elapsed is not None and elapsed >= 540 and elapsed - last >= 10 and fixture:
+            last = elapsed
+
+            def query(sql: str, target: Any = fixture) -> str:
+                value = target.command(
+                    "exec",
+                    "-T",
+                    "database",
+                    "sh",
+                    "-c",
+                    'MYSQL_PWD="$MARIADB_PASSWORD" mariadb -u canary canary -N -e "$1"',
+                    "sh",
+                    sql,
+                    timeout=10,
+                )
+                if not isinstance(value, str):
+                    raise TypeError("status query did not return text")
+                return value
+
+            async def query_async(sql: str) -> str:
+                pending = asyncio.create_task(asyncio.to_thread(query, sql))
+                try:
+                    return await asyncio.shield(pending)
+                except asyncio.CancelledError:
+                    await pending
+                    raise
+
+            identity = int(
+                await query_async(
+                    "INSERT INTO bot_commands(bot_name,command) VALUES('Grizzle Alyronia','status');SELECT LAST_INSERT_ID();",
+                )
+            )
+            status = ""
+            for _ in range(20):
+                status = await query_async(
+                    f"SELECT result FROM bot_commands WHERE id={identity} AND processed=1;",
+                )
+                if status:
+                    break
+                await asyncio.sleep(0.2)
+            with (configuration.state_file.parent / "phase-status.jsonl").open(
+                "a"
+            ) as stream:
+                stream.write(
+                    json.dumps(
+                        {"elapsed": elapsed, "command_id": identity, "status": status}
+                    )
+                    + "\n"
+                )
+        await asyncio.sleep(1)
+
+
+async def run_attested_campaign(experiment: benchmark.Experiment) -> Any:
+    original_run = runtime.run
+    active = None
+
+    class AttestedFixture(benchmark.DockerFixture):
+        def prepare(self, participant: Any) -> None:
+            nonlocal active
+            active = self
+            super().prepare(participant)
+            compose = json.loads(self.compose.read_text())
+            compose["networks"] = {"default": {"internal": True}}
+            compose["services"]["game"]["volumes"].append(f"{self.directory}:/m5")
+            self.compose.write_text(json.dumps(compose))
+
+        def start_database(self) -> None:
+            super().start_database()
+            actual = subprocess.check_output(
+                [
+                    "docker",
+                    "inspect",
+                    self.project + "-database-1",
+                    "--format",
+                    "{{.Image}}",
+                ],
+                text=True,
+            ).strip()
+            if actual != experiment.database_image:
+                raise ValueError("database image differs from the pinned campaign")
+
+    async def observed_worker(
+        configuration: runtime.Configuration, stopped: asyncio.Event
+    ) -> None:
+        observer = asyncio.create_task(
+            observe_status(configuration, stopped, lambda: active)
+        )
+        try:
+            await original_run(configuration, stopped)
+        finally:
+            observer.cancel()
+            await asyncio.gather(observer, return_exceptions=True)
+
+    with (
+        patch.object(benchmark, "DockerFixture", AttestedFixture),
+        patch.object(benchmark, "run", observed_worker),
+    ):
+        return await benchmark.run_campaign(experiment, live=True)
+
+
+def write_new(path: Path, data: Any) -> None:
+    with path.open("x") as stream:
+        json.dump(data, stream, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+async def execute(plan: Plan) -> dict[str, Any]:
+    admitted = preflight(plan)
+    source = read_json(plan.source_manifest)
+    assert_frozen_imports(source)
+    os.umask(0o077)
+    plan.output.mkdir(parents=True, exist_ok=True, mode=0o700)
+    write_new(
+        plan.output / "execution-started.json",
+        {"plan": plan.model_dump(mode="json"), "preflight": admitted},
+    )
+    inputs = plan.output / "inputs"
+    inputs.mkdir(mode=0o700)
+    for name, path in {
+        "campaign": plan.campaign,
+        "admission": plan.admission,
+        "authorization": plan.authorization,
+        "source_manifest": plan.source_manifest,
+        "decision_fixtures": plan.decision_fixtures,
+        **plan.probe_workers,
+    }.items():
+        payload = path.read_bytes()
+        if hashlib.sha256(payload).hexdigest() != admitted["input_sha256"][name]:
+            raise ValueError("admitted input changed before its snapshot")
+        with (inputs / (name + ".json")).open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+    plan = plan.model_copy(
+        update={
+            **{
+                key: inputs / (key + ".json")
+                for key in (
+                    "campaign",
+                    "admission",
+                    "authorization",
+                    "source_manifest",
+                    "decision_fixtures",
+                )
+            },
+            "probe_workers": {
+                name: inputs / (name + ".json") for name in plan.probe_workers
+            },
+        }
+    )
+    result: dict[str, Any] = {"probes": {}, "campaign": None}
+    expected_attempts = sum(
+        len(Observation.model_validate(row["observation"]).actions) > 1
+        for row in read_json(plan.decision_fixtures)
+    )
+    try:
+        for name in ("openai", "gemini"):
+            source_files(source)
+            probe = await decision_fixtures(
+                argparse.Namespace(
+                    fixtures=plan.decision_fixtures,
+                    worker_config=plan.probe_workers[name],
+                    live=True,
+                )
+            )
+            with sqlite3.connect(
+                "file:" + quote(str(plan.canonical_ledger_file), safe="/") + "?mode=ro",
+                uri=True,
+            ) as db:
+                unresolved = sum(
+                    db.execute(
+                        "SELECT COUNT(*) FROM requests WHERE run_id=? AND spent IS NULL",
+                        (run,),
+                    ).fetchone()[0]
+                    for run in probe["runs"]
+                )
+                count = sum(
+                    db.execute(
+                        "SELECT COUNT(*) FROM requests WHERE run_id=?", (run,)
+                    ).fetchone()[0]
+                    for run in probe["runs"]
+                )
+                unknown_nanousd = sum(
+                    db.execute(
+                        "SELECT COALESCE(SUM(reserved),0) FROM requests WHERE run_id=? AND spent IS NULL",
+                        (run,),
+                    ).fetchone()[0]
+                    for run in probe["runs"]
+                )
+            late = sum(row.get("error") == "TimeoutError" for row in probe["decisions"])
+            probe["qualification"] = {
+                "valid": sum(row["valid"] for row in probe["decisions"]),
+                "late": late,
+                "unknown_requests": unresolved,
+                "unknown_nanousd": unknown_nanousd,
+                "ledger_requests": count,
+                "expected_model_requests": expected_attempts,
+                "root_review_required": not all(
+                    row["valid"] for row in probe["decisions"]
+                )
+                or bool(unresolved),
+                "failure_interpretation": "deadline_performance"
+                if late
+                else "contract_or_provider"
+                if not all(row["valid"] for row in probe["decisions"])
+                else None,
+            }
+            result["probes"][name] = probe
+            write_new(plan.output / (name + "-probe-result.json"), probe)
+            if not probe["decisions"] or not all(
+                row["valid"] for row in probe["decisions"]
+            ):
+                raise ValueError(
+                    "conformance failed; root must review deadline/contract outcomes"
+                )
+            if count != expected_attempts:
+                raise ValueError(
+                    "conformance did not record one attempt per model-choice opportunity"
+                )
+            if unresolved:
+                raise ValueError(
+                    "conformance has unknown charges; retain reservations and stop"
+                )
+        source_files(source)
+        result["campaign"] = await run_attested_campaign(
+            benchmark.Experiment.model_validate(read_json(plan.campaign))
+        )
+        return result
+    except BaseException as error:
+        result["error_type"] = type(error).__name__
+        raise
+    finally:
+        export_failed = False
+        try:
+            probe_runs = [
+                run
+                for probe in result["probes"].values()
+                for run in probe.get("runs", [])
+            ]
+            write_new(plan.output / "ledger.json", ledger_export(plan, probe_runs))
+        except Exception as error:  # noqa: BLE001 - preserve the original stage failure too
+            export_failed = True
+            result["ledger_export_error"] = type(error).__name__
+        write_new(plan.output / "execution-result.json", result)
+        if export_failed and "error_type" not in result:
+            raise RuntimeError("financial export failed; root review is required")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--plan", type=Path, required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--preflight", action="store_true")
+    mode.add_argument("--execute", action="store_true")
+    args = parser.parse_args()
+    try:
+        plan = Plan.model_validate(read_json(args.plan))
+        result = preflight(plan) if args.preflight else asyncio.run(execute(plan))
+    except Exception as error:  # noqa: BLE001 - API errors can contain credentials
+        parser.exit(1, f"M5 stopped: {type(error).__name__}\n")
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    main()
