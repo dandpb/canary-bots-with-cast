@@ -9,6 +9,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from preflight import assert_no_resources
+
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent.parent
 
@@ -55,6 +57,20 @@ class CoreQaOfflineTests(unittest.TestCase):
                          "qa-test-only")
         self.assertEqual(compose["services"]["game"]["environment"]["BOT_PLAYERS_ONLINE"],
                          "50")
+
+    def test_preflight_rejects_existing_qa_resource_by_label_or_name(self):
+        for match in ("name", "label"):
+            with self.subTest(match=match):
+                def fake_command(*args, **_kwargs):
+                    if args[:3] == ("docker", "volume", "ls"):
+                        labeled = "--filter" in args
+                        if labeled == (match == "label"):
+                            return "canary-core-qa_database\n"
+                    return ""
+
+                with patch("preflight.command", side_effect=fake_command):
+                    with self.assertRaisesRegex(RuntimeError, "QA resources already exist"):
+                        assert_no_resources()
 
     def test_login_advertises_the_game_listener(self):
         services = self.compose["services"]

@@ -25,6 +25,7 @@ cd deployment/core-qa
 python3 prepare.py --skip-map
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env config -q
 python3 -m unittest -v test_offline.py
+python3 preflight.py --resources-only
 ```
 
 `prepare.py` cria senhas de banco exclusivas deste QA em `.env` e copia schema
@@ -44,6 +45,7 @@ Ainda não execute estes comandos sem a aprovação do responsável pelo smoke:
 cd deployment/core-qa
 python3 prepare.py --download-map
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env config -q
+python3 preflight.py
 SOURCE_REVISION="$(git rev-parse HEAD)" env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --build --wait database game web
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env ps
 ```
@@ -55,6 +57,11 @@ os bots selecionados terminarem de carregar. O padrão é 50 bots; ajuste
 `BOT_PLAYERS_ONLINE` apenas na `.env` deste QA se o teste pedir outro número.
 O banco de QA nasce vazio e recebe os seeds próprios na primeira subida; contas
 criadas nele não são copiadas do ambiente operacional.
+O preflight completo exige o mapa validado e recusa containers, volumes, redes
+ou tags de imagem `canary-core-qa` já existentes, inclusive após um rollback.
+Nesse caso, inspecione os recursos antes de qualquer nova subida; não os remova
+automaticamente. Ele consulta o Docker somente em leitura e não acessa o
+ledger ou o provider. Repita-o imediatamente antes do primeiro `up`.
 
 ## Coleta e rollback
 
