@@ -6,6 +6,7 @@
   "web_base": {
     "ref": "otbr-myaac:latest",
     "id": "sha256:9d7e49f8370ff480ff878bc644f8c63c4af7601e91f8116a6757e1ac5101023a",
-    "entrypoint_sha256": "a007f92ec02398d05205c447c9645ab1add7cfb74603d3284e9f03eaf38c43e9"
+    "entrypoint_sha256": "a007f92ec02398d05205c447c9645ab1add7cfb74603d3284e9f03eaf38c43e9",
+    "qa_config_sha256": "a94fa69f36a5fbe59623e7ff0d4e34191f1e41295f018c8e6a9bb06adef42f63"
   }
 }

@@ -26,6 +26,7 @@ python3 prepare.py --skip-map
 export SOURCE_REVISION="$(git rev-parse HEAD)" # conferência preliminar, não é aprovação para subir
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env config -q
 python3 -m unittest -v test_offline.py
+python3 verify_myaac.py
 python3 preflight.py --resources-only
 ```
 
@@ -77,7 +78,13 @@ lock. O tag final web `canary-core-qa-web:local` é exclusivo do QA. No ID web
 registrado, o script `myaac-entrypoint` tem SHA-256
 `a007f92ec02398d05205c447c9645ab1add7cfb74603d3284e9f03eaf38c43e9`
 e escreve `gameProtocolPort` a partir de `CANARY_GAME_PORT`; este QA fornece
-`17172`. É um recibo de conteúdo local, não um digest de registro remoto.
+`17172`. `verify_myaac.py` exporta a imagem somente em leitura, confere o hash
+do entrypoint e executa apenas seu trecho de geração do `config.lua` com valores
+fictícios. Confere `gameProtocolPort = 17172` e o SHA-256 do config gerado
+`a94fa69f36a5fbe59623e7ff0d4e34191f1e41295f018c8e6a9bb06adef42f63`.
+Esse recibo não executa o bootstrap do MyAAC nem inicia um container; o login
+real ainda depende do smoke autorizado. Os hashes são recibos locais, não
+digests de registro remoto.
 
 ## Coleta e rollback
 

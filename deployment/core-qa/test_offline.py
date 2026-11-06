@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from preflight import assert_no_resources, assert_source
+from verify_myaac import verify as verify_myaac
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent.parent
@@ -102,6 +103,10 @@ class CoreQaOfflineTests(unittest.TestCase):
             )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("SOURCE_REVISION", result.stderr)
+
+    def test_pinned_myaac_entrypoint_generates_qa_game_port(self):
+        self.assertEqual(verify_myaac(),
+                         "a94fa69f36a5fbe59623e7ff0d4e34191f1e41295f018c8e6a9bb06adef42f63")
 
     def test_login_advertises_the_game_listener(self):
         services = self.compose["services"]

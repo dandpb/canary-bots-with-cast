@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 from prepare import MAP_SHA256
+from verify_myaac import verify as verify_myaac
 
 HERE = Path(__file__).resolve().parent
 PROJECT = "canary-core-qa"
@@ -133,6 +134,7 @@ def main():
     assert_compose()
     assert_no_resources()
     assert_image_lock()
+    verify_myaac()
     if not args.resources_only:
         assert_source(args.approved_revision)
         assert_map()
