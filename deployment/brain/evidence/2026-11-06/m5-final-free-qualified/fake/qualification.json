@@ -1,0 +1,208 @@
+{
+  "accepted": true,
+  "checks": {
+    "completed": true,
+    "supervisor_completed": true,
+    "recorded_horizon": true,
+    "observed_horizon": true,
+    "elapsed_horizon": true,
+    "no_gaps": true,
+    "zero_observed_deaths": true,
+    "no_operator_interventions": true,
+    "zero_inference": true,
+    "saved_xp_matches": true,
+    "positive_xp_persisted": true,
+    "native_offers_multiple_hunts": true,
+    "hunt_cycle": true,
+    "status_observer_healthy": true,
+    "resources_cleaned": true,
+    "runtime_images_verified": true
+  },
+  "evidence": {
+    "mode": "fake",
+    "span_seconds": 1801.0,
+    "supervisor": [
+      {
+        "elapsed_seconds": 1801.0097088890034,
+        "observed_seconds": 1800.946146088012,
+        "phase": "run_supervisor_stop",
+        "reason": "completed"
+      }
+    ],
+    "initial_db_xp": 98800,
+    "saved_db_xp": 102942,
+    "last_sample_xp": 102942,
+    "alternatives": {
+      "offered": true,
+      "t_ms": 15861,
+      "candidate_ids": [
+        "hunt:399",
+        "hunt:77"
+      ],
+      "meaning": "simultaneous native offers; does not assert every offer reached a model"
+    },
+    "hunt_cycle": {
+      "complete": true,
+      "completed_hunt": {
+        "identity": [
+          "2ad4e74373fb44eb8b3ac4c981ed503f",
+          65001,
+          "1-155639667811705"
+        ],
+        "candidate_id": "hunt:399",
+        "intent_t_ms": 15885,
+        "accepted_t_ms": 15962,
+        "completed_t_ms": 315995,
+        "xp_delta": 617.0,
+        "defeats_delta": 20.0
+      },
+      "restart": {
+        "identity": [
+          "09e2146c878a487ba9c6e4b243e50e4e",
+          65001,
+          "1-155639667811705"
+        ],
+        "candidate_id": "hunt:399",
+        "intent_t_ms": 316049,
+        "accepted_t_ms": 316140
+      },
+      "meaning": "completed hunt macro followed by a new accepted hunt; not return or NPC purchase"
+    },
+    "automatic_recoveries_requested": 0
+  },
+  "scope": "timed gameplay only; runtime image/cleanup attestations and normal NPC purchase/return proof remain separate gates",
+  "summary": {
+    "id": "m5-current-fake-649252d200:fake:0",
+    "manifest": {
+      "bot_id": 65001,
+      "configuration_sha256": "7027617adf786fe4be7d00c82ae4cda302423ee6c501cf6725cf55e8c8f86752",
+      "experiment": "m5-current-fake-649252d200",
+      "initial_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+      "lineage": "m5-current-fake-649252d200:0",
+      "memory_mode": "frozen",
+      "model": "none",
+      "participant": "fake",
+      "provider": "fake",
+      "run_id": "m5-current-fake-649252d200:fake:0",
+      "sample_ms": 1000,
+      "scenario": "autonomous-progression",
+      "source_revision": "47adddc40ad866e75450d317622dada6b7592687",
+      "synthetic": false,
+      "version": 1
+    },
+    "status": "completed",
+    "incomplete": false,
+    "started": 1793973322.1753979,
+    "updated": 1793975197.7262948,
+    "event_count": 5750,
+    "duration_ms": 1816873,
+    "metrics": {
+      "version": 2,
+      "xp_delta": 4142,
+      "xp_per_wall_hour": 8279.40033314825,
+      "xp_per_active_hour": 8287.038580812965,
+      "active_ms": 1799340,
+      "wall_ms": 1801000,
+      "calendar_elapsed_ms": 1841768,
+      "duration_ms": 1816873,
+      "deaths": 0,
+      "initial_native_deaths_excluded": 0,
+      "deaths_observed": true,
+      "interventions": 0,
+      "intervention_free_ms": 1816873,
+      "intervention_free_censored": true,
+      "automatic_recoveries_requested": 0,
+      "model_decisions": 606,
+      "valid_proposals": 606,
+      "policy_overrides": 0,
+      "accepted_actions": 6,
+      "completed_actions": 5,
+      "failed_actions": 0,
+      "provider_failures": 0,
+      "spent_nanousd": 0,
+      "reserved_nanousd": 0,
+      "xp_per_dollar": null,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null,
+      "gaps": 0,
+      "gap_times": [],
+      "levels": [],
+      "milestones": [
+        {
+          "t_ms": 315995,
+          "kind": "completed",
+          "text": "hunt_progress"
+        },
+        {
+          "t_ms": 616134,
+          "kind": "completed",
+          "text": "hunt_progress"
+        },
+        {
+          "t_ms": 916372,
+          "kind": "completed",
+          "text": "hunt_progress"
+        },
+        {
+          "t_ms": 1216642,
+          "kind": "completed",
+          "text": "hunt_progress"
+        },
+        {
+          "t_ms": 1516747,
+          "kind": "completed",
+          "text": "hunt_progress"
+        }
+      ],
+      "native_control_ms": 0,
+      "native_fallback_ms": 0,
+      "stalled_ms": 0,
+      "confirmed_objective_defeats": 108,
+      "limitations": [
+        "Sampled observations; hidden events are not reconstructed.",
+        "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+        "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+      ]
+    }
+  },
+  "requests": 0,
+  "status_observation_count": 120,
+  "supply_limit": "RESUPPLYING is a native phase; purchase requires stock, bank and confirmed outcome evidence separately.",
+  "attestation": {
+    "source_revision": "47adddc40ad866e75450d317622dada6b7592687",
+    "application_source_revision": "47adddc40ad866e75450d317622dada6b7592687",
+    "native_source_revision": "d43050147bc13d8024bdc66b641b127c31253b7c",
+    "native_build": {
+      "source_revision": "d43050147bc13d8024bdc66b641b127c31253b7c",
+      "archive_sha256": "b11994f7783e2bfb70b9517fea54e2739b0bca306163ea96493364964fdc8f3f",
+      "source_sync": {
+        "changed_files": 3,
+        "unchanged_files": 644,
+        "removed_stale_files": 0
+      },
+      "binary_sha256": {
+        "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+        "libbot_engine.so": "92017c8a83a34dea06a8441947a68ae03e56c512f2015603e24ea5a80d282b0d"
+      },
+      "gnu_unique_symbols": 0,
+      "native_unit_tests": "passed; raw log retained",
+      "compiler": "c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+      "cmake_home_directory": "<NATIVE_BUILD_SOURCE>",
+      "build_directory": "<NATIVE_BUILD_DIRECTORY>",
+      "parallelism": 4
+    },
+    "fixture_parent": "<FREE_B_FIXTURE>",
+    "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+    "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+    "game_image": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+    "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+    "binary_sha256": {
+      "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+      "libbot_engine.so": "92017c8a83a34dea06a8441947a68ae03e56c512f2015603e24ea5a80d282b0d"
+    },
+    "mode": "fake",
+    "seconds": 1800,
+    "driver_sha256": "6f3c8fc550b24511fbd0d30c2ebe7611a1e977a7006fcbcae39343ed791c1336",
+    "scope": "Controlled fixture G; real game with native or explicitly scripted fake choices. No provider inference."
+  }
+}

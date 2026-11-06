@@ -1,0 +1,15 @@
+{
+  "reason": "infrastructure_cwd_lost",
+  "at_utc": "2026-11-06T13:35:28.308741+00:00",
+  "scope": "Graceful SIGTERM only validated own free QA workers; originals remain failed/interrupted, not scored",
+  "application_source_revision": "1e25dc174b6a50af276983697df2ca4a5764f255",
+  "game_image": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+  "qualification_accepted": false,
+  "paid_pilot_admitted": false,
+  "source_sha256": "bc2d15e5b39bcbe02bbe9645d86177d04cb64cf9d57c9b5cf41543028032cc2a",
+  "validated_worker_modes": [
+    "native",
+    "fake"
+  ],
+  "signal_request_recorded_by": "coordinator instruction; recorded in original receipt"
+}

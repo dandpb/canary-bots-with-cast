@@ -1,0 +1,67 @@
+{
+  "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+  "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+  "image_id": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+  "equipment": {
+    "level": "20",
+    "vocation": "4",
+    "slot_head": "3365",
+    "slot_armor": "3366",
+    "slot_legs": "3363",
+    "slot_feet": "3555",
+    "slot_right": "3284",
+    "slot_left": "3423",
+    "slot_backpack": "2854"
+  },
+  "guid": 65001,
+  "hp": 365,
+  "mana": 95,
+  "level": 20,
+  "xp": 98800,
+  "bank": 10000,
+  "potions": {
+    "266": 20,
+    "268": 20
+  },
+  "hunts": [
+    77,
+    399
+  ],
+  "hunt77_vocation_mask": 8,
+  "binary_sha256": {
+    "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+    "libbot_engine.so": "92017c8a83a34dea06a8441947a68ae03e56c512f2015603e24ea5a80d282b0d"
+  },
+  "database_image_id": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "qualification_application_source_revision": "47adddc40ad866e75450d317622dada6b7592687",
+  "qualification_main_revision": "a9fcf7c21c280e0cd670eb20575298aae10669d9",
+  "qualification_scope": "New free functional qualification after cwd infrastructure fixes; no API and no latency comparison",
+  "qualification_source_readonly_receipt_sha256": "4a936a1a9664ed524e15ccf8152d8b5e3833a2fa1b55174be2f812f977dcf738",
+  "qualification_process_cwd_policy": "private ext4 per run",
+  "qualification_subprocess_cwd": "/",
+  "qualification_code_sha256": {
+    "m5_current_qualification.py": "6f3c8fc550b24511fbd0d30c2ebe7611a1e977a7006fcbcae39343ed791c1336",
+    "m5_qualification_gates.py": "2a13490dc3ce614e37e47babbf4f499ec4b627ab1b29ff441b0a7f4f24d77dcb",
+    "m5_current_lowstock.py": "3f64b19a9a34cc37c6333a5694ea22fbd5e73a7bb6bf28ca68225f0384bdc613"
+  },
+  "controlled_overrides": {
+    "botPlayersOnline": 1,
+    "botPersonalityRerollOnRestart": false,
+    "botAmbientRoamEnabled": false,
+    "botActivityDwell": 0,
+    "botActivityPoi": 0,
+    "botActivityParty": 0,
+    "botActivityTravel": 0,
+    "botActivityHunt": 100,
+    "botActivityRerollCooldownSec": 5,
+    "botDwellPoiMinSec": 5,
+    "botDwellPoiMaxSec": 5,
+    "botDwellRerollMinSec": 5,
+    "botDwellRerollMaxSec": 5,
+    "botHuntTimeMinSec": 600,
+    "botHuntTimeMaxSec": 600,
+    "botResupplyRehuntPct": 100
+  },
+  "source_manifest_sha256": "4fcbc321fda33fd496199ed127bee3ea77b1e062e49b914b13cf4a9d32d3a8ee",
+  "note": "Selected metadata only; authored/SQL/map bytes remain identified by fixture and source hashes, not published as game DB or map."
+}
