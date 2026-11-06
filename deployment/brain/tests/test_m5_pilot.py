@@ -243,6 +243,18 @@ def test_preflight_accepts_pinned_single_authority_without_creating_output(admit
     assert admitted.canonical_ledger_file.read_bytes() == before
 
 
+def test_preflight_accepts_immutable_manifest_digest(admitted):
+    campaign = json.loads(admitted.campaign.read_text())
+    campaign["game_image"] = "registry.example/game@sha256:" + "3" * 64
+    write(admitted.campaign, campaign)
+    gate = json.loads(admitted.admission.read_text())
+    gate["approved_campaign_sha256"] = pilot.file_hash(admitted.campaign)
+    write(admitted.admission, gate)
+    approve_inputs(admitted)
+
+    assert pilot.preflight(admitted)["accepted"] is True
+
+
 def test_missing_ledger_is_not_recreated(admitted):
     admitted.canonical_ledger_file.unlink()
     with pytest.raises(ValueError, match="must already exist"):

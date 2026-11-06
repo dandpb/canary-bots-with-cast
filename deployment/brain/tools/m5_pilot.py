@@ -133,6 +133,20 @@ def resource_metadata(identity: str, kind: str) -> dict[str, Any]:
     }
 
 
+def image_content_id(reference: str) -> str:
+    """Resolve a pinned manifest to the local config ID used by containers."""
+    if re.fullmatch(r"sha256:[a-f0-9]{64}", reference):
+        return reference
+    if re.fullmatch(r"[^@\s]+@sha256:[a-f0-9]{64}", reference) is None:
+        raise ValueError("trial image reference is not immutable")
+    identity = docker_metadata(
+        "image", "inspect", "--format", "{{.Id}}", reference
+    ).strip()
+    if re.fullmatch(r"sha256:[a-f0-9]{64}", identity) is None:
+        raise ValueError("Docker returned an invalid image content identity")
+    return identity
+
+
 def replace_evidence(path: Path, data: Any) -> None:
     descriptor, temporary = tempfile.mkstemp(prefix="." + path.name, dir=path.parent)
     try:
@@ -177,9 +191,12 @@ class TrialAttestation:
     def persist(self) -> None:
         with self.lock:
             self.aggregate[self.run_id] = self.data
-            replace_evidence(
-                self.fixture.directory / "trial-attestation.json", self.data
-            )
+            # prepare can fail before creating the attempt directory. The
+            # aggregate still records its failure and cleanup result.
+            if self.fixture.directory.is_dir():
+                replace_evidence(
+                    self.fixture.directory / "trial-attestation.json", self.data
+                )
             replace_evidence(
                 self.fixture.experiment.output / "trial-attestations.json",
                 {"trials": self.aggregate},
@@ -237,7 +254,8 @@ class TrialAttestation:
                     or row["host_ports"]
                 ):
                     raise ValueError("trial container scope or host ports differ")
-                if row["image"] != getattr(self.fixture.experiment, service + "_image"):
+                reference = getattr(self.fixture.experiment, service + "_image")
+                if row["image"] != image_content_id(reference):
                     raise ValueError("trial image differs from the admitted image")
                 if row["state"] != (
                     "running" if running or service == "database" else "created"
@@ -301,14 +319,10 @@ class TrialAttestation:
                     "networks": networks,
                     "images_verified": True,
                     "verified_before_game_start": True,
-                    "game_image": next(
-                        row["image"] for row in containers if row["service"] == "game"
-                    ),
-                    "database_image": next(
-                        row["image"]
-                        for row in containers
-                        if row["service"] == "database"
-                    ),
+                    # The reporter compares the admitted immutable references;
+                    # containers above retain the observed config IDs.
+                    "game_image": self.fixture.experiment.game_image,
+                    "database_image": self.fixture.experiment.database_image,
                 }
             )
             self.persist()
@@ -684,8 +698,8 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
         ):
             raise ValueError("model participant and provider names must match")
     for image in (experiment.game_image, experiment.database_image):
-        if re.fullmatch(r"sha256:[a-f0-9]{64}", image) is None:
-            raise ValueError("this pilot attests local immutable image content IDs")
+        if re.fullmatch(r"(?:sha256:|[^@\s]+@sha256:)[a-f0-9]{64}", image) is None:
+            raise ValueError("this pilot requires immutable image references")
     if (
         benchmark.fixture_hash(experiment.fixture, experiment.world_map)
         != experiment.expected_initial_sha256
