@@ -10,9 +10,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from canary_brain.controller import Controller
-from canary_brain.runtime import FakeProvider
-from canary_brain.store import Store
 from m5_current_lowstock import (
     cleanup_evidence,
     derive_lowstock,
@@ -20,6 +17,10 @@ from m5_current_lowstock import (
     goal_checks,
     native_build_contract,
 )
+
+from canary_brain.controller import Controller
+from canary_brain.runtime import FakeProvider
+from canary_brain.store import Store
 
 
 class LowStockGoalTests(unittest.TestCase):

@@ -16,12 +16,13 @@ import subprocess
 import time
 from pathlib import Path
 
+from m5_current_lowstock import cleanup_evidence, native_build_contract
+from m5_qualification_gates import qualify_run
+
 from canary_brain import benchmark, runtime
 from canary_brain.recording import ReplayReader
 from canary_brain.replay import summary
 from canary_brain.store import Store
-from m5_current_lowstock import cleanup_evidence, native_build_contract
-from m5_qualification_gates import qualify_run
 
 ROOT = Path(__file__).resolve().parents[2]
 WORLD = Path("/tmp/canary-lifecycle-qa-world.otbm")
