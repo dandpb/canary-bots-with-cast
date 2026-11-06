@@ -505,10 +505,11 @@ std::string BotEngine::executeCommand(const std::string& botName, const std::str
 			return "route: syntax is 'route x,y,z' or 'route x1,y1,z1 x2,y2,z2'";
 		}
 		if (directMode) {
+			if (from.z != to.z) return "route direct: source and target must be on the same floor";
 			std::vector<Position> doors;
 			uint32_t visited = 0, expanded = 0;
 			bool exhausted = false;
-			const bool reachable = plannerLegDoors(from, to, doors, true, &visited, &expanded, &exhausted);
+			const bool reachable = tracePlannerDoors(from, to, doors, visited, expanded, exhausted);
 			std::string out = fmt::format("[ROUTE:DIRECT] ({},{},{}) -> ({},{},{}) mover={} (portal graph bypassed)\n",
 				from.x, from.y, from.z, to.x, to.y, to.z, mover->getName());
 			out += fmt::format("  door_bfs={} visited={} expanded={} budget={} radius={} doors={}\n",

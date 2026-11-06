@@ -4625,8 +4625,6 @@ private:
 		Position from {}, to {};
 		std::vector<Position> doors;
 		bool reachable = false;
-		uint32_t visited = 0, expanded = 0;
-		bool budgetExhausted = false;
 		int64_t expiry = 0;
 	};
 	std::unordered_map<uint64_t, DoorPathEntry> s_doorPathCache;
@@ -4644,8 +4642,10 @@ private:
 	// failed against reality, so re-deriving from a cached answer computed BEFORE the failure
 	// returns the identical bad route and the bot loops against it until the 60s TTL expires.
 	bool plannerLegDoors(const Position& from, const Position& target, std::vector<Position>& outDoors,
-	                     bool bypassCache = false, uint32_t* visited = nullptr,
-	                     uint32_t* expanded = nullptr, bool* budgetExhausted = nullptr);
+	                     bool bypassCache = false);
+	// Fresh diagnostic search; does not consult or mutate the planner's shared cache.
+	bool tracePlannerDoors(const Position& from, const Position& target, std::vector<Position>& outDoors,
+	                       uint32_t& visited, uint32_t& expanded, bool& budgetExhausted);
 	// Bots whose next plannerLegDoors call must ignore the cache (set by plannerReplan, consumed
 	// once by planScopedWalk).
 	std::unordered_set<uint32_t> s_plannerForceFresh;

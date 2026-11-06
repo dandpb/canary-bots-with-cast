@@ -1340,12 +1340,8 @@ bool BotEngine::zFindDoorsOnPath(const Position& from, const Position& target, s
 // tiles plus the map and current door states; it carries none of the per-bot coupling that keeps
 // finished ROUTES uncacheable (portal blacklist, just-used-portal guard).
 bool BotEngine::plannerLegDoors(const Position& from, const Position& target, std::vector<Position>& outDoors,
-	                             bool bypassCache, uint32_t* visited,
-	                             uint32_t* expanded, bool* budgetExhausted) {
+	                             bool bypassCache) {
 	outDoors.clear();
-	if (visited) *visited = 0;
-	if (expanded) *expanded = 0;
-	if (budgetExhausted) *budgetExhausted = false;
 	if (from.z != target.z) {
 		return false;
 	}
@@ -1367,9 +1363,6 @@ bool BotEngine::plannerLegDoors(const Position& from, const Position& target, st
 		if (it->second.expiry > now && it->second.from == from && it->second.to == target) {
 			s_doorPathHits++;
 			outDoors = it->second.doors;
-			if (visited) *visited = it->second.visited;
-			if (expanded) *expanded = it->second.expanded;
-			if (budgetExhausted) *budgetExhausted = it->second.budgetExhausted;
 			return it->second.reachable;
 		}
 		s_doorPathCache.erase(it); // expired, or a collision on another pair
@@ -1381,14 +1374,8 @@ bool BotEngine::plannerLegDoors(const Position& from, const Position& target, st
 	// route it was not computed for.
 	const uint32_t allowedHouse = zHouseIdAt(target.x, target.y, target.z);
 	const uint32_t fromHouse = zHouseIdAt(from.x, from.y, from.z);
-	uint32_t searched = 0, expandedCount = 0;
-	bool exhausted = false;
 	const bool reachable = zFindDoorsOnPathImpl(from, target, PLANNER_LEG_RADIUS, PLANNER_LEG_BUDGET,
-	                                            allowedHouse, fromHouse, outDoors,
-	                                            &searched, &expandedCount, &exhausted);
-	if (visited) *visited = searched;
-	if (expanded) *expanded = expandedCount;
-	if (budgetExhausted) *budgetExhausted = exhausted;
+	                                            allowedHouse, fromHouse, outDoors);
 
 	// Cheap bound: drop the whole table rather than tracking LRU. Entries are 60s-lived and this
 	// runs for two rare callers, so a wipe costs one extra BFS for whoever asks next.
@@ -1400,12 +1387,17 @@ bool BotEngine::plannerLegDoors(const Position& from, const Position& target, st
 	e.to = target;
 	e.doors = outDoors;
 	e.reachable = reachable;
-	e.visited = searched;
-	e.expanded = expandedCount;
-	e.budgetExhausted = exhausted;
 	e.expiry = now + DOOR_PATH_TTL_MS;
 	s_doorPathCache.emplace(key, std::move(e));
 	return reachable;
+}
+
+bool BotEngine::tracePlannerDoors(const Position& from, const Position& target, std::vector<Position>& outDoors,
+                                  uint32_t& visited, uint32_t& expanded, bool& budgetExhausted) {
+	const uint32_t allowedHouse = zHouseIdAt(target.x, target.y, target.z);
+	const uint32_t fromHouse = zHouseIdAt(from.x, from.y, from.z);
+	return zFindDoorsOnPathImpl(from, target, PLANNER_LEG_RADIUS, PLANNER_LEG_BUDGET,
+	                            allowedHouse, fromHouse, outDoors, &visited, &expanded, &budgetExhausted);
 }
 
 // Kept for goToWithDoors' same-floor callers: the FIRST door on the route, or false if the route
