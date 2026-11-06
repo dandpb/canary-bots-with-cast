@@ -90,7 +90,7 @@ def native_build_contract(frozen, revision, image):
     return hashes
 
 
-def cleanup_evidence(project):
+def cleanup_evidence(project, *, timeout=15):
     """Inspect only resources carrying this newly generated Compose identity."""
     evidence = {"project": project, "resources_cleaned": False}
     try:
@@ -101,12 +101,13 @@ def cleanup_evidence(project):
             output = subprocess.check_output(
                 command + ["--filter", "label=com.docker.compose.project=" + project],
                 text=True,
+                timeout=timeout,
             )
             evidence[resource] = output.splitlines()
         evidence["resources_cleaned"] = (
             not evidence["containers"] and not evidence["networks"]
         )
-    except (OSError, subprocess.CalledProcessError) as error:
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         evidence["inspection_error"] = type(error).__name__
     return evidence
 
@@ -142,6 +143,7 @@ async def execute(args, stop):
         subprocess.check_output,
         ["git", "-C", str(source_root), "status", "--porcelain"],
         text=True,
+        timeout=30,
     )
     assert not status.strip(), (
         "proof must freeze a clean committed application checkout"
@@ -151,6 +153,7 @@ async def execute(args, stop):
             subprocess.check_output,
             ["git", "-C", str(source_root), "rev-parse", "HEAD"],
             text=True,
+            timeout=30,
         )
     ).strip()
     variation = derive_lowstock(args.fixture_root / "fixture", work / "fixture")
@@ -330,6 +333,7 @@ async def execute(args, stop):
                     harness.project + "-database-1",
                 ],
                 text=True,
+                timeout=30,
             )
         )
         actual_images = {
@@ -370,7 +374,14 @@ async def execute(args, stop):
         await asyncio.to_thread(harness.stop_game)
         result["saved_character"] = await asyncio.to_thread(harness.character)
         result["saved_supplies"] = await asyncio.to_thread(supplies)
-    except (AssertionError, OSError, RuntimeError, ValueError, TimeoutError) as error:
+    except (
+        AssertionError,
+        OSError,
+        RuntimeError,
+        ValueError,
+        TimeoutError,
+        subprocess.TimeoutExpired,
+    ) as error:
         result["failure"] = type(error).__name__
     finally:
         stop.set()

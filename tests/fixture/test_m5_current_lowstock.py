@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -128,6 +129,32 @@ class LowStockGoalTests(unittest.TestCase):
             )
         output.side_effect = ["", ""]
         self.assertTrue(cleanup_evidence("canary-bench-identity")["resources_cleaned"])
+
+    @unittest.skipUnless(os.name == "posix", "fake Docker executable is Linux/WSL")
+    def test_hung_cleanup_cli_returns_failed_evidence_and_reaps_process(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            executable = root / "docker"
+            pid_file = root / "child.pid"
+            executable.write_text(
+                "#!" + sys.executable + "\n"
+                "import os,time\nfrom pathlib import Path\n"
+                "Path(os.environ['FAKE_DOCKER_PID']).write_text(str(os.getpid()))\n"
+                "time.sleep(10)\n"
+            )
+            executable.chmod(0o700)
+            started = time.monotonic()
+            with patch.dict(
+                os.environ, {"PATH": str(root), "FAKE_DOCKER_PID": str(pid_file)}
+            ):
+                result = cleanup_evidence(
+                    "canary-bench-never-a-real-project", timeout=0.2
+                )
+            self.assertLess(time.monotonic() - started, 2)
+            self.assertFalse(result["resources_cleaned"])
+            self.assertEqual(result["inspection_error"], "TimeoutExpired")
+            with self.assertRaises(ProcessLookupError):
+                os.kill(int(pid_file.read_text()), 0)
 
     @unittest.skipUnless(os.name == "posix", "campaign runtime is Linux/WSL")
     def test_sigterm_reaches_executor_finally(self):

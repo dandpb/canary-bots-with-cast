@@ -50,10 +50,10 @@ class ScriptedFake(runtime.FakeProvider):
 
 def current_revision():
     assert not subprocess.check_output(
-        ["git", "-C", str(ROOT), "status", "--porcelain"], text=True
+        ["git", "-C", str(ROOT), "status", "--porcelain"], text=True, timeout=30
     ).strip(), "qualification must freeze a clean committed application checkout"
     return subprocess.check_output(
-        ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True
+        ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True, timeout=30
     ).strip()
 
 
@@ -123,6 +123,7 @@ async def execute(args):
             "/canary/libbot_engine.so",
         ],
         text=True,
+        timeout=30,
     )
     assert {
         Path(path).name: value
@@ -175,6 +176,7 @@ async def execute(args):
                         "{{.Image}}",
                     ],
                     text=True,
+                    timeout=30,
                 ).strip()
                 assert actual == frozen["database_image_id"]
 
@@ -191,6 +193,7 @@ async def execute(args):
                         "{{.Image}}",
                     ],
                     text=True,
+                    timeout=30,
                 ).strip()
                 assert (
                     identity
