@@ -235,6 +235,8 @@ class DockerFixture:
                 str(self.compose),
                 *arguments,
             ],
+            # A long-lived checkout cwd can outlive a detached WSL/DrvFS mount.
+            cwd="/",
             capture_output=True,
             text=True,
             timeout=timeout,

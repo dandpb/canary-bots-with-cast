@@ -36,6 +36,16 @@ ajuste-os ao seu usuário e à cópia que realmente está implantada.
 Confira game e worker por revisão da imagem, binários e configuração efetiva;
 um label histórico sozinho não atesta alterações feitas por hot reload.
 
+Para rodadas longas, mantenha fontes exportados, inputs, saídas e temporários no
+filesystem Linux do WSL, por exemplo em `/home/USUARIO/canary-m5` e `/tmp`.
+Os caminhos `/mnt/c`, `/mnt/e` e equivalentes são drives Windows/DrvFS: uma
+referência de cwd pode ficar presa a um mount desanexado mesmo quando o arquivo
+continua acessível pelo caminho absoluto. Execute o launcher a partir de `/`,
+use caminhos e `PYTHONPATH` absolutos e confira o filesystem com `findmnt -T`.
+O Python no container deve ter `working_dir: /`; monte fonte e inputs somente
+para leitura no mesmo caminho absoluto. Essa conferência de mounts deve ser
+registrada antes do piloto, além dos hashes; o preflight não prova ext4/RO sozinho.
+
 ## 2. Preparar servidor e gateway
 
 Na raiz da instalação nova:
@@ -179,9 +189,11 @@ docker build -f deployment/brain/gateway/Dockerfile.benchmark \
   --label "org.opencontainers.image.revision=$REVISION" \
   -t canary-litellm-benchmark:reviewed .
 GATEWAY_IMAGE="$(docker image inspect canary-litellm-benchmark:reviewed --format '{{.Id}}')"
+GATEWAY_LAUNCHER="$(pwd -P)/deployment/brain/tools/benchmark_gateway.py"
 GATEWAY_RUNTIME=/home/daniel/canary-bots-wsl/deployment/wsl/runtime
 GATEWAY_POLICY=/caminho/absoluto/politica-congelada.yaml
-python3 deployment/brain/tools/benchmark_gateway.py \
+cd /
+python3 "$GATEWAY_LAUNCHER" \
   --runtime "$GATEWAY_RUNTIME" --policy "$GATEWAY_POLICY" \
   --image "$GATEWAY_IMAGE" --revision "$REVISION" --check
 ```
@@ -191,7 +203,7 @@ resultante, sem pull por tag. `--check` executa somente `compose config --quiet`
 sem imprimir configuração/env nem acessar providers. Depois, no mesmo terminal dedicado:
 
 ```bash
-python3 deployment/brain/tools/benchmark_gateway.py \
+python3 "$GATEWAY_LAUNCHER" \
   --runtime "$GATEWAY_RUNTIME" --policy "$GATEWAY_POLICY" \
   --image "$GATEWAY_IMAGE" --revision "$REVISION" --serve
 ```
@@ -374,8 +386,9 @@ diretamente `canary-bots-wsl_brain-state` em `/var/lib/canary-brain`: a autorida
 Os estados e replays das runs continuam separados do orçamento.
 
 ```bash
-SOURCE=/caminho/absoluto/fontes-congelados
-PILOT_PLAN=/caminho/absoluto/pilot.plan.json
+SOURCE=/home/USUARIO/canary-m5/fontes-congelados
+PILOT_PLAN=/home/USUARIO/canary-m5/pilot.plan.json
+cd /
 PYTHONPATH="$SOURCE/deployment/brain/src" python "$SOURCE/deployment/brain/tools/m5_pilot.py" --plan "$PILOT_PLAN" --preflight
 ```
 
