@@ -1,0 +1,24 @@
+{
+  "captured_utc": "2026-11-06T10:47:57.500379+00:00",
+  "inspection": "docker inspect actual running containers, selected public metadata only",
+  "containers": [
+    {
+      "name": "/canary-bench-b1e5eb56ec86bd1ab22b-game-1",
+      "id": "bf1b9d491f6b7b3c8aa382453390e3fbe1d7de5d1d197f30b54aa98fd3517c46",
+      "image_id": "sha256:a0cebf352f4750e7d20a13df82beaca79fa21025b8a335b5bc8b4fc39c2aa96c",
+      "declared_image": "sha256:a0cebf352f4750e7d20a13df82beaca79fa21025b8a335b5bc8b4fc39c2aa96c",
+      "running": true,
+      "compose_project": "canary-bench-b1e5eb56ec86bd1ab22b",
+      "published_ports": {}
+    },
+    {
+      "name": "/canary-bench-b1e5eb56ec86bd1ab22b-database-1",
+      "id": "3794e82637b463bf92b32a0897187272316bfe6f4b335e907a791fe7b986deab",
+      "image_id": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+      "declared_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+      "running": true,
+      "compose_project": "canary-bench-b1e5eb56ec86bd1ab22b",
+      "published_ports": {}
+    }
+  ]
+}

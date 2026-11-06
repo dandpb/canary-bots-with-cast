@@ -1,0 +1,29 @@
+{
+  "source_sha256": "8613f5bce87f3f7eb950a254974ee418181b1899f5838e427efcf3712b0a00a3",
+  "records": [
+    {
+      "kind": "bridge",
+      "key": "benchmark",
+      "data": {
+        "ready": true
+      }
+    },
+    {
+      "kind": "run_clock",
+      "key": "start",
+      "data": {
+        "monotonic": 145256.539639147,
+        "wall": 1793962907.2061844
+      }
+    },
+    {
+      "kind": "run_stop",
+      "key": "end",
+      "data": {
+        "reason": "stalled",
+        "elapsed_seconds": 1508.7158154829813,
+        "observed_seconds": 1508.565187714994
+      }
+    }
+  ]
+}

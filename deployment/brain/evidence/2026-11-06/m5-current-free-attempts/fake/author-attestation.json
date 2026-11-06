@@ -1,0 +1,16 @@
+{
+  "source_revision": "c9e447c500d1c245e7ea3736934eacfda0b5d445",
+  "fixture_parent": "<FIXTURE_G>",
+  "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+  "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+  "game_image": "sha256:a0cebf352f4750e7d20a13df82beaca79fa21025b8a335b5bc8b4fc39c2aa96c",
+  "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "binary_sha256": {
+    "canary": "c2a0ababa5f69d074703c60b488ed88d852f3f3c437a756364ddb804c223c150",
+    "libbot_engine.so": "9088c8142cab7b554c30f4f0c2dad971f773b9fd8609d997fee9efe64909bdb4"
+  },
+  "mode": "fake",
+  "seconds": 1800,
+  "driver_sha256": "b3039ab8ce70d6fb2ea06aadcde10be37969a9f3daca1f983cf22d1434dab060",
+  "scope": "Controlled fixture G; real game with native or explicitly scripted fake choices. No provider inference."
+}

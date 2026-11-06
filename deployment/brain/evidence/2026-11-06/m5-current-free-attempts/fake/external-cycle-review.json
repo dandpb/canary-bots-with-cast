@@ -1,0 +1,9 @@
+{
+  "parser": "hunt=[script=... phase=PHASE], not the outer state field",
+  "phase_counts": {},
+  "ordered_hunt_phase_cycle_observed": false,
+  "ordered_evidence": [],
+  "purchase_confirmed": false,
+  "limitation": "Native hunt phases do not prove NPC purchase; model-managed hunts may not populate native hunt state.",
+  "clock": "Observer elapsed field from phase-status.jsonl; not aligned to replay t_ms"
+}

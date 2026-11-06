@@ -1,0 +1,238 @@
+{
+  "checks": {
+    "completed": true,
+    "supervisor_completed": true,
+    "exact_horizon_recorded": true,
+    "bounded_recorded_duration": true,
+    "observed_horizon": true,
+    "no_gaps": true,
+    "zero_inference": true,
+    "saved_xp_matches": true,
+    "positive_xp": true,
+    "zero_observed_deaths": true,
+    "multiple_hunts_offered": true
+  },
+  "accepted": true,
+  "summary": {
+    "id": "m5-current-native-17b62eabb7:native:0",
+    "manifest": {
+      "bot_id": 65001,
+      "configuration_sha256": "b1329e8b7c672a9c890d424f57a839c2d127c3f5ca0df02f2072eb67bd85946a",
+      "experiment": "m5-current-native-17b62eabb7",
+      "initial_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+      "lineage": "m5-current-native-17b62eabb7:0",
+      "memory_mode": "frozen",
+      "model": "none",
+      "participant": "native",
+      "provider": "native",
+      "run_id": "m5-current-native-17b62eabb7:native:0",
+      "sample_ms": 1000,
+      "scenario": "autonomous-progression",
+      "source_revision": "c9e447c500d1c245e7ea3736934eacfda0b5d445",
+      "synthetic": false,
+      "version": 1
+    },
+    "status": "completed",
+    "incomplete": false,
+    "started": 1793960999.0659852,
+    "updated": 1793962849.6403952,
+    "event_count": 3301,
+    "duration_ms": 1821232,
+    "metrics": {
+      "version": 2,
+      "xp_delta": 8349,
+      "xp_per_wall_hour": 16693.427855592883,
+      "xp_per_active_hour": 16711.025315843406,
+      "active_ms": 1798597,
+      "wall_ms": 1800493,
+      "calendar_elapsed_ms": 1807554,
+      "duration_ms": 1821232,
+      "deaths": 0,
+      "initial_native_deaths_excluded": 0,
+      "deaths_observed": true,
+      "interventions": 0,
+      "intervention_free_ms": 1821232,
+      "intervention_free_censored": true,
+      "automatic_recoveries_requested": 0,
+      "model_decisions": 0,
+      "valid_proposals": 0,
+      "policy_overrides": 0,
+      "accepted_actions": 0,
+      "completed_actions": 0,
+      "failed_actions": 0,
+      "provider_failures": 0,
+      "spent_nanousd": 0,
+      "reserved_nanousd": 0,
+      "xp_per_dollar": null,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null,
+      "gaps": 0,
+      "gap_times": [],
+      "levels": [],
+      "milestones": [],
+      "native_control_ms": 1798597,
+      "native_fallback_ms": 0,
+      "stalled_ms": null,
+      "confirmed_objective_defeats": 0,
+      "limitations": [
+        "Sampled observations; hidden events are not reconstructed.",
+        "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+        "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+      ]
+    }
+  },
+  "supervisor": [
+    {
+      "elapsed_seconds": 1800.5135425690096,
+      "observed_seconds": 1800.4528320480022,
+      "phase": "run_supervisor_stop",
+      "reason": "completed"
+    }
+  ],
+  "first_sample": {
+    "id": 4,
+    "key": "sample:1-143392066740173:1",
+    "segment": "b6dbf207d0334109969dd6bc68dab0e6",
+    "t_ms": 20701,
+    "wall": 1793961035.5539227,
+    "kind": "sample",
+    "data": {
+      "actions": [
+        {
+          "action": "continue",
+          "description": "Continue the current useful objective",
+          "id": "continue",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "hold",
+          "description": "Hold position briefly while retaining combat and healing",
+          "id": "hold",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+          "id": "hunt:77",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Thais Paw Collector",
+          "id": "hunt:399",
+          "ttl_ms": 5000
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 100,
+        "name": "Grizzle Alyronia",
+        "objective": "follow",
+        "objective_defeats": 0,
+        "objective_running": false,
+        "position": [
+          32369,
+          32241,
+          7
+        ],
+        "potions": 40,
+        "state": "IDLE",
+        "vocation": 4,
+        "xp": 98800
+      },
+      "captured_ms": 143392124,
+      "mode": "shadow",
+      "nearby": [],
+      "objective_generation": 0,
+      "party": null,
+      "sequence": 1,
+      "type": "observation",
+      "version": 1,
+      "world": "1-143392066740173"
+    }
+  },
+  "last_sample": {
+    "id": 3299,
+    "key": "horizon-final-sample",
+    "segment": "b6dbf207d0334109969dd6bc68dab0e6",
+    "t_ms": 1821194,
+    "wall": 1793962843.1081154,
+    "kind": "sample",
+    "data": {
+      "actions": [
+        {
+          "action": "continue",
+          "description": "Continue the current useful objective",
+          "id": "continue",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "hold",
+          "description": "Hold position briefly while retaining combat and healing",
+          "id": "hold",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "retreat",
+          "description": "Disengage and return to the leader or town temple for the next activity",
+          "id": "retreat",
+          "ttl_ms": 1500
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 68,
+        "name": "Grizzle Alyronia",
+        "objective": "follow",
+        "objective_defeats": 0,
+        "objective_running": false,
+        "position": [
+          32431,
+          32321,
+          8
+        ],
+        "potions": 40,
+        "state": "HUNTING",
+        "vocation": 4,
+        "xp": 107149
+      },
+      "captured_ms": 145192628,
+      "mode": "shadow",
+      "nearby": [],
+      "objective_generation": 0,
+      "party": null,
+      "sequence": 5983,
+      "type": "observation",
+      "version": 1,
+      "world": "1-143392066740173"
+    }
+  },
+  "requests": 0,
+  "native_hunt_leave_and_supply_phases_observed": false,
+  "status_observation_count": 119,
+  "supply_limit": "RESUPPLYING is a native phase; purchase requires stock, bank and confirmed outcome evidence separately.",
+  "attestation": {
+    "source_revision": "c9e447c500d1c245e7ea3736934eacfda0b5d445",
+    "fixture_parent": "<FIXTURE_G>",
+    "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+    "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+    "game_image": "sha256:a0cebf352f4750e7d20a13df82beaca79fa21025b8a335b5bc8b4fc39c2aa96c",
+    "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+    "binary_sha256": {
+      "canary": "c2a0ababa5f69d074703c60b488ed88d852f3f3c437a756364ddb804c223c150",
+      "libbot_engine.so": "9088c8142cab7b554c30f4f0c2dad971f773b9fd8609d997fee9efe64909bdb4"
+    },
+    "mode": "native",
+    "seconds": 1800,
+    "driver_sha256": "b3039ab8ce70d6fb2ea06aadcde10be37969a9f3daca1f983cf22d1434dab060",
+    "scope": "Controlled fixture G; real game with native or explicitly scripted fake choices. No provider inference."
+  }
+}

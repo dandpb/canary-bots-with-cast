@@ -1,0 +1,266 @@
+{
+  "checks": {
+    "completed": false,
+    "supervisor_completed": false,
+    "exact_horizon_recorded": false,
+    "bounded_recorded_duration": true,
+    "observed_horizon": false,
+    "no_gaps": true,
+    "zero_inference": true,
+    "saved_xp_matches": true,
+    "positive_xp": true,
+    "zero_observed_deaths": true,
+    "multiple_hunts_offered": true
+  },
+  "accepted": false,
+  "summary": {
+    "id": "m5-current-fake-d6226a4777:fake:0",
+    "manifest": {
+      "bot_id": 65001,
+      "configuration_sha256": "557896c60ddebccd8d22108714abd35b576dbde030cff6ec55c3a0feb011180e",
+      "experiment": "m5-current-fake-d6226a4777",
+      "initial_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+      "lineage": "m5-current-fake-d6226a4777:0",
+      "memory_mode": "frozen",
+      "model": "none",
+      "participant": "fake",
+      "provider": "fake",
+      "run_id": "m5-current-fake-d6226a4777:fake:0",
+      "sample_ms": 1000,
+      "scenario": "autonomous-progression",
+      "source_revision": "c9e447c500d1c245e7ea3736934eacfda0b5d445",
+      "synthetic": false,
+      "version": 1
+    },
+    "status": "failed",
+    "incomplete": false,
+    "started": 1793962870.9125025,
+    "updated": 1793964428.275594,
+    "event_count": 4189,
+    "duration_ms": 1531291,
+    "metrics": {
+      "version": 2,
+      "xp_delta": 1993,
+      "xp_per_wall_hour": 4757.055224486224,
+      "xp_per_active_hour": 4760.15450532157,
+      "active_ms": 1507262,
+      "wall_ms": 1508244,
+      "calendar_elapsed_ms": 1514470,
+      "duration_ms": 1531291,
+      "deaths": 0,
+      "initial_native_deaths_excluded": 0,
+      "deaths_observed": true,
+      "interventions": 0,
+      "intervention_free_ms": 1531291,
+      "intervention_free_censored": true,
+      "automatic_recoveries_requested": 1,
+      "model_decisions": 337,
+      "valid_proposals": 329,
+      "policy_overrides": 0,
+      "accepted_actions": 14,
+      "completed_actions": 3,
+      "failed_actions": 8,
+      "provider_failures": 0,
+      "spent_nanousd": 0,
+      "reserved_nanousd": 0,
+      "xp_per_dollar": null,
+      "latency_p50_ms": null,
+      "latency_p95_ms": null,
+      "gaps": 0,
+      "gap_times": [],
+      "levels": [],
+      "milestones": [
+        {
+          "t_ms": 322803,
+          "kind": "completed",
+          "text": "hunt_progress"
+        },
+        {
+          "t_ms": 623041,
+          "kind": "completed",
+          "text": "hunt_progress"
+        },
+        {
+          "t_ms": 923440,
+          "kind": "completed",
+          "text": "hunt_progress"
+        }
+      ],
+      "native_control_ms": 0,
+      "native_fallback_ms": 0,
+      "stalled_ms": 0,
+      "confirmed_objective_defeats": 65,
+      "limitations": [
+        "Sampled observations; hidden events are not reconstructed.",
+        "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+        "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+      ]
+    }
+  },
+  "supervisor": [
+    {
+      "elapsed_seconds": 1508.7158154829813,
+      "observed_seconds": 1508.565187714994,
+      "phase": "run_supervisor_stop",
+      "reason": "stalled"
+    }
+  ],
+  "first_sample": {
+    "id": 4,
+    "key": "sample:1-145256480819828:1",
+    "segment": "8e735444f9924c67b8ad457cd92333cd",
+    "t_ms": 22567,
+    "wall": 1793962907.225916,
+    "kind": "sample",
+    "data": {
+      "actions": [
+        {
+          "action": "continue",
+          "description": "Continue the current useful objective",
+          "id": "continue",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "hold",
+          "description": "Hold position briefly while retaining combat and healing",
+          "id": "hold",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+          "id": "hunt:77",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Thais Paw Collector",
+          "id": "hunt:399",
+          "ttl_ms": 5000
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 100,
+        "name": "Grizzle Alyronia",
+        "objective": "follow",
+        "objective_defeats": 0,
+        "objective_running": false,
+        "position": [
+          32369,
+          32241,
+          7
+        ],
+        "potions": 40,
+        "state": "IDLE",
+        "vocation": 4,
+        "xp": 98800
+      },
+      "captured_ms": 145256538,
+      "mode": "active",
+      "nearby": [],
+      "objective_generation": 0,
+      "party": null,
+      "sequence": 1,
+      "type": "observation",
+      "version": 1,
+      "world": "1-145256480819828"
+    }
+  },
+  "last_sample": {
+    "id": 4467,
+    "key": "sample:1-145256480819828:5025",
+    "segment": "8e735444f9924c67b8ad457cd92333cd",
+    "t_ms": 1530811,
+    "wall": 1793964421.696504,
+    "kind": "sample",
+    "data": {
+      "actions": [
+        {
+          "action": "continue",
+          "description": "Continue the current useful objective",
+          "id": "continue",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "hold",
+          "description": "Hold position briefly while retaining combat and healing",
+          "id": "hold",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "retreat",
+          "description": "Disengage and return to the leader or town temple for the next activity",
+          "id": "retreat",
+          "ttl_ms": 1500
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+          "id": "hunt:77",
+          "ttl_ms": 5000
+        },
+        {
+          "action": "hunt",
+          "description": "Guide a prudent party hunt: Thais Paw Collector",
+          "id": "hunt:399",
+          "ttl_ms": 5000
+        }
+      ],
+      "autonomous": true,
+      "bot": {
+        "alive": true,
+        "health": 100,
+        "id": 65001,
+        "level": 20,
+        "mana": 100,
+        "name": "Grizzle Alyronia",
+        "objective": "retreat",
+        "objective_defeats": 0,
+        "objective_running": true,
+        "position": [
+          32372,
+          32103,
+          7
+        ],
+        "potions": 40,
+        "state": "IDLE",
+        "vocation": 4,
+        "xp": 100793
+      },
+      "captured_ms": 146764802,
+      "mode": "active",
+      "nearby": [],
+      "objective_generation": 14,
+      "party": null,
+      "sequence": 5025,
+      "type": "observation",
+      "version": 1,
+      "world": "1-145256480819828"
+    }
+  },
+  "requests": 0,
+  "native_hunt_leave_and_supply_phases_observed": false,
+  "status_observation_count": 91,
+  "supply_limit": "RESUPPLYING is a native phase; purchase requires stock, bank and confirmed outcome evidence separately.",
+  "attestation": {
+    "source_revision": "c9e447c500d1c245e7ea3736934eacfda0b5d445",
+    "fixture_parent": "<FIXTURE_G>",
+    "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+    "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+    "game_image": "sha256:a0cebf352f4750e7d20a13df82beaca79fa21025b8a335b5bc8b4fc39c2aa96c",
+    "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+    "binary_sha256": {
+      "canary": "c2a0ababa5f69d074703c60b488ed88d852f3f3c437a756364ddb804c223c150",
+      "libbot_engine.so": "9088c8142cab7b554c30f4f0c2dad971f773b9fd8609d997fee9efe64909bdb4"
+    },
+    "mode": "fake",
+    "seconds": 1800,
+    "driver_sha256": "b3039ab8ce70d6fb2ea06aadcde10be37969a9f3daca1f983cf22d1434dab060",
+    "scope": "Controlled fixture G; real game with native or explicitly scripted fake choices. No provider inference."
+  }
+}
