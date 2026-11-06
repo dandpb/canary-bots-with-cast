@@ -96,5 +96,10 @@
     "The first output budget equalled reasoning tokens, compatible with exhaustion before a choice; status/incomplete details/raw output/tool-call count were not persisted, so no exact truncation/guard cause is claimed.",
     "The full harness CID was not retained; empty Docker event history alone is not proof of no games.",
     "Code/build/setup/Redis validation does not establish nine-trial comparative acceptance; no Gemini or gameplay result is invented."
-  ]
+  ],
+  "gameplay_metrics": {
+    "xp_delta": null,
+    "deaths": null,
+    "interventions": null
+  }
 }

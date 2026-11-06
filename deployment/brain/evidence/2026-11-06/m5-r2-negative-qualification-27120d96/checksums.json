@@ -15,9 +15,9 @@
   "private-copy-preservation.json": "6f2faa0a965da0b36566e86430a05a1bcdad354039abbca2a2da115ed15cf6c9",
   "private-gateway-cleanup-projection.json": "f71eba11e2a4a36eab169014b98670ec908c3be89973af73c46650ea116c21e2",
   "probe-recording-observations.json": "5c210e7e44e0e4a9c110a017de0eca62c529eb37910f8d7f9990c2a017ea4614",
-  "README.md": "55a5d5330f94b7ec599b10a732a09bcb72fd69172220539f1e8d08bc017f1355",
+  "README.md": "d9aa3b2d61f4320d26de87574bccc86e51bfe0ae6311e881ced24d659c12f47f",
   "safe-event-projection.public.json": "6f25e0c171f47be2ee34d06db4fbf6e2d606dc12099d5725c81f11dff17f7418",
-  "summary.json": "27a5002e05cb5f1d9365b3550db075791ebc8d6326ab97e206914c3ab2298b51",
+  "summary.json": "bd041f56418f755b4bdbe41c773bb070e58e32210a3ba18d0238947f9338d15d",
   "supplied-custody-projection.json": "955e7f9fed875c750a990df2507f220b10333c97d6598c610808c5b5fcd5ab92",
-  "verify_bundle.py": "730547e5dc6d8d83857f4c1becba0b555c46e87966b92a146576df8b03b6fc56"
+  "verify_bundle.py": "49c353d7f3d2d92d3e198c2fec80c707808e669f98977561549a6fd60039e4bc"
 }

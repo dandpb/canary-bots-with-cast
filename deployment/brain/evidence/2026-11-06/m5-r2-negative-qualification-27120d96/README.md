@@ -2,6 +2,8 @@
 
 The single canonical R2 invocation `m5-og-r2-20261106-27120d96`, source `4c5bb9bf4b93fb11abffd7bd3020e6381296fd6d`, ended with **qualification rejected**. OpenAI's technical/unreconciled-evidence gate did not pass. **Gemini R2 was not evaluated, no native/game trial started, and no nine-run provider comparison or gameplay XP result exists.** This is the final report of this qualification attempt, not completion of the comparative M5 pilot.
 
+R2 gameplay XP, deaths and interventions are **null/not observed**, not zero-success metrics.
+
 The historical GO receipt SHA256 is `944a94de02ca12cd6a3a99ced89e9d902d2bf2a033e071d518d61c648b3b1f9c`. The invocation ran from 18:15:58.549112 to 18:16:10.673949 UTC on 2026-11-06 and exited 1. `campaign` remains null. The predeclared gate stopped execution before `run_attested_campaign`; there is no generated game output to relabel or fabricate.
 
 ## What actually ran
@@ -20,9 +22,13 @@ The original qualification reports `valid=2` (one model selection plus local res
 
 Three **distinct stages** remain visible: first decision `ValueError` after a finished request; later evidence-reconciliation `ValueError` at `m5.probe_evidence`; outer rejection at `m5.probe_ledger.openai`. None is renamed as a SQL error, identity failure or provider truncation without evidence. The timeout's unknown liability is not zero and does not prove completed upstream inference.
 
+The `m5.probe_ledger.openai` name is wrapper context, not proof of a SQL failure: the ledger export succeeded. Financial reconciliation passed while the original qualification field `evidence_reconciled=false` remains a separate technical result.
+
 ## Diagnostic finding and its limits
 
 The safe copy analysis confirms the first request's alias/effective-model/deployment identity matches the expected `canary-openai`/`gpt-6-luna` route. It records reserved→finished, zero request-failed events for that request, and zero model proposals. The ValueError occurred after `_request` in action selection, with no exact branch retained.
+
+Local deployment IDs and configuration pins identify the configured controller routes/model strings and qualified gateway identity. They do not prove an immutable snapshot of provider weights.
 
 Usage was input 429/output 256/reasoning 256/total 685, priced at 170900 nanodollars. The frozen stack's configured output budget is 256; all reported output tokens were reasoning tokens. This is **compatible with exhausting the output budget before an actionable choice**, but status, `incomplete_details`, raw output and tool-call count were **not persisted**. Do not assert `status=incomplete`, truncation, a specific guard branch or a provider defect as proven.
 

@@ -52,6 +52,11 @@ def verify(root):
         "negative qualification forged as accepted",
     )
     require(
+        report["gameplay_metrics"]
+        == {"xp_delta": None, "deaths": None, "interventions": None},
+        "unobserved gameplay forged as zero-success metrics",
+    )
+    require(
         report["scored_trials_started"]
         == report["native_trials_started"]
         == closure["scored_trials_started"]
