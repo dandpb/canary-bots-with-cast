@@ -426,6 +426,7 @@ compile_commands.json
 !/tools/bot_brain/test_door_search.py
 !/tools/bot_brain/test_direct_trace.py
 !/tools/bot_brain/test_planned_portal.py
+!/tools/bot_brain/test_exhausted_planner.py
 !/tools/bot_brain/README.route-direct.md
 !/tools/bot_brain/test_online_time.cpp
 !/tools/bot_population_generator/
