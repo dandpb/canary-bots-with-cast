@@ -1,4 +1,6 @@
+import asyncio
 import json
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -41,6 +43,118 @@ def test_failed_docker_diagnostics_are_retained_with_credentials_redacted(
         harness.command("up")
     diagnostics = (harness.directory / "command-errors.log").read_text()
     assert "[redacted]" in diagnostics and private_value not in diagnostics
+
+
+@pytest.mark.parametrize(
+    ("original", "status"),
+    [
+        (RuntimeError("database startup failed"), "failed"),
+        (asyncio.CancelledError("operator stop"), "interrupted"),
+    ],
+)
+async def test_cleanup_failure_preserves_original_error_and_marks_gap(
+    tmp_path, monkeypatch, original, status
+):
+    config = experiment(tmp_path)
+
+    class Harness(DockerFixture):
+        def start_database(self):
+            raise original
+
+        def close(self):
+            raise RuntimeError("docker down failed")
+
+    monkeypatch.setattr("canary_brain.benchmark.DockerFixture", Harness)
+    with pytest.raises(type(original)) as raised:
+        await run_campaign(config, live=True)
+    assert raised.value is original
+    assert any("cleanup also failed" in note for note in raised.value.__notes__)
+    reader = ReplayReader(config.output / "recording.sqlite3")
+    run = reader.run("qa:native:0")
+    assert run["status"] == status
+    assert run["incomplete"] is True
+    assert any(
+        event["kind"] == "gap" and event["data"]["reason"] == "cleanup_unverified"
+        for event in reader.events("qa:native:0")
+    )
+
+
+@pytest.mark.parametrize("teardown_cancel", [False, True])
+async def test_cleanup_failure_cannot_certify_completion_or_mask_teardown_cancel(
+    tmp_path, monkeypatch, teardown_cancel
+):
+    config = experiment(tmp_path)
+
+    class Harness(DockerFixture):
+        def start_database(self):
+            pass
+
+        def character(self):
+            return json.loads((config.fixture / "character.json").read_text())
+
+        def start_game(self):
+            pass
+
+        def stop_game(self):
+            pass
+
+        def close(self):
+            raise RuntimeError("docker down failed")
+
+    async def worker(configuration, _stopped):
+        (configuration.socket_directory / "worker.sock").touch()
+        state = Store(configuration.state_file)
+        state.put("run_clock", "start", {"monotonic": time.monotonic() - 11})
+        state.put(
+            "run_stop",
+            "end",
+            {"reason": "completed", "elapsed_seconds": 11, "observed_seconds": 11},
+        )
+        for index, milliseconds in enumerate((0, 11000)):
+            RecordingStore(configuration.recording.path).append(
+                {
+                    "run": configuration.recording.manifests[0].run_id,
+                    "key": str(index),
+                    "segment": "fixture",
+                    "t_ms": milliseconds,
+                    "wall": time.time(),
+                    "kind": "sample",
+                    "data": observation(),
+                }
+            )
+
+    monkeypatch.setattr("canary_brain.benchmark.DockerFixture", Harness)
+    monkeypatch.setattr("canary_brain.benchmark.run", worker)
+    teardown_error = asyncio.CancelledError("teardown cancelled")
+    if teardown_cancel:
+        actual_gather = asyncio.gather
+        calls = 0
+
+        async def cancel_gather(*tasks, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise teardown_error
+            return await actual_gather(*tasks, **kwargs)
+
+        monkeypatch.setattr("canary_brain.benchmark.asyncio.gather", cancel_gather)
+
+    expected = asyncio.CancelledError if teardown_cancel else RuntimeError
+    with pytest.raises(expected) as raised:
+        await run_campaign(config, live=True)
+    if teardown_cancel:
+        assert raised.value is teardown_error
+        assert any("cleanup also failed" in note for note in teardown_error.__notes__)
+    else:
+        assert str(raised.value) == "docker down failed"
+    reader = ReplayReader(config.output / "recording.sqlite3")
+    run = reader.run("qa:native:0")
+    assert run["status"] == ("interrupted" if teardown_cancel else "failed")
+    assert run["incomplete"] is True
+    assert any(
+        event["kind"] == "gap" and event["data"]["reason"] == "cleanup_unverified"
+        for event in reader.events("qa:native:0")
+    )
 
 
 def test_service_logs_are_redacted_and_retained_before_container_teardown(

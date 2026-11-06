@@ -574,6 +574,7 @@ async def _run_campaign(
 
             stop_relay = asyncio.create_task(forward_operator_stop())
             status = "failed"
+            failure: BaseException | None = None
             try:
                 await asyncio.to_thread(harness.prepare, participant)
                 if operator_stop.is_set():
@@ -729,6 +730,7 @@ async def _run_campaign(
                 saved = await asyncio.to_thread(harness.character)
                 (directory / "saved-character.json").write_text(canonical(saved))
             except BaseException as error:
+                failure = error
                 status = (
                     "interrupted"
                     if isinstance(error, (KeyboardInterrupt, asyncio.CancelledError))
@@ -754,13 +756,64 @@ async def _run_campaign(
             finally:
                 stopped.set()
                 stop_relay.cancel()
-                await asyncio.gather(stop_relay, return_exceptions=True)
+                teardown_failure: BaseException | None = None
                 try:
+                    await asyncio.gather(stop_relay, return_exceptions=True)
                     if worker:
                         await asyncio.gather(worker, return_exceptions=True)
-                    store.finish(identity, status)
-                finally:
+                except BaseException as error:  # noqa: BLE001
+                    if failure is None:
+                        failure = teardown_failure = error
+                        status = (
+                            "interrupted"
+                            if isinstance(
+                                error, (KeyboardInterrupt, asyncio.CancelledError)
+                            )
+                            else "failed"
+                        )
+                    else:
+                        failure.add_note(
+                            "Worker teardown also failed: " + type(error).__name__
+                        )
+                try:
                     await asyncio.to_thread(harness.close)
+                except BaseException as cleanup_error:
+                    if failure is None:
+                        status = "failed"
+                    else:
+                        failure.add_note(
+                            "Isolated Docker cleanup also failed: "
+                            + type(cleanup_error).__name__
+                        )
+                    try:
+                        end = ReplayReader(recording).run(identity)["duration_ms"]
+                        store.append(
+                            {
+                                "run": identity,
+                                "key": "cleanup-unverified",
+                                "segment": "orchestrator",
+                                "t_ms": end + 1,
+                                "wall": time.time(),
+                                "kind": "gap",
+                                "data": {
+                                    "reason": "cleanup_unverified",
+                                    "category": type(cleanup_error).__name__,
+                                },
+                            }
+                        )
+                    except Exception as recording_error:  # noqa: BLE001
+                        # Evidence IO must not replace the original failure.
+                        target = failure or cleanup_error
+                        target.add_note(
+                            "Could not record cleanup failure: "
+                            + type(recording_error).__name__
+                        )
+                    if failure is None:
+                        raise
+                finally:
+                    store.finish(identity, status)
+                if teardown_failure is not None:
+                    raise teardown_failure
     result = campaign(ReplayReader(recording), identities)
     (experiment.output / "summary.json").write_text(canonical(result))
     return result
