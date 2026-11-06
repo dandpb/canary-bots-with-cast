@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "attempt": "m5-og-20261106-dae4b84b",
+  "source_revision": "e65e8913becc6e5766e1fa050cbf82183e7ee69e",
+  "status": "failed_before_game",
+  "error_type": "OperationalError",
+  "original_sqlite_errno_retained": false,
+  "one_execute_invocation": true,
+  "reinvocations": 0,
+  "scored_games_created": 0,
+  "native_trials_created": 0,
+  "gameplay_xp_measured": false,
+  "qualified": false,
+  "financial_final": false,
+  "known_spent_nanousd": 363100,
+  "unknown_reserved_nanousd": 3357050,
+  "invocation_liability_nanousd": 3720150,
+  "historical_known_nanousd": 214600,
+  "liability_including_historical_nanousd": 3934750,
+  "probes": [
+    {
+      "provider": "openai",
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "recording_status_preserved": "failed",
+      "event_count": 19,
+      "request_phase_counts": {
+        "reserved": 3,
+        "finished": 2,
+        "failed": 1,
+        "skipped": 2
+      },
+      "reserved_http_attempts": 3,
+      "reserved_request_ids": [
+        "0127734202e044e9aa93cc3261a82647",
+        "742774dec9f94c4eb5c903b69bffe0aa",
+        "c8f2779f524c49be9da807f71eeffd58"
+      ],
+      "reserved_without_recorded_terminal": [],
+      "archive": "openai/openai-decisions.replay.zip",
+      "archive_sha256": "b04e8cf712b59eff4eff297440492792fdefe12af8b7c76a20ab7ca2ccf733c8"
+    },
+    {
+      "provider": "gemini",
+      "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+      "recording_status_preserved": "failed",
+      "event_count": 16,
+      "request_phase_counts": {
+        "reserved": 2,
+        "finished": 1,
+        "skipped": 3
+      },
+      "reserved_http_attempts": 2,
+      "reserved_request_ids": [
+        "952c7a462a36461485d7fe37f3ee8444",
+        "b91f101ecf4a4d7ea2315922365e4193"
+      ],
+      "reserved_without_recorded_terminal": [
+        "952c7a462a36461485d7fe37f3ee8444"
+      ],
+      "archive": "gemini/gemini-decisions.replay.zip",
+      "archive_sha256": "bd5d42db1deb8caecd1ac5f75c7832de9ef187891eb96206e416c80d8484330e"
+    }
+  ],
+  "limitations": [
+    "No nine-run game benchmark or XP/counterfactual result exists for this attempt.",
+    "The original OperationalError has no saved errno/message/traceback; later synthetic SQLite reproductions do not prove its exact cause.",
+    "The application recorded five canonically reserved attempts: three finished responses, one recorded timeout and one missing terminal. Upstream transmission for that last Gemini request is unconfirmed; finance audit itself made zero calls.",
+    "Unknown reservations remain liabilities and were not released or settled by this collection.",
+    "Any future recovery is a separate namespace/authorization after review, not a retry or retroactive qualification of this attempt."
+  ]
+}

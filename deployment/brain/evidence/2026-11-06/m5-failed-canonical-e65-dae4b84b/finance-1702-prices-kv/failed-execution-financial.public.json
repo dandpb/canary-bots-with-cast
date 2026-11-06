@@ -1,0 +1,326 @@
+{
+  "schema_version": 1,
+  "campaign": "m5-og-20261106-dae4b84b",
+  "attempt_status": "failed_before_scored_game",
+  "snapshot_utc": "2026-11-06T17:02:36.713727+00:00",
+  "month": "2026-11",
+  "authority": "canary-bots-wsl_brain-state:/var/lib/canary-brain/state.sqlite3",
+  "canonical_budget_nanousd": {
+    "cap": 50000000000,
+    "spent": 535312925,
+    "reserved": 73038550,
+    "available": 49391648525
+  },
+  "providers": {
+    "openai": {
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "requests": [
+        {
+          "request_id": "0127734202e044e9aa93cc3261a82647",
+          "reserved_nanousd": 825375,
+          "spent_nanousd": 133900,
+          "state": "settled",
+          "recorded_phases": [
+            "reserved",
+            "finished"
+          ],
+          "recorded_error_classes": [],
+          "missing_terminal": false
+        },
+        {
+          "request_id": "742774dec9f94c4eb5c903b69bffe0aa",
+          "reserved_nanousd": 825500,
+          "spent_nanousd": 53400,
+          "state": "settled",
+          "recorded_phases": [
+            "reserved",
+            "finished"
+          ],
+          "recorded_error_classes": [],
+          "missing_terminal": false
+        },
+        {
+          "request_id": "c8f2779f524c49be9da807f71eeffd58",
+          "reserved_nanousd": 942250,
+          "spent_nanousd": null,
+          "state": "unknown",
+          "recorded_phases": [
+            "reserved",
+            "failed"
+          ],
+          "recorded_error_classes": [
+            "TimeoutError"
+          ],
+          "missing_terminal": false
+        }
+      ],
+      "request_count": 3,
+      "settled_requests": 2,
+      "unknown_requests": 1,
+      "known_spent_nanousd": 187300,
+      "unknown_reserved_nanousd": 942250,
+      "liability_nanousd": 1129550,
+      "within_probe_cap": true,
+      "financial_final": false,
+      "recording_sha256": "0edc8b7f4520ba97a59c48111a42b4a1c6a689ff468a9968f14e8f9b0e1750de"
+    },
+    "gemini": {
+      "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+      "requests": [
+        {
+          "request_id": "b91f101ecf4a4d7ea2315922365e4193",
+          "reserved_nanousd": 2414500,
+          "spent_nanousd": 175800,
+          "state": "settled",
+          "recorded_phases": [
+            "reserved",
+            "finished"
+          ],
+          "recorded_error_classes": [],
+          "missing_terminal": false
+        },
+        {
+          "request_id": "952c7a462a36461485d7fe37f3ee8444",
+          "reserved_nanousd": 2414800,
+          "spent_nanousd": null,
+          "state": "unknown",
+          "recorded_phases": [
+            "reserved"
+          ],
+          "recorded_error_classes": [],
+          "missing_terminal": true
+        }
+      ],
+      "request_count": 2,
+      "settled_requests": 1,
+      "unknown_requests": 1,
+      "known_spent_nanousd": 175800,
+      "unknown_reserved_nanousd": 2414800,
+      "liability_nanousd": 2590600,
+      "within_probe_cap": true,
+      "financial_final": false,
+      "recording_sha256": "044f50250fb68890db0e44bce01a1d8e98f2d203733bf5a03eaa025cebab3f04"
+    }
+  },
+  "attempt_request_count": 5,
+  "attempt_known_spent_nanousd": 363100,
+  "attempt_unknown_reserved_nanousd": 3357050,
+  "attempt_liability_nanousd": 3720150,
+  "historical_requests": 2,
+  "historical_known_spent_nanousd": 214600,
+  "pilot_including_historical_liability_nanousd": 3934750,
+  "scored_game_ledger_requests": 0,
+  "financial_final": false,
+  "total_unknown_requests_in_authority": 92,
+  "total_unknown_reserved_nanousd": 73038550,
+  "unknown_semantics": "Unsettled reservations are liabilities, not zero spend or evidence of an active upstream request.",
+  "sqlite_quick_check": [
+    "ok"
+  ],
+  "filesystem_metadata": {
+    "reader_uid": 0,
+    "reader_euid": 0,
+    "sqlite_version": "3.46.1",
+    "directory": {
+      "exists": true,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o755",
+      "size": 4096
+    },
+    "database": {
+      "exists": true,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o600",
+      "size": 7168000
+    },
+    "wal": {
+      "exists": true,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o600",
+      "size": 0
+    },
+    "shm": {
+      "exists": true,
+      "uid": 0,
+      "gid": 0,
+      "mode": "0o600",
+      "size": 32768
+    },
+    "metadata_not_transactional": true
+  },
+  "authority_container_id": "13ad6bb04ce1a4cb360124bacc8386e577875bb40cb6d9572bb5d7b232937e17",
+  "authority_started_at": "2026-11-06T16:34:04.171104657Z",
+  "source_mount_readonly": false,
+  "reader_lifecycle": {
+    "container_created": false,
+    "container_removed": false,
+    "used_existing_brain": true,
+    "connection_readonly": true
+  },
+  "original_failure_exception": {
+    "class": "OperationalError",
+    "sqlite_errorcode": null,
+    "sqlite_errorname": null,
+    "detail_source": "Executor retained OperationalError class only; exact original SQLite message/code remains unavailable. A later bounded request-KV error-field capture is reported separately and does not establish that cause."
+  },
+  "findings": [],
+  "canonical_snapshot_sha256": "35992266220dcfc2896190172f636b4262e666baa660c3a12e01067b548abb79",
+  "read_only_sql_sha256": "65107374649799db325976af8f70107e14135c3528a5e0b0797058dcf3a3a03e",
+  "read_only_reader_source_sha256": "027391cdfcabd72980528effb78373c58981b2a8aea3a87e3504189d348ddc31",
+  "financial_audit_provider_calls": 0,
+  "financial_audit_gateway_api_calls": 0,
+  "canonical_ledger_writes": 0,
+  "reservations_released_or_settled_by_audit": 0,
+  "execution_retry_performed": false,
+  "interpretation": "No Gemini-zero claim and no campaign qualification. Reconcile the failed single invocation; do not retry under its original authorization.",
+  "public_receipt_revision": 2,
+  "artifact_update_utc": "2026-11-06T17:08:29.557866+00:00",
+  "prices_from_execution_hash_matched_inputs": {
+    "openai": {
+      "worker_sha256": "a051736a26464552fa358977a19de5b94aebc8f5813d764b2c15264aedd8d643",
+      "matches_execution_started_input_sha256": true,
+      "unit": "nanodollars_per_token",
+      "prices": {
+        "version": "official-standard-text-2026-11-06-openai",
+        "input_nanousd": 100,
+        "cached_nanousd": 10,
+        "cache_write_nanousd": 125,
+        "output_nanousd": 500
+      }
+    },
+    "gemini": {
+      "worker_sha256": "948ecb368f05bc630ed2044a679c68b318224dabeccf76232e58ee9695c89794",
+      "matches_execution_started_input_sha256": true,
+      "unit": "nanodollars_per_token",
+      "prices": {
+        "version": "official-standard-text-2026-11-06-gemini",
+        "input_nanousd": 300,
+        "cached_nanousd": 30,
+        "cache_write_nanousd": null,
+        "output_nanousd": 2500
+      }
+    }
+  },
+  "prior_unknown_reservation_comparison": {
+    "baseline_snapshot_utc": "2026-11-06T16:34:17.098441+00:00",
+    "current_snapshot_utc": "2026-11-06T17:02:36.713727+00:00",
+    "scope": "All request rows with spent=null in the prior captured financial export; compared by request identity locally. No canonical SQL performed for this update.",
+    "baseline_unknown_requests": 92,
+    "baseline_unknown_reserved_nanousd": 71815000,
+    "classification": {
+      "preserved_unknown": {
+        "requests": 90,
+        "baseline_reserved_nanousd": 69681500
+      },
+      "settled": {
+        "requests": 2,
+        "baseline_reserved_nanousd": 2133500
+      },
+      "missing": {
+        "requests": 0,
+        "baseline_reserved_nanousd": 0
+      },
+      "still_unknown_changed": {
+        "requests": 0,
+        "baseline_reserved_nanousd": 0
+      }
+    },
+    "settled_since_baseline_known_spent_nanousd": 176800,
+    "current_unknown_requests": 92,
+    "newly_observed_unknown_request_ids": 2,
+    "existing_known_became_unknown_requests": 0,
+    "counts_forced_to_expected_values": false,
+    "causal_attribution": "None. Preservation, settlement, absence and new observation are descriptive differences between two captured exports, not an attribution to M5 or any operator.",
+    "baseline_financial_export_sha256": "7a423b1be068609280ed920012b60ed2d81ff91c543bf23247b2373adb3a4d20",
+    "current_financial_export_sha256": "35992266220dcfc2896190172f636b4262e666baa660c3a12e01067b548abb79"
+  },
+  "bounded_request_kv_diagnostic": {
+    "snapshot_utc": "2026-11-06T17:05:13.892396+00:00",
+    "separate_from_primary_financial_snapshot": true,
+    "query_scope": "Previously captured request-kind KV error field for the five attempt request IDs only; record absence is distinct from a present record with null error.",
+    "keys_requested": 5,
+    "records_returned": 4,
+    "selected_fields": [
+      "error"
+    ],
+    "providers": {
+      "openai": {
+        "requests_requested": 3,
+        "kv_records_present": 3,
+        "kv_records_absent": 0,
+        "observations": [
+          {
+            "request_index": 1,
+            "financial_state_at_primary_snapshot": "settled",
+            "kv_record_present": true,
+            "error_class": null
+          },
+          {
+            "request_index": 2,
+            "financial_state_at_primary_snapshot": "settled",
+            "kv_record_present": true,
+            "error_class": null
+          },
+          {
+            "request_index": 3,
+            "financial_state_at_primary_snapshot": "unknown",
+            "kv_record_present": true,
+            "error_class": "TimeoutError"
+          }
+        ]
+      },
+      "gemini": {
+        "requests_requested": 2,
+        "kv_records_present": 1,
+        "kv_records_absent": 1,
+        "observations": [
+          {
+            "request_index": 1,
+            "financial_state_at_primary_snapshot": "settled",
+            "kv_record_present": true,
+            "error_class": null
+          },
+          {
+            "request_index": 2,
+            "financial_state_at_primary_snapshot": "unknown",
+            "kv_record_present": false,
+            "error_class": null
+          }
+        ]
+      }
+    },
+    "source_capture_sha256": "8a4e68a2251408cc99b231edff7ff8ebab0fcf3a9d4209d38b407120261e37f4",
+    "message_or_credential_fields_read": false,
+    "original_sqlite_failure_cause_established": false,
+    "interpretation": "OpenAI unknown request has captured TimeoutError. Gemini second request has no captured request-kind KV record. No original SQLite message/code or causal explanation is inferred."
+  },
+  "reader_failure_distinction": {
+    "original_m5_failure": {
+      "class": "OperationalError",
+      "exact_sqlite_code_or_message_available": false
+    },
+    "strict_readonly_helper_failure": "Separately observed strict read-only helper attempts reported CANTOPEN; they were not the original M5 executor failure.",
+    "failed_helper_containers_removed": true,
+    "successful_snapshot_used_existing_brain": true,
+    "successful_snapshot_created_own_container": false,
+    "successful_snapshot_volume_mount_readonly": false,
+    "successful_snapshot_sqlite_connection_readonly": true,
+    "successful_snapshot_query_only": true,
+    "source": "Preserved operator observations and captured financial snapshot metadata; no runtime recheck performed for this update."
+  },
+  "artifact_update_scope": {
+    "local_captured_files_only": true,
+    "canonical_sql_connections": 0,
+    "docker_operations": 0,
+    "provider_or_gateway_api_calls": 0,
+    "credential_reads": 0,
+    "canonical_ledger_writes": 0,
+    "reservations_released_or_settled": 0,
+    "execution_retries": 0,
+    "v1_public_bytes_preserved_privately": true
+  },
+  "price_limit": "These are configured per-token prices frozen in the actual execution inputs, not independent provider invoice reconciliation. Gemini cache_write_nanousd=null means unqualified price, not zero."
+}
