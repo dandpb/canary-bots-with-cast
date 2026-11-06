@@ -35,6 +35,9 @@ frozen observation, decision, one request, settled ledger amount, effective
 model and deployment. Every returned short-deadline response must pass the same
 validation. An authentication, route, schema, usage, cache-price or other observed
 technical error blocks the game, including one occurring at a short deadline.
+Each positive summary must match its one recorded `model_proposed` choice;
+negative summaries must remain false and contain neither a choice nor a recorded
+proposal. Requested observations and memory must match the frozen inputs.
 
 A short `TimeoutError` is allowed only when the real request recorder also
 reports `failed/TimeoutError`, with `unsettled:true`, a matching ledger request
@@ -82,7 +85,13 @@ needed for these checks.
 Verification on the prospective patch: the new continuation test first failed
 on the unchanged executor's `conformance failed` gate, then passed with this
 policy. The combined pilot, report, attestation, gateway and budget suite passed
-125 tests (39 pilot tests, including the original strict-mode regressions).
+127 tests (41 pilot tests, including the original strict-mode regressions).
 Ruff lint/format, mypy for both tools and `git diff --check` passed. These are
 offline application-boundary checks, not evidence of a real provider's latency,
 cost or gameplay performance.
+
+Independent review also reproduced two inconsistent summaries on the first
+prospective patch: a skip labeled valid and a settled schema failure relabeled
+as a valid offered choice without a recorded proposal. Both new regressions
+failed by reaching the simulated game before the fix, then passed with the
+proposal/negative-state reconciliation above.

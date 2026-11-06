@@ -682,7 +682,10 @@ async def test_deadline_policy_cannot_waive_long_or_response_contract_failures(
     assert result["probes"]["openai"]["qualification"]["accepted_for_game"] is False
 
 
-@pytest.mark.parametrize("fault", ["unknown", "relabeled_usage", "gap"])
+@pytest.mark.parametrize(
+    "fault",
+    ["unknown", "relabeled_usage", "gap", "relabeled_skipped", "relabeled_schema"],
+)
 async def test_deadline_policy_reconciles_evidence_instead_of_trusting_error_labels(
     admitted, monkeypatch, fault
 ):
@@ -690,8 +693,21 @@ async def test_deadline_policy_reconciles_evidence_instead_of_trusting_error_lab
 
     monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
     admit_short_deadline_policy(admitted)
+
+    def invalid_choice(count, payload, _):
+        if count == 3 and fault == "relabeled_schema":
+            payload["output"][0]["arguments"] = '{"candidate_id":"not-offered"}'
+
     fake_probe_sdk(
-        monkeypatch, failure="usage" if fault == "relabeled_usage" else "timeout"
+        monkeypatch,
+        failure=(
+            "usage"
+            if fault == "relabeled_usage"
+            else "none"
+            if fault == "relabeled_schema"
+            else "timeout"
+        ),
+        mutate=invalid_choice,
     )
     actual = pilot.decision_fixtures
 
@@ -703,6 +719,12 @@ async def test_deadline_policy_reconciles_evidence_instead_of_trusting_error_lab
             )
         elif fault == "relabeled_usage":
             probe["decisions"][3]["error"] = "TimeoutError"
+        elif fault == "relabeled_skipped":
+            probe["decisions"][4]["valid"] = True
+            probe["decisions"][4]["choice"] = "continue"
+        elif fault == "relabeled_schema":
+            probe["decisions"][3].update(valid=True, choice="continue")
+            probe["decisions"][3].pop("error")
         else:
             config = pilot.runtime.Configuration.model_validate_json(
                 args.worker_config.read_text()

@@ -1028,7 +1028,16 @@ def qualify_short_deadlines(
     if len(set(ids)) != len(ids):
         raise ValueError("probe repeats a decision identity")
     requests: dict[str, list[dict[str, Any]]] = {identity: [] for identity in ids}
+    proposals: dict[str, list[str]] = {identity: [] for identity in ids}
     for event in events:
+        if (
+            event["kind"] == "decision"
+            and event["data"].get("phase") == "model_proposed"
+        ):
+            proposed = event["data"]
+            if proposed["decision_id"] not in proposals:
+                raise ValueError("unattributed probe proposal")
+            proposals[proposed["decision_id"]].append(proposed["candidate"])
         if event["kind"] == "request":
             data = event["data"]
             if data["decision_id"] not in requests:
@@ -1053,10 +1062,17 @@ def qualify_short_deadlines(
         if (
             decision["observation"]
             != public_data(snapshot.model_dump(exclude={"lease", "messages"}))
+            or decision["memory"] != public_data(frozen.get("memory", {}))
             or row["bot_id"] != snapshot.bot.id
         ):
             raise ValueError("probe observation differs from the frozen input")
         emitted = requests[decision["decision_id"]]
+        proposed_choices = proposals[decision["decision_id"]]
+        if row["valid"] is True:
+            if proposed_choices != [row.get("choice")] or "error" in row:
+                raise ValueError("positive probe summary has no matching proposal")
+        elif row["valid"] is not False or proposed_choices or "choice" in row:
+            raise ValueError("negative probe summary contradicts recorded choices")
         outcome = "valid"
         if len(snapshot.actions) == 1:
             if (
@@ -1083,6 +1099,7 @@ def qualify_short_deadlines(
             if phases == ["skipped"]:
                 if (
                     deadline == 5000
+                    or row["valid"] is not False
                     or row.get("error") != "ProviderBackoff"
                     or not last_timeout
                     or emitted[0].get("reason") != "backoff"
@@ -1130,7 +1147,9 @@ def qualify_short_deadlines(
                     last_timeout = False
                 elif (
                     deadline != 5000
+                    and row["valid"] is False
                     and row.get("error") == "TimeoutError"
+                    and terminal["phase"] == "failed"
                     and terminal.get("error") == "TimeoutError"
                     and terminal.get("unsettled") is True
                     and cost["spent"] is None
