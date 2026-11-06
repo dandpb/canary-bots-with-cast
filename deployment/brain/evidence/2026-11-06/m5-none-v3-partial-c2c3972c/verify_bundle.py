@@ -2,12 +2,22 @@
 
 import hashlib
 import json
+import math
 import sys
 import zipfile
 from pathlib import Path
 
 FINANCE_SHA = "3b956b89a2b93a53c0d8f483df140b56faad9687904cb5235cb5f5758b7397dd"
 SOURCE = "7f2904e5827edc67997d309d453fa1d7371523cc"
+# Original immutable outputs at publication 7bd0077f. Later validation cannot
+# rewrite the canonical report or either closed probe to erase negative data.
+CANONICAL_OUTPUT_SHA256 = {
+    "report/report.json": "782a5ed3150491baa08912ae751deb26367874d93602e625f271b9c0d9033298",
+    "report/report.md": "dde76924520e42993b0150f9525f59b2e18e62e960ca39e2116faa50ce0b50b0",
+    "probe-metrics.json": "39904ccb53f493e115a634620e02704bc1d102939a895fa6199f9a44be135a06",
+    "openai-probe-result.json": "51f32ee4159d4500bfc349d77d76eda18aee7cb93481f25c1b6b5a0fa781ef43",
+    "gemini-probe-result.json": "3c3bc894373790c016af6c38bd2103c2b6f798085595f3b421fdd4240dbcf98e",
+}
 
 
 def require(value, message):
@@ -26,6 +36,160 @@ def sha(path):
 def amount(value):
     require(type(value) is int and value >= 0, "invalid monetary integer")
     return value
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def digest(value):
+    return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def rendered_event(event):
+    """Exact renderer-v2 projection, not a reconstruction of hidden gameplay."""
+    kind, data = event["kind"], event["data"]
+    if kind == "sample":
+        bot = data["bot"]
+        used = {
+            k: bot[k] for k in ["position", "level", "xp", "health", "mana", "potions"]
+        }
+        used["name"] = bot["name"][:25]
+        payload = {"bot": used}
+    else:
+        payload = {"phase": str(data.get("phase", kind))[:90]}
+        if kind == "request":
+            payload.update(
+                {
+                    k: data[k]
+                    for k in ["request_id", "spent_nanousd", "reserved_nanousd"]
+                    if k in data
+                }
+            )
+    return {"t_ms": event["t_ms"], "kind": kind, "data": payload}
+
+
+def verify_video(root, metadata, events):
+    sidecar = load(root / "video/native-partial-60x.mp4.json")
+    receipt = load(root / "video/verification-receipt.json")
+    probe = load(root / "video/ffprobe.json")
+    end = max(e["t_ms"] for e in events)
+    ordered = sorted(events, key=lambda e: (e["t_ms"], e["id"]))
+    raw_hash = hashlib.sha256(
+        b"".join(
+            canonical({k: v for k, v in e.items() if k != "id"}).encode() + b"\n"
+            for e in ordered
+        )
+    ).hexdigest()
+    used_hash = hashlib.sha256(
+        b"".join(canonical(rendered_event(e)).encode() + b"\n" for e in ordered)
+    ).hexdigest()
+    require(
+        sidecar["source_metadata"] == metadata
+        and sidecar["manifest"] == metadata["manifest"]
+        and sidecar["run"] == metadata["id"]
+        and sidecar["source_status"] == metadata["status"],
+        "video source scope differs",
+    )
+    require(
+        sidecar["source_events"] == len(events)
+        and sidecar["source_events_sha256"] == raw_hash
+        and sidecar["source_snapshot_sha256"]
+        == digest(
+            {"metadata": metadata, "events_sha256": raw_hash, "events_until_ms": end}
+        ),
+        "video source snapshot differs",
+    )
+    evidence = {
+        "manifest": {
+            k: metadata["manifest"][k]
+            for k in ["participant", "model", "synthetic", "sample_ms"]
+        },
+        "status": metadata["status"],
+        "events_until_ms": end,
+        "rendered_events_sha256": used_hash,
+    }
+    require(
+        sidecar["source_evidence"] == evidence
+        and sidecar["source_evidence_sha256"] == digest(evidence),
+        "video evidence fingerprint differs",
+    )
+    frames = math.ceil(end / 1000 / 60 * 24)
+    render = sidecar["render_input"]
+    require(
+        render["renderer_version"] == 2
+        and render["font"] == "DejaVu Sans,sans-serif"
+        and render["codec"]
+        == {"name": "libx264", "pixel_format": "yuv420p", "crf": 22},
+        "renderer-v2 parameters differ",
+    )
+    require(
+        render["source_evidence_sha256"] == digest(evidence)
+        and (
+            render["start_ms"],
+            render["end_ms"],
+            render["fps"],
+            render["speed"],
+            render["frames"],
+            render["width"],
+            render["height"],
+        )
+        == (0, end, 24, 60.0, frames, 1280, 720)
+        and sidecar["render_input_sha256"] == digest(render),
+        "video render identity differs",
+    )
+    require(
+        (
+            sidecar["start_ms"],
+            sidecar["end_ms"],
+            sidecar["frames"],
+            sidecar["fps"],
+            sidecar["requested_speed"],
+            sidecar["video_seconds"],
+        )
+        == (0, end, frames, 24, 60.0, frames / 24),
+        "partial video duration/frame claims differ",
+    )
+    stream = probe["streams"][0]
+    require(
+        sidecar["version"] == 2
+        and sidecar["kind"] == "sampled-map-timelapse"
+        and (sidecar["width"], sidecar["height"]) == (1280, 720)
+        and abs(sidecar["effective_speed"] - end / 1000 / (frames / 24)) < 1e-9,
+        "video format/effective speed differs",
+    )
+    require(
+        (
+            stream["width"],
+            stream["height"],
+            stream["avg_frame_rate"],
+            int(stream["nb_read_frames"]),
+            float(probe["format"]["duration"]),
+        )
+        == (1280, 720, "24/1", frames, frames / 24),
+        "ffprobe disagrees with partial render",
+    )
+    require(float(stream["duration"]) == frames / 24, "ffprobe stream duration differs")
+    require(
+        receipt["sidecar_sha256"] == sha(root / "video/native-partial-60x.mp4.json")
+        and receipt["video_sha256"] == sidecar["video_sha256"]
+        and (
+            receipt["sample_span_ms"],
+            receipt["recorded_envelope_ms"],
+            receipt["frames"],
+            receipt["fps"],
+            receipt["video_seconds"],
+        )
+        == (220803, end, frames, 24, frames / 24),
+        "video verification receipt differs",
+    )
+    require(
+        receipt["ffprobe_checked"] is True
+        and receipt["visual_review"] == "first_middle_final_frames_checked"
+        and receipt["visual_frames"] == [0, 48, 95]
+        and receipt["rendered_after_all_scored_trials_closed"] is True,
+        "video review scope differs",
+    )
 
 
 def usage_cost(event, prices):
@@ -92,10 +256,29 @@ def verify(root):
             "unsafe public path",
         )
         require(sha(path) == expected, "public hash differs: " + name)
+    for name, expected in CANONICAL_OUTPUT_SHA256.items():
+        require(
+            sha(root / name) == expected, "original canonical output changed: " + name
+        )
     summary = load(root / "summary.json")
     report = load(root / "report/report.json")
     closure = load(root / "closure-projection.json")
     provenance = load(root / "input-and-source-provenance.json")
+    acceptance = load(root / "report/acceptance.json")
+    require(
+        acceptance
+        == {
+            key: report[key]
+            for key in [
+                "ready_for_review",
+                "financial_totals_complete",
+                "financial_final",
+                "findings",
+                "verdict",
+            ]
+        },
+        "acceptance contradicts canonical report",
+    )
     require(
         summary["source_revision"] == provenance["source_revision"] == SOURCE,
         "producer differs",
@@ -185,8 +368,15 @@ def verify(root):
         "summary financial partition differs",
     )
     require(
-        (report["settled_nanousd"], report["unknown_nanousd"]) == (known, unknown),
+        (amount(report["settled_nanousd"]), amount(report["unknown_nanousd"]))
+        == (known, unknown),
         "report financial totals differ",
+    )
+    require(
+        amount(summary["complete_cap_nanousd"])
+        == amount(report["total_cap_nanousd"])
+        == 7000000000,
+        "complete cap differs",
     )
     require(
         not any(r["run_id"].startswith(summary["campaign"] + ":") for r in rows),
@@ -220,18 +410,78 @@ def verify(root):
         and samples[-1]["t_ms"] - samples[0]["t_ms"] == 220803,
         "native critical gap/horizon changed",
     )
+    gap_projection = load(root / "native-gap.safe-projection.json")
+    native_row = report["runs"][0]
+    require(
+        len(report["runs"]) == 1
+        and native_row["run_id"] == native["id"]
+        and (
+            native_row["participant"],
+            native_row["repetition"],
+            native_row["status"],
+            native_row["stop_reason"],
+            native_row["observed_span_ms"],
+        )
+        == ("native", 0, "failed", "recording_gap", 220803),
+        "native report scope differs",
+    )
+    require(
+        amount(native_row["ledger_spent_nanousd"])
+        == amount(native_row["ledger_unknown_nanousd"])
+        == 0
+        and native_row["metrics"]["xp_delta"]
+        == samples[-1]["data"]["bot"]["xp"] - samples[0]["data"]["bot"]["xp"]
+        == 0
+        and native_row["metrics"]["gaps"] == len(gaps),
+        "native metrics/cost attributed from other scope",
+    )
+    require(
+        summary["native_fragment"]["worker_clocks"] == gap_projection["worker_run_stop"]
+        and summary["native_fragment"]["sample_span_ms"] == 220803
+        and summary["native_fragment"]["final_saved_character_available"] is False,
+        "partial summary evidence differs",
+    )
+    fragment = summary["native_fragment"]
+    require(
+        fragment["run_id"] == native["id"]
+        and fragment["status"] == "failed"
+        and fragment["stop_reason"] == "recording_gap"
+        and fragment["requested_seconds"] == 1800
+        and fragment["sample_count"] == len(samples)
+        and fragment["recorded_envelope_ms"] == native["duration_ms"]
+        and fragment["xp_delta_observed"]
+        == fragment["deaths_observed_fragment"]
+        == fragment["interventions_observed_fragment"]
+        == 0
+        and fragment["llm_requests"] == amount(fragment["usage_settled_nanousd"]) == 0
+        and fragment["gaps"] == 1,
+        "partial fragment metrics/scope changed",
+    )
+    verify_video(root, native, events)
     require(
         not any(e["kind"] == "request" for e in events), "native AI calls fabricated"
     )
     current_ids = set()
+    execution_probes = load(root / "execution-result.json")["probes"]
+    metric_probes = load(root / "probe-metrics.json")["probes"]
     for provider, expected_count in [("openai", 3), ("gemini", 5)]:
         probe = load(root / (provider + "-probe-result.json"))
+        require(
+            execution_probes[provider] == probe
+            and metric_probes[provider]["qualification"] == probe["qualification"],
+            "duplicate probe outputs contradict closed qualification",
+        )
         require(
             probe["qualification"]["accepted_for_game"] is True
             and probe["qualification"]["evidence_reconciled"] is True,
             "real probe acceptance erased",
         )
         meta, events = archive_data(root / "replays" / (provider + "-probe.replay.zip"))
+        require(
+            meta["status"] == ("failed" if provider == "openai" else "completed")
+            and meta["incomplete"] is False,
+            "probe recorder state relabelled",
+        )
         require(
             meta["manifest"]["synthetic"] is True
             and meta["manifest"]["source_revision"] == "unknown"
@@ -247,6 +497,17 @@ def verify(root):
             key: phases for key, phases in groups.items() if "reserved" in phases
         }
         require(len(reserved) == expected_count, "probe attempt count changed")
+        selected = [by_id[key] for key in reserved]
+        settled = sum(r["spent"] for r in selected if r["spent"] is not None)
+        liability = sum(r["reserved"] for r in selected if r["spent"] is None)
+        qualification = probe["qualification"]
+        require(
+            amount(qualification["ledger_requests"]) == len(reserved)
+            and amount(qualification["unknown_nanousd"]) == liability
+            and amount(qualification["liability_nanousd"]) == settled + liability
+            and qualification["financial_final"] is (liability == 0),
+            "probe qualification cost partition differs",
+        )
         for key, phases in reserved.items():
             require(key not in current_ids, "duplicate current financial identity")
             current_ids.add(key)
