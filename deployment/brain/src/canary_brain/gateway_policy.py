@@ -1,7 +1,5 @@
 """Fail-closed policy for the private LiteLLM benchmark gateway."""
 
-from __future__ import annotations
-
 import hashlib
 import hmac
 import importlib
