@@ -132,3 +132,11 @@ Python files. The final code adds no provider calls beyond these isolated
 fake-upstream laboratories. The two routing issues and the native schema
 preservation are qualified within their stated boundaries; modeANY is not
 presented as equivalent to OpenAI constrained-decoding guarantees.
+
+The lab launcher also records daemon-created container IDs with `--cidfile`
+and removes only those IDs in `finally`. `--rm` alone does not stop a container
+when a timed-out Docker CLI is killed. Two directed simulated CLI-timeout tests
+passed (schema and test phases), proving owned-ID cleanup and original timeout
+propagation. The positive pinned PostgreSQL lab was rerun after that helper-only
+change and again observed48 selection cases,26 denials,24 expected calls and336
+fixture nanodollars, followed by successful temporary-container cleanup.

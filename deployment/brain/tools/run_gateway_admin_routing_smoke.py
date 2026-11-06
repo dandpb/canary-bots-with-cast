@@ -1,6 +1,8 @@
 """Disposable networkless PostgreSQL/admin lab; no existing gateway is accessed."""
 
+import re
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -9,6 +11,11 @@ def main():
     root = Path(__file__).resolve().parents[3]
     image = "ghcr.io/berriai/litellm:v1.108.0@sha256:b59b9fd52a67891be4e8dae09ddd4e6c9265e9a8cb3f25f8dd73fbabe7659965"
     database = None
+    temporary = tempfile.TemporaryDirectory(prefix="canary-gateway-lab-cids-")
+    cidfiles = {
+        role: Path(temporary.name) / (role + ".cid")
+        for role in ("database", "schema", "test")
+    }
     try:
         database = subprocess.check_output(
             [
@@ -16,6 +23,8 @@ def main():
                 "run",
                 "-d",
                 "--rm",
+                "--cidfile",
+                str(cidfiles["database"]),
                 "--network",
                 "none",
                 "--tmpfs",
@@ -51,6 +60,8 @@ def main():
         subprocess.run(
             common
             + [
+                "--cidfile",
+                str(cidfiles["schema"]),
                 "--entrypoint",
                 "prisma",
                 image,
@@ -66,6 +77,8 @@ def main():
         subprocess.run(
             common
             + [
+                "--cidfile",
+                str(cidfiles["test"]),
                 "-e",
                 "CANARY_FAKE_ADMIN_DB=enabled",
                 "-e",
@@ -81,10 +94,19 @@ def main():
             timeout=180,
         )
     finally:
-        if database:
-            subprocess.run(
-                ["docker", "stop", database], capture_output=True, check=False
-            )
+        # Killing a timed-out Docker CLI does not stop its container. Only the
+        # daemon-created IDs in this private directory belong to this run.
+        for role in ("test", "schema", "database"):
+            path = cidfiles[role]
+            if path.is_file() and not path.is_symlink():
+                identity = path.read_text().strip()
+                if re.fullmatch(r"[a-f0-9]{64}", identity):
+                    subprocess.run(
+                        ["docker", "rm", "-f", identity],
+                        capture_output=True,
+                        check=False,
+                    )
+        temporary.cleanup()
 
 
 if __name__ == "__main__":
