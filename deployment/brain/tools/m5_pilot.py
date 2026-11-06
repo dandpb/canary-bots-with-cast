@@ -66,6 +66,8 @@ RECOVERY_HISTORICAL = {
     "8e32e915ca5e4407a3ec55ab501bd99a": 52_800,
     "57f0becd17ab47a2ad3638987ca2f6ef": 161_800,
 }
+RECOVERY_CLAIM_KIND = "m5_recovery_v2"
+RECOVERY_CLAIM_KEY = "single_use"
 
 
 class ProbeTimingError(ValueError):
@@ -537,56 +539,74 @@ def ledger_snapshot(
         db,
     ):
         db.execute("BEGIN")
-        spent, reserved = db.execute(
-            "SELECT COALESCE(SUM(CASE WHEN month=? THEN spent ELSE 0 END),0),COALESCE(SUM(CASE WHEN spent IS NULL THEN reserved ELSE 0 END),0) FROM requests",
-            (month_now(),),
+        return _ledger_snapshot_in_transaction(
+            db, historical, additional_runs, namespace, require_additional_runs
+        )
+
+
+def _ledger_snapshot_in_transaction(
+    db: sqlite3.Connection,
+    historical: list[dict[str, Any]],
+    additional_runs: list[str],
+    namespace: str,
+    require_additional_runs: bool,
+) -> dict[str, int]:
+    """Check the complete envelope against one established SQL transaction."""
+    if (
+        require_additional_runs
+        and db.execute(
+            "SELECT 1 FROM records WHERE kind=? AND key=?",
+            (RECOVERY_CLAIM_KIND, RECOVERY_CLAIM_KEY),
         ).fetchone()
-        if db.execute(
-            "SELECT COUNT(*) FROM requests WHERE run_id LIKE ?", (namespace + ":%",)
-        ).fetchone()[0]:
+        is not None
+    ):
+        raise ValueError("recovery has already been claimed")
+    spent, reserved = db.execute(
+        "SELECT COALESCE(SUM(CASE WHEN month=? THEN spent ELSE 0 END),0),COALESCE(SUM(CASE WHEN spent IS NULL THEN reserved ELSE 0 END),0) FROM requests",
+        (month_now(),),
+    ).fetchone()
+    if db.execute(
+        "SELECT COUNT(*) FROM requests WHERE run_id LIKE ?", (namespace + ":%",)
+    ).fetchone()[0]:
+        raise ValueError("campaign identity already has charged or reserved attempts")
+    for request in historical:
+        row = db.execute(
+            "SELECT spent FROM requests WHERE id=?", (request["id"],)
+        ).fetchone()
+        if row is None or row[0] != request["spent_nanousd"]:
             raise ValueError(
-                "campaign identity already has charged or reserved attempts"
+                "historical envelope charges do not match the canonical ledger"
             )
-        for request in historical:
-            row = db.execute(
-                "SELECT spent FROM requests WHERE id=?", (request["id"],)
-            ).fetchone()
-            if row is None or row[0] != request["spent_nanousd"]:
+    extra_liability = 0
+    if require_additional_runs and not additional_runs:
+        raise ValueError("required prior runs are missing")
+    if additional_runs:
+        clause = (
+            " FROM requests WHERE run_id IN ("
+            + ",".join("?" for _ in additional_runs)
+            + ")"
+        )
+        parameters = list(additional_runs)
+        if historical:
+            clause += " AND id NOT IN (" + ",".join("?" for _ in historical) + ")"
+            parameters.extend(row["id"] for row in historical)
+        if require_additional_runs:
+            rows = db.execute(
+                "SELECT run_id,reserved,spent" + clause, parameters
+            ).fetchall()
+            if {row[0] for row in rows} != set(additional_runs):
                 raise ValueError(
-                    "historical envelope charges do not match the canonical ledger"
+                    "required prior run is missing from the canonical ledger"
                 )
-        extra_liability = 0
-        if require_additional_runs and not additional_runs:
-            raise ValueError("required prior runs are missing")
-        if additional_runs:
-            clause = (
-                " FROM requests WHERE run_id IN ("
-                + ",".join("?" for _ in additional_runs)
-                + ")"
-            )
-            parameters = list(additional_runs)
-            if historical:
-                clause += " AND id NOT IN (" + ",".join("?" for _ in historical) + ")"
-                parameters.extend(row["id"] for row in historical)
-            if require_additional_runs:
-                rows = db.execute(
-                    "SELECT run_id,reserved,spent" + clause, parameters
-                ).fetchall()
-                if {row[0] for row in rows} != set(additional_runs):
-                    raise ValueError(
-                        "required prior run is missing from the canonical ledger"
-                    )
-                if any(
-                    type(reserved) is not int
-                    or reserved <= 0
-                    or (spent is not None and (type(spent) is not int or spent < 0))
-                    for _, reserved, spent in rows
-                ):
-                    raise ValueError(
-                        "invalid prior money amount in the canonical ledger"
-                    )
-            query = "SELECT COALESCE(SUM(COALESCE(spent,reserved)),0)" + clause
-            extra_liability = db.execute(query, parameters).fetchone()[0]
+            if any(
+                type(reserved) is not int
+                or reserved <= 0
+                or (spent is not None and (type(spent) is not int or spent < 0))
+                for _, reserved, spent in rows
+            ):
+                raise ValueError("invalid prior money amount in the canonical ledger")
+        query = "SELECT COALESCE(SUM(COALESCE(spent,reserved)),0)" + clause
+        extra_liability = db.execute(query, parameters).fetchone()[0]
     return {
         "cap": 50 * USD,
         "spent": spent,
@@ -704,6 +724,64 @@ def validate_recovery_envelope(envelope: dict[str, Any], namespace: str) -> None
         raise ValueError("recovery requires both prior probe runs exactly once")
     if namespace.casefold() == RECOVERY_PREVIOUS_NAMESPACE.casefold():
         raise ValueError("recovery requires a fresh campaign namespace")
+
+
+def claim_recovery(
+    plan: Plan, captured: dict[str, bytes], admitted: dict[str, Any]
+) -> dict[str, Any]:
+    """Spend the recovery's one use before inference, with current accounting."""
+    data = {name: json.loads(value) for name, value in captured.items()}
+    envelope = data["authorization"]
+    namespace = benchmark.Experiment.model_validate(data["campaign"]).name
+    validate_recovery_envelope(envelope, namespace)
+    hashes = input_hashes(captured)
+    if hashes != admitted["input_sha256"]:
+        raise ValueError("recovery inputs changed after admission")
+    historical = envelope["historical_requests"]
+    additional = envelope["additional_cost_run_ids"]
+    if (
+        not plan.canonical_ledger_file.is_file()
+        or plan.canonical_ledger_file.is_symlink()
+    ):
+        raise ValueError("the canonical ledger must already exist")
+    with (
+        sqlite_operation("m5.claim_recovery"),
+        closing(
+            sqlite3.connect(
+                "file:" + quote(str(plan.canonical_ledger_file), safe="/") + "?mode=rw",
+                uri=True,
+            )
+        ) as db,
+        db,
+    ):
+        db.execute("BEGIN IMMEDIATE")
+        budget = _ledger_snapshot_in_transaction(
+            db, historical, additional, namespace, True
+        )
+        historical_total = sum(row["spent_nanousd"] for row in historical)
+        historical_total += budget.pop("prior_extra_liability")
+        if historical_total + 6_980_000_000 > 7 * USD:
+            raise ValueError("prior pilot charges leave insufficient room inside USD7")
+        if budget["available"] < 12 * USD:
+            raise ValueError("monthly ledger lacks the admitted USD12 headroom")
+        db.execute(
+            "INSERT INTO records(kind,key,data) VALUES(?,?,?)",
+            (
+                RECOVERY_CLAIM_KIND,
+                RECOVERY_CLAIM_KEY,
+                json.dumps(
+                    {
+                        "policy": RECOVERY_POLICY,
+                        "namespace": namespace,
+                        "input_sha256": hashes,
+                        "historical_nanousd": historical_total,
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ),
+        )
+    return {"budget": budget, "historical_nanousd": historical_total}
 
 
 def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str, Any]:
@@ -1374,6 +1452,11 @@ async def execute(plan: Plan) -> dict[str, Any]:
     admitted = preflight(plan, captured)
     assert_frozen_imports(json.loads(captured["source_manifest"]))
     with pilot_lease(plan.canonical_ledger_file):
+        if (
+            json.loads(captured["admission"]).get("probe_outcome_policy")
+            == RECOVERY_POLICY
+        ):
+            admitted.update(claim_recovery(plan, captured, admitted))
         return await execute_admitted(plan, admitted, captured)
 
 
