@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 import time
 from types import SimpleNamespace
 
@@ -125,26 +126,24 @@ async def test_cleanup_failure_cannot_certify_completion_or_mask_teardown_cancel
 
     monkeypatch.setattr("canary_brain.benchmark.DockerFixture", Harness)
     monkeypatch.setattr("canary_brain.benchmark.run", worker)
-    teardown_error = asyncio.CancelledError("teardown cancelled")
     if teardown_cancel:
-        actual_gather = asyncio.gather
+        actual_shield = asyncio.shield
         calls = 0
 
-        async def cancel_gather(*tasks, **kwargs):
+        def cancel_shield(future):
             nonlocal calls
             calls += 1
             if calls == 1:
-                raise teardown_error
-            return await actual_gather(*tasks, **kwargs)
+                asyncio.current_task().cancel()
+            return actual_shield(future)
 
-        monkeypatch.setattr("canary_brain.benchmark.asyncio.gather", cancel_gather)
+        monkeypatch.setattr("canary_brain.benchmark.asyncio.shield", cancel_shield)
 
     expected = asyncio.CancelledError if teardown_cancel else RuntimeError
     with pytest.raises(expected) as raised:
         await run_campaign(config, live=True)
     if teardown_cancel:
-        assert raised.value is teardown_error
-        assert any("cleanup also failed" in note for note in teardown_error.__notes__)
+        assert any("cleanup also failed" in note for note in raised.value.__notes__)
     else:
         assert str(raised.value) == "docker down failed"
     reader = ReplayReader(config.output / "recording.sqlite3")
@@ -155,6 +154,106 @@ async def test_cleanup_failure_cannot_certify_completion_or_mask_teardown_cancel
         event["kind"] == "gap" and event["data"]["reason"] == "cleanup_unverified"
         for event in reader.events("qa:native:0")
     )
+
+
+async def test_cancel_during_slow_close_keeps_lease_until_thread_finishes(
+    tmp_path, monkeypatch
+):
+    config = experiment(tmp_path)
+    original = RuntimeError("database startup failed")
+    close_started = threading.Event()
+    close_done = threading.Event()
+    release_close = threading.Event()
+
+    class Harness(DockerFixture):
+        def start_database(self):
+            raise original
+
+        def close(self):
+            close_started.set()
+            try:
+                assert release_close.wait(5), "test did not release close"
+            finally:
+                close_done.set()
+
+    monkeypatch.setattr("canary_brain.benchmark.DockerFixture", Harness)
+    task = asyncio.create_task(run_campaign(config, live=True))
+    try:
+        assert await asyncio.to_thread(close_started.wait, 2)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        with (
+            pytest.raises(ValueError, match="another campaign orchestrator"),
+            campaign_lease(config.output),
+        ):
+            pass
+    finally:
+        release_close.set()
+    with pytest.raises(asyncio.CancelledError) as raised:
+        await task
+    assert task.cancelled()
+    assert close_done.is_set()
+    assert raised.value.__cause__ is original
+    run = ReplayReader(config.output / "recording.sqlite3").run("qa:native:0")
+    assert run["status"] == "interrupted"
+    assert run["incomplete"] is False
+
+
+@pytest.mark.parametrize("worker_started", [False, True])
+async def test_cancel_during_worker_drain_overrides_earlier_failure(
+    tmp_path, monkeypatch, worker_started
+):
+    config = experiment(tmp_path)
+    original = RuntimeError("startup failed")
+    order = []
+
+    class Harness(DockerFixture):
+        def start_database(self):
+            if not worker_started:
+                raise original
+
+        def character(self):
+            return json.loads((config.fixture / "character.json").read_text())
+
+        def start_game(self):
+            raise original
+
+        def close(self):
+            order.append("close")
+
+    async def worker(configuration, stopped):
+        (configuration.socket_directory / "worker.sock").touch()
+        try:
+            await stopped.wait()
+        finally:
+            await asyncio.sleep(0)
+            order.append("worker-exit")
+
+    monkeypatch.setattr("canary_brain.benchmark.DockerFixture", Harness)
+    monkeypatch.setattr("canary_brain.benchmark.run", worker)
+    actual_shield = asyncio.shield
+    calls = 0
+
+    def cancel_first_shield(future):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            asyncio.current_task().cancel()
+        return actual_shield(future)
+
+    monkeypatch.setattr("canary_brain.benchmark.asyncio.shield", cancel_first_shield)
+    task = asyncio.create_task(run_campaign(config, live=True))
+    with pytest.raises(asyncio.CancelledError) as raised:
+        await task
+    assert task.cancelled()
+    assert raised.value.__cause__ is original
+    if worker_started:
+        assert order == ["worker-exit", "close"]
+    else:
+        assert order == ["close"]
+    run = ReplayReader(config.output / "recording.sqlite3").run("qa:native:0")
+    assert run["status"] == "interrupted"
 
 
 def test_service_logs_are_redacted_and_retained_before_container_teardown(

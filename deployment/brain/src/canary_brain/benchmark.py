@@ -423,6 +423,27 @@ class DockerFixture:
             self.close()
 
 
+async def settle_teardown(
+    future: asyncio.Future[Any],
+) -> tuple[BaseException | None, asyncio.CancelledError | None]:
+    """Wait for owned cleanup to finish even if its caller is cancelled."""
+    cancellation: asyncio.CancelledError | None = None
+    while not future.done():
+        try:
+            await asyncio.shield(future)
+        except asyncio.CancelledError as error:
+            current = asyncio.current_task()
+            if not future.done() or (current is not None and current.cancelling()):
+                cancellation = cancellation or error
+        except BaseException:  # noqa: BLE001
+            break  # Read the completed future's own error below.
+    try:
+        future.result()
+    except BaseException as error:  # noqa: BLE001
+        return error, cancellation
+    return None, cancellation
+
+
 async def run_campaign(experiment: Experiment, *, live: bool = False) -> dict[str, Any]:
     if not live:
         raise ValueError("live game/provider execution requires --live")
@@ -756,32 +777,49 @@ async def _run_campaign(
             finally:
                 stopped.set()
                 stop_relay.cancel()
-                teardown_failure: BaseException | None = None
-                try:
-                    await asyncio.gather(stop_relay, return_exceptions=True)
-                    if worker:
-                        await asyncio.gather(worker, return_exceptions=True)
-                except BaseException as error:  # noqa: BLE001
+                tasks = [stop_relay]
+                if worker:
+                    tasks.append(worker)
+                drain = asyncio.gather(*tasks, return_exceptions=True)
+                teardown_failure, cancellation = await settle_teardown(drain)
+                if teardown_failure is not None:
                     if failure is None:
-                        failure = teardown_failure = error
+                        failure = teardown_failure
                         status = (
                             "interrupted"
                             if isinstance(
-                                error, (KeyboardInterrupt, asyncio.CancelledError)
+                                teardown_failure,
+                                (KeyboardInterrupt, asyncio.CancelledError),
                             )
                             else "failed"
                         )
                     else:
                         failure.add_note(
-                            "Worker teardown also failed: " + type(error).__name__
+                            "Worker teardown also failed: "
+                            + type(teardown_failure).__name__
                         )
-                try:
-                    await asyncio.to_thread(harness.close)
-                except BaseException as cleanup_error:
-                    if failure is None:
+                close_task = asyncio.create_task(asyncio.to_thread(harness.close))
+                cleanup_error, close_cancellation = await settle_teardown(close_task)
+                cancellation = cancellation or close_cancellation
+                current = asyncio.current_task()
+                if (
+                    cancellation is None
+                    and not isinstance(failure, asyncio.CancelledError)
+                    and current is not None
+                    and current.cancelling()
+                ):
+                    cancellation = asyncio.CancelledError(
+                        "campaign cancelled during teardown"
+                    )
+                if cancellation is not None:
+                    status = "interrupted"
+                if cleanup_error is not None:
+                    if failure is None and cancellation is None:
                         status = "failed"
                     else:
-                        failure.add_note(
+                        target = failure or cancellation
+                        assert target is not None
+                        target.add_note(
                             "Isolated Docker cleanup also failed: "
                             + type(cleanup_error).__name__
                         )
@@ -803,17 +841,20 @@ async def _run_campaign(
                         )
                     except Exception as recording_error:  # noqa: BLE001
                         # Evidence IO must not replace the original failure.
-                        target = failure or cleanup_error
+                        target = failure or cancellation or cleanup_error
                         target.add_note(
                             "Could not record cleanup failure: "
                             + type(recording_error).__name__
                         )
-                    if failure is None:
-                        raise
-                finally:
-                    store.finish(identity, status)
-                if teardown_failure is not None:
+                store.finish(identity, status)
+                if cancellation is not None:
+                    if failure is not None:
+                        raise cancellation from failure
+                    raise cancellation
+                if teardown_failure is not None and failure is teardown_failure:
                     raise teardown_failure
+                if cleanup_error is not None and failure is None:
+                    raise cleanup_error
     result = campaign(ReplayReader(recording), identities)
     (experiment.output / "summary.json").write_text(canonical(result))
     return result
