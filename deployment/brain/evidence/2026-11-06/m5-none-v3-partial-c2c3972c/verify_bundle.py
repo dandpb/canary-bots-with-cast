@@ -462,7 +462,13 @@ def verify(root):
         not any(e["kind"] == "request" for e in events), "native AI calls fabricated"
     )
     current_ids = set()
-    execution_probes = load(root / "execution-result.json")["probes"]
+    execution = load(root / "execution-result.json")
+    require(
+        {key: value for key, value in execution.items() if key != "probes"}
+        == closure["campaign_result"],
+        "execution result contradicts closed invocation",
+    )
+    execution_probes = execution["probes"]
     metric_probes = load(root / "probe-metrics.json")["probes"]
     for provider, expected_count in [("openai", 3), ("gemini", 5)]:
         probe = load(root / (provider + "-probe-result.json"))

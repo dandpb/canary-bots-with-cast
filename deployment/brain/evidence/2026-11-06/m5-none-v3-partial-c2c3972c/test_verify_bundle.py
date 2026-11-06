@@ -203,6 +203,22 @@ class PublicControls(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "original canonical output changed"):
             verify(self.copy)
 
+    def test_execution_output_cannot_claim_success_against_closure(self):
+        def forge(value):
+            value["campaign"] = {
+                "completed_game_runs": 9,
+                "winner": "openai",
+                "status": "completed",
+            }
+            del value["error_type"]
+            del value["failure"]
+
+        self.change("execution-result.json", forge)
+        with self.assertRaisesRegex(
+            ValueError, "execution result contradicts closed invocation"
+        ):
+            verify(self.copy)
+
 
 if __name__ == "__main__":
     unittest.main()
