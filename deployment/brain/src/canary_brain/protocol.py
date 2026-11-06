@@ -107,6 +107,32 @@ class Telemetry(Packet):
     model_owned: bool = False
 
 
+class TelemetryStatus(Packet):
+    """Producer watermark; kernel acceptance does not imply durable recording."""
+
+    version: Literal[1] = 1
+    type: Literal["telemetry_status"] = "telemetry_status"
+    world: str = Field(min_length=1, max_length=80)
+    bot_id: int = Field(gt=0)
+    captured_ms: int = Field(ge=0)
+    issued_sequence: int = Field(ge=0)
+    accepted_sequence: int = Field(ge=0)
+    pending_frames: int = Field(ge=0)
+    pending_bytes: int = Field(ge=0)
+    overflow_frames: int = Field(ge=0)
+    discarded_frames: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def counters(self) -> "TelemetryStatus":
+        if (
+            self.accepted_sequence > self.issued_sequence
+            or ((self.pending_frames == 0) != (self.pending_bytes == 0))
+            or self.pending_frames > self.issued_sequence - self.accepted_sequence
+        ):
+            raise ValueError("inconsistent telemetry delivery counters")
+        return self
+
+
 class Outcome(Packet):
     version: Literal[1] = 1
     type: Literal["outcome"] = "outcome"

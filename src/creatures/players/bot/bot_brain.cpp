@@ -513,6 +513,7 @@ void BotEngine::tickBrain() {
 	const auto processingStarted = std::chrono::steady_clock::now();
 	const auto now = botMonoMs();
 	const auto packets = brain_->channel->receive();
+	brain_->beginTelemetryTick();
 	// Consume queued heartbeats before evaluating leases. A busy dispatcher may
 	// resume after five seconds even though the independent worker stayed alive.
 	for (const auto &packet : packets) {
@@ -523,7 +524,7 @@ void BotEngine::tickBrain() {
 	}
 	if (now - brain_->lastHello >= 1000) {
 		brain_->lastHello = now;
-		brain_->channel->send({ { "version", 1 }, { "type", "hello" }, { "world", brain_->world }, { "capabilities", { { "lifecycle_telemetry", 1 }, { "keep_awake", brain_->keepAwake } } } });
+		brain_->channel->send({ { "version", 1 }, { "type", "hello" }, { "world", brain_->world }, { "capabilities", { { "lifecycle_telemetry", 1 }, { "telemetry_delivery", 1 }, { "keep_awake", brain_->keepAwake } } } });
 	}
 	for (const auto guid : brain_->roster) {
 		auto bot = getBotState(guid);
@@ -540,7 +541,7 @@ void BotEngine::tickBrain() {
 		if (now - session.lastTelemetry >= 1000) {
 			session.lastTelemetry = now;
 			const std::string phase = bot->hibernated ? "hibernated" : !player || !bot->active ? "unavailable" : player->getHealth() <= 0 ? "dead" : "alive";
-			brain_->channel->send(botbrain::telemetry(brain_->world, guid, ++session.telemetrySequence, now, session.deaths, phase, brainOwns(guid)));
+			session.delivery.publish(*brain_->channel, botbrain::telemetry(brain_->world, guid, ++session.telemetrySequence, now, session.deaths, phase, brainOwns(guid)));
 		}
 		if (!player || !bot->active || bot->hibernated || player->getHealth() <= 0) {
 			finishBrain(*bot, player && player->getHealth() <= 0 ? "failed" : "cancelled", player && player->getHealth() <= 0 ? "death" : "unavailable");
@@ -727,6 +728,8 @@ void BotEngine::tickBrain() {
 			// Malformed local messages never escape into the dispatcher.
 		}
 	}
+	brain_->flushTelemetry();
+	brain_->sendDeliveryStatus();
 	if (brainTickMicroseconds.size() >= 256) {
 		brainTickMicroseconds.pop_front();
 	}

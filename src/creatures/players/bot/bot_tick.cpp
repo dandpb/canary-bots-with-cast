@@ -2310,7 +2310,7 @@ void BotEngine::pauseBotForDeath(uint32_t guid) {
 		}
 		auto &session = brain_->sessions[guid];
 		++session.deaths;
-		brain_->channel->send(botbrain::telemetry(brain_->world, guid, ++session.telemetrySequence, botMonoMs(), session.deaths, "dead"));
+		session.delivery.publish(*brain_->channel, botbrain::telemetry(brain_->world, guid, ++session.telemetrySequence, botMonoMs(), session.deaths, "dead"));
 		++session.generation;
 		session.leader = 0;
 		session.offers.clear();

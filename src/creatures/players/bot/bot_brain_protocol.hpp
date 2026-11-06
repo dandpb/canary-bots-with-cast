@@ -14,6 +14,13 @@ namespace botbrain {
 		         { "sequence", sequence }, { "captured_ms", captured }, { "deaths", deaths }, { "phase", phase }, { "model_owned", owned } };
 	}
 
+	inline nlohmann::json telemetryStatus(const std::string &world, uint32_t guid, int64_t captured, uint64_t issued, uint64_t accepted, uint64_t pendingFrames, uint64_t pendingBytes, uint64_t overflowFrames, uint64_t discardedFrames) {
+		return { { "version", 1 }, { "type", "telemetry_status" }, { "world", world }, { "bot_id", guid },
+		         { "captured_ms", captured }, { "issued_sequence", issued }, { "accepted_sequence", accepted },
+		         { "pending_frames", pendingFrames }, { "pending_bytes", pendingBytes },
+		         { "overflow_frames", overflowFrames }, { "discarded_frames", discardedFrames } };
+	}
+
 	// Used by both the live candidate projector and the movement guard.
 	inline bool partyReady(const nlohmann::json &members, const nlohmann::json &origin) {
 		for (const auto &member : members) {
