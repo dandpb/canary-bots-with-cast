@@ -253,9 +253,9 @@ def test_frozen_horizon_preserves_score_and_keeps_post_horizon_diagnostics(
     import canary_brain.recording as recording_module
     from canary_brain.replay import summary
 
-    recording = recorder(tmp_path)
-    clock = [recording.started]
+    clock = [1000.0]
     monkeypatch.setattr(recording_module.time, "monotonic", lambda: clock[0])
+    recording = recorder(tmp_path)
     snapshot = Observation.model_validate(observation() | {"captured_ms": 2000})
     recording.observe(snapshot)
     recording.native_event(
