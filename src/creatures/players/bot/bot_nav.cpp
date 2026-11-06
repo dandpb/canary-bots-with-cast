@@ -102,6 +102,7 @@ public:
 	}
 
 	int32_t getClosedNodes() const { return closedNodes_; }
+	int32_t getCreatedNodes() const { return curNode_; }
 
 	AStarNode* getNodeByPosition(uint32_t x, uint32_t y) {
 		uint32_t key = (x << 16) | y;
@@ -138,12 +139,18 @@ static bool botGetPathMatchingCond(
 	const FrozenPathingConditionCall& pathCondition,
 	const FindPathParams& fpp,
 	int32_t maxNodes = BotAStarNodes::BOT_MAX_NODES,
-	const Position* startOverride = nullptr)
+	const Position* startOverride = nullptr, std::string* searchNote = nullptr)
 {
 	Position pos = startOverride ? *startOverride : creature->getPosition();
 	Position endPos;
 
 	BotAStarNodes nodes(pos.x, pos.y, AStarNodes::getTileWalkCost(creature, g_game().map.getTile(pos.x, pos.y, pos.z)), maxNodes);
+	auto trace = [&](const char* reason) {
+		if (searchNote) {
+			*searchNote = fmt::format("reason={} created={} closed={} budget={} radius={}",
+				reason, nodes.getCreatedNodes(), nodes.getClosedNodes(), maxNodes, fpp.maxSearchDist);
+		}
+	};
 
 	int32_t bestMatch = 0;
 
@@ -173,6 +180,7 @@ static bool botGetPathMatchingCond(
 		AStarNode* n = nodes.getBestNode();
 		if (!n) {
 			if (found) break;
+			trace("frontier_exhausted");
 			return false;
 		}
 
@@ -241,6 +249,7 @@ static bool botGetPathMatchingCond(
 				const int_fast32_t dY = std::abs(targetPos.getY() - pos.getY());
 				if (!nodes.createOpenNode(n, pos.x, pos.y, newf, ((dX - sX) << 3) + ((dY - sY) << 3) + (std::max(dX, dY) << 3), extraCost)) {
 					if (found) break;
+					trace("node_budget_exhausted");
 					return false;
 				}
 			}
@@ -248,7 +257,11 @@ static bool botGetPathMatchingCond(
 		nodes.closeNode(n);
 	} while (fpp.maxSearchDist != 0 || nodes.getClosedNodes() < 100);
 
-	if (!found) return false;
+	if (!found) {
+		trace("no_match");
+		return false;
+	}
+	trace("reached");
 
 	int_fast32_t prevx = endPos.x;
 	int_fast32_t prevy = endPos.y;
@@ -284,7 +297,7 @@ static bool botGetPathMatchingCond(
 //
 // `outTiles` receives every tile of the walk, start-exclusive and end-inclusive.
 bool BotEngine::botTraceLegPath(const std::shared_ptr<Player>& mover, const Position& from, const Position& to,
-	int32_t arrivalDist, std::vector<Position>& outTiles, bool wide) {
+	int32_t arrivalDist, std::vector<Position>& outTiles, bool wide, std::string* searchNote) {
 	outTiles.clear();
 	if (!mover) return false;
 
@@ -305,7 +318,7 @@ bool BotEngine::botTraceLegPath(const std::shared_ptr<Player>& mover, const Posi
 
 	std::vector<Direction> dirList;
 	const bool ok = botGetPathMatchingCond(mover, to, dirList, FrozenPathingConditionCall(to), fpp,
-		wide ? BotAStarNodes::BOT_MAX_NODES : STOCK_PATH_MAX_NODES, &from);
+		wide ? BotAStarNodes::BOT_MAX_NODES : STOCK_PATH_MAX_NODES, &from, searchNote);
 	if (allowFc) mover->clearBotAllowFcPos();
 	if (!ok) return false;
 

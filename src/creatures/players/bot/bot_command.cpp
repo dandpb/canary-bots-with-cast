@@ -472,9 +472,11 @@ std::string BotEngine::executeCommand(const std::string& botName, const std::str
 	// bot cannot take is the precise failure this command was built to eliminate.
 	// Syntax: route x,y,z                   (from first awake bot's position)
 	//         route x1,y1,z1 x2,y2,z2       (explicit from -> to)
-	//         route ... wide                (model the planner's tier 2 instead) ----
+	//         route ... wide                (model the planner's tier 2 instead)
+	//         route ... direct              (bypass graph, diagnose BFS and direct A*) ----
 	if (command.substr(0, 6) == "route ") {
-		if (!zGraphReady_) {
+		const bool directMode = command.size() >= 7 && command.compare(command.size() - 7, 7, " direct") == 0;
+		if (!directMode && !zGraphReady_) {
 			return "route: portal graph not built ([ZGRAPH] missing from startup log?)";
 		}
 		int fx = 0, fy = 0, fz = 0, tx = 0, ty = 0, tz = 0;
@@ -501,6 +503,34 @@ std::string BotEngine::executeCommand(const std::string& botName, const std::str
 			to = Position(static_cast<uint16_t>(fx), static_cast<uint16_t>(fy), static_cast<uint8_t>(fz));
 		} else {
 			return "route: syntax is 'route x,y,z' or 'route x1,y1,z1 x2,y2,z2'";
+		}
+		if (directMode) {
+			std::vector<Position> doors;
+			uint32_t visited = 0, expanded = 0;
+			bool exhausted = false;
+			const bool reachable = plannerLegDoors(from, to, doors, true, &visited, &expanded, &exhausted);
+			std::string out = fmt::format("[ROUTE:DIRECT] ({},{},{}) -> ({},{},{}) mover={} (portal graph bypassed)\n",
+				from.x, from.y, from.z, to.x, to.y, to.z, mover->getName());
+			out += fmt::format("  door_bfs={} visited={} expanded={} budget={} radius={} doors={}\n",
+				from.z != to.z ? "floor_mismatch" : reachable ? "reached" : exhausted ? "budget_exhausted" : "frontier_exhausted_within_radius",
+				visited, expanded, PLANNER_LEG_BUDGET, PLANNER_LEG_RADIUS, doors.size());
+			// Exact target matches ordinary route tracing; distance two also measures
+			// the autonomous retreat's actual arrival contract without a portal detour.
+			for (const bool wide : { false, true }) {
+				for (const int32_t arrival : { 0, 2 }) {
+					std::vector<Position> tiles;
+					std::string note;
+					const bool ok = botTraceLegPath(mover, from, to, arrival, tiles, wide, &note);
+					out += fmt::format("  direct_astar profile={} arrival={} result={} tiles={} {}\n",
+						wide ? "wide" : "stock", arrival, ok ? "reached" : "no_path", tiles.size(), note);
+					if (ok) {
+						for (const auto& at : tiles) out += fmt::format(" ({},{},{})", at.x, at.y, at.z);
+						out += "\n";
+					}
+				}
+			}
+			g_logger().info("{}", out);
+			return out;
 		}
 
 		std::vector<botnav::ZRouteHop> hops;

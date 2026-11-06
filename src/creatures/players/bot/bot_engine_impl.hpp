@@ -4625,6 +4625,8 @@ private:
 		Position from {}, to {};
 		std::vector<Position> doors;
 		bool reachable = false;
+		uint32_t visited = 0, expanded = 0;
+		bool budgetExhausted = false;
 		int64_t expiry = 0;
 	};
 	std::unordered_map<uint64_t, DoorPathEntry> s_doorPathCache;
@@ -4642,7 +4644,8 @@ private:
 	// failed against reality, so re-deriving from a cached answer computed BEFORE the failure
 	// returns the identical bad route and the bot loops against it until the 60s TTL expires.
 	bool plannerLegDoors(const Position& from, const Position& target, std::vector<Position>& outDoors,
-	                     bool bypassCache = false);
+	                     bool bypassCache = false, uint32_t* visited = nullptr,
+	                     uint32_t* expanded = nullptr, bool* budgetExhausted = nullptr);
 	// Bots whose next plannerLegDoors call must ignore the cache (set by plannerReplan, consumed
 	// once by planScopedWalk).
 	std::unordered_set<uint32_t> s_plannerForceFresh;
@@ -5390,7 +5393,8 @@ private:
 	// `wide` selects the fallback search profile (4096-node pool + PATH_WIDE_DIST box) that
 	// goTo() escalates to when the chunked search fails.
 	bool botTraceLegPath(const std::shared_ptr<Player>& mover, const Position& from, const Position& to,
-		int32_t arrivalDist, std::vector<Position>& outTiles, bool wide = false);
+		int32_t arrivalDist, std::vector<Position>& outTiles, bool wide = false,
+		std::string* searchNote = nullptr);
 	// Replays goTo()'s full chunk-walk-repath loop over a leg — the faithful version, since the
 	// live walker never solves a long leg in a single search.
 	bool botTraceLegWalk(const std::shared_ptr<Player>& mover, const Position& from, const Position& to,
