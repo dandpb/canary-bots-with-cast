@@ -78,7 +78,9 @@ class GatewayProvider(Provider):
             },
         )
         result = raw.parse()
-        data: dict[str, Any] = result.model_dump(mode="json", by_alias=True)
+        data: dict[str, Any] = result.model_dump(
+            mode="json", by_alias=True, exclude_unset=True
+        )
         # A 200 response is still billable when identity validation fails below.
         data["gateway"] = {
             "deployment_id": raw.headers.get("x-litellm-model-id"),
@@ -135,6 +137,7 @@ class GatewayProvider(Provider):
         options = [item.id for item in observation.actions]
         if len(options) == 1:
             return options[0]
+        tool = self._choice_tool(options)
         body = {
             "model": self.model,
             "store": False,
@@ -150,9 +153,28 @@ class GatewayProvider(Provider):
                 ensure_ascii=False,
             ),
             "parallel_tool_calls": False,
-            "tools": [self._choice_tool(options)],
+            "tools": [tool],
             "tool_choice": {"type": "function", "name": "choose_action"},
         }
+        if self.gateway.provider == "gemini":
+            # The pinned Gemini OpenAI-tool mapper removes JSON Schema fields.
+            # A provider-native override is merged after that mapping. The outer
+            # extra_body belongs to the OpenAI SDK; the inner one reaches LiteLLM.
+            body["extra_body"] = {
+                "extra_body": {
+                    "tools": [
+                        {
+                            "functionDeclarations": [
+                                {
+                                    "name": "choose_action",
+                                    "description": "Select one offered candidate.",
+                                    "parametersJsonSchema": tool["parameters"],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
         timeout = min(
             self.decision_timeout,
             min(item.ttl_ms for item in observation.actions) / 1000,
