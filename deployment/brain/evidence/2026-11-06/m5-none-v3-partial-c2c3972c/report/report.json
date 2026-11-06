@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "campaign": "m5-none-v3-20261106-c2c3972c",
+  "horizon_seconds": 1800,
+  "horizon_tolerance_seconds": 5,
+  "maximum_completed_seconds": 1805,
+  "ready_for_review": false,
+  "financial_totals_complete": true,
+  "financial_final": false,
+  "expected_attempts": 9,
+  "recorded_attempts": 1,
+  "reviewed_attempts": 1,
+  "settled_nanousd": 1981700,
+  "unknown_nanousd": 5245675,
+  "additional_cost_run_ids": [
+    "credential-smoke-out-gemini",
+    "credential-smoke-out-openai",
+    "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+    "decisions:835e1f9a68cc47faabef1292a237f26c:65001",
+    "decisions:b635391628be4592971f9506b98b132f:65001",
+    "decisions:bdf836b5a98e4247a47cce1352fae837:65001",
+    "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001"
+  ],
+  "unplanned_cost_run_ids": [],
+  "unplanned_spent_nanousd": 0,
+  "unplanned_unknown_nanousd": 0,
+  "ledger_snapshot_month": "2026-11",
+  "ledger_snapshot_utc": "2026-11-06T19:54:19.625985+00:00",
+  "total_cap_nanousd": 7000000000,
+  "monthly_snapshot": {
+    "cap": 50000000000,
+    "spent": 596536225,
+    "reserved": 81558050,
+    "available": 49321905725
+  },
+  "runs": [
+    {
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "participant": "native",
+      "repetition": 0,
+      "status": "failed",
+      "stop_reason": "recording_gap",
+      "observed_span_ms": 220803,
+      "metrics": {
+        "version": 2,
+        "xp_delta": 0,
+        "xp_per_wall_hour": 0.0,
+        "xp_per_active_hour": 0.0,
+        "active_ms": 215996,
+        "wall_ms": 220803,
+        "calendar_elapsed_ms": 221549,
+        "duration_ms": 239689,
+        "deaths": 0,
+        "initial_native_deaths_excluded": 0,
+        "deaths_observed": true,
+        "interventions": 0,
+        "intervention_free_ms": 239689,
+        "intervention_free_censored": true,
+        "automatic_recoveries_requested": 0,
+        "model_decisions": 0,
+        "valid_proposals": 0,
+        "policy_overrides": 0,
+        "accepted_actions": 0,
+        "completed_actions": 0,
+        "failed_actions": 0,
+        "provider_failures": 0,
+        "spent_nanousd": 0,
+        "reserved_nanousd": 0,
+        "xp_per_dollar": null,
+        "latency_p50_ms": null,
+        "latency_p95_ms": null,
+        "gaps": 1,
+        "gap_times": [
+          238783
+        ],
+        "levels": [],
+        "milestones": [],
+        "native_control_ms": 215996,
+        "native_fallback_ms": 0,
+        "stalled_ms": null,
+        "confirmed_objective_defeats": 0,
+        "limitations": [
+          "Sampled observations; hidden events are not reconstructed.",
+          "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+          "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+        ]
+      },
+      "ledger_spent_nanousd": 0,
+      "ledger_unknown_nanousd": 0,
+      "xp_per_settled_dollar": null,
+      "requests": [],
+      "skipped_requests": [],
+      "latency": {
+        "by_deadline_ms": {},
+        "native_fallback_events_by_type": {},
+        "exact_backoff_skips": 0,
+        "observed_provider_backoff_events": 0,
+        "backoff_by_deadline_ms": {},
+        "runtime_error_fallbacks_unclassified": 0,
+        "backoff_limitation": "ProviderBackoff is distinct when declared by the instrumented source. Generic RuntimeError remains ambiguous; lifecycle events without decision/deadline identity cannot establish TTL attribution."
+      }
+    }
+  ],
+  "participants": [
+    {
+      "participant": "native",
+      "attempts": 1,
+      "completed": 0,
+      "xp_per_wall_hour_values": [
+        0.0
+      ],
+      "xp_per_wall_hour_median": 0.0,
+      "xp_per_wall_hour_min": 0.0,
+      "xp_per_wall_hour_max": 0.0
+    },
+    {
+      "participant": "openai",
+      "attempts": 0,
+      "completed": 0,
+      "xp_per_wall_hour_values": [],
+      "xp_per_wall_hour_median": null,
+      "xp_per_wall_hour_min": null,
+      "xp_per_wall_hour_max": null
+    },
+    {
+      "participant": "gemini",
+      "attempts": 0,
+      "completed": 0,
+      "xp_per_wall_hour_values": [],
+      "xp_per_wall_hour_median": null,
+      "xp_per_wall_hour_min": null,
+      "xp_per_wall_hour_max": null
+    }
+  ],
+  "findings": [
+    {
+      "code": "recording_incomplete",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "detail": "Critical gaps/incomplete recording cannot pass qualification"
+    },
+    {
+      "code": "stop_status_mismatch",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "detail": "Unexpected/missing stop classification; retain interrupted/infrastructure attempts"
+    },
+    {
+      "code": "stop_evidence_mismatch",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "detail": "Need exactly one matching durable supervisor stop"
+    },
+    {
+      "code": "character_evidence_missing",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "detail": "Need restored initial and final saved character evidence plus samples"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:0",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:0",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:1",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:1",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:1",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:2",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:2",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:2",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    }
+  ],
+  "verdict": "descriptive_pilot_no_winner",
+  "limitations": [
+    "The independent run is the sample unit; repeated frames are not extra samples.",
+    "Completed-response latency is deadline-censored; inspect failures by deadline.",
+    "Generic RuntimeError fallback is not an exact backoff count; instrumented ProviderBackoff is reported separately. TTL attribution requires additional identity.",
+    "Usage-priced costs are not provider invoice reconciliation.",
+    "This checker does not establish fixture hunt/resupply acceptance or human/AFK safety."
+  ],
+  "input_sha256": {
+    "inputs/game/recording.sqlite3": "5f175ae88fc6bac71a25fb7f023a6239d4ce363190bd0275aedcc31d7cc030fe",
+    "inputs/game/recording.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inputs/report-experiment.json": "9653911e639009a0b2d3fc7171bece0bed209b4488d03b83b267956a73dfccb0",
+    "inputs/ledger.selected.json": "6730aa916addcff25d43da43e1a4f2aa4c7ddab9c3932d9088f3d86f3047184e",
+    "inputs/game/trial-attestations.json": "91570ce8ea8d840ae209b67e1c9483ef7933f2fb0b55a74fd92be4da81abd011",
+    "inputs/game/native-0/worker.sqlite3": "75f51b1e8be3e561e8ffa68ecf11bc0c9cd8fb574acfe2a4b872bab1d2439ad2"
+  }
+}

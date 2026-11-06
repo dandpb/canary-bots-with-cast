@@ -1,0 +1,119 @@
+{
+  "mode": "real-inference-on-recorded-inputs-no-game-actions",
+  "runs": [
+    "decisions:b635391628be4592971f9506b98b132f:65001"
+  ],
+  "decisions": [
+    {
+      "choice": "hunt:399",
+      "valid": true,
+      "expected": null,
+      "matches_expected": null,
+      "bot_id": 65001,
+      "elapsed_ms": 2321,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "hunt:77",
+      "valid": true,
+      "expected": null,
+      "matches_expected": null,
+      "bot_id": 65001,
+      "elapsed_ms": 1906,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "resupply",
+      "valid": true,
+      "expected": "resupply",
+      "matches_expected": true,
+      "bot_id": 65001,
+      "elapsed_ms": 0,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "valid": false,
+      "error": "TimeoutError",
+      "bot_id": 65001,
+      "elapsed_ms": 1016,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "valid": false,
+      "error": "ProviderBackoff",
+      "bot_id": 65001,
+      "elapsed_ms": 0,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "valid": false,
+      "error": "ProviderBackoff",
+      "bot_id": 65001,
+      "elapsed_ms": 0,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    }
+  ],
+  "qualification": {
+    "valid": 3,
+    "late": 1,
+    "technical_invalid": 0,
+    "unknown_requests": 1,
+    "unknown_nanousd": 946375,
+    "ledger_requests": 3,
+    "root_review_required": false,
+    "failure_interpretation": "deadline_controller_performance",
+    "accepted_for_game": true,
+    "evidence_reconciled": true,
+    "policy": "openai_none_performance_v3",
+    "long_valid": 2,
+    "causal_backoff": 2,
+    "model_opportunities": 5,
+    "liability_nanousd": 1053175,
+    "financial_final": false,
+    "short_contract_coverage_complete": false,
+    "case_outcomes": [
+      {
+        "index": 0,
+        "deadline_ms": 5000,
+        "outcome": "valid",
+        "decision_id": "646c2eacaf97432981e1e87461a28686",
+        "request_id": "cb5094f388574bc0934af52f7dac5a9b"
+      },
+      {
+        "index": 1,
+        "deadline_ms": 5000,
+        "outcome": "valid",
+        "decision_id": "5ac3ecdeb8b24a3a864e6212130da44b",
+        "request_id": "861e66cd47044361b97ed7842f45f4f9"
+      },
+      {
+        "index": 2,
+        "deadline_ms": 5000,
+        "outcome": "local_choice",
+        "decision_id": "234d92177c4a4abdb52bcc0f4b3edfe4",
+        "request_id": null
+      },
+      {
+        "index": 3,
+        "deadline_ms": 1000,
+        "outcome": "deadline_negative_unknown_charge",
+        "decision_id": "8f16625817c34b74969aa0222e7e76e1",
+        "request_id": "3f67f6f84893455893a9fd4dcd487131"
+      },
+      {
+        "index": 4,
+        "deadline_ms": 1500,
+        "outcome": "causal_backoff_negative",
+        "decision_id": "f2467a7932934b93aea1485305e0715e",
+        "request_id": "25bf08b2a3814ab985eb88fb438dfbb8"
+      },
+      {
+        "index": 5,
+        "deadline_ms": 1000,
+        "outcome": "causal_backoff_negative",
+        "decision_id": "f7e45938a3f64e428df595994a51af6d",
+        "request_id": "59b29a3b09d1410c911a7eac0c47b2c4"
+      }
+    ]
+  }
+}

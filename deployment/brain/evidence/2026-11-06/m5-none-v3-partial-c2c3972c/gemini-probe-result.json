@@ -1,0 +1,125 @@
+{
+  "mode": "real-inference-on-recorded-inputs-no-game-actions",
+  "runs": [
+    "decisions:835e1f9a68cc47faabef1292a237f26c:65001"
+  ],
+  "decisions": [
+    {
+      "choice": "hunt:77",
+      "valid": true,
+      "expected": null,
+      "matches_expected": null,
+      "bot_id": 65001,
+      "elapsed_ms": 1141,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "hunt:77",
+      "valid": true,
+      "expected": null,
+      "matches_expected": null,
+      "bot_id": 65001,
+      "elapsed_ms": 886,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "resupply",
+      "valid": true,
+      "expected": "resupply",
+      "matches_expected": true,
+      "bot_id": 65001,
+      "elapsed_ms": 0,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "retreat",
+      "valid": true,
+      "expected": "retreat",
+      "matches_expected": true,
+      "bot_id": 65001,
+      "elapsed_ms": 875,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "continue",
+      "valid": true,
+      "expected": null,
+      "matches_expected": null,
+      "bot_id": 65001,
+      "elapsed_ms": 881,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    },
+    {
+      "choice": "hunt:399",
+      "valid": true,
+      "expected": null,
+      "matches_expected": null,
+      "bot_id": 65001,
+      "elapsed_ms": 895,
+      "scope": "decision_only_no_counterfactual_xp_or_survival"
+    }
+  ],
+  "qualification": {
+    "valid": 6,
+    "late": 0,
+    "technical_invalid": 0,
+    "unknown_requests": 0,
+    "unknown_nanousd": 0,
+    "ledger_requests": 5,
+    "root_review_required": false,
+    "failure_interpretation": null,
+    "accepted_for_game": true,
+    "evidence_reconciled": true,
+    "policy": "openai_none_performance_v3",
+    "long_valid": 2,
+    "causal_backoff": 0,
+    "model_opportunities": 5,
+    "liability_nanousd": 1011400,
+    "financial_final": true,
+    "short_contract_coverage_complete": true,
+    "case_outcomes": [
+      {
+        "index": 0,
+        "deadline_ms": 5000,
+        "outcome": "valid",
+        "decision_id": "39e6665e59f84c2ebb88eff06f5f1fc1",
+        "request_id": "90aa1f6eaf644f7ba1552ffc8cbc6d3d"
+      },
+      {
+        "index": 1,
+        "deadline_ms": 5000,
+        "outcome": "valid",
+        "decision_id": "2ef9005df1a249499045e1ca700dd15c",
+        "request_id": "315971df466d44c081107882ed03ad3c"
+      },
+      {
+        "index": 2,
+        "deadline_ms": 5000,
+        "outcome": "local_choice",
+        "decision_id": "2e974d5ce6f546c3b0f9f5e553aa3fb5",
+        "request_id": null
+      },
+      {
+        "index": 3,
+        "deadline_ms": 1000,
+        "outcome": "valid",
+        "decision_id": "5340f6d4abef4965b610ba1f5728826b",
+        "request_id": "78402a7528f746eca7438a21164aac3f"
+      },
+      {
+        "index": 4,
+        "deadline_ms": 1500,
+        "outcome": "valid",
+        "decision_id": "ba9082e308964847b42133d961be0145",
+        "request_id": "78f4b4db0c064222af013d08f4f76001"
+      },
+      {
+        "index": 5,
+        "deadline_ms": 1000,
+        "outcome": "valid",
+        "decision_id": "702770920774431880b8703e54593323",
+        "request_id": "855414d4a1464259bd8365980324eeba"
+      }
+    ]
+  }
+}
