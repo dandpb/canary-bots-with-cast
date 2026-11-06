@@ -149,7 +149,7 @@ def main():
                 "turn_off_message_logging": True,
             },
             "general_settings": {
-                "custom_auth": "gateway_policy.authenticate",
+                "custom_auth": "canary_brain.gateway_policy.authenticate",
                 "master_key": "os.environ/LITELLM_MASTER_KEY",
             },
         }
@@ -235,8 +235,12 @@ def main():
                         "responses", {"input": "hello", "max_output_tokens": 4}, 20
                     )
                     assert result["effective_model"] == "model-a"
+                    assert result["usage"]["input_tokens"] == 10, result["usage"]
+                    assert result["usage"]["output_tokens"] == 2, result["usage"]
                     assert counts == ["model-a"], counts
                     known_spend = provider.store.budget()["spent"]
+                    # Fixed fixture: 10 input * 1 + 2 output * 2 nanodollars.
+                    assert known_spend == 14, provider.store.budget()
                     try:
                         await provider._request(
                             "responses",
@@ -266,6 +270,7 @@ def main():
                             "failing upstream must not be replaced with success"
                         )
                     assert counts == ["model-a", "model-a", "model-a"], counts
+                    assert provider.store.budget()["spent"] == 14
                     assert provider.store.budget()["reserved"] > 0
                 return {
                     "upstream_calls": len(counts),

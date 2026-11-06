@@ -2,6 +2,11 @@
 
 The worker can record a selected bot's observed life and replay it without a running game or model access. The local player compares up to four runs by elapsed time or first observed level gain. It shows sampled floor-aware coordinates, XP, health, decisions, native results, interventions, settled cost and unresolved reservations. The default map is a coordinate grid; no proprietary map/client artwork is bundled.
 
+For the initial setup sequence, credential locations, OpenAI/Gemini named routes,
+WSL worker migration, canonical ledger selection and troubleshooting, start with
+the [Portuguese setup guide](SETUP.pt-BR.md). The sections below are the CLI and
+runtime reference.
+
 ## Start with an offline demonstration
 
 Use the existing brain Python environment in Linux/WSL, with the updated package installed. Choose a fresh recording filename; demo refuses to overwrite a completed run.
@@ -39,7 +44,11 @@ The supervision console exposes `/replay` when recording is enabled. The separat
 
 ## Configure LiteLLM
 
-The private proxy uses LiteLLM **1.108.0**, with the tested dependency set in `gateway/requirements.lock`. Build and run the dedicated optional deployment:
+The private proxy uses LiteLLM **1.108.0**. For the WSL installation, use the
+`gateway` profile of `canary-bots-wsl`, its UI image and dedicated PostgreSQL,
+as documented in the [setup guide](SETUP.pt-BR.md#2-preparar-servidor-e-gateway).
+The separate API-only recipe below uses `gateway/requirements.lock` and is for
+other isolated deployments; it does not provide the database-backed dashboard:
 
 ```sh
 cd deployment/brain/gateway
@@ -58,9 +67,42 @@ The custom worker authentication permits only inference for declared aliases, ch
 
 Use `worker-replay.example.json` as the migration template, supplying the actual configuration hash, private gateway credential path, exact effective/upstream model and reviewed versioned prices. The loopback gateway address works for a worker running on the host. A containerized worker needs the gateway on its private Docker network and `http://litellm:4000/v1`; its container's loopback is not the host.
 
+The budget path is an operator-selected authority, not a new account per
+example. In the reference WSL deployment, existing charges are in
+`canary-bots-wsl_brain-state` at `/var/lib/canary-brain/state.sqlite3`.
+Preserve that ledger when enabling `budget_file`; copying an example path can
+otherwise create a second USD50 allowance. Resolve/mount the existing ledger
+before preflight, which initializes Store if the configured file is absent.
+
 All providers use the same LiteLLM-facing application adapter. Additional models require an explicit `model_list` entry and participant configuration, not another provider SDK adapter. The common decision path uses a constrained Responses function call with a reserved output-token limit. `decision_api: "decisions"` is rejected when output tokens have a nonzero price: that endpoint has no enforced output-token bound in this adapter. Input-only/free-output configurations remain opt-in and must pass conformance for the pinned gateway/model. Unsupported tools, reasoning parameters or endpoints fail rather than silently changing the task.
 
 The experiment's common decision timeout defaults to ten seconds for macro objectives and is capped further by the shortest offered server deadline. Native combat/healing continues independently; slow planning has a separate concurrency lane. Frozen runs disable policy updates, policy overrides and autonomous reflection/strategy-memory updates. Independent runs start from the same seed records and learn separately. The timed horizon begins with the worker's first valid observation, not database/container provisioning.
+
+The benchmark runner enables single-bot supervision in the worker. Its monotonic
+clock is authoritative: a delayed roster activation after service readiness must
+not shorten the observed window. The orchestrator waits for a supervised result
+and verifies elapsed time before accepting `completed`; a second deadline based
+on service startup cannot declare a short run complete. Direct workers retain
+their existing behavior unless `benchmark_supervision` is explicitly enabled,
+which requires one bot, recording, and `run_seconds`.
+
+Supervision stops after three new observed deaths, five seconds without valid
+observations, ten minutes without observed position/XP/supply/defeat progress,
+a world-generation change, recorder errors/critical recorded gaps, or more than
+thirty seconds without a locally validated selection in an open model-choice
+window. The latter begins at an actual decision request with multiple filtered
+options; repeated requests do not restart it. A `selected` decision closes it,
+while a mere proposal does not. Native work in progress, death, loss of choices,
+or a single-candidate decision closes the opportunity. Native baseline has no
+model-proposal timeout. Local selection validity remains distinct from later
+native acceptance; record rejections and deadline misses separately.
+
+The worker stores the stop reason and emits a lifecycle marker. Per-run gameplay
+stops are retained as failed outcomes. Operator stop interrupts the campaign;
+world/observation/recording/startup failures abort it before the next trial. They
+do not silently become successful runs or initiate new provider requests.
+Reservations already transmitted remain subject to ordinary reconciliation.
+Observed movement here is a liveness signal, not proof that circling is useful.
 
 LiteLLM may return the configured alias in the response's model field. The recorder distinguishes that observation from an upstream model name and resolves the configured upstream through the exact policy hash and deployment ID. A mutable upstream alias is not proof of an immutable provider model revision.
 
@@ -100,6 +142,13 @@ Prepare a local fixture directory containing:
 - Optional `worker-state.json`: initial learning records with `kind`, `key`, `data`; only policy, recency, guidance and strategy records are accepted. Do not seed accounting or pending intents.
 
 The map is referenced separately, read-only, and included in the initial hash. A restored database is not a deterministic whole-world simulator: live RNG, scheduling and later encounters can diverge. No production character is reset by these commands.
+
+`database_image` selects the database image for every participant. Before any
+provider credential is read, campaigns with a LiteLLM participant require both
+`game_image` and `database_image` to be immutable content IDs (`sha256:...` or
+`repository@sha256:...`). Mutable tags are rejected. The selected references are
+part of the campaign configuration fingerprint and generated Compose file. This
+does not retroactively attest an image missing from an older recording.
 
 ```sh
 canary-brain benchmark hash --fixture /home/daniel/benchmark-fixture \

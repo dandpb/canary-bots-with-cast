@@ -136,3 +136,61 @@ def test_gateway_rejects_decisions_with_unbounded_billable_output():
         GatewayConfiguration.model_validate(
             gateway().model_dump() | {"decision_api": "decisions"}
         )
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "gemini", "test"])
+async def test_gateway_choice_tool_keeps_native_strict_enum_and_one_call(
+    tmp_path, provider
+):
+    c, calls = client()
+    store = Store(tmp_path / "budget.db")
+    provider_gateway = gateway().model_copy(update={"provider": provider})
+    decision = GatewayProvider(store, c, gateway=provider_gateway)
+    assert (
+        await decision.decide(Observation.model_validate(observation())) == "resupply"
+    )
+    assert len(calls) == 1
+    body = calls[0]
+    schema = {
+        "type": "object",
+        "properties": {
+            "candidate_id": {"type": "string", "enum": ["continue", "resupply"]}
+        },
+        "required": ["candidate_id"],
+        "additionalProperties": False,
+    }
+    if provider == "anthropic":
+        # LiteLLM 1.108.0 drops function.strict on the OpenAI->Messages mapping;
+        # the Messages-shaped tool passes through with strict intact.
+        assert body["tools"] == [
+            {"name": "choose_action", "input_schema": schema, "strict": True}
+        ]
+    else:
+        assert body["tools"] == [
+            {
+                "type": "function",
+                "name": "choose_action",
+                "strict": True,
+                "parameters": schema,
+            }
+        ]
+    if provider == "gemini":
+        assert body["extra_body"] == {
+            "extra_body": {
+                "tools": [
+                    {
+                        "functionDeclarations": [
+                            {
+                                "name": "choose_action",
+                                "description": "Select one offered candidate.",
+                                "parametersJsonSchema": schema,
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    assert body["max_output_tokens"] == 256
+    assert body["parallel_tool_calls"] is False
+    assert body["tool_choice"] == {"type": "function", "name": "choose_action"}
+    assert store.budget()["spent"] == 14

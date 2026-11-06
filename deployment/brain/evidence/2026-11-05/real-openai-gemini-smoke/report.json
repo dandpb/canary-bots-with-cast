@@ -1,0 +1,196 @@
+{
+  "campaign": "credential-smoke-out",
+  "month": "2026-11",
+  "created_utc": "2026-11-05T21:44:44.087800+00:00",
+  "authorization": "Daniel explicitly requested real OpenAI/Gemini calls using registered credentials and cost recording",
+  "canonical_ledger": "canary-bots-wsl_brain-state:/state.sqlite3",
+  "monthly_budget_before": {
+    "cap": 50000000000,
+    "spent": 303047700,
+    "reserved": 27547250,
+    "available": 49669405050
+  },
+  "configuration_sha256": "d48d546fb5789eb23d9e94efbc750aa3ea654b09d66422a2dec750126bf8b316",
+  "source_revision": "908500b398fe2162536273970e47d0bee023cc47",
+  "input_sha256": "25d2d0b8e05d02a55b9c3ff9189eb845876f292fc5c82384b609b7768890d2e0",
+  "synthetic_input": {
+    "version": 1,
+    "type": "observation",
+    "world": "offline-provider-smoke",
+    "sequence": 1,
+    "captured_ms": 0,
+    "lease": "offline-not-executable",
+    "objective_generation": 1,
+    "bot": {
+      "id": 999901,
+      "name": "Synthetic connection probe",
+      "level": 20,
+      "vocation": 4,
+      "state": "HUNTING",
+      "position": [
+        100,
+        100,
+        7
+      ],
+      "health": 20,
+      "mana": 40,
+      "potions": 1,
+      "xp": 98800,
+      "alive": true
+    },
+    "party": {
+      "leader_id": 999901,
+      "members": [
+        999901
+      ]
+    },
+    "actions": [
+      {
+        "id": "continue",
+        "action": "continue",
+        "description": "Continue hunting with low health and one potion",
+        "ttl_ms": 30000
+      },
+      {
+        "id": "resupply",
+        "action": "resupply",
+        "description": "Return to a reachable safe shop and replenish supplies",
+        "ttl_ms": 30000
+      }
+    ]
+  },
+  "max_attempts_per_provider": 1,
+  "max_run_nanousd": 10000000,
+  "max_output_tokens": 256,
+  "timeout_seconds": 30,
+  "sdk_retries": 0,
+  "router_retries": 0,
+  "fallbacks": false,
+  "response_cache": false,
+  "reasoning": "provider default; adapter removes reasoning parameter",
+  "game_actions_executed": 0,
+  "provider_keys_exported": false,
+  "results": [
+    {
+      "provider": "openai",
+      "alias": "canary-openai",
+      "upstream": "openai/gpt-6-luna",
+      "deployment_id": "canary-openai-luna-20261105",
+      "run_id": "credential-smoke-out-openai",
+      "prices_nanousd_per_token": {
+        "version": "official-standard-text-2026-11-05-openai",
+        "input_nanousd": 100,
+        "cached_nanousd": 10,
+        "cache_write_nanousd": 125,
+        "output_nanousd": 500
+      },
+      "price_source": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+      "price_basis": "published standard paid-tier text rates; invoice/tier not reconciled",
+      "cache_write_note": "No explicit cache creation or storage requested; nonzero Gemini cache writes require reconciliation",
+      "http_attempts": [
+        {
+          "http_status": 200,
+          "deployment_id": "canary-openai-luna-20261105",
+          "gateway_call_id": "6ed456e7-bd41-44d5-8ee5-3b4fbd29e1b3",
+          "gateway_response_cost_usd": "5.2799999999999996e-05"
+        }
+      ],
+      "choice": "resupply",
+      "contract_passed": true,
+      "elapsed_ms": 1854,
+      "application_request_id": "8e32e915ca5e4407a3ec55ab501bd99a",
+      "reservation_nanousd": 835375,
+      "spent_nanousd": 52800,
+      "unsettled_nanousd": 0,
+      "accounting": {
+        "endpoint": "responses",
+        "usage": {
+          "input_tokens": 428,
+          "input_tokens_details": {
+            "cached_tokens": 0,
+            "audio_tokens": null,
+            "cached_tokens_details": null,
+            "image_tokens": null,
+            "text_tokens": null,
+            "video_tokens": null,
+            "cache_write_tokens": 0
+          },
+          "output_tokens": 20,
+          "output_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": null,
+            "text_tokens": null
+          },
+          "total_tokens": 448,
+          "cost": null
+        },
+        "elapsed_ms": 1845,
+        "spent": 52800
+      }
+    },
+    {
+      "provider": "gemini",
+      "alias": "canary-gemini",
+      "upstream": "gemini/gemini-3.5-flash-lite",
+      "deployment_id": "canary-gemini-flash-lite-20261105",
+      "run_id": "credential-smoke-out-gemini",
+      "prices_nanousd_per_token": {
+        "version": "official-standard-text-2026-11-05-gemini",
+        "input_nanousd": 300,
+        "cached_nanousd": 30,
+        "cache_write_nanousd": 300,
+        "output_nanousd": 2500
+      },
+      "price_source": "https://aistudio.google.com/docs/pricing#gemini-3.5-flash-lite",
+      "price_basis": "published standard paid-tier text rates; invoice/tier not reconciled",
+      "cache_write_note": "No explicit cache creation or storage requested; nonzero Gemini cache writes require reconciliation",
+      "http_attempts": [
+        {
+          "http_status": 200,
+          "deployment_id": "canary-gemini-flash-lite-20261105",
+          "gateway_call_id": "c21701c1-69a4-4085-8307-dd39301b2048",
+          "gateway_response_cost_usd": "0.0001618"
+        }
+      ],
+      "choice": "resupply",
+      "contract_passed": true,
+      "elapsed_ms": 842,
+      "application_request_id": "57f0becd17ab47a2ad3638987ca2f6ef",
+      "reservation_nanousd": 2337700,
+      "spent_nanousd": 161800,
+      "unsettled_nanousd": 0,
+      "accounting": {
+        "endpoint": "responses",
+        "usage": {
+          "input_tokens": 381,
+          "input_tokens_details": {
+            "cached_tokens": 0,
+            "audio_tokens": null,
+            "cached_tokens_details": null,
+            "image_tokens": null,
+            "text_tokens": 381,
+            "video_tokens": null
+          },
+          "output_tokens": 19,
+          "output_tokens_details": {
+            "reasoning_tokens": 0,
+            "audio_tokens": null,
+            "text_tokens": 19
+          },
+          "total_tokens": 400,
+          "cost": null
+        },
+        "elapsed_ms": 834,
+        "spent": 161800
+      }
+    }
+  ],
+  "monthly_budget_after": {
+    "cap": 50000000000,
+    "spent": 303262300,
+    "reserved": 27547250,
+    "available": 49669190450
+  },
+  "total_spent_nanousd": 214600,
+  "total_unsettled_nanousd": 0
+}

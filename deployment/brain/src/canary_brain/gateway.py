@@ -78,7 +78,9 @@ class GatewayProvider(Provider):
             },
         )
         result = raw.parse()
-        data: dict[str, Any] = result.model_dump(mode="json", by_alias=True)
+        data: dict[str, Any] = result.model_dump(
+            mode="json", by_alias=True, exclude_unset=True
+        )
         # A 200 response is still billable when identity validation fails below.
         data["gateway"] = {
             "deployment_id": raw.headers.get("x-litellm-model-id"),
@@ -105,6 +107,28 @@ class GatewayProvider(Provider):
         data["model"] = self.model if valid else "unexpected-gateway-identity"
         return data
 
+    def _choice_tool(self, options: list[str]) -> dict[str, Any]:
+        schema = {
+            "type": "object",
+            "properties": {"candidate_id": {"type": "string", "enum": options}},
+            "required": ["candidate_id"],
+            "additionalProperties": False,
+        }
+        if self.gateway.provider == "anthropic":
+            # LiteLLM 1.108.0 drops `function.strict` when it maps an OpenAI
+            # function tool to Anthropic Messages (AnthropicConfig._map_tool_helper).
+            # A tool already in Messages shape (`input_schema`, no `type`) passes
+            # through the Responses bridge and `_map_tools` unchanged, so the
+            # native `strict: true` reaches the provider. Pinned by
+            # tools/haiku_gateway_smoke.py against the wire.
+            return {"name": "choose_action", "input_schema": schema, "strict": True}
+        return {
+            "type": "function",
+            "name": "choose_action",
+            "strict": True,
+            "parameters": schema,
+        }
+
     async def decide(
         self, observation: Observation, memory: dict[str, Any] | None = None
     ) -> str:
@@ -113,6 +137,7 @@ class GatewayProvider(Provider):
         options = [item.id for item in observation.actions]
         if len(options) == 1:
             return options[0]
+        tool = self._choice_tool(options)
         body = {
             "model": self.model,
             "store": False,
@@ -128,23 +153,28 @@ class GatewayProvider(Provider):
                 ensure_ascii=False,
             ),
             "parallel_tool_calls": False,
-            "tools": [
-                {
-                    "type": "function",
-                    "name": "choose_action",
-                    "strict": True,
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "candidate_id": {"type": "string", "enum": options}
-                        },
-                        "required": ["candidate_id"],
-                        "additionalProperties": False,
-                    },
-                }
-            ],
+            "tools": [tool],
             "tool_choice": {"type": "function", "name": "choose_action"},
         }
+        if self.gateway.provider == "gemini":
+            # The pinned Gemini OpenAI-tool mapper removes JSON Schema fields.
+            # A provider-native override is merged after that mapping. The outer
+            # extra_body belongs to the OpenAI SDK; the inner one reaches LiteLLM.
+            body["extra_body"] = {
+                "extra_body": {
+                    "tools": [
+                        {
+                            "functionDeclarations": [
+                                {
+                                    "name": "choose_action",
+                                    "description": "Select one offered candidate.",
+                                    "parametersJsonSchema": tool["parameters"],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
         timeout = min(
             self.decision_timeout,
             min(item.ttl_ms for item in observation.actions) / 1000,

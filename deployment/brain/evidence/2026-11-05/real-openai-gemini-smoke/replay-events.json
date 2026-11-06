@@ -1,0 +1,211 @@
+{
+  "runs": [
+    {
+      "run_id": "credential-smoke-out-gemini",
+      "manifest": {
+        "bot_id": 999902,
+        "configuration_sha256": "d48d546fb5789eb23d9e94efbc750aa3ea654b09d66422a2dec750126bf8b316",
+        "experiment": "credential-smoke-out",
+        "initial_sha256": "25d2d0b8e05d02a55b9c3ff9189eb845876f292fc5c82384b609b7768890d2e0",
+        "lineage": "credential-smoke-out",
+        "memory_mode": "frozen",
+        "model": "gemini-3.5-flash-lite",
+        "participant": "canary-gemini",
+        "provider": "gemini",
+        "run_id": "credential-smoke-out-gemini",
+        "sample_ms": 1000,
+        "scenario": "synthetic-paid-connection-probe",
+        "source_revision": "908500b398fe2162536273970e47d0bee023cc47",
+        "synthetic": true,
+        "version": 1
+      },
+      "status": "completed",
+      "incomplete": false
+    },
+    {
+      "run_id": "credential-smoke-out-openai",
+      "manifest": {
+        "bot_id": 999901,
+        "configuration_sha256": "d48d546fb5789eb23d9e94efbc750aa3ea654b09d66422a2dec750126bf8b316",
+        "experiment": "credential-smoke-out",
+        "initial_sha256": "25d2d0b8e05d02a55b9c3ff9189eb845876f292fc5c82384b609b7768890d2e0",
+        "lineage": "credential-smoke-out",
+        "memory_mode": "frozen",
+        "model": "gpt-6-luna",
+        "participant": "canary-openai",
+        "provider": "openai",
+        "run_id": "credential-smoke-out-openai",
+        "sample_ms": 1000,
+        "scenario": "synthetic-paid-connection-probe",
+        "source_revision": "908500b398fe2162536273970e47d0bee023cc47",
+        "synthetic": true,
+        "version": 1
+      },
+      "status": "completed",
+      "incomplete": false
+    }
+  ],
+  "events": [
+    {
+      "run_id": "credential-smoke-out-openai",
+      "event_key": "24acb3bfc92a43cc89d6c2b067e46c7f",
+      "t_ms": 4,
+      "kind": "segment",
+      "data": {
+        "phase": "started",
+        "recording_begins_midlife": true
+      }
+    },
+    {
+      "run_id": "credential-smoke-out-gemini",
+      "event_key": "83b24647dd2d45e68443b19a07c502a9",
+      "t_ms": 7,
+      "kind": "segment",
+      "data": {
+        "phase": "started",
+        "recording_begins_midlife": true
+      }
+    },
+    {
+      "run_id": "credential-smoke-out-openai",
+      "event_key": "request:8e32e915ca5e4407a3ec55ab501bd99a:reserved",
+      "t_ms": 133,
+      "kind": "request",
+      "data": {
+        "decision_id": "credential-probe-openai",
+        "endpoint": "responses",
+        "phase": "reserved",
+        "pricing_version": "official-standard-text-2026-11-05-openai",
+        "request_id": "8e32e915ca5e4407a3ec55ab501bd99a",
+        "requested_model": "canary-openai",
+        "reserved_nanousd": 835375
+      }
+    },
+    {
+      "run_id": "credential-smoke-out-openai",
+      "event_key": "request:8e32e915ca5e4407a3ec55ab501bd99a:finished",
+      "t_ms": 1981,
+      "kind": "request",
+      "data": {
+        "decision_id": "credential-probe-openai",
+        "effective_model": "gpt-6-luna",
+        "elapsed_ms": 1848,
+        "endpoint": "responses",
+        "gateway": {
+          "deployment_id": "canary-openai-luna-20261105",
+          "identity_source": "pinned_gateway_mapping",
+          "observed_model": "canary-openai",
+          "request_id": "6ed456e7-bd41-44d5-8ee5-3b4fbd29e1b3",
+          "version": "1.108.0"
+        },
+        "phase": "finished",
+        "pricing_version": "official-standard-text-2026-11-05-openai",
+        "provider_request_id": "resp_5zqzSbFKzvecM8Pr0xpes5lI3RxcU_gt3dmO-Yzg-pOIxMJX1X3wTmREQKgNMo0XmdJ04iTaxnXRo7HwyMLVZc5mx4931m9Ok4F8jmUo14RoU6f1n1LTDjAx8j8-MTu_ydwW0kIopdp9dGoDjNJY0JFZTuqxshdvpri93lD8mtca4uEpb1s8dCGIGSnbN5chqJzE59ToAnZeWr8eyPyJ7a1UWiHhC_WtGjs6-2txVPxZwIHZ8LtnVomeYsKoe8_Og_4kSlA8opJuFusSwTiHUev7PVo3J0Y0SZQXjk4gsKPAzH1ST2I8UF6Ot8Li52B0ibVL9jtVzGX0ePpOgg1Pjfbpl63MqFl8LndUrwhlXolH5wzcgOQ8w2687liTGwKnEBb7",
+        "request_id": "8e32e915ca5e4407a3ec55ab501bd99a",
+        "requested_model": "canary-openai",
+        "reserved_nanousd": 0,
+        "spent_nanousd": 52800,
+        "usage": {
+          "cost": null,
+          "input_tokens": 428,
+          "input_tokens_details": {
+            "audio_tokens": null,
+            "cache_write_tokens": 0,
+            "cached_tokens": 0,
+            "cached_tokens_details": null,
+            "image_tokens": null,
+            "text_tokens": null,
+            "video_tokens": null
+          },
+          "output_tokens": 20,
+          "output_tokens_details": {
+            "audio_tokens": null,
+            "reasoning_tokens": 0,
+            "text_tokens": null
+          },
+          "total_tokens": 448
+        }
+      }
+    },
+    {
+      "run_id": "credential-smoke-out-gemini",
+      "event_key": "request:57f0becd17ab47a2ad3638987ca2f6ef:reserved",
+      "t_ms": 1999,
+      "kind": "request",
+      "data": {
+        "decision_id": "credential-probe-gemini",
+        "endpoint": "responses",
+        "phase": "reserved",
+        "pricing_version": "official-standard-text-2026-11-05-gemini",
+        "request_id": "57f0becd17ab47a2ad3638987ca2f6ef",
+        "requested_model": "canary-gemini",
+        "reserved_nanousd": 2337700
+      }
+    },
+    {
+      "run_id": "credential-smoke-out-gemini",
+      "event_key": "request:57f0becd17ab47a2ad3638987ca2f6ef:finished",
+      "t_ms": 2837,
+      "kind": "request",
+      "data": {
+        "decision_id": "credential-probe-gemini",
+        "effective_model": "gemini-3.5-flash-lite",
+        "elapsed_ms": 838,
+        "endpoint": "responses",
+        "gateway": {
+          "deployment_id": "canary-gemini-flash-lite-20261105",
+          "identity_source": "pinned_gateway_mapping",
+          "observed_model": "canary-gemini",
+          "request_id": "c21701c1-69a4-4085-8307-dd39301b2048",
+          "version": "1.108.0"
+        },
+        "phase": "finished",
+        "pricing_version": "official-standard-text-2026-11-05-gemini",
+        "provider_request_id": "resp_tz3qu1KZGGcjEdkWaoR1iT1K1heF03fbW9GOQP-K8VXskAo-3FU6VQbpUKk0H8gYtlkY8JUnoGXF7oqM82tNe8oEinOlniNbs1WXHvektNe9AhwQRmCQM6lZ4vP0jw6bIwO8F3DiwM2qD8lr36c9LAswLnQBF1JKpRwYnXFRn-tgOr_8YaeYlTY7fXbu0QOVOfcgR28J-cPOGONI5KqGG0MCZcvfTlz_PKw_zaD-UfI-zTM5fQ4A307wKE_rWANioCjP3V3Ii6tX4qRcEJ5a9pY9oA6aXuLMwHTADK1ZEAETd5OrKLGdDuCP8fGCm2gMeHQNcUUkAAASu23F-UJm",
+        "request_id": "57f0becd17ab47a2ad3638987ca2f6ef",
+        "requested_model": "canary-gemini",
+        "reserved_nanousd": 0,
+        "spent_nanousd": 161800,
+        "usage": {
+          "cost": null,
+          "input_tokens": 381,
+          "input_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0,
+            "cached_tokens_details": null,
+            "image_tokens": null,
+            "text_tokens": 381,
+            "video_tokens": null
+          },
+          "output_tokens": 19,
+          "output_tokens_details": {
+            "audio_tokens": null,
+            "reasoning_tokens": 0,
+            "text_tokens": 19
+          },
+          "total_tokens": 400
+        }
+      }
+    },
+    {
+      "run_id": "credential-smoke-out-openai",
+      "event_key": "883aea222c214805bdebf7088bdca7fc",
+      "t_ms": 2846,
+      "kind": "segment",
+      "data": {
+        "errors": 0,
+        "phase": "stopped"
+      }
+    },
+    {
+      "run_id": "credential-smoke-out-gemini",
+      "event_key": "c77b0a16f1ab4f2790f8c972ffb26e95",
+      "t_ms": 2846,
+      "kind": "segment",
+      "data": {
+        "errors": 0,
+        "phase": "stopped"
+      }
+    }
+  ]
+}

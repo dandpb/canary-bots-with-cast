@@ -1,7 +1,12 @@
 # Canary com bots e cast no WSL
 
-Implantação local em `/home/daniel/canary-bots-wsl`, criada a partir do commit
-`7a61f9540` da `main`. O código executado fica no disco Linux; os ajustes locais são preservados.
+Para instalar do início, configurar LiteLLM com OpenAI/Gemini e preparar replay
+e benchmark, use o [guia de configuração inicial](../brain/SETUP.pt-BR.md).
+
+Implantação local em `/home/daniel/canary-bots-wsl`. O código executado fica no
+disco Linux; os ajustes locais são preservados. As validações históricas abaixo
+registram suas revisões; confira imagem/binário/configuração antes de atribuir
+uma revisão da `main` ao runtime atual.
 O projeto Compose é `canary-bots-wsl` e usa volumes próprios. O banco não publica
 porta no host. Jogo e site publicam somente em `127.0.0.1`.
 
@@ -43,12 +48,55 @@ A limpeza por inatividade e a cobrança automática de aluguel ficam desativadas
 neste ambiente local. Os seeds têm datas antigas; os padrões de produção
 retomariam as casas e transfeririam a decoração antes da ativação dos bots.
 
+## Gateway LiteLLM no mesmo projeto
+
+Os serviços opcionais `litellm` e `litellm-db` pertencem ao projeto
+`canary-bots-wsl`, junto de database/game/brain/web. O PostgreSQL exclusivo
+persiste usuários, sessões e configurações do painel, sem publicar portas.
+Prepare os arquivos sem substituir configurações ou credenciais existentes:
+
+```bash
+cd /home/daniel/canary-bots-wsl/deployment/wsl
+python3 setup-gateway.py
+docker compose --profile gateway up -d --build --wait litellm
+docker compose --profile gateway ps litellm litellm-db
+```
+
+O endpoint local é `http://127.0.0.1:4000/v1`; outros serviços deste Compose podem
+usar `http://litellm:4000/v1`. A preparação inicial deixa a lista de modelos vazia:
+o container pode ficar saudável, mas as chamadas de inferência permanecem
+bloqueadas até configurar modelos e credenciais autorizados. Isso não muda o
+provider do worker existente nem inicia testes pagos.
+
+O painel fica em `http://127.0.0.1:4000/ui`: usuário `admin`, senha igual ao
+`LITELLM_MASTER_KEY` do arquivo protegido `runtime/secrets/litellm-worker.env`.
+Não compartilhe essa chave. A imagem oficial inclui Prisma e executa as
+migrações na inicialização. O erro `Not connected to DB!` indica ausência
+da conexão PostgreSQL, mesmo quando as credenciais de login estão corretas.
+
+Os arquivos locais são `runtime/config/litellm.yaml` e os arquivos protegidos
+`runtime/secrets/litellm-{provider,worker,db,ui}.env`. A preparação preserva
+senhas e `LITELLM_SALT_KEY` existentes; mantenha essa salt junto do backup do
+banco para conservar o acesso aos dados criptografados.
+Para uma configuração preexistente, acrescente explicitamente
+`general_settings.custom_auth_settings: {mode: auto}` e recrie o gateway:
+isso permite que sessões administrativas sejam validadas pelo LiteLLM.
+A credencial do worker continua restrita às rotas e à identidade do benchmark;
+suas falhas de política nunca passam para a autenticação administrativa.
+Configure ali os aliases explícitos de OpenAI/Gemini conforme
+`deployment/brain/gateway/gateway.example.yaml`, mantendo a política do gateway.
+Após alterar a configuração, recrie somente `litellm` e revalide sua identidade.
+Use o serviço deste Compose para a implantação WSL; o Compose independente em
+`deployment/brain/gateway/` fica disponível para outros ambientes isolados.
+
 ## Worker de IA
 
-A imagem `canary-bots-wsl-brain:local` contém a implementação desta branch.
-O perfil `ai` está ativo. A credencial autorizada fica em
+O perfil `ai` usa a imagem `canary-bots-wsl-brain:local`; um merge não recompila
+essa imagem. Na configuração direta OpenAI preparada por `setup.py`, a credencial fica em
 `runtime/secrets/openai.env` com permissão `0600`, fora do Git e do contexto de
-build. O arquivo é montado apenas no worker. Não envie chaves pelo chat.
+build. O arquivo é montado apenas no worker. Para migrar ao gateway com uma
+credencial restrita e conservar o ledger, siga a [etapa do worker](../brain/SETUP.pt-BR.md#6-configurar-o-worker-com-uma-rota-litellm).
+Iniciar o provider real pode gerar consumo. Não envie chaves pelo chat.
 
 ```bash
 docker compose --profile ai up -d brain

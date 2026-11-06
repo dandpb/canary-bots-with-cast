@@ -1,5 +1,41 @@
 name: canary-bots-wsl
 services:
+  litellm:
+    profiles: [gateway]
+    image: canary-litellm-ui:1.108.0
+    build:
+      context: ../..
+      dockerfile: deployment/brain/gateway/Dockerfile.ui
+    restart: unless-stopped
+    env_file:
+      - ./runtime/secrets/litellm-provider.env
+      - ./runtime/secrets/litellm-worker.env
+      - ./runtime/secrets/litellm-ui.env
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    volumes:
+      - ./runtime/config/litellm.yaml:/app/gateway.yaml:ro
+    ports:
+      - 127.0.0.1:4000:4000
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/readiness',timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+  litellm-db:
+    profiles: [gateway]
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - ./runtime/secrets/litellm-db.env
+    volumes:
+      - litellm-db:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD, pg_isready, -U, litellm, -d, litellm]
+      interval: 5s
+      timeout: 3s
+      retries: 30
   database:
     image: mariadb:11.4
     restart: unless-stopped
@@ -100,6 +136,7 @@ services:
       retries: 10
       start_period: 120s
 volumes:
+  litellm-db:
   database:
     name: canary-bots-wsl_database-seeded
   brain-socket:
