@@ -9,6 +9,9 @@ It does not perform provider SDK translation or own a second financial ledger.
 For initial gateway/worker configuration, start with the
 [Portuguese setup guide](../SETUP.pt-BR.md#7-preparar-o-benchmark-e-autorizar-a-execução-paga).
 These tools being integrated does not authorize the paid pilot.
+For a reproducible private-gateway build/serve/cleanup using tracked files,
+follow [gateway provisioning](../SETUP.pt-BR.md#4-cadastrar-credenciais-e-associar-modelos).
+The launcher refuses an existing `gateway` alias and never sends inference.
 
 Use a frozen source export and the admitted common worker image. Mount that
 source directory at the same absolute path inside the harness, and set
