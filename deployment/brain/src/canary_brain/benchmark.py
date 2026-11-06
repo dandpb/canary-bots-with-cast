@@ -38,7 +38,7 @@ from .store import USD, Store
 class Participant(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,47}$")
-    kind: Literal["native", "litellm"]
+    kind: Literal["native", "fake", "litellm"]
     gateway: GatewayConfiguration | None = None
 
     @model_validator(mode="after")
@@ -547,7 +547,7 @@ async def _run_campaign(
                 else "none",
                 provider=participant.gateway.provider
                 if participant.gateway
-                else "native",
+                else participant.kind,
                 memory_mode=experiment.memory_mode,
                 initial_sha256=check["initial_sha256"],
                 configuration_sha256=fingerprint,
@@ -652,10 +652,7 @@ async def _run_campaign(
                         status = "budget_stop"
                         break
                     clock = Store(state).get("run_clock", "start")
-                    if (
-                        time.monotonic() - started > min(15, experiment.seconds / 2)
-                        and clock is None
-                    ):
+                    if time.monotonic() - started > 240 and clock is None:
                         raise ValueError(
                             "experiment bot observations are missing or stale"
                         )
