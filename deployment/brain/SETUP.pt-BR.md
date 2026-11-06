@@ -159,6 +159,29 @@ sobrescrevê-lo. Na UI, monte essa nova origem em `/app/gateway.yaml:ro` por um
 override restrito; conserve o Compose e a política operacionais anteriores.
 Em instalações novas, a política padrão já inclui a coordenação.
 
+Registre o caminho **efetivamente montado** em `/app/gateway.yaml` como
+`ACTIVE_POLICY`: na instalação nova é `runtime/config/litellm.yaml`; na migração
+acima é `runtime/config/litellm-coordination.yaml`. Use o mesmo arquivo para
+editar rotas, revisar conteúdo e calcular o hash. Antes de um ensaio, congele
+uma cópia em outro caminho e monte essa cópia. Se precisar alterar uma política
+já congelada, crie outra revisão e atualize o mount/manifesto; não edite a cópia
+em uso nem espere que `--coordination` substitua um alvo divergente.
+
+Guarde também o comando Compose completo em `GATEWAY_COMPOSE`, incluindo a base
+e **todos os overrides ativos**. Exemplo para selecionar os arquivos da implantação:
+
+```bash
+GATEWAY_COMPOSE=(docker compose -p canary-bots-wsl \
+  -f /home/daniel/canary-bots-wsl/deployment/wsl/compose.yaml)
+ACTIVE_POLICY=/home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/litellm.yaml
+# Se migrado, use a política derivada e acrescente o override revisado que a monta:
+# ACTIVE_POLICY=/home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/litellm-coordination.yaml
+# GATEWAY_COMPOSE+=(-f /caminho/absoluto/override-coordenacao.yaml)
+```
+
+Inclua também outros overrides existentes nesse array. Reiniciar somente com a
+base descartaria a seleção da política derivada e outras opções operacionais.
+
 Inicie primeiro somente `litellm-redis` e confira seu healthcheck; depois recrie
 apenas a UI e o gateway privado que precisem da nova conexão/configuração. A UI
 do Compose rastreado já depende da saúde de PostgreSQL e Redis. Não reinicie jogo,
@@ -190,20 +213,20 @@ contém duas rotas, sem chaves:
 | `canary-openai` | `openai/gpt-6-luna` | `openai` | `canary-openai-luna-v1` |
 | `canary-gemini` | `gemini/gemini-3.5-flash-lite` | `gemini` | `canary-gemini-flash-lite-v1` |
 
-Edite `runtime/config/litellm.yaml`, inicialmente JSON válido, para adicionar
+Edite o arquivo ativo definido em `ACTIVE_POLICY` na etapa 3 para adicionar
 essas entradas em `model_list`. JSON também é YAML válido. Preserve os demais
 settings: retries zero no router e LiteLLM, sem fallbacks/cache, `drop_params:false`,
 `custom_auth`, `custom_auth_settings:{mode:auto}` e o bloco de coordenação Redis.
 No WSL, copie do exemplo apenas `model_list`: o exemplo genérico não configura
-Redis nem seus env files. Se substituir a política inteira, gere depois a
-derivada com `setup-gateway.py --coordination` e monte-a no gateway. Preserve IDs
-e configurações de uma instalação existente.
+Redis nem seus env files. Se importar uma política inteira sem coordenação,
+siga o fluxo de migração da etapa 3 e atualize `ACTIVE_POLICY` e o override antes
+de reiniciar. Preserve IDs e configurações de uma instalação existente.
 Use uma definição por alias: não duplique a mesma rota no arquivo e no banco UI.
 Rotas do arquivo aparecem no painel como configurações gerenciadas pelo arquivo.
 
 ```bash
-docker compose --profile gateway up -d --no-deps --force-recreate --wait litellm
-sha256sum runtime/config/litellm.yaml
+"${GATEWAY_COMPOSE[@]}" --profile gateway up -d --no-deps --force-recreate --wait litellm
+sha256sum "$ACTIVE_POLICY"
 ```
 
 Guarde esse hash no manifesto/configuração do participante. Alterar alias,
