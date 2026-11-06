@@ -93,6 +93,12 @@ reported as financially unfinished. See the [prospective contract](../evidence/2
 for evidence reconciliation and blocking conditions. Without this explicit
 policy, invalid decisions or unknown charges still stop before the game.
 
+The separate [`short_deadline_performance_recovery_v2` contract](../evidence/2026-11-06/m5-recovery-v2-contract.md)
+prospectively carries the interrupted invocation's real costs and full unknown
+reservations into a new USD7 envelope. It requires both prior probe run IDs,
+unchanged historical charges and one fresh complete qualification per provider.
+It preserves the original v1 ceiling and requires new frozen inputs and root GO.
+
 Each scored participant receives the same isolated internal game/DB network,
 `<trial-directory>:/m5` audit mount and passive status query cadence
 (after 540 s, every 10 s). The observer is qualified for fixture-G Grizzle 65001;

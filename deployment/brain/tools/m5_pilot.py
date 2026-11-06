@@ -53,6 +53,19 @@ CANONICAL_VOLUME = "canary-bots-wsl_brain-state"
 CANONICAL_LEDGER_FILE = Path("/var/lib/canary-brain/state.sqlite3")
 SHORT_DEADLINE_POLICY = "short_deadline_performance_v1"
 SHORT_DEADLINE_TOTAL_CAP = 6_980_214_600
+RECOVERY_POLICY = "short_deadline_performance_recovery_v2"
+PERFORMANCE_POLICIES = frozenset({SHORT_DEADLINE_POLICY, RECOVERY_POLICY})
+RECOVERY_PREVIOUS_NAMESPACE = "m5-og-20261106-dae4b84b"
+RECOVERY_PRIOR_RUNS = frozenset(
+    {
+        "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+        "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+    }
+)
+RECOVERY_HISTORICAL = {
+    "8e32e915ca5e4407a3ec55ab501bd99a": 52_800,
+    "57f0becd17ab47a2ad3638987ca2f6ef": 161_800,
+}
 
 
 class ProbeTimingError(ValueError):
@@ -511,6 +524,8 @@ def ledger_snapshot(
     historical: list[dict[str, Any]],
     additional_runs: list[str],
     namespace: str,
+    *,
+    require_additional_runs: bool = False,
 ) -> dict[str, int]:
     if not path.is_file() or path.is_symlink():
         raise ValueError("the canonical ledger must already exist")
@@ -541,16 +556,36 @@ def ledger_snapshot(
                     "historical envelope charges do not match the canonical ledger"
                 )
         extra_liability = 0
+        if require_additional_runs and not additional_runs:
+            raise ValueError("required prior runs are missing")
         if additional_runs:
-            query = (
-                "SELECT COALESCE(SUM(COALESCE(spent,reserved)),0) FROM requests WHERE run_id IN ("
+            clause = (
+                " FROM requests WHERE run_id IN ("
                 + ",".join("?" for _ in additional_runs)
                 + ")"
             )
             parameters = list(additional_runs)
             if historical:
-                query += " AND id NOT IN (" + ",".join("?" for _ in historical) + ")"
+                clause += " AND id NOT IN (" + ",".join("?" for _ in historical) + ")"
                 parameters.extend(row["id"] for row in historical)
+            if require_additional_runs:
+                rows = db.execute(
+                    "SELECT run_id,reserved,spent" + clause, parameters
+                ).fetchall()
+                if {row[0] for row in rows} != set(additional_runs):
+                    raise ValueError(
+                        "required prior run is missing from the canonical ledger"
+                    )
+                if any(
+                    type(reserved) is not int
+                    or reserved <= 0
+                    or (spent is not None and (type(spent) is not int or spent < 0))
+                    for _, reserved, spent in rows
+                ):
+                    raise ValueError(
+                        "invalid prior money amount in the canonical ledger"
+                    )
+            query = "SELECT COALESCE(SUM(COALESCE(spent,reserved)),0)" + clause
             extra_liability = db.execute(query, parameters).fetchone()[0]
     return {
         "cap": 50 * USD,
@@ -636,6 +671,41 @@ def ledger_export(
     }
 
 
+def validate_recovery_envelope(envelope: dict[str, Any], namespace: str) -> None:
+    """This version carries the closed attempt into one fresh USD7 invocation."""
+    if (
+        type(envelope.get("max_total_nanousd")) is not int
+        or envelope["max_total_nanousd"] != 7 * USD
+        or type(envelope.get("canonical_monthly_cap_nanousd")) is not int
+        or envelope["canonical_monthly_cap_nanousd"] != 50 * USD
+    ):
+        raise ValueError("recovery requires exact integer USD7/USD50 caps")
+    historical = envelope.get("historical_requests")
+    if (
+        not isinstance(historical, list)
+        or len(historical) != 2
+        or any(
+            not isinstance(row, dict)
+            or not isinstance(row.get("id"), str)
+            or type(row.get("spent_nanousd")) is not int
+            for row in historical
+        )
+        or {row["id"]: row["spent_nanousd"] for row in historical}
+        != RECOVERY_HISTORICAL
+    ):
+        raise ValueError("recovery requires the two exact historical request amounts")
+    additional = envelope.get("additional_cost_run_ids")
+    if (
+        not isinstance(additional, list)
+        or len(additional) != 2
+        or any(not isinstance(value, str) for value in additional)
+        or set(additional) != RECOVERY_PRIOR_RUNS
+    ):
+        raise ValueError("recovery requires both prior probe runs exactly once")
+    if namespace.casefold() == RECOVERY_PREVIOUS_NAMESPACE.casefold():
+        raise ValueError("recovery requires a fresh campaign namespace")
+
+
 def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str, Any]:
     if (
         not plan.output.is_absolute()
@@ -653,7 +723,7 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
     data = {name: json.loads(value) for name, value in captured.items()}
     admission = data["admission"]
     policy = admission.get("probe_outcome_policy")
-    if policy not in (None, SHORT_DEADLINE_POLICY):
+    if policy not in (None, SHORT_DEADLINE_POLICY, RECOVERY_POLICY):
         raise ValueError("unknown prospectively admitted probe outcome policy")
     if (
         admission.get("approved") is not True
@@ -672,6 +742,8 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
     source = data["source_manifest"]
     files = source_files(source)
     experiment = benchmark.Experiment.model_validate(data["campaign"])
+    if policy == RECOVERY_POLICY:
+        validate_recovery_envelope(envelope, experiment.name)
     if admission.get("source_revision") != source["revision"]:
         raise ValueError("root admission source revision differs")
     credential = experiment.gateway_credential
@@ -766,7 +838,7 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
         raise ValueError("one conformance configuration per model is required")
     for name in plan.probe_workers:
         config = runtime.Configuration.model_validate(data[name])
-        if policy == SHORT_DEADLINE_POLICY:
+        if policy in PERFORMANCE_POLICIES:
             probe_deadlines(config, fixtures)
         if (
             config.provider != "litellm"
@@ -824,6 +896,7 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
         historical,
         envelope.get("additional_cost_run_ids", []),
         experiment.name,
+        require_additional_runs=policy == RECOVERY_POLICY,
     )
     historical_total += budget.pop("prior_extra_liability")
     if (
@@ -1406,9 +1479,8 @@ async def execute_admitted(
                 if technical
                 else None,
             }
-            performance_policy = (
-                data["admission"].get("probe_outcome_policy") == SHORT_DEADLINE_POLICY
-            )
+            admitted_policy = data["admission"].get("probe_outcome_policy")
+            performance_policy = admitted_policy in PERFORMANCE_POLICIES
             if performance_policy:
                 probe["qualification"].pop("expected_model_requests")
                 try:
@@ -1420,11 +1492,12 @@ async def execute_admitted(
                             plan.canonical_ledger_file,
                         )
                     )
+                    probe["qualification"]["policy"] = admitted_policy
                 except (ValueError, TypeError, KeyError, sqlite3.Error) as error:
                     probe["qualification"].update(
                         {
                             "accepted_for_game": False,
-                            "policy": SHORT_DEADLINE_POLICY,
+                            "policy": admitted_policy,
                             "evidence_reconciled": False,
                             "root_review_required": True,
                             "evidence_failure": failure_metadata(
