@@ -390,12 +390,24 @@ configurações. Antes de iniciar um worker real, confira:
 | `gateway.configuration_sha256` | Hash calculado após a configuração final |
 | `gateway.version` | Versão implantada; implementação qualificada: `1.108.0` |
 | `gateway.prices` | Tarifas revisadas e datadas; não copiar uma tarifa OpenAI para Gemini |
+| `gateway.decision_reasoning_effort` | Opcional, somente decisões OpenAI Responses; ausente ou `null` preserva a omissão legada |
 | `credential_file` | Caminho interno para arquivo com `LITELLM_API_KEY` |
 | `budget_file` | Ledger mensal canônico já existente |
 | `recording.path` | Outro SQLite, separado de estado e orçamento |
 
 O exemplo de preços é OpenAI e exige revisão antes de uso pago. O valor de
 `reasoning:false` só omite o parâmetro; não desliga o default do provider.
+Para configurar o esforço explicitamente em decisões OpenAI Responses, use,
+por exemplo, `"decision_reasoning_effort":"none"` dentro de `gateway` e mantenha
+`reasoning:false`. Os valores aceitos são `none`, `low`, `medium`, `high`, `xhigh`
+e `max`; o campo não se aplica a Gemini, Anthropic ou à API Decisions.
+Não combine esse campo com `reasoning:true`. Conversa e reflexão conservam
+o comportamento do booleano legado. Para o modelo exato `gpt-6-luna`, a
+[documentação oficial consultada em 06/11/2026](https://developers.openai.com/api/docs/models/gpt-6-luna)
+lista esses seis valores e `medium` como padrão quando omitido; `minimal` não
+está listado. Outros modelos OpenAI exigem conferir seu suporte antes de
+escolher um valor. Alterar esforço exige novo perfil congelado e novos hashes
+antes de uma execução paga; não modifica campanhas anteriores.
 No M5, substitua a URL pelo gateway privado descrito acima. Se a tarifa de escrita
 em cache não estiver definida, use `cache_write_nanousd:null`, não zero;
 uso positivo sem esse preço impede liquidação.
