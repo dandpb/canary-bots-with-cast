@@ -47,6 +47,10 @@ class UnpricedCacheWrite(ValueError):
     """Returned usage includes cache writes whose cost cannot be settled."""
 
 
+class ProviderBackoff(RuntimeError):
+    """This decision was skipped during cooldown before any transmission."""
+
+
 class Provider:
     def __init__(
         self,
@@ -120,7 +124,15 @@ class Provider:
         ):
             failures, retry_at = self.backoff.get(endpoint, (0, 0))
             if time.monotonic() < retry_at:
-                raise RuntimeError("provider temporarily backed off")
+                record(
+                    {
+                        "phase": "skipped",
+                        "reason": "backoff",
+                        "deadline_ms": round(timeout * 1000),
+                        "reserved_nanousd": 0,
+                    }
+                )
+                raise ProviderBackoff("provider temporarily backed off")
             self.store.reserve(
                 request_id,
                 upper,
