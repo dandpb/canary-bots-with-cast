@@ -36,7 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from canary_brain import benchmark, runtime
 from canary_brain.protocol import Observation
-from canary_brain.recording import ReplayReader
+from canary_brain.recording import ReplayReader, digest, public_data
 from canary_brain.replay_cli import decision_fixtures
 from canary_brain.store import USD, Store, month_now
 
@@ -50,6 +50,8 @@ GATES = {
 }
 CANONICAL_VOLUME = "canary-bots-wsl_brain-state"
 CANONICAL_LEDGER_FILE = Path("/var/lib/canary-brain/state.sqlite3")
+SHORT_DEADLINE_POLICY = "short_deadline_performance_v1"
+SHORT_DEADLINE_TOTAL_CAP = 6_980_214_600
 
 # Request only these fields. Full inspect and Config.Env can contain credentials.
 CONTAINER_METADATA = (
@@ -615,6 +617,9 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
     hashes = input_hashes(captured)
     data = {name: json.loads(value) for name, value in captured.items()}
     admission = data["admission"]
+    policy = admission.get("probe_outcome_policy")
+    if policy not in (None, SHORT_DEADLINE_POLICY):
+        raise ValueError("unknown prospectively admitted probe outcome policy")
     if (
         admission.get("approved") is not True
         or admission.get("read_only_preparation") is not False
@@ -704,7 +709,8 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
     historical = envelope.get("historical_requests", [])
     historical_total = sum(row["spent_nanousd"] for row in historical)
     if (
-        envelope.get("max_total_nanousd") != 7 * USD
+        envelope.get("max_total_nanousd")
+        != (SHORT_DEADLINE_TOTAL_CAP if policy == SHORT_DEADLINE_POLICY else 7 * USD)
         or envelope.get("canonical_monthly_cap_nanousd") != 50 * USD
         or envelope.get("canonical_authority")
         != f"{CANONICAL_VOLUME}:{plan.canonical_ledger_file}"
@@ -725,6 +731,8 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
         raise ValueError("one conformance configuration per model is required")
     for name in plan.probe_workers:
         config = runtime.Configuration.model_validate(data[name])
+        if policy == SHORT_DEADLINE_POLICY:
+            probe_deadlines(config, fixtures)
         if (
             config.provider != "litellm"
             or config.gateway != participants[name].gateway
@@ -783,6 +791,13 @@ def preflight(plan: Plan, captured: dict[str, bytes] | None = None) -> dict[str,
         experiment.name,
     )
     historical_total += budget.pop("prior_extra_liability")
+    if (
+        policy == SHORT_DEADLINE_POLICY
+        and historical_total + 6_980_000_000 > SHORT_DEADLINE_TOTAL_CAP
+    ):
+        raise ValueError(
+            "prior charges exceed the prospective complete liability envelope"
+        )
     if historical_total + 6_980_000_000 > 7 * USD:
         raise ValueError("prior pilot charges leave insufficient room inside USD7")
     if budget["available"] < 12 * USD:
@@ -952,6 +967,217 @@ async def run_attested_campaign(experiment: benchmark.Experiment) -> Any:
         return await benchmark.run_campaign(experiment, live=True)
 
 
+def probe_deadlines(config: runtime.Configuration, fixtures: list[Any]) -> list[int]:
+    observations = [Observation.model_validate(row["observation"]) for row in fixtures]
+    deadlines = [
+        round(min(config.decision_timeout * 1000, min(a.ttl_ms for a in row.actions)))
+        for row in observations
+    ]
+    if (
+        config.gateway is None
+        or config.gateway.decision_api != "responses"
+        or len(observations) != 6
+        or sorted(
+            deadline
+            for row, deadline in zip(observations, deadlines, strict=True)
+            if len(row.actions) > 1
+        )
+        != [1000, 1000, 1500, 5000, 5000]
+    ):
+        raise ValueError(
+            "short-deadline policy requires two 5s and three 1s/1.5s choices"
+        )
+    return deadlines
+
+
+def qualify_short_deadlines(
+    probe: dict[str, Any],
+    config: runtime.Configuration,
+    fixtures: list[Any],
+    ledger: Path,
+) -> dict[str, Any]:
+    """Reconcile one completed probe block; never release an unknown charge."""
+    deadlines = probe_deadlines(config, fixtures)
+    assert config.recording is not None and config.gateway is not None
+    rows, runs = probe["decisions"], probe["runs"]
+    if len(rows) != len(fixtures) or len(runs) != 1:
+        raise ValueError("probe decision/run count differs from the frozen fixtures")
+    reader = ReplayReader(config.recording.path)
+    run = reader.run(runs[0])
+    manifest = run["manifest"]
+    if (
+        run["incomplete"]
+        or run["status"] not in {"completed", "failed"}
+        or manifest["initial_sha256"] != digest(fixtures)
+        or manifest["provider"] != config.gateway.provider
+        or manifest["model"] != config.gateway.effective_model
+        or manifest["participant"] != config.gateway.alias
+        or manifest["bot_id"]
+        != Observation.model_validate(fixtures[0]["observation"]).bot.id
+    ):
+        raise ValueError("probe recording identity or completeness differs")
+    events = list(reader.all_events(runs[0]))
+    decisions = [
+        e["data"]
+        for e in events
+        if e["kind"] == "decision" and e["data"].get("phase") == "requested"
+    ]
+    if len(decisions) != len(fixtures) or any(e["kind"] == "gap" for e in events):
+        raise ValueError("probe recording lost decisions")
+    ids = [d["decision_id"] for d in decisions]
+    if len(set(ids)) != len(ids):
+        raise ValueError("probe repeats a decision identity")
+    requests: dict[str, list[dict[str, Any]]] = {identity: [] for identity in ids}
+    for event in events:
+        if event["kind"] == "request":
+            data = event["data"]
+            if data["decision_id"] not in requests:
+                raise ValueError("unattributed probe request")
+            requests[data["decision_id"]].append(data)
+    with sqlite3.connect(ledger.resolve().as_uri() + "?mode=ro", uri=True) as db:
+        liabilities = {
+            identity: {"reserved": reserved, "spent": spent, "endpoint": endpoint}
+            for identity, reserved, spent, endpoint in db.execute(
+                "SELECT id,reserved,spent,endpoint FROM requests WHERE run_id=?",
+                (runs[0],),
+            )
+        }
+    used: set[str] = set()
+    outcomes = []
+    last_timeout = False
+    long_valid = late = backoff = 0
+    for index, (row, frozen, deadline, decision) in enumerate(
+        zip(rows, fixtures, deadlines, decisions, strict=True)
+    ):
+        snapshot = Observation.model_validate(frozen["observation"])
+        if (
+            decision["observation"]
+            != public_data(snapshot.model_dump(exclude={"lease", "messages"}))
+            or row["bot_id"] != snapshot.bot.id
+        ):
+            raise ValueError("probe observation differs from the frozen input")
+        emitted = requests[decision["decision_id"]]
+        outcome = "valid"
+        if len(snapshot.actions) == 1:
+            if (
+                emitted
+                or not row["valid"]
+                or row.get("choice") != snapshot.actions[0].id
+            ):
+                raise ValueError("local choice issued a request or failed")
+            outcome = "local_choice"
+        else:
+            if (
+                not emitted
+                or len({e["request_id"] for e in emitted}) != 1
+                or any(
+                    e["endpoint"] != "responses"
+                    or e["requested_model"] != config.gateway.alias
+                    or e.get("deadline_ms", deadline) != deadline
+                    for e in emitted
+                )
+            ):
+                raise ValueError("probe request identity/deadline differs")
+            request_id = emitted[0]["request_id"]
+            phases = [e["phase"] for e in emitted]
+            if phases == ["skipped"]:
+                if (
+                    deadline == 5000
+                    or row.get("error") != "ProviderBackoff"
+                    or not last_timeout
+                    or emitted[0].get("reason") != "backoff"
+                    or emitted[0]["reserved_nanousd"] != 0
+                    or request_id in liabilities
+                ):
+                    raise ValueError("probe backoff has no causal short deadline")
+                backoff += 1
+                outcome = "causal_backoff_negative"
+            else:
+                if (
+                    phases not in (["reserved", "finished"], ["reserved", "failed"])
+                    or request_id not in liabilities
+                    or request_id in used
+                ):
+                    raise ValueError("probe transmission is not one ledger attempt")
+                used.add(request_id)
+                cost, reserved, terminal = (
+                    liabilities[request_id],
+                    emitted[0],
+                    emitted[1],
+                )
+                if (
+                    cost["endpoint"] != "responses"
+                    or cost["reserved"] <= 0
+                    or reserved["reserved_nanousd"] != cost["reserved"]
+                ):
+                    raise ValueError("probe reservation differs from the ledger")
+                if row["valid"]:
+                    if (
+                        terminal["phase"] != "finished"
+                        or cost["spent"] is None
+                        or terminal["spent_nanousd"] != cost["spent"]
+                        or terminal["reserved_nanousd"] != 0
+                        or row.get("choice") not in {a.id for a in snapshot.actions}
+                    ):
+                        raise ValueError("valid probe has no settled response")
+                    if (
+                        terminal["effective_model"] != config.gateway.effective_model
+                        or terminal["gateway"]["deployment_id"]
+                        != config.gateway.deployment_id
+                    ):
+                        raise ValueError("valid probe route differs")
+                    long_valid += deadline == 5000
+                    last_timeout = False
+                elif (
+                    deadline != 5000
+                    and row.get("error") == "TimeoutError"
+                    and terminal.get("error") == "TimeoutError"
+                    and terminal.get("unsettled") is True
+                    and cost["spent"] is None
+                    and terminal["reserved_nanousd"] == cost["reserved"]
+                ):
+                    late += 1
+                    last_timeout = True
+                    outcome = "deadline_negative_unknown_charge"
+                else:
+                    raise ValueError("probe technical error or invalid 5s conformance")
+        outcomes.append(
+            {
+                "index": index,
+                "deadline_ms": deadline,
+                "outcome": outcome,
+                "decision_id": decision["decision_id"],
+                "request_id": emitted[0]["request_id"] if emitted else None,
+            }
+        )
+    liability = sum(
+        c["spent"] if c["spent"] is not None else c["reserved"]
+        for c in liabilities.values()
+    )
+    if used != set(liabilities) or long_valid != 2 or liability > 490_000_000:
+        raise ValueError(
+            "probe attempts, long conformance or USD0.49 liability cap differ"
+        )
+    return {
+        "accepted_for_game": True,
+        "evidence_reconciled": True,
+        "policy": SHORT_DEADLINE_POLICY,
+        "long_valid": long_valid,
+        "late": late,
+        "causal_backoff": backoff,
+        "technical_invalid": 0,
+        "model_opportunities": 5,
+        "liability_nanousd": liability,
+        "financial_final": not any(c["spent"] is None for c in liabilities.values()),
+        "short_contract_coverage_complete": not (late or backoff),
+        "case_outcomes": outcomes,
+        "root_review_required": False,
+        "failure_interpretation": "deadline_controller_performance"
+        if late or backoff
+        else None,
+    }
+
+
 def write_new(path: Path, data: Any) -> None:
     with path.open("x") as stream:
         json.dump(data, stream, indent=2)
@@ -1077,8 +1303,37 @@ async def execute_admitted(
                 if technical
                 else None,
             }
+            performance_policy = (
+                data["admission"].get("probe_outcome_policy") == SHORT_DEADLINE_POLICY
+            )
+            if performance_policy:
+                probe["qualification"].pop("expected_model_requests")
+                try:
+                    probe["qualification"].update(
+                        qualify_short_deadlines(
+                            probe,
+                            runtime.Configuration.model_validate(data[name]),
+                            data["decision_fixtures"],
+                            plan.canonical_ledger_file,
+                        )
+                    )
+                except (ValueError, TypeError, KeyError, sqlite3.Error):
+                    probe["qualification"].update(
+                        {
+                            "accepted_for_game": False,
+                            "policy": SHORT_DEADLINE_POLICY,
+                            "evidence_reconciled": False,
+                            "root_review_required": True,
+                        }
+                    )
             result["probes"][name] = probe
             write_new(plan.output / (name + "-probe-result.json"), probe)
+            if performance_policy:
+                if not probe["qualification"]["accepted_for_game"]:
+                    raise ValueError(
+                        "conformance failed; technical or unreconciled probe evidence"
+                    )
+                continue
             if not probe["decisions"] or not all(
                 row["valid"] for row in probe["decisions"]
             ):

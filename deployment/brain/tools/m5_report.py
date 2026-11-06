@@ -716,6 +716,24 @@ def review(
                 "xp_per_wall_hour_max": max(values) if values else None,
             }
         )
+    financial_totals_complete = not any(
+        f["code"]
+        in {
+            "additional_cost_missing",
+            "invalid_ledger_amount",
+            "duplicate_ledger_request",
+            "request_ledger_set_mismatch",
+            "ledger_authority_missing",
+            "monthly_snapshot_missing",
+            "monthly_snapshot_invalid",
+            "monthly_snapshot_time_invalid",
+            "invalid_ledger_month",
+            "monthly_spent_understates_rows",
+            "monthly_reserved_understates_rows",
+            "ledger_row_after_snapshot",
+        }
+        for f in findings
+    )
     return {
         "schema_version": 1,
         "campaign": plan["name"],
@@ -723,24 +741,8 @@ def review(
         "horizon_tolerance_seconds": tolerance,
         "maximum_completed_seconds": maximum_seconds,
         "ready_for_review": not findings,
-        "financial_totals_complete": not any(
-            f["code"]
-            in {
-                "additional_cost_missing",
-                "invalid_ledger_amount",
-                "duplicate_ledger_request",
-                "request_ledger_set_mismatch",
-                "ledger_authority_missing",
-                "monthly_snapshot_missing",
-                "monthly_snapshot_invalid",
-                "monthly_snapshot_time_invalid",
-                "invalid_ledger_month",
-                "monthly_spent_understates_rows",
-                "monthly_reserved_understates_rows",
-                "ledger_row_after_snapshot",
-            }
-            for f in findings
-        ),
+        "financial_totals_complete": financial_totals_complete,
+        "financial_final": financial_totals_complete and total_unknown == 0,
         "expected_attempts": len(expected),
         "recorded_attempts": len(recorded),
         "reviewed_attempts": len(result_runs),
@@ -863,6 +865,7 @@ def markdown(report: dict[str, Any]) -> str:
         "",
         f"Ready for review: {report['ready_for_review']}. Verdict: descriptive pilot, no winner.",
         f"Financial totals complete: {report['financial_totals_complete']}; if false, displayed values are only known valid amounts, not a complete cost/passive total.",
+        f"Financial final: {report['financial_final']}. Confirmed usage-priced spend: USD {report['settled_nanousd'] / USD:.9f}; unknown liability retained: USD {report['unknown_nanousd'] / USD:.9f}. Unknown liability is not confirmed spend or a zero-cost attempt.",
         "",
         "| Run | Status/reason | Observed seconds | XP | Deaths | Interventions | Settled USD | Unknown USD |",
         "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -954,6 +957,7 @@ def main() -> None:
                 for key in (
                     "ready_for_review",
                     "financial_totals_complete",
+                    "financial_final",
                     "findings",
                     "verdict",
                 )

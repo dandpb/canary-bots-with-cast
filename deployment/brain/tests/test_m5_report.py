@@ -231,6 +231,8 @@ def test_complete_consistent_evidence_passes_without_infinite_native_efficiency(
     assert result["ready_for_review"]
     assert result["settled_nanousd"] == 14
     assert result["unknown_nanousd"] == 0
+    assert result["financial_totals_complete"]
+    assert result["financial_final"]
     assert result["runs"][0]["xp_per_settled_dollar"] is None
     group = result["runs"][1]["latency"]["by_deadline_ms"]["5000"]
     assert group["completed_p95_ms"] == 10
@@ -327,11 +329,77 @@ def test_unknown_timeout_remains_a_liability_and_is_not_success_latency():
     assert result["ready_for_review"]
     assert result["unknown_nanousd"] == 1000
     assert result["settled_nanousd"] == 0
+    assert result["financial_totals_complete"]
+    assert not result["financial_final"]
+    text = reporter.markdown(result)
+    assert "Financial final: False" in text
+    assert "Confirmed usage-priced spend: USD 0.000000000" in text
+    assert "unknown liability retained: USD 0.000001000" in text
     run = result["runs"][1]
     assert run["xp_per_settled_dollar"] is None
     group = run["latency"]["by_deadline_ms"]["5000"]
     assert group["timeouts"] == 1
     assert group["completed_p95_ms"] is None
+
+
+def test_incomplete_financial_coverage_is_not_final_even_when_unknown_total_is_zero():
+    args = evidence()
+    args[3]["requests"] = []
+    result = reporter.review(*args)
+    assert "request_ledger_set_mismatch" in codes(result)
+    assert result["unknown_nanousd"] == 0
+    assert not result["financial_totals_complete"]
+    assert not result["financial_final"]
+    assert not result["ready_for_review"]
+
+
+def test_explicit_zero_settlement_is_final_with_complete_financial_coverage():
+    args = evidence()
+    prices = args[0]["plan"]["participants"][1]["gateway"]["prices"]
+    for key in (
+        "input_nanousd",
+        "output_nanousd",
+        "cached_nanousd",
+        "cache_write_nanousd",
+    ):
+        prices[key] = 0
+    terminal = next(
+        event["data"]
+        for event in args[1][1]["events"]
+        if event["kind"] == "request" and event["data"]["phase"] == "finished"
+    )
+    terminal["spent_nanousd"] = 0
+    args[3]["requests"][0]["spent"] = 0
+    args[3]["budget"].update(spent=0, available=50 * reporter.USD)
+    result = reporter.review(*args)
+    assert result["ready_for_review"]
+    assert result["settled_nanousd"] == result["unknown_nanousd"] == 0
+    assert result["financial_totals_complete"]
+    assert result["financial_final"]
+
+
+@pytest.mark.parametrize("additional", [False, True])
+def test_unknown_additional_or_unexpected_attempt_prevents_financial_final(additional):
+    args = evidence()
+    identity = "prior-probe" if additional else "qa:unexpected:0"
+    if additional:
+        args[0].update(additional_cost_run_ids=[identity], total_cap_nanousd=2000)
+    args[3]["requests"].append(
+        {
+            "id": "unknown-extra",
+            "month": "2026-10",
+            "run_id": identity,
+            "reserved": 400,
+            "spent": None,
+        }
+    )
+    args[3]["budget"].update(reserved=400, available=50 * reporter.USD - 414)
+    result = reporter.review(*args)
+    assert result["financial_totals_complete"]
+    assert result["unknown_nanousd"] == 400
+    assert not result["financial_final"]
+    assert result["ready_for_review"] is additional
+    assert ("unexpected_ledger_run" in codes(result)) is not additional
 
 
 def test_budget_header_cannot_omit_unknown_liability_even_from_previous_month():
@@ -772,6 +840,9 @@ def test_archive_import_and_cli_are_read_only_and_refuse_mixed_rerun_output(tmp_
         command.extend(["--recording", str(archive)])
     first = subprocess.run(command, capture_output=True, text=True, check=False)
     assert first.returncode == 0, first.stderr
+    acceptance = json.loads((tmp_path / "report/acceptance.json").read_text())
+    assert acceptance["financial_totals_complete"]
+    assert acceptance["financial_final"]
     report = (tmp_path / "report/report.json").read_bytes()
     second = subprocess.run(command, capture_output=True, text=True, check=False)
     assert second.returncode != 0

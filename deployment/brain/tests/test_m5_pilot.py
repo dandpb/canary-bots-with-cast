@@ -9,10 +9,10 @@ from types import SimpleNamespace
 
 import pytest
 from test_protocol import observation
-from tools import m5_pilot as pilot
 
 from canary_brain.benchmark import fixture_hash
 from canary_brain.store import Store, month_now
+from tools import m5_pilot as pilot
 
 
 def write(path, value):
@@ -36,6 +36,91 @@ def approve_inputs(plan):
         }
     )
     write(plan.admission, gate)
+
+
+def admit_short_deadline_policy(plan):
+    """Freeze two 5s choices, a local choice, and the declared short deadlines."""
+    fixtures = []
+    for index, deadline in enumerate((5000, 5000, 5000, 1000, 1500, 1000)):
+        snapshot = observation()
+        snapshot["bot"]["id"] = 65001
+        snapshot["sequence"] += index
+        for action in snapshot["actions"]:
+            action["ttl_ms"] = deadline
+        if index == 2:
+            snapshot["actions"] = snapshot["actions"][:1]
+        fixtures.append({"observation": snapshot})
+    write(plan.decision_fixtures, fixtures)
+    admission = json.loads(plan.admission.read_text())
+    admission["probe_outcome_policy"] = "short_deadline_performance_v1"
+    write(plan.admission, admission)
+    envelope = json.loads(plan.authorization.read_text())
+    envelope["max_total_nanousd"] = 6_980_214_600
+    write(plan.authorization, envelope)
+    for path in plan.probe_workers.values():
+        worker = json.loads(path.read_text())
+        worker["decision_timeout"] = 10
+        write(path, worker)
+    approve_inputs(plan)
+
+
+def fake_probe_sdk(monkeypatch, failure="timeout", mutate=None):
+    """Replace only the SDK boundary; keep provider, recorder and ledger real."""
+    from canary_brain import replay_cli
+
+    calls = []
+
+    class Client:
+        def __init__(self, **_):
+            self.responses = SimpleNamespace(with_raw_response=self)
+            self.count = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def create(self, **body):
+            self.count += 1
+            calls.append(body)
+            if self.count == 1 and failure == "long_timeout":
+                await asyncio.sleep(6)
+            if self.count == 3 and failure == "timeout":
+                await asyncio.sleep(2)
+            if self.count == 3 and failure == "auth":
+                raise PermissionError("offline denied")
+            name = body["model"].removeprefix("alias-")
+            options = body["tools"][0]["parameters"]["properties"]["candidate_id"][
+                "enum"
+            ]
+            payload = {
+                "id": "offline-provider-request",
+                "model": body["model"],
+                "usage": {"input_tokens": 10, "output_tokens": 2},
+                "output": [
+                    {
+                        "type": "function_call",
+                        "name": "choose_action",
+                        "arguments": json.dumps({"candidate_id": options[0]}),
+                    }
+                ],
+            }
+            headers = {
+                "x-litellm-model-id": "deployment-" + name,
+                "x-litellm-call-id": "offline-gateway-request",
+            }
+            if self.count == 3 and failure == "usage":
+                payload.pop("usage")
+            if mutate is not None:
+                mutate(self.count, payload, headers)
+            return SimpleNamespace(
+                headers=headers,
+                parse=lambda: SimpleNamespace(model_dump=lambda **_: payload),
+            )
+
+    monkeypatch.setattr(replay_cli, "AsyncOpenAI", Client)
+    return calls
 
 
 @pytest.fixture
@@ -493,6 +578,226 @@ async def test_deadline_is_a_retained_performance_outcome_needing_root_review(
     assert (
         next(row for row in ledger["requests"] if row["id"] == "late")["spent"] is None
     )
+
+
+async def test_admitted_short_deadlines_and_causal_backoff_reach_campaign_once(
+    admitted, monkeypatch
+):
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+    calls = fake_probe_sdk(monkeypatch)
+    campaigns = []
+
+    async def game(experiment):
+        campaigns.append(experiment)
+        return {"offline": True}
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", game)
+    result = await pilot.execute(admitted)
+    assert len(campaigns) == 1 and len(calls) == 6
+    assert campaigns[0].name == "qa-pilot" and campaigns[0].repetitions == 3
+    for name in ("openai", "gemini"):
+        gate = result["probes"][name]["qualification"]
+        assert gate["accepted_for_game"] is True
+        assert gate["long_valid"] == 2
+        assert gate["late"] == 1 and gate["causal_backoff"] == 2
+        assert gate["unknown_requests"] == 1 and gate["unknown_nanousd"] > 0
+        assert gate["model_opportunities"] == 5 and gate["ledger_requests"] == 3
+        assert gate["technical_invalid"] == 0
+        assert [row["valid"] for row in result["probes"][name]["decisions"]] == [
+            True,
+            True,
+            True,
+            False,
+            False,
+            False,
+        ]
+    ledger = json.loads((admitted.output / "ledger.json").read_text())
+    assert len([row for row in ledger["requests"] if row["spent"] is None]) == 2
+    assert ledger["budget"]["reserved"] > 0
+    with pytest.raises(ValueError, match="new or empty"):
+        await pilot.execute(admitted)
+    assert len(calls) == 6
+
+
+@pytest.mark.parametrize("failure", ["usage", "auth"])
+async def test_short_deadline_policy_keeps_observed_technical_failures_blocking(
+    admitted, monkeypatch, failure
+):
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+    calls = fake_probe_sdk(monkeypatch, failure=failure)
+
+    async def forbidden(_):
+        pytest.fail("observed technical failure must block game")
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", forbidden)
+    with pytest.raises(ValueError, match="technical or unreconciled"):
+        await pilot.execute(admitted)
+    assert len(calls) == 3
+    result = json.loads((admitted.output / "execution-result.json").read_text())
+    assert set(result["probes"]) == {"openai"}
+    assert result["probes"]["openai"]["qualification"]["accepted_for_game"] is False
+    ledger = json.loads((admitted.output / "ledger.json").read_text())
+    assert len([row for row in ledger["requests"] if row["spent"] is None]) == 1
+
+
+def test_short_deadline_envelope_retains_prior_unknown_liability(admitted):
+    admit_short_deadline_policy(admitted)
+    Store(admitted.canonical_ledger_file).reserve(
+        "prior-unknown", 1, month_now(), run_id="prior-probe"
+    )
+    envelope = json.loads(admitted.authorization.read_text())
+    envelope["additional_cost_run_ids"] = ["prior-probe"]
+    write(admitted.authorization, envelope)
+    approve_inputs(admitted)
+    with pytest.raises(ValueError, match="prospective complete liability envelope"):
+        pilot.preflight(admitted)
+    assert not admitted.output.exists()
+
+
+@pytest.mark.parametrize("fault", ["route", "schema", "long_timeout"])
+async def test_deadline_policy_cannot_waive_long_or_response_contract_failures(
+    admitted, monkeypatch, fault
+):
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+
+    def mutate(count, payload, headers):
+        if count == 1 and fault == "route":
+            headers["x-litellm-model-id"] = "another-deployment"
+        if count == 3 and fault == "schema":
+            payload["output"][0]["arguments"] = '{"candidate_id":"not-offered"}'
+
+    fake_probe_sdk(monkeypatch, failure=fault, mutate=mutate)
+
+    async def forbidden(_):
+        pytest.fail("a 5s deadline or observed contract/route failure blocks game")
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", forbidden)
+    with pytest.raises(ValueError, match="technical or unreconciled"):
+        await pilot.execute(admitted)
+    result = json.loads((admitted.output / "execution-result.json").read_text())
+    assert result["campaign"] is None
+    assert result["probes"]["openai"]["qualification"]["accepted_for_game"] is False
+
+
+@pytest.mark.parametrize("fault", ["unknown", "relabeled_usage", "gap"])
+async def test_deadline_policy_reconciles_evidence_instead_of_trusting_error_labels(
+    admitted, monkeypatch, fault
+):
+    from canary_brain.recording import RecordingStore
+
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+    fake_probe_sdk(
+        monkeypatch, failure="usage" if fault == "relabeled_usage" else "timeout"
+    )
+    actual = pilot.decision_fixtures
+
+    async def altered(args):
+        probe = await actual(args)
+        if fault == "unknown":
+            Store(admitted.canonical_ledger_file).reserve(
+                "unattributed-unknown", 1, month_now(), run_id=probe["runs"][0]
+            )
+        elif fault == "relabeled_usage":
+            probe["decisions"][3]["error"] = "TimeoutError"
+        else:
+            config = pilot.runtime.Configuration.model_validate_json(
+                args.worker_config.read_text()
+            )
+            RecordingStore(config.recording.path).append(
+                {
+                    "run": probe["runs"][0],
+                    "key": "lost-evidence",
+                    "segment": "offline",
+                    "t_ms": 0,
+                    "wall": 1,
+                    "kind": "gap",
+                    "data": {"reason": "offline-loss"},
+                }
+            )
+        return probe
+
+    monkeypatch.setattr(pilot, "decision_fixtures", altered)
+
+    async def forbidden(_):
+        pytest.fail("unreconciled evidence must not start game")
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", forbidden)
+    with pytest.raises(ValueError, match="technical or unreconciled"):
+        await pilot.execute(admitted)
+    result = json.loads((admitted.output / "execution-result.json").read_text())
+    assert result["campaign"] is None
+    assert result["probes"]["openai"]["qualification"]["evidence_reconciled"] is False
+
+
+@pytest.mark.parametrize("change", ["deadline", "policy", "envelope"])
+def test_prospective_deadline_policy_is_explicit_and_cannot_expand_bounds(
+    admitted, change
+):
+    admit_short_deadline_policy(admitted)
+    if change == "deadline":
+        path = admitted.probe_workers["openai"]
+        config = json.loads(path.read_text())
+        config["decision_timeout"] = 1.2
+        write(path, config)
+    elif change == "policy":
+        document = json.loads(admitted.admission.read_text())
+        document["probe_outcome_policy"] = "accept-every-error"
+        write(admitted.admission, document)
+    else:
+        envelope = json.loads(admitted.authorization.read_text())
+        envelope["max_total_nanousd"] = 7_000_000_000
+        write(admitted.authorization, envelope)
+    approve_inputs(admitted)
+    with pytest.raises(ValueError):
+        pilot.preflight(admitted)
+    assert not admitted.output.exists()
+
+
+async def test_prospective_deadline_policy_also_accepts_all_five_responses(
+    admitted, monkeypatch
+):
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+    calls = fake_probe_sdk(monkeypatch, failure="none")
+
+    async def game(_):
+        return {"offline": True}
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", game)
+    result = await pilot.execute(admitted)
+    assert len(calls) == 10
+    for name in ("openai", "gemini"):
+        gate = result["probes"][name]["qualification"]
+        assert gate["financial_final"] and gate["evidence_reconciled"]
+        assert gate["short_contract_coverage_complete"] and gate["long_valid"] == 2
+        assert gate["unknown_requests"] == gate["late"] == gate["causal_backoff"] == 0
+        assert gate["ledger_requests"] == 5
+
+
+async def test_actual_probe_spend_above_cap_blocks_without_releasing_its_liability(
+    admitted, monkeypatch
+):
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    admit_short_deadline_policy(admitted)
+
+    def overrun(count, payload, _):
+        if count == 1:
+            payload["usage"]["input_tokens"] = 490_000_001
+
+    fake_probe_sdk(monkeypatch, failure="none", mutate=overrun)
+
+    async def forbidden(_):
+        pytest.fail("actual probe spend above USD0.49 cannot admit game")
+
+    monkeypatch.setattr(pilot, "run_attested_campaign", forbidden)
+    with pytest.raises(ValueError, match="technical or unreconciled"):
+        await pilot.execute(admitted)
+    ledger = json.loads((admitted.output / "ledger.json").read_text())
+    assert any(row["spent"] == 490_000_005 for row in ledger["requests"])
 
 
 @pytest.mark.parametrize("which", ["campaign", "openai"])
