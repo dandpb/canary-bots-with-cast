@@ -32,6 +32,9 @@ The long-run gate requires `completed`, exactly one supervisor stop with
 recorded gaps or observed deaths, no operator intervention, zero inference
 requests, and positive XP persisted in the final database and matching the last
 sample. At least two hunts must appear in the same native observation.
+These progress checks are mandatory for every 1,800-second run, including when
+`--require-progress` is omitted. That flag only adds progress requirements to a
+short smoke; a smoke without it proves clocks and isolation, not gameplay progress.
 
 Cycle evidence follows each execution mode's actual contract:
 

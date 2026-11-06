@@ -197,6 +197,8 @@ class FullGateTests(unittest.TestCase):
         initial_xp=100,
         extra=(),
         cycle=True,
+        seconds=1800,
+        require_progress=True,
     ):
         choices = [
             {"id": "hunt:77", "action": "hunt"},
@@ -245,6 +247,8 @@ class FullGateTests(unittest.TestCase):
             saved={"experience": saved_xp},
             requests=0,
             statuses=rows,
+            seconds=seconds,
+            require_progress=require_progress,
         )
 
     def test_native_and_fake_run_checks_pass_independently_of_purchase_gate(self):
@@ -278,6 +282,31 @@ class FullGateTests(unittest.TestCase):
             result = self.qualified(mode=mode, cycle=False)
             self.assertFalse(result["accepted"])
             self.assertFalse(result["checks"]["hunt_cycle"])
+
+    def test_long_run_cannot_disable_progress_with_smoke_flag(self):
+        for mode in ("native", "fake"):
+            with self.subTest(mode=mode):
+                result = self.qualified(mode=mode, cycle=False, require_progress=False)
+                self.assertFalse(result["accepted"])
+                self.assertFalse(result["checks"]["hunt_cycle"])
+                self.assertFalse(
+                    self.qualified(mode=mode, initial_xp=200, require_progress=False)[
+                        "accepted"
+                    ]
+                )
+
+    def test_short_smoke_may_qualify_clocks_without_claiming_progress(self):
+        result = self.qualified(
+            seconds=10,
+            span=10,
+            observed=10,
+            elapsed=10,
+            cycle=False,
+            initial_xp=200,
+            require_progress=False,
+        )
+        self.assertTrue(result["accepted"], result["checks"])
+        self.assertNotIn("hunt_cycle", result["checks"])
 
     def test_cleanup_time_hunt_outcomes_do_not_qualify_the_recorded_window(self):
         later = copy.deepcopy(fake_cycle())

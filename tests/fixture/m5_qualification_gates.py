@@ -232,6 +232,7 @@ def qualify_run(
     """Return scoped checks/evidence; image, cleanup and purchase attestations are external."""
     if mode not in {"native", "fake"}:
         raise ValueError("qualification supports native/fake only")
+    require_progress = require_progress or seconds >= 1800
     events = ordered_events(events)
     samples = [event for event in events if event["kind"] == "sample"]
     stops = [

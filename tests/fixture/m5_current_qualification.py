@@ -356,7 +356,11 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--mode", choices=["native", "fake"], required=True)
     parser.add_argument("--seconds", type=int, choices=[10, 1800], default=10)
-    parser.add_argument("--require-progress", action="store_true")
+    parser.add_argument(
+        "--require-progress",
+        action="store_true",
+        help="also require progress for short smokes; mandatory for 1800-second runs",
+    )
     asyncio.run(execute(parser.parse_args()))
 
 
