@@ -2,9 +2,13 @@
 
 `m5_pilot.py` is an operator entry point for the declared fixture-G pilot.
 It calls the existing `decision_fixtures` evaluator and a single canonical
-`run_campaign` (native/OpenAI/Gemini, three 30-minute blocks). Canonical execution
+`run_campaign` (native/OpenAI/Gemini, three repetitions of three 30-minute trials).
+Canonical execution
 already rotates ABC/BCA/CAB; the wrapper does not implement another scheduler.
 It does not perform provider SDK translation or own a second financial ledger.
+For initial gateway/worker configuration, start with the
+[Portuguese setup guide](../SETUP.pt-BR.md#7-preparar-o-benchmark-e-autorizar-a-execução-paga).
+These tools being integrated does not authorize the paid pilot.
 
 Use a frozen source export and the admitted common worker image. Mount that
 source directory at the same absolute path inside the harness, and set
@@ -84,3 +88,43 @@ through canonical teardown instead of silently qualifying a completed run.
 Offline tests cover admission/source binding, missing/copied ledger rejection,
 shared caps, no replacement, hook restoration and deadline liability retention.
 The tests do not qualify a live Docker deployment, account or paid campaign.
+
+## Review the pilot offline
+
+Use `m5_report.py` in the brain Python environment on Linux/WSL after preserving
+a stable evidence snapshot. Docker is not required for this offline report;
+`SOURCE` below is the frozen export directory. It performs no game/provider calls.
+`--experiment` expects the generated campaign document
+(`game/experiment.json`, containing `plan`, `configuration_sha256` and
+`preflight.character`), not the flat input campaign. Prepare a reviewed report
+copy preserving that identity and declaring all prior/current probe
+`additional_cost_run_ids` plus `total_cap_nanousd` for the complete USD7 envelope.
+Do not omit probes because they are outside the nine scored runs.
+
+`--ledger` is the wrapper's scoped `ledger.json`, not a SQLite copy or LiteLLM's
+cost estimate. Its global monthly header, month and aware UTC snapshot timestamp
+come from the same transaction as its selected request rows. Unknown charges
+remain liabilities. Supply actual image/cleanup attestations: either a
+`trials` map keyed by run ID or global `game_image`, `database_image`,
+`images_verified` and `resources_cleaned` fields. Do not fill these from intent.
+
+```sh
+PYTHONPATH="$SOURCE/deployment/brain/src" python "$SOURCE/deployment/brain/tools/m5_report.py" \
+  --recording /absolute/pilot/game/recording.sqlite3 \
+  --experiment /absolute/report-experiment.json \
+  --trials-root /absolute/pilot/game \
+  --attestation /absolute/trial-attestation.json \
+  --ledger /absolute/pilot/ledger.json --output /absolute/new-report
+```
+
+`--trials-root` reads each `<participant>-<repetition>/worker.sqlite3` and
+`saved-character.json`; alternatively `--trials` accepts `{"trials":[...]}`.
+Repeat `--recording` for scored evidence split across files, not for probe
+recordings outside that grid. Keep probe recordings as separate evidence.
+The destination must not exist. The tool writes `report.json`, `report.md` and
+`acceptance.json`; exit 2 means evidence findings require review. Failed,
+budget-stopped and interrupted attempts remain outcomes, not replacements.
+Use `--require-completed` only when the reviewed acceptance requires every run
+to finish its full horizon. A report ready for review neither declares a winner
+nor closes the issue. Inspect the [visual replay/export](../REPLAY.md#export-and-verify)
+separately, then preserve evidence and verify temporary-container cleanup.

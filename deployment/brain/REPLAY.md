@@ -65,6 +65,13 @@ sha256sum runtime/gateway.yaml
 
 The custom worker authentication permits only inference for declared aliases, checks the gateway version, exact configuration SHA-256 and expected upstream mapping, and rejects administration and per-request routing overrides. Configure one explicit deployment per alias, zero retries at both gateway layers, no fallback/order failover, no response cache and `drop_params: false`. The gateway also refuses a configuration changed after startup. Its host publication is loopback-only. The application remains the authoritative ledger for the shared USD 50 monthly limit; gateway estimates do not settle or replace application reservations.
 
+Scored M5 runs use a separate inference-only process built from
+`gateway/Dockerfile.benchmark`, not the administrative UI process. Its startup
+pins `CANARY_BENCHMARK_GATEWAY_ONLY=1` and `STORE_MODEL_IN_DB=True`; admin keys
+cannot fall through to UI authentication. Keep provider credentials inside the
+gateway, freeze routes before measuring and use the private `gateway:4000` alias
+declared by the M5 harness. See the [setup sequence](SETUP.pt-BR.md#4-cadastrar-credenciais-e-associar-modelos).
+
 Use `worker-replay.example.json` as the migration template, supplying the actual configuration hash, private gateway credential path, exact effective/upstream model and reviewed versioned prices. The loopback gateway address works for a worker running on the host. A containerized worker needs the gateway on its private Docker network and `http://litellm:4000/v1`; its container's loopback is not the host.
 
 The budget path is an operator-selected authority, not a new account per
@@ -159,6 +166,13 @@ canary-brain benchmark run --config /home/daniel/benchmark.json --live
 
 Use `experiment.example.json` as the template. Replace all fixture/configuration hashes and model mappings, select reviewed prices and use the existing shared budget path. Keep output paths short enough for Unix sockets. Build the game image with this implementation before running: an older bridge is rejected before model decisions are applied. The optional `--live` flag is required for game/provider execution. The shipped configuration is a template, not an authorization to spend or evidence of a completed trial.
 
+For the declared M5, use the [admission wrapper](tools/M5_PILOT.md) rather than
+launching the generic paid command above. It requires reviewed free/gateway gates,
+frozen source and configuration hashes, a new output identity and the exact
+existing `canary-bots-wsl_brain-state:/var/lib/canary-brain/state.sqlite3` authority.
+Its read-only `--preflight` does not initialize Store or call providers; explicit
+`--execute` can charge probes before starting the nine rotated game trials.
+
 All declared run caps must fit the campaign cap. On resume, only attempts without a recorded identity add future liability against the remaining shared monthly allowance; settled and unknown charges already remain in that ledger. Every inference attempt reserves against both run and monthly limits in the same transaction. Unknown charges survive failure, restart and month rollover. Zero-cost baselines do not get an infinite XP-per-dollar score.
 
 An attempt is persisted before provisioning. Failed, budget-stopped and interrupted trials remain in the results; rerunning the same campaign skips their identities instead of replacing them with successes. Changed campaign configuration requires a new campaign identity. A kernel-held campaign lease prevents a second orchestrator from treating an active trial as an orphan. After a crash, the next invocation first tears down the exact deterministic Compose project, preserving its bind data, then marks the open attempt interrupted. Failed cleanup stops the resume and leaves it retryable. Saved final character evidence stays in the trial's private runtime directory. Live campaigns require Linux/WSL.
@@ -175,6 +189,11 @@ calendar difference as the denominator; regenerate their analysis with the same
 metric version before comparing results. Original recordings are not rewritten.
 
 ## Export and verify
+
+The [M5 offline report](tools/M5_PILOT.md#review-the-pilot-offline) joins the
+recordings with supervisor/final-character evidence and a scoped canonical-ledger
+export. Use it for campaign consistency and costs; the HTML player below is the
+visual replay. Preserve failed attempts and unknown liabilities in both views.
 
 Recorded decision fixtures can also be evaluated without executing any game action:
 
