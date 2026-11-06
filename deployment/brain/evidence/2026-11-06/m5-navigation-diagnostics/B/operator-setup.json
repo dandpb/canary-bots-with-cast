@@ -1,0 +1,28 @@
+[
+  {
+    "operation": "pause",
+    "position": [
+      32372,
+      32103,
+      7
+    ],
+    "result": {
+      "status": "requested",
+      "phase": "waiting_hold"
+    },
+    "purpose": "diagnostic setup, prevent automatic hunt while verbose is enabled"
+  },
+  {
+    "operation": "retreat",
+    "position": [
+      32372,
+      32103,
+      7
+    ],
+    "result": {
+      "status": "requested",
+      "phase": "waiting_action"
+    },
+    "purpose": "explicit diagnostic reproduction, not a scored choice"
+  }
+]

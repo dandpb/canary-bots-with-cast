@@ -1,0 +1,380 @@
+[
+  {
+    "monotonic": 151797.220871699,
+    "command_id": 1,
+    "command": "verbose on",
+    "result": "Bot 'Grizzle Alyronia' verbose logging enabled (manual)."
+  },
+  {
+    "monotonic": 151797.583958803,
+    "command_id": 2,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":173.869,\"bridge_tick_samples\":9,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"hold\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":0,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151797.936949954,
+    "command_id": 3,
+    "command": "tileinfo 32371,32102,7",
+    "result": "Tile (32371,32102,7) flags: (none) | Ground: id=4516 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151798.275136434,
+    "command_id": 4,
+    "command": "tileinfo 32371,32103,7",
+    "result": "Tile (32371,32103,7) flags: (none) | Ground: id=4521 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151798.604964158,
+    "command_id": 5,
+    "command": "tileinfo 32371,32104,7",
+    "result": "Tile (32371,32104,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Item[0]: id=3617 name='plum tree' isLadder=no type=0 fc=0"
+  },
+  {
+    "monotonic": 151798.950851153,
+    "command_id": 6,
+    "command": "tileinfo 32372,32102,7",
+    "result": "Tile (32372,32102,7) flags: (none) | Ground: id=4528 name='grass' isLadder=no type=0 fc=0 | Item[0]: id=3617 name='plum tree' isLadder=no type=0 fc=0"
+  },
+  {
+    "monotonic": 151799.532284897,
+    "command_id": 7,
+    "command": "tileinfo 32372,32103,7",
+    "result": "Tile (32372,32103,7) flags: (none) | Ground: id=4523 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151800.388265769,
+    "command_id": 8,
+    "command": "tileinfo 32372,32104,7",
+    "result": "Tile (32372,32104,7) flags: (none) | Ground: id=4517 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151801.505395573,
+    "command_id": 9,
+    "command": "tileinfo 32373,32102,7",
+    "result": "Tile (32373,32102,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151802.344402957,
+    "command_id": 10,
+    "command": "tileinfo 32373,32103,7",
+    "result": "Tile (32373,32103,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Item[0]: id=3682 name='small fir tree' isLadder=no type=0 fc=0"
+  },
+  {
+    "monotonic": 151803.452395939,
+    "command_id": 11,
+    "command": "tileinfo 32373,32104,7",
+    "result": "Tile (32373,32104,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151804.557307491,
+    "command_id": 12,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32372,32103,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151805.424144035,
+    "command_id": 13,
+    "command": "route 32372,32103,7 32369,32241,7 direct",
+    "result": "[ROUTE:DIRECT] (32372,32103,7) -> (32369,32241,7) mover=Grizzle Alyronia (portal graph bypassed)\\n  door_bfs=budget_exhausted visited=20002 expanded=19829 budget=20000 radius=200 doors=0\\n  direct_astar profile=stock arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=441 budget=512 radius=50\\n  direct_astar profile=stock arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=441 budget=512 radius=50\\n  direct_astar profile=wide arrival=0 result=reached tiles=166 reason=reached created=541 closed=299 budget=4096 radius=200\\n (32372,32104,7) (32372,32105,7) (32372,32106,7) (32372,32107,7) (32372,32108,7) (32372,32109,7) (32373,32109,7) (32373,32110,7) (32373,32111,7) (32373,32112,7) (32374,32112,7) (32374,32113,7) (32374,32114,7) (32374,32115,7) (32374,32116,7) (32374,32117,7) (32375,32117,7) (32376,32117,7) (32376,32118,7) (32376,32119,7) (32376,32120,7) (32376,32121,7) (32376,32122,7) (32376,32123,7) (32377,32123,7) (32378,32123,7) (32378,32124,7) (32379,32124,7) (32380,32124,7) (32380,32125,7) (32380,32126,7) (32380,32127,7) (32380,32128,7) (32380,32129,7) (32380,32130,7) (32381,32130,7) (32381,32131,7) (32382,32131,7) (32382,32132,7) (32383,32132,7) (32384,32132,7) (32384,32133,7) (32385,32133,7) (32385,32134,7) (32385,32135,7) (32385,32136,7) (32385,32137,7) (32385,32138,7) (32385,32139,7) (32385,32140,7) (32385,32141,7) (32385,32142,7) (32385,32143,7) (32385,32144,7) (32385,32145,7) (32385,32146,7) (32385,32147,7) (32385,32148,7) (32385,32149,7) (32385,32150,7) (32385,32151,7) (32385,32152,7) (32385,32153,7) (32385,32154,7) (32385,32155,7) (32385,32156,7) (32385,32157,7) (32385,32158,7) (32385,32159,7) (32385,32160,7) (32385,32161,7) (32385,32162,7) (32385,32163,7) (32385,32164,7) (32384,32164,7) (32383,32164,7) (32382,32164,7) (32381,32164,7) (32380,32164,7) (32379,32164,7) (32378,32164,7) (32378,32165,7) (32377,32165,7) (32377,32166,7) (32376,32166,7) (32375,32167,7) (32375,32168,7) (32375,32169,7) (32375,32170,7) (32375,32171,7) (32375,32172,7) (32375,32173,7) (32375,32174,7) (32374,32174,7) (32374,32175,7) (32373,32175,7) (32372,32175,7) (32371,32175,7) (32370,32175,7) (32370,32176,7) (32370,32177,7) (32370,32178,7) (32370,32179,7) (32369,32179,7) (32369,32180,7) (32369,32181,7) (32369,32182,7) (32369,32183,7) (32369,32184,7) (32369,32185,7) (32369,32186,7) (32369,32187,7) (32369,32188,7) (32369,32189,7) (32369,32190,7) (32369,32191,7) (32369,32192,7) (32369,32193,7) (32369,32194,7) (32369,32195,7) (32369,32196,7) (32369,32197,7) (32369,32198,7) (32369,32199,7) (32369,32200,7) (32369,32201,7) (32369,32202,7) (32369,32203,7) (32369,32204,7) (32369,32205,7) (32369,32206,7) (32369,32207,7) (32369,32208,7) (32369,32209,7) (32369,32210,7) (32369,32211,7) (32369,32212,7) (32369,32213,7) (32369,32214,7) (32369,32215,7) (32369,32216,7) (32369,32217,7) (32369,32218,7) (32369,32219,7) (32369,32220,7) (32369,32221,7) (32369,32222,7) (32369,32223,7) (32369,32224,7) (32369,32225,7) (32369,32226,7) (32369,32227,7) (32369,32228,7) (32369,32229,7) (32369,32230,7) (32369,32231,7) (32369,32232,7) (32369,32233,7) (32369,32234,7) (32369,32235,7) (32369,32236,7) (32369,32237,7) (32369,32238,7) (32369,32239,7) (32369,32240,7) (32369,32241,7)\\n  direct_astar profile=wide arrival=2 result=reached tiles=164 reason=reached created=535 closed=297 budget=4096 radius=200\\n (32372,32104,7) (32372,32105,7) (32372,32106,7) (32372,32107,7) (32372,32108,7) (32372,32109,7) (32373,32109,7) (32373,32110,7) (32373,32111,7) (32373,32112,7) (32374,32112,7) (32374,32113,7) (32374,32114,7) (32374,32115,7) (32374,32116,7) (32374,32117,7) (32375,32117,7) (32376,32117,7) (32376,32118,7) (32376,32119,7) (32376,32120,7) (32376,32121,7) (32376,32122,7) (32376,32123,7) (32377,32123,7) (32378,32123,7) (32378,32124,7) (32379,32124,7) (32380,32124,7) (32380,32125,7) (32380,32126,7) (32380,32127,7) (32380,32128,7) (32380,32129,7) (32380,32130,7) (32381,32130,7) (32381,32131,7) (32382,32131,7) (32382,32132,7) (32383,32132,7) (32384,32132,7) (32384,32133,7) (32385,32133,7) (32385,32134,7) (32385,32135,7) (32385,32136,7) (32385,32137,7) (32385,32138,7) (32385,32139,7) (32385,32140,7) (32385,32141,7) (32385,32142,7) (32385,32143,7) (32385,32144,7) (32385,32145,7) (32385,32146,7) (32385,32147,7) (32385,32148,7) (32385,32149,7) (32385,32150,7) (32385,32151,7) (32385,32152,7) (32385,32153,7) (32385,32154,7) (32385,32155,7) (32385,32156,7) (32385,32157,7) (32385,32158,7) (32385,32159,7) (32385,32160,7) (32385,32161,7) (32385,32162,7) (32385,32163,7) (32385,32164,7) (32384,32164,7) (32383,32164,7) (32382,32164,7) (32381,32164,7) (32380,32164,7) (32379,32164,7) (32378,32164,7) (32378,32165,7) (32377,32165,7) (32377,32166,7) (32376,32166,7) (32375,32167,7) (32375,32168,7) (32375,32169,7) (32375,32170,7) (32375,32171,7) (32375,32172,7) (32375,32173,7) (32375,32174,7) (32374,32174,7) (32374,32175,7) (32373,32175,7) (32372,32175,7) (32371,32175,7) (32370,32175,7) (32370,32176,7) (32370,32177,7) (32370,32178,7) (32370,32179,7) (32369,32179,7) (32369,32180,7) (32369,32181,7) (32369,32182,7) (32369,32183,7) (32369,32184,7) (32369,32185,7) (32369,32186,7) (32369,32187,7) (32369,32188,7) (32369,32189,7) (32369,32190,7) (32369,32191,7) (32369,32192,7) (32369,32193,7) (32369,32194,7) (32369,32195,7) (32369,32196,7) (32369,32197,7) (32369,32198,7) (32369,32199,7) (32369,32200,7) (32369,32201,7) (32369,32202,7) (32369,32203,7) (32369,32204,7) (32369,32205,7) (32369,32206,7) (32369,32207,7) (32369,32208,7) (32369,32209,7) (32369,32210,7) (32369,32211,7) (32369,32212,7) (32369,32213,7) (32369,32214,7) (32369,32215,7) (32369,32216,7) (32369,32217,7) (32369,32218,7) (32369,32219,7) (32369,32220,7) (32369,32221,7) (32369,32222,7) (32369,32223,7) (32369,32224,7) (32369,32225,7) (32369,32226,7) (32369,32227,7) (32369,32228,7) (32369,32229,7) (32369,32230,7) (32369,32231,7) (32369,32232,7) (32369,32233,7) (32369,32234,7) (32369,32235,7) (32369,32236,7) (32369,32237,7) (32369,32238,7) (32369,32239,7)\\n"
+  },
+  {
+    "monotonic": 151806.552097013,
+    "command_id": 14,
+    "command": "route 32425,32165,7 32427,32170,7 direct",
+    "result": "[ROUTE:DIRECT] (32425,32165,7) -> (32427,32170,7) mover=Grizzle Alyronia (portal graph bypassed)\\n  door_bfs=budget_exhausted visited=20002 expanded=19617 budget=20000 radius=200 doors=0\\n  direct_astar profile=stock arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=442 budget=512 radius=50\\n  direct_astar profile=stock arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=442 budget=512 radius=50\\n  direct_astar profile=wide arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=4096 closed=3873 budget=4096 radius=200\\n  direct_astar profile=wide arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=4096 closed=3873 budget=4096 radius=200\\n"
+  },
+  {
+    "monotonic": 151807.423250152,
+    "command_id": 15,
+    "command": "tileinfo 32424,32164,7",
+    "result": "Tile (32424,32164,7) flags: (none) | Ground: id=4524 name='grass' isLadder=no type=0 fc=0 | Item[0]: id=3681 name='bush' isLadder=no type=0 fc=0"
+  },
+  {
+    "monotonic": 151808.541796708,
+    "command_id": 16,
+    "command": "tileinfo 32424,32165,7",
+    "result": "Tile (32424,32165,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151809.439721516,
+    "command_id": 17,
+    "command": "tileinfo 32424,32166,7",
+    "result": "Tile (32424,32166,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151810.586112092,
+    "command_id": 18,
+    "command": "tileinfo 32425,32164,7",
+    "result": "Tile (32425,32164,7) flags: (none) | Ground: id=4527 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151811.434781997,
+    "command_id": 19,
+    "command": "tileinfo 32425,32165,7",
+    "result": "Tile (32425,32165,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151812.523892026,
+    "command_id": 20,
+    "command": "tileinfo 32425,32166,7",
+    "result": "Tile (32425,32166,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151813.360992074,
+    "command_id": 21,
+    "command": "tileinfo 32426,32164,7",
+    "result": "Tile (32426,32164,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Items: none"
+  },
+  {
+    "monotonic": 151814.459694252,
+    "command_id": 22,
+    "command": "tileinfo 32426,32165,7",
+    "result": "Tile (32426,32165,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Item[0]: id=3617 name='plum tree' isLadder=no type=0 fc=0"
+  },
+  {
+    "monotonic": 151815.550607965,
+    "command_id": 23,
+    "command": "tileinfo 32426,32166,7",
+    "result": "Tile (32426,32166,7) flags: (none) | Ground: id=4515 name='grass' isLadder=no type=0 fc=0 | Item[0]: id=4644 name='shallow water' isLadder=no type=0 fc=0"
+  },
+  {
+    "monotonic": 151816.418527246,
+    "command_id": 24,
+    "command": "tileinfo 32427,32170,7",
+    "result": "Tile (32427,32170,7) flags: FC_DOWN | Ground: id=433 name='ladder' isLadder=no type=0 fc=1 | Items: none"
+  },
+  {
+    "monotonic": 151817.315457984,
+    "command_id": 25,
+    "command": "tileinfo 32427,32170,8",
+    "result": "Tile (32427,32170,8) flags: (none) | Ground: id=352 name='dirt floor' isLadder=no type=0 fc=0 | Item[0]: id=1948 name='ladder' isLadder=yes type=42 fc=0"
+  },
+  {
+    "monotonic": 151818.206698802,
+    "command_id": 26,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":221.66,\"bridge_tick_samples\":215,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"hold\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":0,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151819.337299278,
+    "command_id": 27,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32372,32103,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151820.221940983,
+    "command_id": 28,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":222.329,\"bridge_tick_samples\":235,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":164,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151821.350208027,
+    "command_id": 29,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32372,32105,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151824.218562949,
+    "command_id": 30,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":228.051,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":156,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151825.369254684,
+    "command_id": 31,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32374,32112,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151828.260053732,
+    "command_id": 32,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":231.824,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":147,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151829.381012344,
+    "command_id": 33,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32376,32118,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151832.242484466,
+    "command_id": 34,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":233.527,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":138,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151833.384962253,
+    "command_id": 35,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32379,32124,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151836.256717448,
+    "command_id": 36,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":233.527,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":129,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151837.40038765,
+    "command_id": 37,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32381,32130,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151840.369340914,
+    "command_id": 38,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":233.527,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":121,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151841.283453398,
+    "command_id": 39,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32385,32134,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151844.288246537,
+    "command_id": 40,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":233.527,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":113,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151845.203448233,
+    "command_id": 41,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32385,32142,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151848.12825755,
+    "command_id": 42,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":231.982,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":106,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151849.11637219,
+    "command_id": 43,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32385,32150,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151852.01260649,
+    "command_id": 44,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":225.976,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":96,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151853.160725232,
+    "command_id": 45,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32385,32160,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151856.012860805,
+    "command_id": 46,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":219.373,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":87,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151857.20462275,
+    "command_id": 47,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32380,32164,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151860.053425603,
+    "command_id": 48,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":219.373,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":79,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151861.163212381,
+    "command_id": 49,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32375,32167,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151864.027080802,
+    "command_id": 50,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":216.717,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":71,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151865.131155629,
+    "command_id": 51,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32374,32175,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151868.011629759,
+    "command_id": 52,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":216.195,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":61,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151869.121194512,
+    "command_id": 53,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32369,32181,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151872.231629375,
+    "command_id": 54,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":213.221,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":49,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151873.084753328,
+    "command_id": 55,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32369,32192,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151876.226745448,
+    "command_id": 56,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":198.556,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":38,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151877.101615413,
+    "command_id": 57,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32369,32204,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151879.978647209,
+    "command_id": 58,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":200.005,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":27,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151880.903526535,
+    "command_id": 59,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32369,32213,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=95/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151884.086997654,
+    "command_id": 60,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":200.005,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":15,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151884.973320577,
+    "command_id": 61,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32369,32220,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=85/95 hunt=[none] target=no fc=0 travel=none"
+  },
+  {
+    "monotonic": 151887.900418361,
+    "command_id": 62,
+    "command": "brain status",
+    "result": "{\"bridge_tick_p95_us\":204.7,\"bridge_tick_samples\":256,\"mode\":\"active\",\"roster\":[65001],\"sessions\":[{\"bot\":65001,\"floor_change\":0,\"home\":[32369,32241,7],\"leader\":0,\"leader_creature_id\":0,\"objective\":\"retreat\",\"pending_walk_pause\":0,\"running\":true,\"script\":0,\"shop\":\"\",\"supply_phase\":0,\"walk_queue\":4,\"waypoint\":0}],\"version\":1,\"worker_alive\":true,\"world\":\"1-151796694768357\"}"
+  },
+  {
+    "monotonic": 151889.106838909,
+    "command_id": 63,
+    "command": "status",
+    "result": "Bot 'Grizzle Alyronia': state=IDLE pos=(32369,32231,7) active=yes town=Thais(8) voc=4 hp=365/365 mana=85/95 hunt=[none] target=no fc=0 travel=none"
+  }
+]

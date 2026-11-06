@@ -1,0 +1,106 @@
+{
+  "run_id": "m5-current-fake-8e37d3288a:fake:0",
+  "game_image": "sha256:34365530c377ad3e974ed99f961e7b617561c601dd8bd63b36855c076c7e5f3c",
+  "recorded_span_ms": 240618,
+  "retreat_action_id": "33b01eaf9fb24fadae78661f9fd01b5b",
+  "linked_retreat_outcomes": [
+    {
+      "id": 72,
+      "key": "outcome:1-150901914585974:33b01eaf9fb24fadae78661f9fd01b5b:accepted",
+      "segment": "aec13681093a42278c1aed4df5fbb235",
+      "t_ms": 38555,
+      "wall": 1793968602.3631854,
+      "kind": "outcome",
+      "data": {
+        "action_id": "33b01eaf9fb24fadae78661f9fd01b5b",
+        "bot_id": 65001,
+        "metrics": {},
+        "reason": "objective_started",
+        "status": "accepted",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-150901914585974"
+      }
+    },
+    {
+      "id": 496,
+      "key": "outcome:1-150901914585974:33b01eaf9fb24fadae78661f9fd01b5b:failed",
+      "segment": "aec13681093a42278c1aed4df5fbb235",
+      "t_ms": 247726,
+      "wall": 1793968812.591589,
+      "kind": "outcome",
+      "data": {
+        "action_id": "33b01eaf9fb24fadae78661f9fd01b5b",
+        "bot_id": 65001,
+        "metrics": {
+          "danger": 0.0,
+          "deaths": 0.0,
+          "defeats_delta": 0.0,
+          "elapsed_seconds": 209.286,
+          "level": 20.0,
+          "party_distance": 0.0,
+          "party_size": 1.0,
+          "progress": 0.0,
+          "supply_delta": 0.0,
+          "xp_delta": 81.0
+        },
+        "reason": "return_route_unavailable",
+        "status": "failed",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-150901914585974"
+      }
+    }
+  ],
+  "first_position": [
+    32372,
+    32103,
+    7
+  ],
+  "last_position": [
+    32425,
+    32165,
+    7
+  ],
+  "unique_positions": 46,
+  "arrival_sampled": false,
+  "terminal_return_outcomes": [
+    {
+      "id": 496,
+      "key": "outcome:1-150901914585974:33b01eaf9fb24fadae78661f9fd01b5b:failed",
+      "segment": "aec13681093a42278c1aed4df5fbb235",
+      "t_ms": 247726,
+      "wall": 1793968812.591589,
+      "kind": "outcome",
+      "data": {
+        "action_id": "33b01eaf9fb24fadae78661f9fd01b5b",
+        "bot_id": 65001,
+        "metrics": {
+          "danger": 0.0,
+          "deaths": 0.0,
+          "defeats_delta": 0.0,
+          "elapsed_seconds": 209.286,
+          "level": 20.0,
+          "party_distance": 0.0,
+          "party_size": 1.0,
+          "progress": 0.0,
+          "supply_delta": 0.0,
+          "xp_delta": 81.0
+        },
+        "reason": "return_route_unavailable",
+        "status": "failed",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-150901914585974"
+      }
+    }
+  ],
+  "return_route_unavailable": true,
+  "scope": "Diagnostic checkpoint replay with explicit pause+retreat setup; no subsequent rescue; not scored qualification",
+  "arrival_proven": false,
+  "resources": {
+    "containers": [],
+    "networks": []
+  },
+  "resources_cleaned": true
+}

@@ -1,0 +1,14 @@
+{
+  "attestation.json": "a8ddc0016cb405f6cd7a0ae7d932de964dbcd13526bad4fdd0a8dcf058eed879",
+  "experiment.json": "569bf4999f6631506b9088c9f84c432ce68df3013319d260fc753a7f63c0bd4a",
+  "diagnostic-interpretation.json": "d7c941fc8c4dc4dd63178f18ece0ffa3edfe0a4e5f06168b80b5b4ea148df300",
+  "qualification.json": "6425710434b3a0f250894444796817176e26e9c8ed6de7d04bae1e3c566a184c",
+  "diagnostic-scope.json": "51565fbaa9b34a68695faf52ea39dccee999b32b445cceb65ef20a681a690fd1",
+  "driver.py": "b3039ab8ce70d6fb2ea06aadcde10be37969a9f3daca1f983cf22d1434dab060",
+  "operator-injections.jsonl": "bf3dc0550127ea4bb3fa10301c215c8d6f14886caf23b0a90a5a762255b5cc4e",
+  "runs/fake-0/diagnostic-commands.jsonl": "604441f4f6b8ef8b42a6568dbf1984836b538d1e80e8420cf06ccf8cf95edba0",
+  "runs/recording.sqlite3": "b9f891a7cda64519481d1df2d935842703bdeea72a81b0e809af9f895b282fa3",
+  "runs/recording.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "runs/fake-0/services.full.log": "243f0133dc8f92e1039ec1d4e247bbe91f54df87c5436272f4141ec831e6a527",
+  "runs/fake-0/saved-character.json": "f94aac63d0e7c41217eff0e2865f08180ac450e472cf4d102390856e01c81c88"
+}

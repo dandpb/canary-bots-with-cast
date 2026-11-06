@@ -1,0 +1,19 @@
+{
+  "source_revision": "2986713328ab68ade2ce3927a2f0b1de564815e8",
+  "archive_sha256": "2105cf1b0fdf626859af950e91dc883d4371ab449cdf55c41ec2105165abe371",
+  "binary_sha256": {
+    "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+    "libbot_engine.so": "d98e3c920ebec87b8ecf5499cac21631a083fb0011d7421d364a7c02467057aa"
+  },
+  "gnu_unique_symbols": 0,
+  "native_unit_tests": "passed; raw log retained",
+  "compiler": "c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "source_result_sha256": "3529c6e2cec5be478be8669e932e9cc05d50758978a0c2fac6cc533be024c5b4",
+  "final_cache": {
+    "image_id": "sha256:2493a8b501445c2fbaf5f4cce8ceb6e76f7427b7ac9bfe478d6790e2da30f045",
+    "source_revision": "2986713328ab68ade2ce3927a2f0b1de564815e8",
+    "at_utc": "2026-11-06T12:48:55.302607+00:00",
+    "content": "validated /source + /build after matched binaries and unit tests"
+  },
+  "source_cache_receipt_sha256": "9b5a6fcf5130b402901ebb45d06dfec297c279c78f952605925893065a223023"
+}

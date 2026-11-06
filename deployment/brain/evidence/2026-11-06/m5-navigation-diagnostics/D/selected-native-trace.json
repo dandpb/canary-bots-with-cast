@@ -1,0 +1,7 @@
+{
+  "source": "services.full.log",
+  "source_sha256": "36e97d50229a587ecadb6365ba20eb713f8bd197a03d45c3c791fa228e5c31ff",
+  "matching_lines": 0,
+  "selection": "all when <=160; otherwise first80 and last80 matching lines",
+  "lines": []
+}

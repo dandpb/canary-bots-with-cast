@@ -1,0 +1,42 @@
+[
+  {
+    "id": 28,
+    "key": "intent:ec2eedd3f77045dfaa6a5b2224b3583e",
+    "segment": "14162a8e9fed4361bf03922d3e1c8882",
+    "t_ms": 23119,
+    "wall": 1793966464.720002,
+    "kind": "intent",
+    "data": {
+      "action_id": "ec2eedd3f77045dfaa6a5b2224b3583e",
+      "bot_id": 65001,
+      "candidate_id": "retreat",
+      "decision_id": "",
+      "expires_ms": 148800138,
+      "mode": "active",
+      "objective_generation": 1,
+      "observation_sequence": 28,
+      "operator": true,
+      "type": "intent",
+      "version": 1,
+      "world": "1-148790764561362"
+    }
+  },
+  {
+    "id": 33,
+    "key": "outcome:1-148790764561362:ec2eedd3f77045dfaa6a5b2224b3583e:accepted",
+    "segment": "14162a8e9fed4361bf03922d3e1c8882",
+    "t_ms": 23242,
+    "wall": 1793966464.842396,
+    "kind": "outcome",
+    "data": {
+      "action_id": "ec2eedd3f77045dfaa6a5b2224b3583e",
+      "bot_id": 65001,
+      "metrics": {},
+      "reason": "objective_started",
+      "status": "accepted",
+      "type": "outcome",
+      "version": 1,
+      "world": "1-148790764561362"
+    }
+  }
+]

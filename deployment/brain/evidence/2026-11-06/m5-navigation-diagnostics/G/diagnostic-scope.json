@@ -1,0 +1,13 @@
+{
+  "purpose": "diagnostic-only: forced eligible retreat from failed checkpoint; not scored or qualification",
+  "changed_initial_position": [
+    32372,
+    32103,
+    7
+  ],
+  "changed_initial_xp": 100793,
+  "parent_fixture": "<PARENT_FIXTURE>",
+  "policy": "Supervisor pause then explicit retreat, recorded as operator interventions; fake suppressed while managed",
+  "instrumentation": "Before retreat: uncached direct stock/wide A* and doorBFS for original and explicit stalled-checkpoint coordinates, local tile geometry, status proving actor stays at original checkpoint; no injected position or teleport",
+  "native_source_revision": "3f829b6b8c4f793ecf613c7c78e7c9936248d4e9"
+}

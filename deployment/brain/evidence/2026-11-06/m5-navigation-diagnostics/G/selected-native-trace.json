@@ -1,0 +1,92 @@
+{
+  "source": "services.full.log",
+  "source_sha256": "4617b822323cfcb46bed7f3318d3a422a422c378294bed19a394567b62ffdb24",
+  "matching_lines": 21,
+  "selection": "all when <=160; otherwise first80 and last80 matching lines",
+  "lines": [
+    {
+      "source_line": 245,
+      "text": "game-1  | 2026-11-06T12:36:27.839400190Z   door_bfs=budget_exhausted visited=20002 expanded=19829 budget=20000 radius=200 doors=0"
+    },
+    {
+      "source_line": 246,
+      "text": "game-1  | 2026-11-06T12:36:27.839409287Z   direct_astar profile=stock arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=441 budget=512 radius=50"
+    },
+    {
+      "source_line": 247,
+      "text": "game-1  | 2026-11-06T12:36:27.839411748Z   direct_astar profile=stock arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=441 budget=512 radius=50"
+    },
+    {
+      "source_line": 248,
+      "text": "game-1  | 2026-11-06T12:36:27.839414003Z   direct_astar profile=wide arrival=0 result=reached tiles=166 reason=reached created=541 closed=299 budget=4096 radius=200"
+    },
+    {
+      "source_line": 250,
+      "text": "game-1  | 2026-11-06T12:36:27.839429382Z   direct_astar profile=wide arrival=2 result=reached tiles=164 reason=reached created=535 closed=297 budget=4096 radius=200"
+    },
+    {
+      "source_line": 254,
+      "text": "game-1  | 2026-11-06T12:36:27.839457490Z   door_bfs=budget_exhausted visited=20002 expanded=19829 budget=20000 radius=200 doors=0"
+    },
+    {
+      "source_line": 255,
+      "text": "game-1  | 2026-11-06T12:36:27.839460208Z   direct_astar profile=stock arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=441 budget=512 radius=50"
+    },
+    {
+      "source_line": 256,
+      "text": "game-1  | 2026-11-06T12:36:27.839463210Z   direct_astar profile=stock arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=441 budget=512 radius=50"
+    },
+    {
+      "source_line": 257,
+      "text": "game-1  | 2026-11-06T12:36:27.839466292Z   direct_astar profile=wide arrival=0 result=reached tiles=166 reason=reached created=541 closed=299 budget=4096 radius=200"
+    },
+    {
+      "source_line": 259,
+      "text": "game-1  | 2026-11-06T12:36:27.839479702Z   direct_astar profile=wide arrival=2 result=reached tiles=164 reason=reached created=535 closed=297 budget=4096 radius=200"
+    },
+    {
+      "source_line": 264,
+      "text": "game-1  | 2026-11-06T12:36:28.867756449Z   door_bfs=budget_exhausted visited=20002 expanded=19617 budget=20000 radius=200 doors=0"
+    },
+    {
+      "source_line": 265,
+      "text": "game-1  | 2026-11-06T12:36:28.867762804Z   direct_astar profile=stock arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=442 budget=512 radius=50"
+    },
+    {
+      "source_line": 266,
+      "text": "game-1  | 2026-11-06T12:36:28.867766912Z   direct_astar profile=stock arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=442 budget=512 radius=50"
+    },
+    {
+      "source_line": 267,
+      "text": "game-1  | 2026-11-06T12:36:28.867770587Z   direct_astar profile=wide arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=4096 closed=3873 budget=4096 radius=200"
+    },
+    {
+      "source_line": 268,
+      "text": "game-1  | 2026-11-06T12:36:28.867773907Z   direct_astar profile=wide arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=4096 closed=3873 budget=4096 radius=200"
+    },
+    {
+      "source_line": 271,
+      "text": "game-1  | 2026-11-06T12:36:28.867784942Z   door_bfs=budget_exhausted visited=20002 expanded=19617 budget=20000 radius=200 doors=0"
+    },
+    {
+      "source_line": 272,
+      "text": "game-1  | 2026-11-06T12:36:28.867790883Z   direct_astar profile=stock arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=442 budget=512 radius=50"
+    },
+    {
+      "source_line": 273,
+      "text": "game-1  | 2026-11-06T12:36:28.867794637Z   direct_astar profile=stock arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=512 closed=442 budget=512 radius=50"
+    },
+    {
+      "source_line": 274,
+      "text": "game-1  | 2026-11-06T12:36:28.867797859Z   direct_astar profile=wide arrival=0 result=no_path tiles=0 reason=node_budget_exhausted created=4096 closed=3873 budget=4096 radius=200"
+    },
+    {
+      "source_line": 275,
+      "text": "game-1  | 2026-11-06T12:36:28.867801475Z   direct_astar profile=wide arrival=2 result=no_path tiles=0 reason=node_budget_exhausted created=4096 closed=3873 budget=4096 radius=200"
+    },
+    {
+      "source_line": 604,
+      "text": "game-1      | 2026-11-06T12:40:13.092787888Z [2026-06-11 12:40:13.092] [info] [BotEngine] Grizzle Alyronia: BRAIN: Walking to node wp 1/16 at (32407,32215,7) "
+    }
+  ]
+}

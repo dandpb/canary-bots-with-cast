@@ -1,0 +1,12 @@
+{
+  "source_revision": "667631ba7637c8021e1070a9f0237387080ebb68",
+  "archive_sha256": "c0e70465f66b3880e34bb1186ae04e3cdfe9ac4661e6d3743a2efb673a4960b4",
+  "binary_sha256": {
+    "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+    "libbot_engine.so": "492a3e6a7d899cfa5e58f828c1127b1714f602c3f53139aeb4b2b8453a7b5fec"
+  },
+  "gnu_unique_symbols": 0,
+  "native_unit_tests": "passed; raw log retained",
+  "compiler": "c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "source_result_sha256": "8412dfe8a63eef8ae615f7c344c4781c6f03926055331cce3599b6184557d710"
+}

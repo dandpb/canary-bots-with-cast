@@ -1,0 +1,12 @@
+{
+  "purpose": "diagnostic-only: forced offered hunt:399 from fourth-start checkpoint; not scored or qualification",
+  "changed_initial_position": [
+    32374,
+    32092,
+    7
+  ],
+  "changed_initial_xp": 100793,
+  "parent_fixture": "<PARENT_FIXTURE>",
+  "policy": "Supervisor pause then one offered hunt:399; automatic=False; fake continue only; no post-failure action",
+  "instrumentation": "verbose on, 9 tileinfo, zplan, route, brain status, status; diagnostic only"
+}
