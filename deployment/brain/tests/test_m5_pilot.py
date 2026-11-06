@@ -1,6 +1,7 @@
 """Admission, immutable inputs and shared accounting before any live M5 call."""
 
 import asyncio
+import hashlib
 import json
 import platform
 from pathlib import Path
@@ -8,10 +9,10 @@ from types import SimpleNamespace
 
 import pytest
 from test_protocol import observation
+from tools import m5_pilot as pilot
 
 from canary_brain.benchmark import fixture_hash
 from canary_brain.store import Store, month_now
-from tools import m5_pilot as pilot
 
 
 def write(path, value):
@@ -435,7 +436,11 @@ async def test_attested_hook_is_common_and_restored_after_failure(
         assert live
         for participant in config.participants:
             harness = pilot.benchmark.DockerFixture(
-                config, admitted.output / participant.name, participant.name
+                config,
+                config.output / f"{participant.name}-0",
+                hashlib.sha256(
+                    f"{config.name}:{participant.name}:0".encode()
+                ).hexdigest(),
             )
             harness.prepare(participant)
             compose = json.loads(harness.compose.read_text())
@@ -635,3 +640,57 @@ async def test_mixed_deadline_and_technical_failures_remain_distinct(
     qualification = result["probes"]["openai"]["qualification"]
     assert qualification["late"] == qualification["technical_invalid"] == 1
     assert qualification["failure_interpretation"] == "mixed"
+
+
+async def test_attestation_failure_preserves_admitted_bytes_results_and_releases_lease(
+    admitted, monkeypatch
+):
+    from test_m5_attestations import Docker
+
+    before = pilot.capture_inputs(admitted)
+    engine = Docker()
+    monkeypatch.setattr(pilot.subprocess, "check_output", engine.query)
+    monkeypatch.setattr(
+        pilot.benchmark.DockerFixture,
+        "command",
+        lambda own, *args, **kwargs: engine.command(own, *args, **kwargs),
+    )
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+
+    async def probe(args):
+        name = json.loads(args.worker_config.read_text())["gateway"]["provider"]
+        store = Store(admitted.canonical_ledger_file)
+        store.reserve(name, 10, month_now(), run_id="decisions:attestation:" + name)
+        store.settle(name, 10)
+        return {
+            "runs": ["decisions:attestation:" + name],
+            "decisions": [{"valid": True}],
+        }
+
+    async def campaign(config, live):
+        run_id = f"{config.name}:native:0"
+        trial = pilot.benchmark.DockerFixture(
+            config,
+            config.output / "native-0",
+            hashlib.sha256(run_id.encode()).hexdigest(),
+        )
+        config.output.mkdir()
+        trial.prepare(config.participants[0])
+        trial.start_database()
+        try:
+            trial.start_game()
+            engine.leftover = engine.container(trial, "game", "running")
+        finally:
+            trial.close()
+
+    monkeypatch.setattr(pilot, "decision_fixtures", probe)
+    monkeypatch.setattr(pilot.benchmark, "run_campaign", campaign)
+    with pytest.raises(RuntimeError, match="cleanup could not be verified"):
+        await pilot.execute(admitted)
+    for name, payload in before.items():
+        assert (admitted.output / "inputs" / (name + ".json")).read_bytes() == payload
+    result = json.loads((admitted.output / "execution-result.json").read_text())
+    assert result["error_type"] == "RuntimeError"
+    assert (admitted.output / "ledger.json").is_file()
+    with pilot.pilot_lease(admitted.canonical_ledger_file):
+        pass
