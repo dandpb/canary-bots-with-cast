@@ -201,6 +201,8 @@ def evidence():
         )
     ledger = {
         "authority": "canonical-test-export",
+        "month": "2026-11",
+        "snapshot_utc": "2026-11-06T12:00:00Z",
         "budget": {
             "cap": 50 * reporter.USD,
             "spent": 14,
@@ -330,6 +332,112 @@ def test_unknown_timeout_remains_a_liability_and_is_not_success_latency():
     group = run["latency"]["by_deadline_ms"]["5000"]
     assert group["timeouts"] == 1
     assert group["completed_p95_ms"] is None
+
+
+def test_budget_header_cannot_omit_unknown_liability_even_from_previous_month():
+    args = evidence()
+    failed = next(
+        e
+        for e in args[1][1]["events"]
+        if e["kind"] == "request" and e["data"]["phase"] == "finished"
+    )
+    failed["data"] = {
+        "request_id": "paid",
+        "phase": "failed",
+        "error": "TimeoutError",
+        "reserved_nanousd": 1000,
+        "elapsed_ms": 5001,
+    }
+    args[3]["requests"][0].update(spent=None, month="2026-10")
+    result = reporter.review(*args)
+    assert "monthly_reserved_understates_rows" in codes(result)
+    assert result["unknown_nanousd"] == 1000
+    assert not result["ready_for_review"] and not result["financial_totals_complete"]
+
+
+def test_budget_header_cannot_omit_current_month_settled_charges():
+    args = evidence()
+    args[3]["budget"].update(spent=0, available=50 * reporter.USD)
+    result = reporter.review(*args)
+    assert "monthly_spent_understates_rows" in codes(result)
+    assert result["settled_nanousd"] == 14
+
+
+def test_prior_month_settled_charges_do_not_have_to_appear_in_current_month_spend():
+    args = evidence()
+    args[3]["requests"][0]["month"] = "2026-10"
+    args[3]["budget"].update(spent=0, available=50 * reporter.USD)
+    assert reporter.review(*args)["ready_for_review"]
+
+
+@pytest.mark.parametrize(
+    "snapshot,month",
+    [
+        (None, "2026-11"),
+        ("2026-11-06T12:00:00", "2026-11"),
+        ("2026-11-06T09:00:00-03:00", "2026-11"),
+        ("2026-11-01T01:00:00Z", "2026-11"),
+    ],
+)
+def test_ledger_snapshot_requires_utc_and_the_corresponding_sao_paulo_month(
+    snapshot, month
+):
+    args = evidence()
+    args[3].update(snapshot_utc=snapshot, month=month)
+    assert "monthly_snapshot_time_invalid" in codes(reporter.review(*args))
+
+
+def test_unplanned_trial_and_charge_are_retained_and_block_acceptance():
+    args = evidence()
+    args[2].append({**args[2][1], "run_id": "qa:model:replacement"})
+    args[3]["requests"].append(
+        {
+            "id": "replacement",
+            "month": "2026-11",
+            "run_id": "qa:model:replacement",
+            "reserved": 2000,
+            "spent": 1000,
+        }
+    )
+    args[3]["budget"].update(spent=1014, available=50 * reporter.USD - 1014)
+    result = reporter.review(*args)
+    assert {"unexpected_trial", "unexpected_ledger_run"} <= codes(result)
+    assert result["settled_nanousd"] == 1014
+    assert result["unplanned_spent_nanousd"] == 1000
+    assert result["unplanned_cost_run_ids"] == ["qa:model:replacement"]
+    assert not result["ready_for_review"]
+
+
+def test_namespace_only_charge_is_not_hidden_when_trial_artifacts_are_missing():
+    args = evidence()
+    args[3]["requests"].append(
+        {
+            "id": "replacement",
+            "month": "2026-11",
+            "run_id": "qa:other:0",
+            "reserved": 1000,
+            "spent": None,
+        }
+    )
+    args[3]["budget"].update(reserved=1000, available=50 * reporter.USD - 1014)
+    result = reporter.review(*args)
+    assert "unexpected_ledger_run" in codes(result)
+    assert result["unknown_nanousd"] == 1000
+    assert result["unplanned_unknown_nanousd"] == 1000
+
+
+def test_request_created_after_export_snapshot_is_rejected_when_timestamp_present():
+    args = evidence()
+    args[3]["requests"][0]["created"] = 2_000_000_000
+    result = reporter.review(*args)
+    assert "ledger_row_after_snapshot" in codes(result)
+    assert not result["ready_for_review"]
+
+
+def test_monthly_cap_excess_is_reported_even_when_ledger_arithmetic_is_consistent():
+    args = evidence()
+    args[3]["budget"].update(spent=51 * reporter.USD, available=0)
+    assert "monthly_cap_exceeded" in codes(reporter.review(*args))
 
 
 @pytest.mark.parametrize(
@@ -596,8 +704,15 @@ def test_prior_probe_costs_remain_in_the_total_envelope():
     args = evidence()
     args[0].update(additional_cost_run_ids=["prior-probe"], total_cap_nanousd=2000)
     args[3]["requests"].append(
-        {"id": "probe", "run_id": "prior-probe", "reserved": 100, "spent": 20}
+        {
+            "id": "probe",
+            "run_id": "prior-probe",
+            "month": "2026-11",
+            "reserved": 100,
+            "spent": 20,
+        }
     )
+    args[3]["budget"].update(spent=34, available=50 * reporter.USD - 34)
     result = reporter.review(*args)
     assert result["settled_nanousd"] == 34
     assert result["ready_for_review"]

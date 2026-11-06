@@ -13,9 +13,11 @@ import statistics
 import tempfile
 import zipfile
 from collections import Counter, defaultdict
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from canary_brain.recording import ReplayReader, public_data
 from canary_brain.replay import import_archive, summarize
@@ -245,9 +247,36 @@ def review(
         flag("duplicate_plan", None, "Expected run IDs must be distinct")
     for extra in set(recorded) - planned:
         flag("unexpected_recording", extra, "Recording is not part of the frozen plan")
+    for extra in set(trial_map) - planned:
+        flag(
+            "unexpected_trial",
+            extra,
+            "Retain and classify unplanned/replacement attempts instead of dropping them",
+        )
     if not ledger.get("authority"):
         flag("ledger_authority_missing", None, "Identify the canonical ledger export")
     budget = ledger.get("budget", {})
+    month = ledger.get("month")
+    snapshot = ledger.get("snapshot_utc")
+    captured = None
+    try:
+        if not isinstance(snapshot, str):
+            raise TypeError("Missing UTC snapshot")
+        captured = datetime.fromisoformat(snapshot)
+        if (
+            captured.utcoffset() != timedelta(0)
+            or captured.tzinfo is None
+            or captured.astimezone(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m")
+            != month
+        ):
+            raise ValueError("Snapshot month/UTC disagree")
+    except (AttributeError, TypeError, ValueError):
+        captured = None
+        flag(
+            "monthly_snapshot_time_invalid",
+            None,
+            "Need month in America/Sao_Paulo and an aware UTC snapshot_utc from the same ledger transaction",
+        )
     if not all(
         integer(budget.get(k)) for k in ("cap", "spent", "reserved", "available")
     ):
@@ -264,6 +293,12 @@ def review(
             None,
             "Monthly cap cannot exceed USD50 and available must retain unknown liabilities",
         )
+    elif budget["spent"] + budget["reserved"] > budget["cap"]:
+        flag(
+            "monthly_cap_exceeded",
+            None,
+            "Known monthly spend plus all unknown liabilities exceeds the authority's cap",
+        )
     additional = set(experiment.get("additional_cost_run_ids", []))
     if additional & planned:
         flag(
@@ -271,7 +306,28 @@ def review(
             None,
             "Probe and scored identities must not overlap",
         )
-    ledger_rows = [r for r in ledger["requests"] if r["run_id"] in planned | additional]
+    unexpected = (set(recorded) | set(trial_map)) - planned - additional
+    namespace_rows = (
+        {
+            r["run_id"]
+            for r in ledger["requests"]
+            if r["run_id"].startswith(plan["name"] + ":")
+        }
+        - planned
+        - additional
+    )
+    unexpected |= namespace_rows
+    for identity in namespace_rows:
+        flag(
+            "unexpected_ledger_run",
+            identity,
+            "Canonical ledger contains an unplanned campaign/replacement identity",
+        )
+    ledger_rows = [
+        r
+        for r in ledger["requests"]
+        if r["run_id"] in planned | additional | unexpected
+    ]
     for missing in additional - {r["run_id"] for r in ledger_rows}:
         flag(
             "additional_cost_missing",
@@ -290,6 +346,48 @@ def review(
                 row["run_id"],
                 "Require a positive reserved bound and spent=null or nonnegative integer nanodollars",
             )
+        if not isinstance(row.get("month"), str) or not re.fullmatch(
+            r"\d{4}-(?:0[1-9]|1[0-2])", row["month"]
+        ):
+            flag(
+                "invalid_ledger_month",
+                row["run_id"],
+                "Each canonical request must retain its original accounting month",
+            )
+        if "created" in row and (
+            not isinstance(row["created"], (int, float))
+            or isinstance(row["created"], bool)
+            or not math.isfinite(row["created"])
+            or row["created"] < 0
+            or (captured is not None and row["created"] > captured.timestamp())
+        ):
+            flag(
+                "ledger_row_after_snapshot",
+                row["run_id"],
+                "Request creation time must be valid and no later than the claimed snapshot",
+            )
+    selected_monthly_spent = sum(
+        r["spent"]
+        for r in ledger_rows
+        if r.get("month") == month and integer(r.get("spent"))
+    )
+    selected_unknown = sum(
+        r["reserved"]
+        for r in ledger_rows
+        if r.get("spent") is None and integer(r.get("reserved"))
+    )
+    if integer(budget.get("spent")) and budget["spent"] < selected_monthly_spent:
+        flag(
+            "monthly_spent_understates_rows",
+            None,
+            "Monthly snapshot cannot omit the selected month's settled canonical charges",
+        )
+    if integer(budget.get("reserved")) and budget["reserved"] < selected_unknown:
+        flag(
+            "monthly_reserved_understates_rows",
+            None,
+            "Monthly snapshot must retain selected unknown liabilities from every month",
+        )
     ledger_map = index_unique(ledger_rows, "id", "duplicate_ledger_request")
     result_runs = []
     for item in expected:
@@ -635,6 +733,11 @@ def review(
                 "ledger_authority_missing",
                 "monthly_snapshot_missing",
                 "monthly_snapshot_invalid",
+                "monthly_snapshot_time_invalid",
+                "invalid_ledger_month",
+                "monthly_spent_understates_rows",
+                "monthly_reserved_understates_rows",
+                "ledger_row_after_snapshot",
             }
             for f in findings
         ),
@@ -644,6 +747,21 @@ def review(
         "settled_nanousd": total_spent,
         "unknown_nanousd": total_unknown,
         "additional_cost_run_ids": sorted(additional),
+        "unplanned_cost_run_ids": sorted(unexpected),
+        "unplanned_spent_nanousd": sum(
+            r["spent"]
+            for r in ledger_rows
+            if r["run_id"] in unexpected and integer(r.get("spent"))
+        ),
+        "unplanned_unknown_nanousd": sum(
+            r["reserved"]
+            for r in ledger_rows
+            if r["run_id"] in unexpected
+            and r.get("spent") is None
+            and integer(r.get("reserved"))
+        ),
+        "ledger_snapshot_month": month,
+        "ledger_snapshot_utc": snapshot,
         "total_cap_nanousd": total_cap,
         "monthly_snapshot": {
             key: budget.get(key) if integer(budget.get(key)) else None

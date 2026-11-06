@@ -54,15 +54,16 @@ supplies the four image/cleanup fields above, either at its top level or per run
 under `trials[RUN_ID]`. Missing attestations remain findings, never defaults.
 
 Supply `ledger.json` exported by a separate read-only query of the existing
-monthly authority. Its request set can include other runs; only declared campaign
-and additional probe identities enter this report:
+monthly authority. Its request set can include other runs; declared campaign,
+probe and related unexpected attempt identities enter this report:
 
 ```json
 {
   "authority": "canary-bots-wsl_brain-state:/state.sqlite3",
+  "month": "2026-11",
   "snapshot_utc": "2026-11-06T00:00:00Z",
   "budget": {"cap": 50000000000, "spent": 14, "reserved": 0, "available": 49999999986},
-  "requests": [{"id": "REQUEST_ID", "run_id": "pilot:openai:0", "month": "2026-11", "reserved": 1000, "spent": 14}]
+  "requests": [{"id": "REQUEST_ID", "run_id": "pilot:openai:0", "month": "2026-11", "reserved": 1000, "spent": 14, "created": 1793836800}]
 }
 ```
 
@@ -71,6 +72,20 @@ All money is integer nanodollars; unknown usage has `spent:null` and retains
 learning records, credentials or the complete live SQLite file. The snapshot
 retains liabilities from other runs/months. The checker cannot establish the
 canonical origin of an arbitrary JSON; retain query/source provenance.
+
+Capture `month` (America/Sao_Paulo), an aware UTC `snapshot_utc`, the global
+budget header and selected rows in one read-only transaction. The selected
+current month's settled amount cannot exceed `budget.spent`; unknown selected
+liabilities from every month cannot exceed `budget.reserved`. Header arithmetic,
+the USD50 maximum cap and the snapshot's local month must agree. Export `created`
+where available; a request later than the claimed snapshot is rejected.
+
+Export rows for all declared IDs, prior probes, every replay/trial ID and all
+`run_id LIKE plan.name || ':%'`, including unplanned/replacement identities.
+Unplanned trials/recordings and namespace-only ledger charges block review and
+their money remains visible in `unplanned_*` fields and campaign totals. They
+are never silently filtered out. Unrelated production rows need not be exported,
+but their spent/unknown amounts remain included in the global budget header.
 
 For previously billed probes add audit-envelope fields
 `additional_cost_run_ids` and `total_cap_nanousd` alongside `plan` in a derived
@@ -173,12 +188,14 @@ nullable unknown cache-write rates.
 After updating the review branch to main `cd021c806`, the combined report,
 backoff-observability and unknown-cache-write subset passed29 tests.
 
-The checker was exercised read-only on the closed native10-second current-runner
+The initial checker was exercised read-only on the closed native10-second current-runner
 smoke at `/tmp/m5cur-n10-20261106b`. It read11.145 recorded seconds, zero request
 cost/unknown liability and eight input hashes. It correctly refused acceptance
 because that input attestation did not explicitly supply `images_verified` or
 `resources_cleaned`; those flags were not invented to make it pass. Private
 review artifacts: `/home/daniel/canary-maintenance/m5-report-smoke-20261106T104425Z`.
+This historical smoke predates the mandatory month/UTC financial export fields;
+current checks require a new properly timestamped export rather than relabeling it.
 No game database, live provider or monthly ledger was opened by the report tool.
 
 An independent PR review then reproduced an overlong `completed` attempt being
@@ -187,3 +204,10 @@ the upper bound for both default and free-qualification modes, including the
 sample span and each clock independently.42 reporter regressions and47 combined
 report/backoff/cache tests passed, along with Ruff and strict mypy. The3600-second
 case now fails against a1800-second plan;1805 seconds passes and1805.001 fails.
+
+Further independent review found a budget header that could omit a selected
+unknown liability, and an extra trial/charge silently excluded from totals.
+The follow-up adds the snapshot/subset and unplanned-cost gates above.53 reporter
+tests and58 combined reporter/backoff/cache tests passed, including past-month
+unknowns, current-month settled omissions, UTC/month consistency, unplanned
+replacement charges, future request timestamps and global cap overrun.
