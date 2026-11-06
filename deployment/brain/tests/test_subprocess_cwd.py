@@ -61,7 +61,7 @@ experiment = benchmark.Experiment(
 )
 private = base/'runtime/secrets'
 private.mkdir(parents=True)
-for kind in ('provider','worker','ui'):
+for kind in ('provider','worker','ui','redis'):
     path = private/('litellm-'+kind+'.env')
     path.write_text('SYNTHETIC_ONLY=offline-fixture\n')
     path.chmod(0o600)
