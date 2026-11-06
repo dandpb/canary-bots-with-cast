@@ -154,20 +154,65 @@ O bloco de coordenação e a condição do aviso estão na implementação fixad
 [LiteLLM 1.108.0](https://github.com/BerriAI/litellm/blob/v1.108.0/litellm/proxy/proxy_server.py#L5974)
 e no [endpoint de warnings](https://github.com/BerriAI/litellm/blob/v1.108.0/litellm/proxy/health_endpoints/_health_endpoints.py#L1745).
 
-Em uma atualização, a preparação preserva exatamente os env files e a política
-originais. Para gerar uma política derivada com coordenação, sem editar
-`runtime/config/litellm.yaml` nem seus aliases/retries/fallbacks:
+Em uma atualização, execute primeiro a preparação sem a flag de coordenação:
+ela cria arquivos ausentes, incluindo `litellm-redis.env`, e preserva exatamente
+os env files e a política originais:
 
 ```bash
-python3 deployment/wsl/setup-gateway.py \
+cd /home/daniel/canary-bots-wsl/deployment/wsl
+python3 setup-gateway.py \
+  --directory /home/daniel/canary-bots-wsl/deployment/wsl
+```
+
+O helper de coordenação aceita uma política **JSON**, mesmo com extensão `.yaml`,
+como a produzida pela preparação padrão. Se a original está nesse formato,
+gere a política derivada sem editar a original:
+
+```bash
+python3 setup-gateway.py \
   --directory /home/daniel/canary-bots-wsl/deployment/wsl --coordination
 ```
 
 O novo arquivo é `runtime/config/litellm-coordination.yaml`. Uma segunda execução
 igual o preserva; se ele já existir com conteúdo diferente, o helper recusa
-sobrescrevê-lo. Na UI, monte essa nova origem em `/app/gateway.yaml:ro` por um
-override restrito; conserve o Compose e a política operacionais anteriores.
-Em instalações novas, a política padrão já inclui a coordenação.
+sobrescrevê-lo. Se a política existente usa sintaxe YAML em vez de JSON, não use
+`--coordination`: crie uma cópia privada nova com o nome acima e mescle os campos
+abaixo nas seções correspondentes, preservando os demais campos e sem duplicar
+chaves de seção. Revise o diff contra a original antes de montar a cópia:
+
+```yaml
+general_settings:
+  coordination_redis:
+    host: os.environ/REDIS_HOST
+    port: os.environ/REDIS_PORT
+    password: os.environ/REDIS_PASSWORD
+    db: 0
+    namespace: canary-bots-wsl:litellm
+litellm_settings:
+  enable_redis_auth_cache: true
+  cache: false
+router_settings:
+  cache_responses: false
+```
+
+Para montar a cópia na UI, crie um override local privado, por exemplo
+`runtime/config/compose.coordination.yaml`, com o conteúdo abaixo; não substitua
+um override existente. Ele altera somente a origem do mount em `/app/gateway.yaml`:
+
+```yaml
+services:
+  litellm:
+    volumes:
+      - type: bind
+        source: /home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/litellm-coordination.yaml
+        target: /app/gateway.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+```
+
+Conserve o Compose e a política operacionais anteriores. Em instalações novas,
+a política padrão já inclui a coordenação e esse override é desnecessário.
 
 Registre o caminho **efetivamente montado** em `/app/gateway.yaml` como
 `ACTIVE_POLICY`: na instalação nova é `runtime/config/litellm.yaml`; na migração
@@ -187,7 +232,7 @@ GATEWAY_COMPOSE=(env COMPOSE_REMOVE_ORPHANS=0 COMPOSE_IGNORE_ORPHANS=1 \
 ACTIVE_POLICY=/home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/litellm.yaml
 # Se migrado, use a política derivada e acrescente o override revisado que a monta:
 # ACTIVE_POLICY=/home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/litellm-coordination.yaml
-# GATEWAY_COMPOSE+=(-f /caminho/absoluto/override-coordenacao.yaml)
+# GATEWAY_COMPOSE+=(-f /home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/compose.coordination.yaml)
 ```
 
 Inclua também outros overrides existentes nesse array. Reiniciar somente com a
@@ -532,8 +577,16 @@ Confira também a remoção do gateway privado e do harness após a revisão;
 remova somente os containers temporários identificados, preservando serviços
 ativos, imagens, volumes e a autoridade financeira. `resources_cleaned` deve
 refletir a conferência real, não uma suposição do relatório.
-Para parar a implantação mantendo dados, use `docker compose stop -t 180`;
-não use `down -v` como limpeza normal.
+Para parar a implantação mantendo dados, use todos os arquivos ativos do array
+da etapa 3 e inclua os perfis opcionais:
+
+```bash
+"${GATEWAY_COMPOSE[@]}" --profile ai --profile gateway stop -t 180
+```
+
+Sem ativar os perfis, `stop` não seleciona os serviços opcionais de IA/gateway
+([perfis do Compose](https://docs.docker.com/compose/how-tos/profiles/)).
+Não use `down -v` como limpeza normal.
 
 ## Diagnóstico rápido
 
