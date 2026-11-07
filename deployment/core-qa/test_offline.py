@@ -13,12 +13,18 @@ from unittest.mock import patch
 
 from preflight import (
     IMAGE_LOCK,
+    SHUTDOWN_FLAG,
+    SHUTDOWN_KEY,
+    assert_compose,
     assert_fake_brain,
+    assert_game_config,
     assert_image_lock,
     assert_no_resources,
     assert_source,
+    lua_setting,
     record_brain_image,
     redact,
+    render_game_config,
     run_preflight,
 )
 from verify_myaac import verify as verify_myaac
@@ -189,6 +195,8 @@ class CoreQaOfflineTests(unittest.TestCase):
                       (SOURCE / "deployment/web/login.php").read_text())
         self.assertEqual(web_env["MYAAC_SITE_URL"], "http://127.0.0.1:18080")
         self.assertEqual(game_env["GAME_DISABLE_MAP_DOWNLOAD"], "1")
+        self.assertEqual(game_env[SHUTDOWN_FLAG], "1")
+        self.assertEqual(lua_setting(assert_game_config(game_env), SHUTDOWN_KEY), "false")
         self.assertEqual(game_env["CANARY_BRAIN_CONFIG"],
                          "/etc/canary-core-qa/disabled-brain.json")
         published = {int(port["published"]) for service in services.values()
@@ -205,16 +213,16 @@ class CoreQaOfflineTests(unittest.TestCase):
                     "MARIADB_PASSWORD": "qa-test-only", "GAME_PUBLIC_IP": "127.0.0.1",
                     "GAME_LOGIN_PORT": "17171", "GAME_PROTOCOL_PORT": "17172",
                     "GAME_STATUS_PORT": "17173", "GAME_DISABLE_MAP_DOWNLOAD": "1",
-                    "BOT_PLAYERS_ONLINE": "50",
+                    "BOT_PLAYERS_ONLINE": "50", SHUTDOWN_FLAG: "1",
                 }
                 with patch.dict(os.environ, env, clear=True), patch("os.execv"):
-                    runpy.run_path(str(SOURCE / "deployment/wsl/game-entrypoint.py"))
+                    runpy.run_path(str(SOURCE / "deployment/wsl/game-entrypoint.py"), run_name="__main__")
                 config = Path("config.lua").read_text()
             finally:
                 os.chdir(cwd)
         for setting in ("loginProtocolPort = 17171", "gameProtocolPort = 17172",
                         "statusProtocolPort = 17173", "toggleDownloadMap = false",
-                        "botPlayersOnline = 50"):
+                        "botPlayersOnline = 50", "globalServerSaveShutdown = false"):
             self.assertIn(setting, config)
 
     def test_operational_entrypoint_defaults_remain_unchanged(self):
@@ -225,13 +233,84 @@ class CoreQaOfflineTests(unittest.TestCase):
                 Path("config.lua.dist").write_text("toggleDownloadMap = true\n")
                 with patch.dict(os.environ, {"MARIADB_PASSWORD": "test-only"}, clear=True), \
                      patch("os.execv"):
-                    runpy.run_path(str(SOURCE / "deployment/wsl/game-entrypoint.py"))
+                    runpy.run_path(str(SOURCE / "deployment/wsl/game-entrypoint.py"), run_name="__main__")
                 config = Path("config.lua").read_text()
             finally:
                 os.chdir(cwd)
         for setting in ("loginProtocolPort = 7171", "gameProtocolPort = 7172",
                         "statusProtocolPort = 7173", "toggleDownloadMap = true"):
             self.assertIn(setting, config)
+
+
+QA_GAME_ENV = {"GAME_PUBLIC_IP": "127.0.0.1", "GAME_LOGIN_PORT": "17171", "GAME_PROTOCOL_PORT": "17172",
+               "GAME_STATUS_PORT": "17173", "GAME_DISABLE_MAP_DOWNLOAD": "1", "BOT_PLAYERS_ONLINE": "50",
+               "CANARY_BRAIN_CONFIG": "/etc/canary-core-qa/disabled-brain.json", SHUTDOWN_FLAG: "1"}
+
+
+class DailyShutdownContractTests(unittest.TestCase):
+    """QA only: the daily global save must not shut the game down; production keeps the repo default."""
+
+    def test_qa_render_disables_the_daily_shutdown_and_keeps_the_save(self):
+        config = assert_game_config(QA_GAME_ENV)
+        dist = (SOURCE / "config.lua.dist").read_text()
+        self.assertEqual(lua_setting(config, SHUTDOWN_KEY), "false")
+        self.assertEqual(lua_setting(dist, SHUTDOWN_KEY), "true")  # the repo default stays
+        for key in ("globalServerSaveTime", "globalServerSaveNotifyMessage", "globalServerSaveCleanMap",
+                    "globalServerSaveClose", "toggleSaveInterval"):
+            self.assertEqual(lua_setting(config, key), lua_setting(dist, key))
+
+    def test_production_render_is_byte_for_byte_the_default(self):
+        dist = (SOURCE / "config.lua.dist").read_text()
+        for env in ({}, {"GAME_PUBLIC_IP": "203.0.113.7", "BOT_PLAYERS_ONLINE": "997",
+                         "BOT_POPULATION_REFERENCE_BOTS": "65001,65004"}):
+            with self.subTest(env=env):
+                config = render_game_config(env)
+                self.assertEqual(config, render_game_config({**env, SHUTDOWN_FLAG: ""}))
+                self.assertEqual(config.count(SHUTDOWN_KEY), dist.count(SHUTDOWN_KEY))
+                self.assertTrue(config.startswith(dist))
+                self.assertEqual(lua_setting(config, SHUTDOWN_KEY), "true")
+        wsl = (SOURCE / "deployment/wsl/compose.yaml").read_text()
+        self.assertNotIn(SHUTDOWN_FLAG, wsl)
+        self.assertNotIn(SHUTDOWN_FLAG, (SOURCE / "deployment/wsl/Dockerfile").read_text())
+
+    def test_contract_fails_closed_when_the_key_is_true_or_missing(self):
+        for env in ({**QA_GAME_ENV, SHUTDOWN_FLAG: None}, {key: value for key, value in QA_GAME_ENV.items()
+                                                          if key != SHUTDOWN_FLAG}):
+            with self.subTest(env=env), self.assertRaisesRegex(RuntimeError, SHUTDOWN_FLAG):
+                assert_game_config(env)
+        with self.assertRaisesRegex(ValueError, SHUTDOWN_FLAG):  # the entrypoint refuses ambiguous values
+            render_game_config({**QA_GAME_ENV, SHUTDOWN_FLAG: "true"})
+        cases = {"true": "globalServerSaveShutdown = true\n", "missing": ""}
+        for name, tail in cases.items():
+            def render(_environ, config, tail=tail):  # an entrypoint that ignores the flag
+                return config.replace("globalServerSaveShutdown = true", "") + tail
+            with self.subTest(name), patch("preflight.CONFIG_DIST", **{"read_text.return_value": "a = 1\n"}), \
+                 patch("importlib.util.module_from_spec") as module, patch("importlib.util.spec_from_file_location"):
+                module.return_value.render = render
+                with self.assertRaisesRegex(RuntimeError, "globalServerSaveShutdown = false"):
+                    assert_game_config(QA_GAME_ENV)
+        self.assertIsNone(lua_setting("-- globalServerSaveShutdown = false\n", SHUTDOWN_KEY))
+        self.assertEqual(lua_setting("globalServerSaveShutdown = false\nglobalServerSaveShutdown = true\n",
+                                     SHUTDOWN_KEY), "true")
+
+    def test_preflight_compose_gate_refuses_a_qa_game_without_the_contract(self):
+        def rendered(game_env):
+            build = {"args": {"SOURCE_REVISION": "0" * 40}}
+            return json.dumps({"name": "canary-core-qa", "volumes": {
+                name: {"name": f"canary-core-qa_{name}"} for name in ("database", "game-logs", "authored-data",
+                                                                     "website-cache")}, "services": {
+                "database": {"image": IMAGE_LOCK["database"]["ref"], "pull_policy": "never"},
+                "game": {"image": "canary-core-qa-game:local", "build": build, "environment": game_env},
+                "web": {"image": "canary-core-qa-web:local",
+                        "build": {"dockerfile": "deployment/wsl/Web.Dockerfile"}}}})
+
+        with patch.dict(os.environ, {"SOURCE_REVISION": "0" * 40}):
+            with patch("preflight.command", return_value=rendered(QA_GAME_ENV)):
+                self.assertRegex(assert_compose(), r"^[0-9a-f]{64}$")
+            without = {key: value for key, value in QA_GAME_ENV.items() if key != SHUTDOWN_FLAG}
+            with patch("preflight.command", return_value=rendered(without)), \
+                 self.assertRaisesRegex(RuntimeError, f"QA game must set {SHUTDOWN_FLAG}=1"):
+                assert_compose()
 
 
 class BrainFakeStageTests(unittest.TestCase):
@@ -262,11 +341,11 @@ class BrainFakeStageTests(unittest.TestCase):
                 Path("config.lua.dist").write_text("")
                 env = {"MARIADB_PASSWORD": "t", "BOT_POPULATION_REFERENCE_BOTS": "65001,65004,65003"}
                 with patch.dict(os.environ, env, clear=True), patch("os.execv"):
-                    runpy.run_path(str(SOURCE / "deployment/wsl/game-entrypoint.py"))
+                    runpy.run_path(str(SOURCE / "deployment/wsl/game-entrypoint.py"), run_name="__main__")
                 self.assertIn('botPopulationReferenceBots = "65001,65004,65003"', Path("config.lua").read_text())
                 env["BOT_POPULATION_REFERENCE_BOTS"] = '1"; os.exit()'
                 with patch.dict(os.environ, env, clear=True), patch("os.execv"), self.assertRaises(ValueError):
-                    runpy.run_path(str(SOURCE / "deployment/wsl/game-entrypoint.py"))
+                    runpy.run_path(str(SOURCE / "deployment/wsl/game-entrypoint.py"), run_name="__main__")
             finally:
                 os.chdir(cwd)
 

@@ -35,6 +35,7 @@ services:
       GAME_PROTOCOL_PORT: 17172
       GAME_STATUS_PORT: 17173
       GAME_DISABLE_MAP_DOWNLOAD: "1"
+      GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN: "1"  # QA only: the daily save must not stop the game
       BOT_PLAYERS_ONLINE: ${BOT_PLAYERS_ONLINE:-50}
       CANARY_BRAIN_CONFIG: /etc/canary-core-qa/disabled-brain.json
     depends_on:

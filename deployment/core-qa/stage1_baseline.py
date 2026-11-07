@@ -22,12 +22,21 @@ Actions (no action ever runs `down -v` or touches a shared volume):
   capture          read-only on Docker: write a candidate baseline for review; never pinned by itself
   rollback         stage 2 -> playable stage 1: remove brain and its disposable volumes, re-up stage 1
   verify-restored  read-only: the checks that end `rollback`
+  game-rollout     read-only: after a game-only rollout, write the game receipt that `capture` accepts
+
+A game-only rollout (e.g. the no-daily-shutdown fix) recreates the game container. Its new ID, image and
+CreatedAt are then not history from web-rollout-after.json: `game-rollout` records them in a sealed
+game receipt, after checking that database, web, network and the four volumes still equal the pinned
+baseline. `capture --game-rollout-receipt` then gives only the game the provenance
+game_rollout_<UTC>; database and web stay historical. A DB slice that differs from the pinned baseline
+is accepted only with a --db-audit file (who, when, why) that names that exact slice.
 """
 
 import argparse
 import hashlib
 import json
 import os
+import re
 import socket
 import urllib.request
 from datetime import UTC, datetime
@@ -62,6 +71,17 @@ CONTAINER_LABELS = ("config-hash", "project", "service")
 GAME_PORTS = {"GAME_LOGIN_PORT": "17171", "GAME_PROTOCOL_PORT": "17172", "GAME_STATUS_PORT": "17173"}
 DISABLED_BRAIN = "/etc/canary-core-qa/disabled-brain.json"
 LOGIN_URL = "http://127.0.0.1:18080/login.php"
+GAME_ROLLOUT_SCHEMA = "qa-game-rollout-v1"
+GAME_ROLLOUT_FIELDS = ("id", "image_id", "created_at", "image_source_revision")
+GAME_INSPECT = '{"env":{{json .Config.Env}},"ports":{{json .HostConfig.PortBindings}},"mounts":{{json .Mounts}}}'
+# Inside the game: only the SHA-256 of config.lua and the effective shutdown value leave it (it holds the
+# DB password). Same rule as preflight.lua_setting: the last top-level assignment wins.
+GAME_CONFIG_PROBE = (
+    "import hashlib, re; b = open('/canary/config.lua', 'rb').read(); "
+    f"v = re.findall(r'(?m)^[ \\t]*{qa.SHUTDOWN_KEY}[ \\t]*=[ \\t]*([^\\s-]+)', b.decode()); "
+    "print(hashlib.sha256(b).hexdigest(), v[-1] if v else 'missing')"
+)
+DB_AUDIT_FIELDS = ("auditor", "audited_at_utc", "explanation")
 COMPOSE_ENV_DROP = ("MARIADB_PASSWORD", "MARIADB_ROOT_PASSWORD", "BOT_PLAYERS_ONLINE")
 STAGE1 = ("docker", "compose", "-p", qa.PROJECT, "-f", "compose.yaml", "--env-file", ".env")
 STAGE2 = ("docker", "compose", "-p", qa.PROJECT, "-f", "compose.yaml", "-f", "compose.brain-fake.yaml",
@@ -235,7 +255,8 @@ def comparable(snapshot):
     """Exactly what the gate compares, keyed by name; capture metadata is left out."""
     db = snapshot.get("db_logical_snapshot")
     return {
-        "containers": {item["name"]: {key: value for key, value in item.items() if key != "historical_comparison"}
+        "containers": {item["name"]: {key: value for key, value in item.items()
+                                      if key not in ("historical_comparison", "game_rollout_comparison")}
                        for item in snapshot["containers"]},
         "network": snapshot["network"],
         "volumes": {item["name"]: item for item in snapshot["volumes"]},
@@ -259,17 +280,21 @@ def load_baseline(path=BASELINE, expected_sha256=BASELINE_SHA256):
     baseline = json.loads(content)
     if baseline.get("schema") != SCHEMA or baseline.get("project") != qa.PROJECT:
         raise RuntimeError("stage-1 baseline schema or project differs; refused")
-    if not all(all(item.get("historical_comparison", {}).values()) and item.get("historical_comparison")
-               for item in baseline["containers"]):
-        raise RuntimeError("stage-1 baseline containers were not cross-checked with the historical receipt")
+    rollout = baseline.get("game_rollout_receipt")
+    for item in baseline["containers"]:  # only a recaptured baseline with a game receipt may skip history for game
+        check = item.get("game_rollout_comparison" if rollout and item["name"] == GAME else "historical_comparison")
+        if not check or not all(check.values()):
+            raise RuntimeError("stage-1 baseline containers were not cross-checked with the historical receipt")
     return baseline
 
 
 def provenance(baseline):
+    rollout = baseline.get("game_rollout_receipt")
     return {**PROVENANCE, "historical": {**PROVENANCE["historical"], "receipt": baseline["historical_receipt"]},
             "captured_now": {**PROVENANCE["captured_now"], "captured_at_utc": baseline["captured_at_utc"],
                              "db_slice_method": DB_SLICE_METHOD,
-                             "db_slice_transaction": baseline["db_logical_snapshot"].get("transaction")}}
+                             "db_slice_transaction": baseline["db_logical_snapshot"].get("transaction")},
+            **({rollout["provenance"]: {"containers": [GAME], "receipt": rollout}} if rollout else {})}
 
 
 def assert_stage1_upgrade(path=BASELINE, expected_sha256=BASELINE_SHA256):
@@ -288,8 +313,7 @@ def assert_stage1_upgrade(path=BASELINE, expected_sha256=BASELINE_SHA256):
 def game_contract():
     """Restored game runs the stage-1 config: disabled brain, QA ports, no brain socket mount."""
     problems = []
-    found = lines("docker", "inspect", GAME, "--format",
-                  '{"env":{{json .Config.Env}},"ports":{{json .HostConfig.PortBindings}},"mounts":{{json .Mounts}}}')
+    found = lines("docker", "inspect", GAME, "--format", GAME_INSPECT)
     game = found[0] if found else {"env": [], "ports": {}, "mounts": []}
     env = dict(entry.split("=", 1) for entry in game["env"] or [] if "=" in entry)
     for key, expected in {**GAME_PORTS, "CANARY_BRAIN_CONFIG": DISABLED_BRAIN}.items():
@@ -404,21 +428,130 @@ def historical_comparison(receipt, containers):
     return result
 
 
-def capture(historical, output=None):
+def sealed(receipt):
+    """SHA-256 of a receipt's canonical JSON without its own seal."""
+    body = {key: value for key, value in receipt.items() if key != "content_sha256"}
+    return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def game_config():
+    """The live game config.lua: SHA-256 and effective globalServerSaveShutdown, never its content."""
+    found = qa.command("docker", "exec", GAME, "python3", "-c", GAME_CONFIG_PROBE).split()
+    if len(found) != 2 or not re.fullmatch(r"[0-9a-f]{64}", found[0]):
+        raise RuntimeError("game config.lua probe returned an unexpected shape; refused")
+    return {"sha256": found[0], qa.SHUTDOWN_KEY: found[1]}
+
+
+def assert_preserved(historical_content, historical_name, snapshot, baseline):
+    """database and web as in web-rollout-after.json; them, the network and the 4 volumes as in the baseline."""
+    comparison = historical_comparison(json.loads(historical_content), snapshot["containers"])
+    for name in (DATABASE, WEB):
+        if not all(comparison[name].values()):
+            raise RuntimeError(f"{name} differs from {historical_name} ({comparison[name]}); refused")
+    assert_persistent_stage1(baseline)
+    return comparison
+
+
+def record_game_rollout(historical, output=None, path=BASELINE, expected_sha256=BASELINE_SHA256):
+    """After a game-only rollout: a sealed receipt of the recreated game, written only if the rest is unchanged."""
+    revision = os.environ.get("SOURCE_REVISION", "")
+    qa.assert_source(revision)
+    content = historical.read_bytes() if historical.is_file() else b""
+    if not content:
+        raise RuntimeError(f"historical receipt {historical} is absent; game receipt refused")
+    baseline = load_baseline(path, expected_sha256)
+    qa_objects(stage2=False)
+    assert_images(brain_allowed=False)
+    assert_web_image(baseline)
+    snapshot = observe(db=False)
+    assert_preserved(content, historical.name, snapshot, baseline)
+    game = next(item for item in snapshot["containers"] if item["name"] == GAME)
+    old = next(item for item in baseline["containers"] if item["name"] == GAME)
+    if game["image_source_revision"] != revision or game["id"] == old["id"]:
+        raise RuntimeError("game is not a container recreated from SOURCE_REVISION; game receipt refused")
+    env = dict(entry.split("=", 1) for entry in lines("docker", "inspect", GAME, "--format", GAME_INSPECT)[0]["env"]
+               if "=" in entry)
+    config = game_config()
+    if env.get(qa.SHUTDOWN_FLAG) != "1" or config[qa.SHUTDOWN_KEY] != "false":
+        raise RuntimeError(f"live game config.lua does not have {qa.SHUTDOWN_KEY} = false; game receipt refused")
+    recorded_at = datetime.now(UTC)
+    receipt = {
+        "schema": GAME_ROLLOUT_SCHEMA, "project": qa.PROJECT, "recorded_at_utc": recorded_at.isoformat(),
+        "source_revision": revision, "baseline_sha256": expected_sha256,
+        "web_rollout_receipt": {"filename": historical.name, "sha256": hashlib.sha256(content).hexdigest()},
+        "game": {key: game[key] for key in ("name", "image_ref", *GAME_ROLLOUT_FIELDS)},
+        "game_config": config,
+        "preserved": [DATABASE, WEB, "network", "volumes"],
+    }
+    receipt["content_sha256"] = sealed(receipt)
+    output = output or qa.HERE / f"runtime/evidence/game-rollout-after-{recorded_at:%Y%m%dT%H%M%SZ}.json"
+    if output.exists():
+        raise RuntimeError(f"{output.name} already exists; game receipt refused")
+    return output, qa.save_receipt(output, receipt)
+
+
+def game_rollout(path, historical_content, snapshot, expected_sha256):
+    """The game receipt must be sealed, carry the config check and describe the live game exactly."""
+    content = path.read_bytes() if path.is_file() else b""
+    receipt = json.loads(content) if content else {}
+    if receipt.get("schema") != GAME_ROLLOUT_SCHEMA or receipt.get("content_sha256") != sealed(receipt):
+        raise RuntimeError(f"game receipt {path.name} is absent, of another schema or tampered; capture refused")
+    config = receipt.get("game_config") or {}
+    if config.get(qa.SHUTDOWN_KEY) != "false" or not re.fullmatch(r"[0-9a-f]{64}", str(config.get("sha256"))):
+        raise RuntimeError(f"game receipt {path.name} lacks the config check; capture refused")
+    if (receipt.get("baseline_sha256") != expected_sha256 or receipt.get("web_rollout_receipt", {}).get("sha256")
+            != hashlib.sha256(historical_content).hexdigest()):
+        raise RuntimeError(f"game receipt {path.name} names another baseline or web receipt; capture refused")
+    game = next(item for item in snapshot["containers"] if item["name"] == GAME)
+    comparison = {f"{key}_match": receipt["game"].get(key) == game[key] for key in GAME_ROLLOUT_FIELDS}
+    comparison["config_match"] = game_config() == config
+    if not all(comparison.values()):
+        raise RuntimeError(f"{GAME} differs from {path.name} ({comparison}); capture refused")
+    stamp = datetime.fromisoformat(receipt["recorded_at_utc"]).strftime("%Y%m%dT%H%M%SZ")
+    return comparison, {"provenance": f"game_rollout_{stamp}", "filename": path.name,
+                        "sha256": hashlib.sha256(content).hexdigest(), "recorded_at_utc": receipt["recorded_at_utc"],
+                        "source_revision": receipt["source_revision"]}
+
+
+def db_audit(path, live, expected_sha256):
+    """A DB slice that differs from the pinned baseline needs an audit naming that exact slice."""
+    content = path.read_bytes() if path and path.is_file() else b""
+    audit = json.loads(content) if content else {}
+    if (not all(isinstance(audit.get(key), str) and audit[key].strip() for key in DB_AUDIT_FIELDS)
+            or audit.get("baseline_sha256") != expected_sha256 or audit.get("db_slice") != live):
+        raise RuntimeError("the DB slice differs from the pinned baseline; capture needs --db-audit with "
+                           f"{', '.join(DB_AUDIT_FIELDS)}, baseline_sha256 and this db_slice; refused")
+    return {**{key: audit[key] for key in DB_AUDIT_FIELDS}, "filename": path.name,
+            "sha256": hashlib.sha256(content).hexdigest()}
+
+
+def capture(historical, output=None, rollout_receipt=None, audit=None, path=BASELINE,
+            expected_sha256=BASELINE_SHA256):
     """A candidate baseline of the running stage 1, for review. Read-only on Docker; never pinned here."""
     content = historical.read_bytes() if historical.is_file() else b""
     if not content:
         raise RuntimeError(f"historical receipt {historical} is absent; capture refused")
+    baseline = load_baseline(path, expected_sha256)
     qa_objects(stage2=False)
     assert_images(brain_allowed=False)
     captured_at = datetime.now(UTC)
     snapshot = observe()
     comparison = historical_comparison(json.loads(content), snapshot["containers"])
+    rollout = None
+    if rollout_receipt:
+        assert_preserved(content, historical.name, snapshot, baseline)
+        rollout_comparison, rollout = game_rollout(rollout_receipt, content, snapshot, expected_sha256)
     for item in snapshot["containers"]:
+        if rollout and item["name"] == GAME:  # recreated: provenance game_rollout_<UTC>, never historical
+            item["game_rollout_comparison"] = rollout_comparison
+            continue
         item["historical_comparison"] = comparison[item["name"]]
         if not all(item["historical_comparison"].values()):
             raise RuntimeError(f"{item['name']} differs from {historical.name} "
                                f"({item['historical_comparison']}); capture refused")
+    live = {key: snapshot["db_logical_snapshot"][key] for key in ("counts", "qa_character_projection_sha256")}
+    pinned = comparable(baseline)["db_slice"]
+    audited = db_audit(audit, live, expected_sha256) if live != pinned or audit else None
     snapshot["db_logical_snapshot"].update(method=DB_SLICE_METHOD, transaction="REPEATABLE READ; READ ONLY; "
                                            "WITH CONSISTENT SNAPSHOT")
     output = output or qa.HERE / f"runtime/evidence/stage1-baseline-candidate-{captured_at:%Y%m%dT%H%M%SZ}.json"
@@ -427,10 +560,17 @@ def capture(historical, output=None):
     sha = qa.save_receipt(output, {
         "schema": SCHEMA, "project": qa.PROJECT, **snapshot,
         "captured_at_utc": captured_at.isoformat(),
-        "provenance": {"historical": PROVENANCE["historical"]["fields"],
-                       "captured_now": PROVENANCE["captured_now"]["fields"]},
+        "provenance": {"historical": PROVENANCE["historical"]["fields"] if not rollout else [
+                           f"containers[{name}].{key}" for name in (DATABASE, WEB)
+                           for key in ("id", "image_id", "created_at")],
+                       "captured_now": PROVENANCE["captured_now"]["fields"],
+                       **({rollout["provenance"]: [f"containers[{GAME}].{key}" for key in GAME_ROLLOUT_FIELDS]}
+                          if rollout else {})},
         "historical_receipt": {"filename": historical.name, "sha256": hashlib.sha256(content).hexdigest(),
                                "checked_at_utc": captured_at.isoformat()},
+        **({"game_rollout_receipt": rollout} if rollout else {}),
+        **({"db_audit": audited} if audited else {}),
+        "previous_baseline_sha256": expected_sha256,
         "limits": ["Docker inspections and DB slice were sequential, not atomic across systems.",
                    "Network, volumes and the DB slice are captured_now: no historical claim.",
                    "DB data is a point-in-time read-only logical slice, not a full backup."],
@@ -511,13 +651,20 @@ def print_capture(path, sha):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("action", choices=("check", "capture", "rollback", "verify-restored"))
-    parser.add_argument("--historical-receipt", type=Path, help="capture: path to web-rollout-after.json")
+    parser.add_argument("action", choices=("check", "capture", "rollback", "verify-restored", "game-rollout"))
+    parser.add_argument("--historical-receipt", type=Path,
+                        help="capture/game-rollout: path to web-rollout-after.json")
+    parser.add_argument("--game-rollout-receipt", type=Path, help="capture: the receipt written by game-rollout")
+    parser.add_argument("--db-audit", type=Path, help="capture: DB audit JSON when the slice differs from the pin")
     args = parser.parse_args()
+    if args.action in ("capture", "game-rollout") and not args.historical_receipt:
+        parser.error(f"{args.action} needs --historical-receipt")
     if args.action == "capture":
-        if not args.historical_receipt:
-            parser.error("capture needs --historical-receipt")
-        print_capture(*capture(args.historical_receipt))
+        print_capture(*capture(args.historical_receipt, rollout_receipt=args.game_rollout_receipt,
+                               audit=args.db_audit))
+    elif args.action == "game-rollout":
+        path, sha = record_game_rollout(args.historical_receipt)
+        print(f"Game rollout receipt {path} SHA-256 {sha}. Pass it to capture with --game-rollout-receipt.")
     elif args.action == "check":
         result = assert_stage1_upgrade()
         print(f"Stage 1 equals the reviewed baseline {result['baseline_sha256']}; nothing was changed.")
