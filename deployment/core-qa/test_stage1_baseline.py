@@ -157,9 +157,10 @@ class FakeDocker:
             return "".join(f"{ref}\n" for ref in self.tags)
         if args[1:3] == ("image", "inspect"):
             if fmt == "{{.Id}}":
-                if args[3] not in self.revisions:
+                ident = self.tags.get(args[3], args[3])
+                if ident not in self.revisions:
                     raise RuntimeError("read-only command failed: docker image")
-                return args[3] + "\n"
+                return ident + "\n"
             return "".join(json.dumps({"id": ident, "labels": {gate.REVISION_LABEL: self.revisions[ident]}
                                        if self.revisions[ident] else None}) + "\n"
                            for ident in args[3:-2])
@@ -284,6 +285,19 @@ class Stage1BaselineGateTests(unittest.TestCase):
             with self.subTest(name), self.assertRaisesRegex(
                     RuntimeError, "differs from the reviewed baseline; upgrade refused:\n(.|\n)*" + re.escape(path)):
                 self.upgrade(docker)
+
+    def test_upgrade_refuses_a_substituted_or_missing_web_tag_with_unchanged_container(self):
+        for image_id in ("sha256:" + "6" * 64, None):
+            docker = FakeDocker(self.baseline)
+            if image_id:
+                docker.tags["canary-core-qa-web:local"] = image_id
+                docker.revisions[image_id] = None
+            else:
+                docker.tags.pop("canary-core-qa-web:local")
+            with self.subTest(image_id=image_id), self.assertRaisesRegex(RuntimeError, "refused|absent"):
+                self.upgrade(docker)
+            self.assertEqual(docker.containers[WEB]["image_id"], self.baseline["containers"][2]["image_id"])
+            self.assertEqual(docker.log, [])
 
     def test_baseline_hash_mismatch_is_refused(self):
         with patch("preflight.command", side_effect=FakeDocker(self.baseline)) as docker, \
@@ -468,7 +482,7 @@ class Stage1RollbackTests(unittest.TestCase):
             (*stage2, "rm", "-f", "brain"),
             ("docker", "volume", "rm", f"{QA}_brain-ledger"),
             ("docker", "tag", game_image, "canary-core-qa-game:local"),
-            (*stage1, "up", "-d", "--no-build", "--wait"),
+            (*stage1, "up", "-d", "--no-build", "--no-deps", "--wait", "game"),
             ("docker", "volume", "rm", f"{QA}_brain-socket"),
         ])
         for args in docker.log:
@@ -483,6 +497,21 @@ class Stage1RollbackTests(unittest.TestCase):
         self.assertTrue(receipt["db"]["slice_equals_baseline"])
         self.assertEqual(receipt["game_recreated"], "7" * 64)
         self.assertEqual(set(receipt["provenance"]), {"historical", "captured_now"})
+
+    def test_rollback_refuses_a_substituted_or_missing_web_tag_before_any_mutation(self):
+        for image_id in ("sha256:" + "6" * 64, None):
+            docker = FakeDocker(self.baseline, stage2=True)
+            if image_id:
+                docker.tags["canary-core-qa-web:local"] = image_id
+                docker.revisions[image_id] = None
+            else:
+                docker.tags.pop("canary-core-qa-web:local")
+            with self.subTest(image_id=image_id), self.assertRaisesRegex(RuntimeError, "web image tag.*refused"):
+                self.rollback(docker)
+            self.assertEqual(docker.log, [])
+            self.assertIn(BRAIN, docker.containers)
+            self.assertIn(gate.LEDGER, docker.volumes)
+            self.assertFalse(self.receipt.exists())
 
     def test_rollback_accepts_a_played_db_when_volumes_are_the_same_and_intact(self):
         docker = FakeDocker(self.baseline, stage2=True)
@@ -535,7 +564,7 @@ class Stage1RollbackTests(unittest.TestCase):
         docker.fail = ("docker", "compose", "-p", QA, "-f", "compose.yaml", "--env-file", ".env", "up")
         with self.assertRaisesRegex(RuntimeError, "failed"):
             self.rollback(docker)
-        self.assertEqual(docker.log[-1][-4:], ("up", "-d", "--no-build", "--wait"))
+        self.assertEqual(docker.log[-1][-6:], ("up", "-d", "--no-build", "--no-deps", "--wait", "game"))
         self.assertIn(gate.BRAIN_SOCKET, docker.volumes)
         self.assertFalse(self.receipt.exists())
 

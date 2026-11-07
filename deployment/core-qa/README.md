@@ -220,6 +220,10 @@ ou o `CreatedAt` de um container não estão, juntos, numa mesma entrada de
 commit copia o arquivo para `stage1-baseline.json` e troca `BASELINE_SHA256` em
 `stage1_baseline.py`.
 
+Antes do upgrade e antes de qualquer mutação no rollback, o gate também exige
+que a tag `canary-core-qa-web:local` ainda aponte ao ID da imagem web na baseline;
+se faltar ou tiver sido substituída, recusa.
+
 O recibo `runtime/evidence/stage2-upgrade-receipt.json` guarda o SHA da baseline,
 as duas classes de proveniência e o que foi observado. No upgrade só o `game` é
 recriado, com a imagem rebuildada no SHA aprovado; `database` e `web` ficam. A
@@ -259,8 +263,9 @@ erro:
 3. `$QA rm -f brain`, só o container do brain;
 4. `docker volume rm canary-core-qa_brain-ledger`;
 5. `docker tag <ID da imagem game da baseline> canary-core-qa-game:local`;
-6. `env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --no-build --wait`,
-   só o Compose da etapa 1, que recria o `game` sem o override;
+6. `env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --no-build --no-deps --wait game`,
+   só o Compose da etapa 1, que recria o `game` sem o override e sem recriar
+   `database` ou `web`;
 7. `docker volume rm canary-core-qa_brain-socket`, livre só agora.
 
 Banco, logs, dados autorais e cache não são tocados. Em seguida, e também sozinho
