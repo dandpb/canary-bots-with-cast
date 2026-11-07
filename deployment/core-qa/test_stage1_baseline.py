@@ -526,9 +526,58 @@ class Stage1RollbackTests(unittest.TestCase):
     def test_rollback_refuses_a_recreated_volume_even_with_an_intact_db(self):
         docker = FakeDocker(self.baseline, stage2=True)
         docker.volumes[f"{QA}_database"]["created_at"] = "2026-11-07T01:30:00Z"
-        with self.assertRaisesRegex(RuntimeError, "not restored:\n(.|\n)*" + re.escape(f"/volumes/{QA}_database/created_at")):
+        with self.assertRaisesRegex(RuntimeError, "rollback refused:\n(.|\n)*" + re.escape(f"/volumes/{QA}_database/created_at")):
             self.rollback(docker)
+        self.assertEqual(docker.log, [])
         self.assertFalse(self.receipt.exists())
+
+    def test_persistent_identity_check_accepts_stage2_game_and_played_db_without_querying_db(self):
+        docker = FakeDocker(self.baseline, stage2=True)
+        docker.containers[GAME].update(status="exited", health=None)
+        docker.rows[0] = docker.rows[0].replace("\t4200", "\t9100")
+        with patch("preflight.command", side_effect=docker), patch("stage1_baseline.db_slice") as db:
+            gate.assert_persistent_stage1(self.baseline)
+        db.assert_not_called()
+        self.assertEqual(docker.log, [])
+
+    def test_rollback_refuses_persistent_identity_or_label_drift_before_any_mutation(self):
+        cases = []
+        for service in (DATABASE, WEB):
+            for field, value in (("id", "6" * 64), ("created_at", "2026-11-07T03:00:00Z"),
+                                 ("image_ref", "substituted:local")):
+                cases.append(("container", service, field, value, f"/containers/{service}/{field}"))
+            cases.append(("container-label", service, "com.docker.compose.config-hash", "6" * 64,
+                          f"/containers/{service}/compose_labels/com.docker.compose.config-hash"))
+            cases.append(("container", service, "image_id", self.baseline["containers"][1]["image_id"],
+                          f"/containers/{service}/image_id"))
+        for field, value in (("id", "6" * 64), ("created_at", "2026-11-07T03:00:00Z")):
+            cases.append(("network", None, field, value, f"/network/{field}"))
+        cases.append(("network-label", None, "com.docker.compose.config-hash", "6" * 64,
+                      "/network/compose_labels/com.docker.compose.config-hash"))
+        for volume in sorted(preflight.VOLUMES):
+            name = f"{QA}_{volume}"
+            cases.append(("volume", name, "created_at", "2026-11-07T03:00:00Z", f"/volumes/{name}/created_at"))
+            cases.append(("volume-label", name, "com.docker.compose.version", "changed",
+                          f"/volumes/{name}/compose_labels/com.docker.compose.version"))
+        for kind, name, field, value, path in cases:
+            docker = FakeDocker(self.baseline, stage2=True)
+            if kind.startswith("container"):
+                target = docker.containers[name]
+            elif kind.startswith("network"):
+                target = docker.network
+            else:
+                target = docker.volumes[name]
+            if kind.endswith("-label"):
+                target = target["labels" if kind == "container-label" else "compose_labels"]
+            target[field] = value
+            with self.subTest(kind=kind, name=name, field=field), self.assertRaisesRegex(
+                    RuntimeError, "rollback refused:\n(.|\n)*" + re.escape(path)):
+                self.rollback(docker)
+            self.assertEqual(docker.log, [])
+            self.assertIn(BRAIN, docker.containers)
+            self.assertIn(gate.LEDGER, docker.volumes)
+            self.assertFalse((self.root / "runtime/evidence/brain").exists())
+            self.assertFalse(self.receipt.exists())
 
     def test_compose_runs_without_host_secrets_and_needs_source_revision(self):
         docker = FakeDocker(self.baseline, stage2=True)

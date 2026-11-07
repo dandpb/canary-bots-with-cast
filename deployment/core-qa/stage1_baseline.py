@@ -453,12 +453,33 @@ def run(*args, env=None):
     qa.command(*args, env=env)
 
 
+def assert_persistent_stage1(baseline):
+    """Before rollback mutations, preserve DB/web/network/volume identities and labels.
+
+    The game is intentionally different in stage 2. Status/health are checked after
+    restore, not used as resource identities here; DB contents may change through play.
+    """
+    expected = comparable(baseline)
+    expected.pop("db_slice", None)
+    now = comparable(observe(db=False))
+    for snapshot in (expected, now):
+        snapshot["containers"].pop(GAME)
+        for item in snapshot["containers"].values():
+            item.pop("status")
+            item.pop("health")
+    changes = differences(expected, now)
+    if changes:
+        raise RuntimeError("persistent stage-1 resources differ from the reviewed baseline; "
+                           "rollback refused:\n" + "\n".join(changes))
+
+
 def rollback(path=BASELINE, expected_sha256=BASELINE_SHA256, receipt_path=None):
     """Stage 2 -> playable stage 1. Only brain and brain-* go away; database, logs and cache stay."""
     baseline = load_baseline(path, expected_sha256)
     env = compose_env()
     found = qa_objects(stage2=True)
     assert_web_image(baseline)
+    assert_persistent_stage1(baseline)
     game_image = next(item["image_id"] for item in baseline["containers"] if item["name"] == GAME)
     try:
         present = qa.command("docker", "image", "inspect", game_image, "--format", "{{.Id}}").strip()

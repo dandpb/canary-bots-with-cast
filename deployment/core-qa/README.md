@@ -255,8 +255,13 @@ python3 stage1_baseline.py rollback
 
 O script recusa antes de mudar qualquer coisa se a baseline não bater com o pino,
 se houver objeto `canary-core-qa*` estranho ou se a imagem `game` da etapa 1
-(ID da baseline) não existir mais. Depois executa, nesta ordem, e para no primeiro
-erro:
+(ID da baseline) não existir mais. Ainda antes do primeiro `stop`, compara com a
+baseline as identidades e labels dos containers `database` e `web`, da rede e dos
+quatro volumes persistentes (incluindo IDs de containers/imagens/rede e
+`CreatedAt`; volumes têm nome e `CreatedAt`). Qualquer diferença recusa o rollback
+sem mutações. O `game` da etapa 2 pode ter outro ID, imagem e configuração; estado
+e health são verificados depois da restauração, e o recorte do banco pode mudar
+com o jogo. Depois executa, nesta ordem, e para no primeiro erro:
 
 1. `$QA stop -t 180 brain game` (salva os personagens);
 2. `$QA cp brain:/var/lib/canary-human-qa-stage2/. runtime/evidence/brain/`;
