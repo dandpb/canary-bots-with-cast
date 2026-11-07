@@ -430,7 +430,7 @@ bool BotEngine::goTo(BotState& bot, const Position& target, int32_t maxDist) {
 	// Keep it that way — do not reintroduce a followWaypoints/leg-walk call here.
 	if (bot.currentPos.z != target.z && bot.fcState == FloorChangeState::NONE && !isFollowingWaypoints) {
 		startFloorChange(bot, target.z > bot.currentPos.z, target);
-		return true; // will be handled by floor change state machine
+		return bot.fcState != FloorChangeState::NONE;
 	}
 
 	// Allow A* to path onto the destination FC tile only when navigating to a walk-on FC target.
@@ -1061,6 +1061,13 @@ bool BotEngine::planScopedWalk(BotState& bot, const Position& target, int32_t ma
 	// re-plan: it finds this entry already on the current floor and keeps it.
 	s_plannedFc[bot.guid] = hop;
 	startFloorChange(bot, hop.portal.goesDown, target);
+	if (bot.fcState == FloorChangeState::NONE) {
+		// The floor-change backstop can refuse to start after repeated failures.
+		// Do not report a successful walk with no transition or queued steps.
+		s_plannedFc.erase(bot.guid);
+		s_plannedHop.erase(bot.guid);
+		return false;
+	}
 	return true;
 }
 
