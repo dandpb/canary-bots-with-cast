@@ -159,6 +159,18 @@ def assert_images(brain_allowed):
         raise RuntimeError("stage-1 QA image tags game/web are absent; refused")
 
 
+def assert_web_image(baseline):
+    """The mutable web tag must still resolve to the reviewed stage-1 image."""
+    web = next(item for item in baseline["containers"] if item["name"] == WEB)
+    try:
+        actual = qa.command("docker", "image", "inspect", web["image_ref"], "--format", "{{.Id}}").strip()
+    except RuntimeError as error:
+        raise RuntimeError("the reviewed stage-1 web image tag is absent; refused") from error
+    if actual != web["image_id"]:
+        raise RuntimeError(f"stage-1 web image tag {web['image_ref']} resolves to {actual}, "
+                           f"expected reviewed {web['image_id']}; refused")
+
+
 def db_slice():
     """The transactional DB slice: four counts and the QA-character projection SHA-256."""
     rows = mariadb(DB_SLICE_SQL).splitlines()
@@ -265,6 +277,7 @@ def assert_stage1_upgrade(path=BASELINE, expected_sha256=BASELINE_SHA256):
     baseline = load_baseline(path, expected_sha256)
     qa_objects(stage2=False)
     assert_images(brain_allowed=False)
+    assert_web_image(baseline)
     now = comparable(observe())
     changes = differences(comparable(baseline), now)
     if changes:
@@ -440,11 +453,33 @@ def run(*args, env=None):
     qa.command(*args, env=env)
 
 
+def assert_persistent_stage1(baseline):
+    """Before rollback mutations, preserve DB/web/network/volume identities and labels.
+
+    The game is intentionally different in stage 2. Status/health are checked after
+    restore, not used as resource identities here; DB contents may change through play.
+    """
+    expected = comparable(baseline)
+    expected.pop("db_slice", None)
+    now = comparable(observe(db=False))
+    for snapshot in (expected, now):
+        snapshot["containers"].pop(GAME)
+        for item in snapshot["containers"].values():
+            item.pop("status")
+            item.pop("health")
+    changes = differences(expected, now)
+    if changes:
+        raise RuntimeError("persistent stage-1 resources differ from the reviewed baseline; "
+                           "rollback refused:\n" + "\n".join(changes))
+
+
 def rollback(path=BASELINE, expected_sha256=BASELINE_SHA256, receipt_path=None):
     """Stage 2 -> playable stage 1. Only brain and brain-* go away; database, logs and cache stay."""
     baseline = load_baseline(path, expected_sha256)
     env = compose_env()
     found = qa_objects(stage2=True)
+    assert_web_image(baseline)
+    assert_persistent_stage1(baseline)
     game_image = next(item["image_id"] for item in baseline["containers"] if item["name"] == GAME)
     try:
         present = qa.command("docker", "image", "inspect", game_image, "--format", "{{.Id}}").strip()
@@ -463,7 +498,7 @@ def rollback(path=BASELINE, expected_sha256=BASELINE_SHA256, receipt_path=None):
     if LEDGER in found["volume"]:
         run("docker", "volume", "rm", LEDGER)
     run("docker", "tag", game_image, "canary-core-qa-game:local")
-    run(*STAGE1, "up", "-d", "--no-build", "--wait", env=env)
+    run(*STAGE1, "up", "-d", "--no-build", "--no-deps", "--wait", "game", env=env)
     if BRAIN_SOCKET in found["volume"]:  # free only now: the stage-2 game mounted it
         run("docker", "volume", "rm", BRAIN_SOCKET)
     return verify_restored(path, expected_sha256, receipt_path)

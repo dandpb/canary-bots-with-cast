@@ -275,7 +275,7 @@ class BrainFakeStageTests(unittest.TestCase):
         prefix = "docker compose -p canary-core-qa -f compose.yaml -f compose.brain-fake.yaml --env-file .env"
         lines = [line for line in section.splitlines() if "docker " in line or line.startswith("$QA")]
         self.assertIn(f'QA="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE {prefix}"', lines)
-        stage1 = "docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --no-build --wait"
+        stage1 = "docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --no-build --no-deps --wait game"
         self.assertIn("python3 stage1_baseline.py rollback", section)
         self.assertIn(stage1, section)
         self.assertIn("272c35fbab6496376a366565ac81368e8885297c1cc9febf7ef73e7cdd554789", section)
