@@ -28,7 +28,7 @@ services:
       pull: false
       args:
         SOURCE_REVISION: ${SOURCE_REVISION:?Reviewed source revision required}
-        BASE_IMAGE: ubuntu:24.04@sha256:PLACEHOLDER_FROM_HOST_RECEIPT  # = image-lock.json game_base
+        BASE_IMAGE: ubuntu:24.04@sha256:78d4744ead1f5b19b04d0df558ab182a5300903900755e515b2ca4d10eb2044d  # = image-lock.json game_base
     restart: "no"
     environment:
       MARIADB_PASSWORD: ${MARIADB_PASSWORD:?QA database password required}
