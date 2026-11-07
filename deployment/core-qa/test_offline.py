@@ -17,7 +17,6 @@ from preflight import (
     assert_image_lock,
     assert_no_resources,
     assert_source,
-    assert_stage1_upgrade,
     record_brain_image,
     redact,
     run_preflight,
@@ -276,11 +275,13 @@ class BrainFakeStageTests(unittest.TestCase):
         prefix = "docker compose -p canary-core-qa -f compose.yaml -f compose.brain-fake.yaml --env-file .env"
         lines = [line for line in section.splitlines() if "docker " in line or line.startswith("$QA")]
         self.assertIn(f'QA="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE {prefix}"', lines)
-        self.assertIn("$QA down", lines)
-        self.assertIn("docker volume rm canary-core-qa_brain-ledger canary-core-qa_brain-socket", lines)
+        stage1 = "docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --no-build --wait"
+        self.assertIn("python3 stage1_baseline.py rollback", section)
+        self.assertIn(stage1, section)
+        self.assertIn("272c35fbab6496376a366565ac81368e8885297c1cc9febf7ef73e7cdd554789", section)
         for line in lines:
             self.assertNotRegex(line, r" (-v|--volumes)\b|docker volume (prune|rm -f)")
-            if "docker compose" in line:
+            if "docker compose" in line and stage1 not in line:
                 self.assertIn(prefix, line)
 
     @needs_docker
@@ -319,23 +320,44 @@ def docker_shim(*changes):
         state[kind].pop(name, None) if value is None else state[kind].__setitem__(name, value)
 
     def command(*args, **_kwargs):
-        if args[1:3] == ("volume", "inspect"):
-            return "".join(f"{name}\t2026-11-06T00:00:00Z\n" for name in args[3:-2])
-        if args[1:3] == ("image", "inspect"):
-            return f"sha256:{args[3]}\n"
         if args[1:3] == ("image", "ls"):
             return "".join(f"{ref}\n" for ref in state["image"])
         rows = state[args[1]].items()
         if "--filter" in args:
             rows = [(name, row) for name, row in rows if row[0] == qa]
-        if "\t" not in args[-1]:
-            return "".join(f"{name}\n" for name, _ in rows)
-        return "".join(f"id-{name}\t{name}\t{project}\t{key}\n" for name, (project, key) in rows)
+        return "".join(f"{name}\n" for name, _ in rows)
     return command
 
 
-class StageUpgradeTests(unittest.TestCase):
-    """Stage 1 -> 2 gate, brain base lock and brain image receipt, with a fake Docker CLI."""
+class FreshInstallGateTests(unittest.TestCase):
+    """Stage 1 and stage 2 first up on a clean host: unchanged by the stage-1 -> 2 upgrade gate."""
+
+    def test_fresh_gates_are_unchanged(self):
+        for brain_fake in (False, True):
+            with self.subTest(brain_fake=brain_fake), patch("preflight.command", side_effect=docker_shim()), \
+                 self.assertRaisesRegex(RuntimeError, "QA resources already exist"):
+                assert_no_resources(brain_fake)
+        empty = [(kind, f"canary-core-qa{sep}{name}", None) for kind, sep, names in (
+            ("ps", "-", ("database-1", "game-1", "web-1")), ("network", "_", ("default",)),
+            ("volume", "_", ("database", "game-logs", "authored-data", "website-cache")))
+            for name in names] + [("image", "canary-core-qa-game:local", None), ("image", "canary-core-qa-web:local", None)]
+        for brain_fake in (False, True):
+            with patch("preflight.command", side_effect=docker_shim(*empty)):
+                assert_no_resources(brain_fake)
+        brain = [*empty, ("image", "canary-core-qa-brain:local", 1)]
+        with patch("preflight.command", side_effect=docker_shim(*brain)):
+            assert_no_resources(False)
+            with self.assertRaisesRegex(RuntimeError, "image:canary-core-qa-brain:local"):
+                assert_no_resources(True)
+        for change in (("volume", "canary-core-qa_brain-ledger", ("canary-core-qa", "brain-ledger")),
+                       ("ps", "canary-core-qa-brain-1", ("canary-core-qa", "brain"))):
+            with self.subTest(change=change), patch("preflight.command", side_effect=docker_shim(*empty, change)), \
+                 self.assertRaisesRegex(RuntimeError, "QA resources already exist"):
+                assert_no_resources(True)
+
+
+class BrainImageProvenanceTests(unittest.TestCase):
+    """The brain base is pulled by digest only, and the built image is bound to the approved HEAD."""
 
     def test_fresh_stage2_receipt_can_record_the_built_brain(self):
         sha = "a" * 40
@@ -355,52 +377,6 @@ class StageUpgradeTests(unittest.TestCase):
         self.assertTrue(receipt["brain_fake"] and receipt["resources_absent"])
         self.assertEqual(receipt["brain_image"], {"id": "sha256:brain", "source_revision": sha})
 
-    def test_running_stage1_is_accepted_and_recorded(self):
-        with patch("preflight.command", side_effect=docker_shim()):
-            seen = assert_stage1_upgrade()
-        self.assertEqual(seen["container"]["canary-core-qa-game-1"], "id-canary-core-qa-game-1")
-        self.assertEqual(len(seen["volume"]), 4)
-        self.assertEqual(seen["volume"]["canary-core-qa_database"], "2026-11-06T00:00:00Z")
-        self.assertEqual(set(seen["network"]), {"canary-core-qa_default"})
-        self.assertEqual(seen["image"]["canary-core-qa-game:local"], "sha256:canary-core-qa-game:local")
-        with tempfile.TemporaryDirectory() as directory, \
-             patch("preflight.command", side_effect=docker_shim()), \
-             patch("preflight.assert_compose", return_value="f" * 64) as compose, \
-             patch("preflight.assert_image_lock", return_value={"brain_base": "sha256:base"}), \
-             patch("preflight.verify_myaac", return_value={"entrypoint_sha256": "d", "qa_config_sha256": "e"}), \
-             patch("preflight.assert_source", return_value="a" * 40), \
-             patch("preflight.assert_map", return_value="1" * 64):
-            receipt_path = Path(directory) / "upgrade.json"
-            run_preflight(approved_revision="a" * 40, receipt_path=receipt_path, upgrade=True)
-            receipt = json.loads(receipt_path.read_text())
-        compose.assert_called_once_with(True)
-        self.assertEqual((receipt["brain_fake"], receipt["resources_absent"]), (True, False))
-        self.assertEqual(receipt["stage1_upgrade"], seen)
-
-    def test_foreign_partial_or_brain_objects_refuse_the_upgrade(self):
-        qa = "canary-core-qa"
-        for change in (("ps", f"{qa}-game-1", ("canary-bots-wsl", "game")),
-                       ("ps", f"{qa}-extra-1", (qa, "extra")), ("ps", "renamed", (qa, "web")),
-                       ("ps", f"{qa}-brain-1", (qa, "brain")),
-                       ("volume", f"{qa}_brain-ledger", (qa, "brain-ledger")),
-                       ("volume", f"{qa}_database", (qa, "")), ("volume", f"{qa}_game-logs", None),
-                       ("network", f"{qa}_default", None), ("network", f"{qa}_other", ("", "")),
-                       ("image", "canary-core-qa-brain:local", 1), ("image", "canary-core-qa-web:local", None)):
-            with self.subTest(change=change), patch("preflight.command", side_effect=docker_shim(change)):
-                with self.assertRaisesRegex(RuntimeError, "upgrade refused|images differ"):
-                    assert_stage1_upgrade()
-
-    def test_fresh_gates_are_unchanged(self):
-        for brain_fake in (False, True):
-            with patch("preflight.command", side_effect=docker_shim()), \
-                 self.assertRaisesRegex(RuntimeError, "QA resources already exist"):
-                assert_no_resources(brain_fake)
-        empty = [(kind, f"canary-core-qa{sep}{name}", None) for kind, sep, names in (
-            ("ps", "-", ("database-1", "game-1", "web-1")), ("network", "_", ("default",)),
-            ("volume", "_", ("database", "game-logs", "authored-data", "website-cache")))
-            for name in names] + [("image", "canary-core-qa-game:local", None), ("image", "canary-core-qa-web:local", None)]
-        with patch("preflight.command", side_effect=docker_shim(*empty)):
-            assert_no_resources(True)
 
     def test_brain_base_is_locked_and_the_built_image_matches_head(self):
         locked = IMAGE_LOCK["brain_base"]["repo_digest"]

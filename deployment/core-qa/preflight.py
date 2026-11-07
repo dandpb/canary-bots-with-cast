@@ -24,15 +24,6 @@ BRAIN_ROOT = Path("/var/lib/canary-human-qa-stage2")
 IMAGE_LOCK = json.loads((HERE / "image-lock.json").read_text())
 RECEIPT = HERE / "runtime/evidence/preflight-receipt.json"
 UPGRADE_RECEIPT = HERE / "runtime/evidence/stage2-upgrade-receipt.json"
-# Stage-1 objects an upgrade may find: Docker listing, ID column, Compose key label, name -> key.
-STAGE1 = {
-    "container": (["docker", "ps", "-a", "--no-trunc"], "{{.ID}}\t{{.Names}}", "service",
-                  {f"{PROJECT}-{service}-1": service for service in SERVICES}),
-    "volume": (["docker", "volume", "ls"], "{{.Name}}\t{{.Name}}", "volume",
-               {f"{PROJECT}_{volume}": volume for volume in VOLUMES}),
-    "network": (["docker", "network", "ls", "--no-trunc"], "{{.ID}}\t{{.Name}}", "network",
-                {f"{PROJECT}_default": "default"}),
-}
 
 
 def command(*args, env=None):
@@ -75,32 +66,6 @@ def assert_no_resources(brain_fake=False):
     found += [f"image:{image}" for image in (IMAGES | {BRAIN_IMAGE} if brain_fake else IMAGES) & images]
     if found:
         raise RuntimeError("QA resources already exist; review before up: " + ", ".join(sorted(set(found))))
-
-
-def assert_stage1_upgrade():
-    """Stage 1 -> 2 gate: exactly the stage-1 QA objects exist and no brain object does."""
-    seen = {}
-    for kind, (listing, columns, key, expected) in STAGE1.items():
-        labels = f'\t{{{{.Label "com.docker.compose.project"}}}}\t{{{{.Label "com.docker.compose.{key}"}}}}'
-        found = {}
-        for row in command(*listing, "--format", columns + labels).splitlines():
-            ident, name, project, item = (row.split("\t") + ["", "", "", ""])[:4]
-            if project == PROJECT or project_name(name):
-                if project != PROJECT or expected.get(name) != item:
-                    raise RuntimeError(f"unexpected QA {kind} {name}; stage-1 upgrade refused")
-                found[name] = ident
-        if set(found) != set(expected):
-            raise RuntimeError(f"stage-1 QA {kind}s are incomplete; upgrade refused")
-        seen[kind] = found
-    created = command("docker", "volume", "inspect", *sorted(seen["volume"]),
-                      "--format", "{{.Name}}\t{{.CreatedAt}}")
-    seen["volume"] = dict(line.split("\t", 1) for line in created.splitlines())
-    images = set(command("docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}").splitlines())
-    if BRAIN_IMAGE in images or not IMAGES <= images:
-        raise RuntimeError("stage-1 QA images differ (brain image present or game/web absent)")
-    seen["image"] = {ref: command("docker", "image", "inspect", ref, "--format", "{{.Id}}").strip()
-                     for ref in sorted(IMAGES)}
-    return seen
 
 
 def assert_fake_brain(service, revision):
@@ -275,8 +240,12 @@ def record_brain_image(approved_revision, receipt_path=None):
 def run_preflight(resources_only=False, approved_revision=None, receipt_path=None, brain_fake=False,
                   upgrade=False):
     compose_sha = assert_compose(brain_fake or upgrade)
-    stage1 = assert_stage1_upgrade() if upgrade else None
-    if not upgrade:
+    if upgrade:  # exact comparison with the reviewed stage-1 baseline, pinned by SHA-256 in stage1_baseline
+        import stage1_baseline
+
+        stage1 = stage1_baseline.assert_stage1_upgrade()
+    else:  # fresh first up, stage 1 or stage 2: unchanged
+        stage1 = None
         assert_no_resources(brain_fake)
     images = assert_image_lock(brain_fake or upgrade)
     myaac = verify_myaac()
@@ -296,10 +265,21 @@ def main():
     parser.add_argument("--brain-fake", action="store_true",
                         help="QA stage 2: also validate compose.brain-fake.yaml and its fake worker")
     parser.add_argument("--upgrade-from-stage1", action="store_true",
-                        help="QA stage 2 over a running stage 1: accept only its exact QA objects")
+                        help="QA stage 2 over a running stage 1 equal to the pinned stage1-baseline.json")
     parser.add_argument("--record-brain-image", action="store_true",
                         help="after the stage-2 up: record the built brain image in the upgrade receipt")
+    parser.add_argument("--capture-stage1-baseline", action="store_true",
+                        help="read-only: write a candidate stage-1 baseline for review (never pinned by itself)")
+    parser.add_argument("--historical-receipt", type=Path,
+                        help="with --capture-stage1-baseline: path to web-rollout-after.json")
     args = parser.parse_args()
+    if args.capture_stage1_baseline:
+        import stage1_baseline
+
+        if not args.historical_receipt:
+            parser.error("--capture-stage1-baseline needs --historical-receipt")
+        stage1_baseline.print_capture(*stage1_baseline.capture(args.historical_receipt))
+        return
     if args.record_brain_image:
         print("Upgrade receipt SHA-256:", record_brain_image(args.approved_revision))
         return
