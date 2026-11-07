@@ -149,6 +149,91 @@ def test_real_movement_and_xp_reset_stall_timer_but_counter_reset_does_not(
     assert c.supervisor.view()["bots"][0]["no_progress_seconds"] == 0
 
 
+def test_retreat_stall_is_detected_even_when_combat_grants_xp(tmp_path, monkeypatch):
+    c, snapshot, sent, clock = console(tmp_path, monkeypatch)
+    for index in range(61):
+        clock[0] += 5
+        snapshot = snapshot.model_copy(update={
+            "nearby": [{"id": 123}],
+            "bot": snapshot.bot.model_copy(update={
+                "objective": "retreat", "xp": 1000 + index,
+            }),
+        })
+        c.latest[7] = snapshot
+        c.supervisor.observe(snapshot)
+    assert any(row["kind"] == "retreat_stall" for _, row in c.store.records("operator_event"))
+    assert c.supervisor.view()["bots"][0]["diagnosis"] == "retreat_stalled"
+    assert [item["candidate_id"] for item in sent] == ["retreat"]
+    accepted(c, sent[-1]["action_id"], "retreat")
+    for index in range(800):
+        clock[0] += 5
+        snapshot = snapshot.model_copy(update={"bot": snapshot.bot.model_copy(update={
+            "position": [100 + index % 2, 100, 7], "xp": 2000 + index,
+        })})
+        c.latest[7] = snapshot
+        c.supervisor.observe(snapshot)
+        if len(sent) == 2 and c.supervisor.state(7)["phase"] == "waiting_action":
+            accepted(c, sent[-1]["action_id"], "retreat")
+    assert [item["candidate_id"] for item in sent] == ["retreat", "retreat"]
+    for index in range(62):
+        clock[0] += 5
+        snapshot = snapshot.model_copy(update={"bot": snapshot.bot.model_copy(update={
+            "position": [110, 100, 7], "xp": 5000 + index,
+        })})
+        c.latest[7] = snapshot
+        c.supervisor.observe(snapshot)
+    assert [item["candidate_id"] for item in sent] == ["retreat", "retreat", "retreat"]
+
+
+def test_retreat_navigation_progress_and_observation_gaps_reset_timer(tmp_path, monkeypatch):
+    c, snapshot, sent, clock = console(tmp_path, monkeypatch)
+    snapshot = snapshot.model_copy(update={"bot": snapshot.bot.model_copy(update={"objective": "retreat"})})
+    for index in range(130):
+        clock[0] += 5
+        if index == 59:
+            snapshot = snapshot.model_copy(update={"bot": snapshot.bot.model_copy(update={"position": [104, 100, 7]})})
+        if index == 118:
+            clock[0] += 11
+        c.latest[7] = snapshot
+        c.supervisor.observe(snapshot)
+    assert not sent
+    assert not any(row["kind"] == "retreat_stall" for _, row in c.store.records("operator_event"))
+
+
+def test_retreat_stall_survives_brief_objective_renewal_and_respects_pause(tmp_path, monkeypatch):
+    c, snapshot, sent, clock = console(tmp_path, monkeypatch)
+    for index in range(62):
+        clock[0] += 5
+        goal = "follow" if 30 <= index < 36 else "retreat"
+        snapshot = snapshot.model_copy(update={"bot": snapshot.bot.model_copy(update={"objective": goal, "xp": index + 1000})})
+        c.latest[7] = snapshot
+        c.supervisor.observe(snapshot)
+    assert [item["candidate_id"] for item in sent] == ["retreat"]
+
+    (tmp_path / "other").mkdir()
+    c2, snapshot, sent, clock = console(tmp_path / "other", monkeypatch)
+    c2.supervisor.state(7)["paused"] = True
+    c2.supervisor.state(7)["phase"] = "failed"
+    for _ in range(62):
+        clock[0] += 5
+        snapshot = snapshot.model_copy(update={"bot": snapshot.bot.model_copy(update={"objective": "retreat"})})
+        c2.latest[7] = snapshot
+        c2.supervisor.observe(snapshot)
+    assert not sent
+
+
+def test_retreat_stall_does_not_retry_when_automatic_is_disabled(tmp_path, monkeypatch):
+    c, snapshot, sent, clock = console(tmp_path, monkeypatch)
+    c.supervisor.state(7)["automatic"] = False
+    for _ in range(62):
+        clock[0] += 5
+        snapshot = snapshot.model_copy(update={"bot": snapshot.bot.model_copy(update={"objective": "retreat"})})
+        c.latest[7] = snapshot
+        c.supervisor.observe(snapshot)
+    assert not sent
+    assert any(row["kind"] == "retreat_stall" for _, row in c.store.records("operator_event"))
+
+
 def test_advice_and_route_restriction_persist_and_can_be_removed(tmp_path, monkeypatch):
     c, snapshot, sent, clock = console(tmp_path, monkeypatch)
     key = c.supervisor.command(7, "note", {"text": "Evitar corredores sem saída."})[
