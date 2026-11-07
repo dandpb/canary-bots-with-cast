@@ -1,0 +1,140 @@
+{
+  "captured_at_utc": "2026-11-06T22:20:30.578926+00:00",
+  "containers": [
+    {
+      "compose_labels": {
+        "com.docker.compose.config-hash": "32256a3e7a765f6ed505475c8556b37f174db28bda612a6b8feb707b43ce7094",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.service": "database"
+      },
+      "created_at": "2026-11-06T21:31:51.443601601Z",
+      "health": "healthy",
+      "historical_comparison": {
+        "created_at_match": true,
+        "id_match": true,
+        "image_id_match": true
+      },
+      "id": "9ad6cae1cfb0b07a1e7905114e2e0089fc2dbb16dd8be07f68fdef9f3dfae2dc",
+      "image_id": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+      "image_ref": "mariadb:11.4",
+      "image_source_revision": null,
+      "name": "canary-core-qa-database-1",
+      "status": "running"
+    },
+    {
+      "compose_labels": {
+        "com.docker.compose.config-hash": "d797d68304d4a2da8ed9818e0378d16466026fd88f2e64c5616f717ab348d445",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.service": "game"
+      },
+      "created_at": "2026-11-06T21:31:51.615009057Z",
+      "health": "healthy",
+      "historical_comparison": {
+        "created_at_match": true,
+        "id_match": true,
+        "image_id_match": true
+      },
+      "id": "525c29ae79fc9c6081d864f8144475d8aab7f3829a977bec320e0a4050f832ad",
+      "image_id": "sha256:37813bca7e7ff6e70386acc70f0926983b13eb6c8dc79cc885722793d458860d",
+      "image_ref": "canary-core-qa-game:local",
+      "image_source_revision": "b071b543713aa3ce1f38e482d022654bdad215ad",
+      "name": "canary-core-qa-game-1",
+      "status": "running"
+    },
+    {
+      "compose_labels": {
+        "com.docker.compose.config-hash": "bf1e6126f353db6b3bf677aa6b8326a4222f98f454645c8f8f72777b09d3ed9c",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.service": "web"
+      },
+      "created_at": "2026-11-06T21:49:17.568520491Z",
+      "health": "healthy",
+      "historical_comparison": {
+        "created_at_match": true,
+        "id_match": true,
+        "image_id_match": true
+      },
+      "id": "ab2d2614b63669c09c7b9046ccbab14a9f93dbfd86bf53410f3f1b045cf65c2b",
+      "image_id": "sha256:bacdb45d28e34a6e5b5ef5bad51e8c14084e1de670fa79633d4700f39853f199",
+      "image_ref": "canary-core-qa-web:local",
+      "image_source_revision": null,
+      "name": "canary-core-qa-web-1",
+      "status": "running"
+    }
+  ],
+  "db_logical_snapshot": {
+    "counts": {
+      "accounts": 4,
+      "player_items": 2597,
+      "players": 1000,
+      "qa_character_items": 10
+    },
+    "qa_character_projection_sha256": "d075ce552529a6aa1d7d2f8f13170f9ceb6b491b9fa25d3ebb2e741fd6fd677b",
+    "transaction": "REPEATABLE READ; WITH CONSISTENT SNAPSHOT"
+  },
+  "historical_receipt": {
+    "checked_at_utc": "2026-11-06T21:50:27.558021+00:00",
+    "filename": "web-rollout-after.json",
+    "sha256": "fb6356b559183f21c291c151591fe393a66c9988c0d14be812e84dff02c56c3c"
+  },
+  "limits": [
+    "Docker inspections and DB snapshot were sequential, not atomic across systems.",
+    "The historical receipt has container IDs/CreatedAt/image IDs, but only names for network and volumes; no historical ID/CreatedAt comparison is possible for them.",
+    "DB data is a point-in-time read-only logical slice, not a full backup or proof of all rows."
+  ],
+  "network": {
+    "compose_labels": {
+      "com.docker.compose.config-hash": "b858706fe945eec4259c0c5709b69af4f3d5b7c527563a724ed63feaaa2a3af2",
+      "com.docker.compose.network": "default",
+      "com.docker.compose.project": "canary-core-qa",
+      "com.docker.compose.version": "5.5.1"
+    },
+    "created_at": "2026-11-06T21:31:51.357332385Z",
+    "id": "231b7c46216a77314881715cd0804d0bf0802c6b622e93b1d848e5b27e9cfab6",
+    "name": "canary-core-qa_default"
+  },
+  "project": "canary-core-qa",
+  "schema": "stage1-qa-baseline-v1",
+  "volumes": [
+    {
+      "compose_labels": {
+        "com.docker.compose.config-hash": "eb14bb0503fe17e3e8b9d8f9a080c6479ad1d5a3a48029c70e187109173bc3a0",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.version": "5.5.1",
+        "com.docker.compose.volume": "authored-data"
+      },
+      "created_at": "2026-11-06T21:31:51Z",
+      "name": "canary-core-qa_authored-data"
+    },
+    {
+      "compose_labels": {
+        "com.docker.compose.config-hash": "121933d78cfa2af597125de90138cbdf3b563c05c8eb42e57a9c9d96b2cf380a",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.version": "5.5.1",
+        "com.docker.compose.volume": "database"
+      },
+      "created_at": "2026-11-06T21:31:51Z",
+      "name": "canary-core-qa_database"
+    },
+    {
+      "compose_labels": {
+        "com.docker.compose.config-hash": "04ed370c6a588f99595319e46cce012c50cdb26e8c45b0a5ee9c7ab24ef214a3",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.version": "5.5.1",
+        "com.docker.compose.volume": "game-logs"
+      },
+      "created_at": "2026-11-06T21:31:51Z",
+      "name": "canary-core-qa_game-logs"
+    },
+    {
+      "compose_labels": {
+        "com.docker.compose.config-hash": "5f2c21fcfad13a88126879f431c4122eb04d554f50c03ed68bc9c0703be8e323",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.version": "5.5.1",
+        "com.docker.compose.volume": "website-cache"
+      },
+      "created_at": "2026-11-06T21:31:51Z",
+      "name": "canary-core-qa_website-cache"
+    }
+  ]
+}
