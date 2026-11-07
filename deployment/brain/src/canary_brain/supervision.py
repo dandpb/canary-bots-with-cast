@@ -355,8 +355,25 @@ class Supervisor:
             or snapshot.bot.objective_defeats > previous.bot.objective_defeats
         )
         if progress is None or changed or now - previous_at > 10:
-            progress = {"since": now}
+            progress = {**(progress or {}), "since": now}
             self.progress[bot] = progress
+        position = snapshot.bot.position
+        origin = progress.get("navigation_origin")
+        if (
+            previous is None
+            or previous.world != snapshot.world
+            or (snapshot.bot.objective == "retreat"
+                and previous.bot.objective != "retreat"
+                and now - progress.get("last_retreat_seen", 0) > 60)
+            or now - previous_at > 10
+            or origin is None
+            or position[2] != origin[2]
+            or max(abs(position[0] - origin[0]), abs(position[1] - origin[1])) > 3
+        ):
+            progress["navigation_since"] = now
+            progress["navigation_origin"] = position
+        if snapshot.bot.objective == "retreat":
+            progress["last_retreat_seen"] = now
         progress["previous"] = snapshot
         rows = self.samples.setdefault(bot, deque(maxlen=360))
         if not rows or now - rows[-1]["at"] >= 5:
@@ -433,6 +450,44 @@ class Supervisor:
                     "Nenhuma rota alternativa disponível; autonomia retomada com as restrições atuais.",
                 )
             return
+        navigation_stalled = (
+            snapshot.bot.objective_running
+            and snapshot.bot.objective == "retreat"
+            and now - progress["navigation_since"] >= 300
+        )
+        if navigation_stalled and now - state.get("last_navigation_alert", 0) >= 300:
+            state["last_navigation_alert"] = now
+            self.save(bot)
+            self.event(bot, "retreat_stall", "Retirada sem avanço de posição por cinco minutos, mesmo que haja combate ou XP.")
+            anchor = state.get("retreat_retry_anchor")
+            if anchor is None and state.get("retreat_retries") and state.get("world") == snapshot.world:
+                anchor = list(position)
+                state["retreat_retry_anchor"] = anchor
+                state["retreat_retry_world"] = snapshot.world
+                self.save(bot)
+            if (state.get("retreat_retry_world") != snapshot.world or anchor is None
+                or position[2] != anchor[2]
+                or max(abs(position[0] - anchor[0]), abs(position[1] - anchor[1])) > 3):
+                state["retreat_retry_anchor"] = list(position)
+                state["retreat_retry_world"] = snapshot.world
+                state["retreat_retries"] = []
+                self.save(bot)
+            attempts = state.get("retreat_retries", [])
+            if (
+                state.get("automatic", True)
+                and len(attempts) < 2
+                and (not attempts or now - attempts[-1] >= 600)
+                and "retreat" in {item.id for item in self.offers(snapshot).actions}
+            ):
+                try:
+                    self.command(bot, "retreat", {}, automatic_recovery=True)
+                except ValueError:
+                    self.event(bot, "waiting", "A nova tentativa da retirada aguarda uma oferta atual.")
+                else:
+                    state["retreat_retries"] = attempts + [now]
+                    self.save(bot)
+                    self.event(bot, "retreat_retry", "Retirada solicitada novamente; aguardando confirmação do servidor.")
+            return
         stagnant = now - progress["since"] >= 300
         working = snapshot.bot.objective_running and snapshot.bot.objective in {
             "hunt",
@@ -482,6 +537,10 @@ class Supervisor:
             diagnosis = (
                 "stale"
                 if age > 3
+                else "retreat_stalled"
+                if snapshot.bot.objective_running
+                and snapshot.bot.objective == "retreat"
+                and now - self.progress.get(bot, {}).get("navigation_since", now) >= 300
                 else "combat"
                 if snapshot.nearby
                 else "stalled"
@@ -496,6 +555,7 @@ class Supervisor:
                     "world": snapshot.world,
                     "observation_age": round(age, 2),
                     "no_progress_seconds": round(quiet),
+                    "no_navigation_progress_seconds": round(now - self.progress.get(bot, {}).get("navigation_since", now)),
                     "diagnosis": diagnosis,
                     "candidate": self.current_candidate(bot),
                     "actions": [
