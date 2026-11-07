@@ -1,6 +1,7 @@
 """Inspect a free run without changing character state or the accounting ledger."""
 
 import collections
+import importlib.util
 import json
 import sqlite3
 import sys
@@ -8,6 +9,15 @@ from pathlib import Path
 
 from canary_brain.recording import ReplayReader
 from canary_brain.replay import summary
+
+# Import by path: the fixture and maintained deployment tool share a basename.
+_spec = importlib.util.spec_from_file_location(
+    "m5_evidence_report",
+    Path(__file__).resolve().parents[2] / "deployment/brain/tools/m5_report.py",
+)
+assert _spec is not None and _spec.loader is not None
+_evidence = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_evidence)
 
 
 def report(directory):
@@ -39,9 +49,13 @@ def report(directory):
         ).fetchone()
     if not samples:
         return {"run_id": identity, "samples": 0}
+    attempt = json.loads((directory / "result.json").read_text())
+    progression = _evidence.window_persistence(events, attempt)
     start, end = samples[0], samples[-1]
     return {
         "run_id": identity,
+        "progression": progression,
+        "recording_incomplete": runs[0]["incomplete"],
         "manifest": data["manifest"],
         "metrics": data["metrics"],
         "first_sample": start,

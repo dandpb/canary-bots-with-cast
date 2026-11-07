@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 from canary_brain.benchmark import DockerFixture, Experiment, Participant, fixture_hash
-from canary_brain.recording import digest
+from canary_brain.recording import ReplayReader, digest
 
 ROOT = Path(__file__).resolve().parents[2]
 WORK = Path(os.environ.get("CANARY_M5_QA", "/tmp/m5q-20261105a"))
@@ -36,6 +36,34 @@ def command(*args, timeout=300):
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def stop_and_read_character(harness, directory):
+    """Capture fresh operation receipts; never infer timing from old evidence."""
+    stop_started = time.time()
+    harness.stop_game()
+    stopped = time.time()
+    sql_started = time.time()
+    saved = harness.character()
+    sql_read = time.time()
+    # Replay identity is evidence, not a guessed world name from fixture config.
+    reader = ReplayReader(directory / "recording.sqlite3")
+    with reader.snapshot() as snapshot:
+        runs = snapshot.runs()
+        assert len(runs) == 1, "persistence receipt requires one recorded run"
+        first = next(
+            event
+            for event in snapshot.all_events(runs[0]["id"])
+            if event["kind"] == "sample"
+        )
+    return saved, {
+        "world": first["data"]["world"],
+        "bot_id": saved["id"],
+        "game_stop_started_wall": stop_started,
+        "game_stopped_wall": stopped,
+        "sql_read_started_wall": sql_started,
+        "sql_read_wall": sql_read,
+    }
 
 
 def prepare():
@@ -366,8 +394,9 @@ def run(mode):
         code = worker.wait(timeout=2100)
         assert code == 0, "offline worker failed; inspect private log"
         result["stop"] = json.loads((directory / "stop.json").read_text())
-        harness.stop_game()
-        result["saved_character"] = harness.character()
+        saved, receipt = stop_and_read_character(harness, directory)
+        result["saved_character"] = saved
+        result["persistence"] = receipt
         if supply_only:
             (directory / "saved-supplies.json").write_text(json.dumps(supplies()))
         result["phase"] = "finished"

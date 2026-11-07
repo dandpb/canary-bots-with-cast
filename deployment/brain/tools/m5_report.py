@@ -14,6 +14,7 @@ import tempfile
 import zipfile
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -32,6 +33,189 @@ def percentile(values: list[int], fraction: float) -> int | None:
 
 def integer(value: Any) -> bool:
     return type(value) is int and value >= 0
+
+
+def window_persistence(
+    events: list[dict[str, Any]], trial: dict[str, Any], seconds: float = 1800
+) -> dict[str, Any]:
+    """Review a frozen native window separately from later SQL persistence.
+
+    New trial evidence contract: persistence = {world, bot_id,
+    game_stopped_wall, sql_read_wall}. These are UTC epoch seconds from the
+    isolated harness, not native monotonic milliseconds. SQL must exactly match
+    the last recorded observation before stop; greater XP alone is never proof.
+    Receipts must be collected at the operations, never inferred retrospectively.
+    This checks supplied evidence, not admission, durable ACKs or missing frames.
+    """
+    errors: list[str] = []
+    samples = [e for e in events if e.get("kind") == "sample"]
+    frozen = [e for e in samples if e.get("key") == "horizon-final-sample"]
+    diagnostics = [
+        e
+        for e in events
+        if e.get("kind") == "lifecycle"
+        and str(e.get("data", {}).get("phase", "")).startswith("post_horizon_")
+    ]
+    result: dict[str, Any] = {
+        "window": None,
+        "final_saved_character": trial.get("saved_character"),
+        "persistence_receipt": trial.get("persistence"),
+        "post_window_evidence": diagnostics,
+        "reset_and_gap_evidence": [
+            e
+            for e in events
+            if e.get("kind") in {"gap", "segment"}
+            or e.get("data", {}).get("phase")
+            in {"world_changed", "worker_restart", "reset", "fixture_reset"}
+        ],
+        "errors": errors,
+    }
+
+    def finite(value: Any) -> bool:
+        return type(value) in (int, float) and math.isfinite(value) and value >= 0
+
+    def observation(value: Any) -> bool:
+        return (
+            isinstance(value, dict)
+            and isinstance(value.get("world"), str)
+            and bool(value["world"])
+            and integer(value.get("captured_ms"))
+            and integer(value.get("sequence"))
+            and isinstance(value.get("bot"), dict)
+            and all(integer(value["bot"].get(k)) for k in ("id", "xp", "level"))
+        )
+
+    if len(frozen) != 1 or len(samples) < 2:
+        errors.append("frozen_window_missing")
+        return result
+    start, end = samples[0], frozen[0]
+    first, cutoff = start["data"], end["data"]
+    if not observation(first) or not observation(cutoff):
+        errors.append("native_boundary_invalid")
+        return result
+    world, bot_id = first["world"], first["bot"]["id"]
+    native_ms = cutoff["captured_ms"] - first["captured_ms"]
+    result["window"] = {
+        "first_sample": start,
+        "frozen_sample": end,
+        "native_seconds": native_ms / 1000,
+        "xp_delta": cutoff["bot"]["xp"] - first["bot"]["xp"],
+        "initial_level": first["bot"]["level"],
+        "final_level": cutoff["bot"]["level"],
+        "deaths": None,
+    }
+    if native_ms < seconds * 1000:
+        errors.append("native_horizon_short")
+    if end is not samples[-1]:
+        errors.append("sample_after_frozen_boundary")
+    observations = [(e, e["data"]) for e in samples]
+    observations += [
+        (e, e["data"].get("data"))
+        for e in diagnostics
+        if e["data"].get("phase") == "post_horizon_sample"
+    ]
+    observations.sort(key=lambda pair: pair[0].get("t_ms", -1))
+    previous = None
+    for event, obs in observations:
+        if not observation(obs):
+            errors.append("observation_evidence_invalid")
+            continue
+        if obs["world"] != world or obs["bot"]["id"] != bot_id:
+            errors.append("persistence_identity_changed")
+        if not finite(event.get("wall")) or not integer(event.get("t_ms")):
+            errors.append("observation_time_missing")
+        if previous is not None:
+            old_event, old = previous
+            if (
+                obs["captured_ms"] < old["captured_ms"]
+                or obs["sequence"] < old["sequence"]
+                or event.get("wall", -1) < old_event.get("wall", -1)
+            ):
+                errors.append("observation_time_regressed")
+            if obs["sequence"] == old["sequence"] and obs != old:
+                errors.append("observation_identity_conflict")
+            # A helper cannot reconstruct loss/recovery or an unrecorded reset.
+            # Keep the evidence but require a separately reviewed reconciliation.
+            if any(obs["bot"][k] < old["bot"][k] for k in ("xp", "level")):
+                errors.append("progress_regression_unreconciled")
+        previous = event, obs
+    telemetry = []
+    for event in events:
+        data = event.get("data", {})
+        if event.get("kind") == "gap":
+            errors.append("persistence_recording_gap")
+        if event.get("kind") != "lifecycle":
+            continue
+        if data.get("phase") in {
+            "world_changed",
+            "worker_restart",
+            "reset",
+            "fixture_reset",
+        }:
+            errors.append("persistence_reset")
+        if data.get("phase") == "post_horizon_telemetry":
+            data = data.get("data", {})
+        if "deaths" in data:
+            if (
+                data.get("world") != world
+                or not integer(data.get("captured_ms"))
+                or not integer(data.get("deaths"))
+            ):
+                errors.append("death_evidence_invalid")
+            else:
+                telemetry.append(data)
+    # Validate recorder/arrival order before sorting for capture-window scoring.
+    # Sorting first can conceal a native clock or cumulative-counter reset.
+    result["death_evidence_stream"] = list(telemetry)
+    if any(b["captured_ms"] < a["captured_ms"] for a, b in pairwise(telemetry)):
+        errors.append("telemetry_time_regressed")
+    if any(b["deaths"] < a["deaths"] for a, b in pairwise(telemetry)):
+        errors.append("death_counter_reset")
+    telemetry.sort(key=lambda data: data["captured_ms"])
+    baseline = [d for d in telemetry if d["captured_ms"] <= first["captured_ms"]]
+    scored = [d for d in telemetry if d["captured_ms"] <= cutoff["captured_ms"]]
+    if not baseline:
+        errors.append("death_baseline_missing")
+    else:
+        result["window"]["deaths"] = (
+            max(d["deaths"] for d in scored) - baseline[-1]["deaths"]
+        )
+    result["death_evidence"] = telemetry
+
+    initial, saved = trial.get("initial_character"), trial.get("saved_character")
+
+    def matches(character: Any, obs: dict[str, Any]) -> bool:
+        return isinstance(character, dict) and all(
+            type(character.get(sql)) is int and character[sql] == obs["bot"][key]
+            for sql, key in (("id", "id"), ("experience", "xp"), ("level", "level"))
+        )
+
+    if not matches(initial, first):
+        errors.append("initial_progress_mismatch")
+    witness_event, witness = observations[-1]
+    result["persistence_witness"] = witness_event
+    if not observation(witness) or not matches(saved, witness):
+        errors.append("saved_progress_mismatch")
+    receipt = trial.get("persistence")
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("world") != world
+        or type(receipt.get("bot_id")) is not int
+        or receipt["bot_id"] != bot_id
+        or not finite(receipt.get("game_stopped_wall"))
+        or not finite(receipt.get("sql_read_wall"))
+        or not finite(witness_event.get("wall"))
+        or not witness_event["wall"]
+        <= receipt["game_stopped_wall"]
+        <= receipt["sql_read_wall"]
+        or any(
+            finite(e.get("wall")) and e["wall"] > receipt["game_stopped_wall"]
+            for e in events
+            if e.get("kind") in {"sample", "lifecycle"}
+        )
+    ):
+        errors.append("persistence_timing_unverified")
+    return result
 
 
 def expected_runs(plan: dict[str, Any]) -> list[dict[str, Any]]:
@@ -491,7 +675,7 @@ def review(
                 identity,
                 "Free qualification requires reason=completed",
             )
-        initial, saved = trial.get("initial_character"), trial.get("saved_character")
+        initial = trial.get("initial_character")
         canonical_initial = experiment.get("preflight", {}).get("character")
         if not isinstance(canonical_initial, dict) or not all(
             k in canonical_initial
@@ -510,33 +694,21 @@ def review(
                 identity,
                 "Restored initial character differs from the common preflight character",
             )
-        if not isinstance(initial, dict) or not isinstance(saved, dict) or not samples:
+        progression = window_persistence(events, trial, max(1800, plan["seconds"]))
+        for error in progression["errors"]:
             flag(
-                "character_evidence_missing",
+                error,
                 identity,
-                "Need restored initial and final saved character evidence plus samples",
+                "Frozen-window/native-time or final SQL evidence failed",
             )
-        else:
-            for character, sample in ((initial, samples[0]), (saved, samples[-1])):
-                bot = sample["data"]["bot"]
-                if (
-                    character.get("id") != bot["id"]
-                    or character.get("experience") != bot["xp"]
-                    or character.get("level") != bot["level"]
-                ):
-                    flag(
-                        "saved_progress_mismatch",
-                        identity,
-                        "DB id/XP/level must match the corresponding boundary sample",
-                    )
-            if require_completed and saved.get("experience", 0) <= initial.get(
-                "experience", 0
-            ):
-                flag(
-                    "qualification_no_xp",
-                    identity,
-                    "Free qualification must demonstrate positive saved XP",
-                )
+        if require_completed and (
+            progression["window"] is None or progression["window"]["xp_delta"] <= 0
+        ):
+            flag(
+                "qualification_no_xp",
+                identity,
+                "Free qualification must demonstrate positive frozen-window XP",
+            )
         for field in ("game_image", "database_image"):
             if trial.get(field) != plan[field] or not re.fullmatch(
                 r"(?:[^@\s]+@)?sha256:[a-f0-9]{64}", str(plan[field])
@@ -648,6 +820,7 @@ def review(
         result_runs.append(
             {
                 "run_id": identity,
+                "progression": progression,
                 "participant": item["participant"],
                 "repetition": item["repetition"],
                 "status": status,
