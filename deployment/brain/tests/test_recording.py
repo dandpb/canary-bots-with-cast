@@ -197,3 +197,161 @@ def test_import_sql_failure_rolls_back_the_entire_new_run(tmp_path):
     assert ReplayReader(destination.path).runs() == []
     with destination.connect() as db:
         assert db.execute("SELECT COUNT(*) FROM replay_events").fetchone()[0] == 0
+
+
+def test_shutdown_budget_covers_blocked_append_and_full_queue(tmp_path, monkeypatch):
+    import time
+
+    from canary_brain.runtime import recording_failure
+
+    r = recorder(tmp_path, queue_size=16)
+    r.flush()
+    entered, release = threading.Event(), threading.Event()
+    original = r.store.append
+
+    def blocked(event):
+        entered.set()
+        release.wait()
+        original(event)
+
+    monkeypatch.setattr(r.store, "append", blocked)
+    r.emit(7, "decision", {"index": 0})
+    assert entered.wait(2)
+    for index in range(16):
+        assert r.emit(7, "decision", {"index": index + 1})
+    try:
+        started = time.monotonic()
+        assert not r.close(timeout=0.05)
+        assert time.monotonic() - started < 0.5
+        assert r.thread.is_alive()
+        assert r.health()["shutdown_timed_out"]
+        assert recording_failure(r) == "recorder_error"
+        assert not r.emit(7, "decision", {"index": 99})
+        # Repeating close must not wait or turn the failed close into success.
+        assert not r.close()
+    finally:
+        release.set()
+        r.thread.join(timeout=2)
+    assert not r.thread.is_alive()
+    read = ReplayReader(r.config.path)
+    assert read.run("qa:7")["incomplete"]
+    events = list(read.all_events("qa:7"))
+    assert [e["data"]["index"] for e in events if e["kind"] == "decision"] == list(
+        range(17)
+    )
+    assert any(
+        e["kind"] == "gap" and e["data"]["reason"] == "recorder_shutdown_timeout"
+        for e in events
+    )
+
+
+def test_flush_timeout_does_not_close_admission(tmp_path, monkeypatch):
+    r = recorder(tmp_path)
+    r.flush()
+    entered, release = threading.Event(), threading.Event()
+    original = r.store.append
+
+    def blocked(event):
+        entered.set()
+        release.wait()
+        original(event)
+
+    monkeypatch.setattr(r.store, "append", blocked)
+    r.emit(7, "decision", {"index": 0})
+    assert entered.wait(2)
+    try:
+        with pytest.raises(TimeoutError, match="recorder flush"):
+            r.flush(timeout=0.01)
+        assert not r.closed
+        assert r.emit(7, "decision", {"index": 1})
+    finally:
+        release.set()
+        assert r.close()
+    assert not r.thread.is_alive()
+    assert not r.health()["shutdown_timed_out"]
+    assert not ReplayReader(r.config.path).run("qa:7")["incomplete"]
+
+
+def test_clean_close_commits_the_stop_marker_and_is_idempotent(tmp_path):
+    r = recorder(tmp_path)
+    assert r.close()
+    assert r.close()
+    assert not r.thread.is_alive()
+    events = list(ReplayReader(r.config.path).all_events("qa:7"))
+    assert events[-1]["kind"] == "segment"
+    assert events[-1]["data"]["phase"] == "stopped"
+
+
+def test_interrupted_close_is_sticky_failure_until_and_after_writer_recovers(
+    tmp_path, monkeypatch
+):
+    r = recorder(tmp_path)
+    r.flush()
+    entered, release = threading.Event(), threading.Event()
+    append = r.store.append
+
+    def blocked(event):
+        entered.set()
+        release.wait()
+        append(event)
+
+    def interrupted_flush(timeout):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(r.store, "append", blocked)
+    r.emit(7, "decision", {"index": 0})
+    assert entered.wait(2)
+    monkeypatch.setattr(r, "flush", interrupted_flush)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            r.close()
+        assert r.closed and r.thread.is_alive()
+        assert r.errors > 0 and r.shutdown_interrupted
+        assert not r.shutdown_timed_out
+        assert r.close() is False
+        assert not r.emit(7, "decision", {"index": 1})
+    finally:
+        release.set()
+        r.thread.join(timeout=2)
+    assert not r.thread.is_alive()
+    assert r.close() is False
+    reader = ReplayReader(r.config.path)
+    assert reader.run("qa:7")["incomplete"]
+    assert any(
+        e["kind"] == "gap" and e["data"]["reason"] == "recorder_shutdown_interrupted"
+        for e in reader.all_events("qa:7")
+    )
+
+
+def test_second_close_cannot_certify_a_writer_still_draining(tmp_path, monkeypatch):
+    r = recorder(tmp_path)
+    r.flush()
+    writing, closing, release = threading.Event(), threading.Event(), threading.Event()
+    append, flush = r.store.append, r.flush
+    results = []
+
+    def blocked(event):
+        writing.set()
+        release.wait()
+        append(event)
+
+    def draining(timeout):
+        closing.set()
+        flush(timeout)
+
+    monkeypatch.setattr(r.store, "append", blocked)
+    monkeypatch.setattr(r, "flush", draining)
+    r.emit(7, "decision", {"index": 0})
+    assert writing.wait(2)
+    caller = threading.Thread(target=lambda: results.append(r.close()))
+    caller.start()
+    try:
+        assert closing.wait(2)
+        assert r.thread.is_alive() and not r.shutdown_interrupted
+        assert not r.shutdown_timed_out
+        assert r.close() is False
+    finally:
+        release.set()
+        caller.join(timeout=2)
+    assert not caller.is_alive() and not r.thread.is_alive()
+    assert results == [True] and r.close() is True

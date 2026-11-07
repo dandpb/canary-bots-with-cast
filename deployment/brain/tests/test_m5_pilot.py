@@ -1401,3 +1401,52 @@ async def test_attestation_failure_preserves_admitted_bytes_results_and_releases
     assert (admitted.output / "ledger.json").is_file()
     with pilot.pilot_lease(admitted.canonical_ledger_file):
         pass
+
+
+@pytest.mark.parametrize("short_deadlines", [False, True])
+@pytest.mark.parametrize("fault", ["close_false", "gap", "writer_error", "dropped"])
+async def test_recorder_failure_cannot_reach_next_model_or_paid_campaign(
+    admitted, monkeypatch, short_deadlines, fault
+):
+    from canary_brain import replay_cli
+    from canary_brain.recording import Recorder, ReplayReader
+
+    monkeypatch.setattr(pilot, "assert_frozen_imports", lambda _: None)
+    if short_deadlines:
+        admit_short_deadline_policy(admitted)
+    calls = fake_probe_sdk(monkeypatch, failure="none")
+    campaigns = []
+
+    async def forbidden(experiment):
+        campaigns.append(experiment)
+        pytest.fail("failed recorder must block the paid campaign")
+
+    class FailedRecorder(Recorder):
+        def close(self):
+            if fault == "gap":
+                self.emit(65001, "gap", {"reason": "recorder_loss", "count": 1})
+            closed = super().close()
+            assert closed is True
+            if fault == "writer_error":
+                self.errors += 1
+            if fault == "dropped":
+                self.dropped[65001] = 1
+            return False if fault == "close_false" else closed
+
+    monkeypatch.setattr(replay_cli, "Recorder", FailedRecorder)
+    monkeypatch.setattr(pilot, "run_attested_campaign", forbidden)
+    with pytest.raises(RuntimeError, match="recording did not close cleanly"):
+        await pilot.execute(admitted)
+    assert not campaigns
+    assert calls and {call["model"] for call in calls} == {"alias-openai"}
+    result = json.loads((admitted.output / "execution-result.json").read_text())
+    assert result["campaign"] is None and result["error_type"] == "RuntimeError"
+    config = json.loads(admitted.probe_workers["openai"].read_text())
+    reader = ReplayReader(Path(config["recording"]["path"]))
+    assert reader.runs()[0]["status"] == "failed"
+    ledger = json.loads((admitted.output / "ledger.json").read_text())
+    # Every charge is reconciled: an unknown-reservation gate cannot mask this bug.
+    assert ledger["requests"] and all(
+        row["spent"] is not None for row in ledger["requests"]
+    )
+    assert any(row["spent"] > 0 for row in ledger["requests"])
