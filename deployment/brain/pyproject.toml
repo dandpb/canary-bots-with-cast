@@ -9,6 +9,9 @@ description = "Bounded GPT-6 Luna party companions for Canary"
 requires-python = ">=3.11"
 dependencies = ["openai==3.42.1", "pydantic==2.14.2"]
 
+[project.optional-dependencies]
+tracing = ["opentelemetry-sdk==1.45.2", "opentelemetry-exporter-otlp-proto-http==1.45.2"]
+
 [project.scripts]
 canary-brain = "canary_brain.cli:main"
 
