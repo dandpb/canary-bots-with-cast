@@ -129,42 +129,65 @@ projeto operacional.
 `config.lua.dist` mantém `globalServerSaveShutdown = true`: às 06:00 o save global
 desliga o servidor (no QA, saída 0 às 06:05). Só o `game` deste projeto define
 `GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN: "1"`; o entrypoint então acrescenta
-`globalServerSaveShutdown = false` ao `config.lua`. O save diário continua (aviso,
-reset diário e de raids) e o autosave de hora em hora salva os personagens; só o
-desligamento sai. Sem a variável, o `config.lua` gerado é idêntico byte a byte ao
-de antes (produção e WSL não a definem). O preflight renderiza o `config.lua` do
-`game` com o ambiente do Compose de QA e falha fechado se o valor efetivo (a última
-atribuição) não for `false` ou faltar.
+`globalServerSaveShutdown = false` ao `config.lua`. Sem a variável, o `config.lua`
+gerado é idêntico byte a byte ao de antes (produção e WSL não a definem).
 
-**Rollout só do `game`, após revisão.** A imagem atual tem o entrypoint antigo, então
-é preciso rebuild do `game` e recriar só ele. `database`, `web`, rede e volumes
-ficam. Não rode sem o GO do responsável:
+O save diário continua salvando. Antes, quem salvava era o estado
+`GAME_STATE_SHUTDOWN` (ou `GAME_STATE_CLOSED`). Agora `global_server_save.lua`
+chama `saveServer()` (o mesmo save do autosave horário) quando nem close nem
+shutdown estão ligados. Com os padrões de produção (shutdown `true`) nada muda:
+`tests/lua/global_server_save_test.lua` cobre as quatro combinações. O preflight
+renderiza o `config.lua` do `game` com o ambiente do Compose de QA e falha fechado
+se `globalServerSaveShutdown` ou `globalServerSaveClose` não forem `false` (o valor
+efetivo é a última atribuição).
+
+**Rollout só do `game`, após revisão, nesta ordem.** A imagem atual tem o entrypoint
+antigo, então é preciso rebuild do `game` e recriar só ele. `database`, `web`, rede
+e volumes ficam. Não rode sem o GO do responsável:
 
 ```bash
 cd deployment/core-qa
-export SOURCE_REVISION='SHA_COMPLETO_REVISADO_DO_MERGE'   # igual ao HEAD limpo deste checkout
+export SOURCE_REVISION='SHA_COMPLETO_REVISADO_DO_MERGE'
 QA="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env"
-python3 -c 'import preflight; preflight.assert_compose()'   # só leitura: Compose e contrato do config.lua
-# 1. build só do game
+# 1 e 2. gate antes do build, só leitura
+python3 stage1_baseline.py game-rollout-gate --approved-revision "$SOURCE_REVISION" \
+  --historical-receipt /caminho/para/web-rollout-after.json
+# 3. só agora: build e recriação só do game (stop -t 180 salva os personagens)
 $QA build game
-# 2. recria só o game (stop -t 180 salva os personagens antes)
 $QA stop -t 180 game
 $QA up -d --no-build --no-deps --wait game
-# 3 e 4. recibo do game e conferência do config.lua vivo (só leitura)
+# 4 e 5. recibo do game e conferência do config.lua vivo, só leitura
 python3 stage1_baseline.py game-rollout --historical-receipt /caminho/para/web-rollout-after.json
 ```
 
-`game-rollout` grava `runtime/evidence/game-rollout-after-<UTC>.json` só se:
-`database` e `web` batem com `web-rollout-after.json` (ID, imagem, `CreatedAt`);
-eles, a rede e os quatro volumes batem com a `stage1-baseline.json` fixada (ID,
-`CreatedAt` e labels); o `game` foi recriado a partir de `SOURCE_REVISION` (label
-`org.opencontainers.image.revision`); e o `config.lua` vivo tem
-`globalServerSaveShutdown = false`. O recibo traz SHA de origem, ID da imagem e do
-container do `game`, `CreatedAt`, o SHA-256 do `config.lua` (o conteúdo, que tem a
-senha do banco, não sai do container), o SHA-256 de `web-rollout-after.json` e da
-baseline, e um selo `content_sha256` que acusa edição.
+`game-rollout-gate` não muda nada. Grava `runtime/evidence/game-rollout-gate.json`
+só se:
+- o SHA aprovado, `SOURCE_REVISION` e o HEAD forem iguais, com árvore limpa;
+- o Compose de QA passar `assert_compose` (com o contrato do `config.lua`);
+- `database` e `web` baterem com `web-rollout-after.json`;
+- eles, a rede e os quatro volumes baterem com a `stage1-baseline.json` fixada
+  (ID, `CreatedAt` e labels);
+- o `game` ainda for o da baseline.
 
-**5. Recaptura da baseline da etapa 1.** Depois do rollout, `check` e o upgrade
+O `game` pode estar parado, e o recorte do banco não é comparado.
+
+`game-rollout` recusa sem esse gate, com gate adulterado, com mais de 12 h, de outra
+revisão, baseline ou recibo web, ou se o `game` não foi recriado depois do gate. Ele
+grava `runtime/evidence/game-rollout-after-<UTC>.json` só se:
+- `database`, `web`, rede e volumes continuarem iguais;
+- o `game` tiver sido recriado a partir de `SOURCE_REVISION` (label
+  `org.opencontainers.image.revision`);
+- o `config.lua` vivo tiver `globalServerSaveShutdown = false`.
+
+O recibo traz:
+- o SHA de origem;
+- os IDs da imagem e do container do `game`, e o `CreatedAt`;
+- o SHA-256 do `config.lua` (o conteúdo, que tem a senha do banco, não sai do
+  container);
+- os SHA-256 do gate, de `web-rollout-after.json` e da baseline;
+- um selo `content_sha256` que acusa edição.
+
+**6. Recaptura da baseline da etapa 1.** Depois do rollout, `check` e o upgrade
 recusam (o `game` mudou de ID, imagem e `config-hash`). O caminho é recapturar:
 
 ```bash
@@ -174,18 +197,32 @@ python3 preflight.py --capture-stage1-baseline \
   --db-audit /caminho/para/db-audit.json
 ```
 
-A captura recusa recibo do `game` ausente, adulterado, sem a conferência do config
-ou que não descreve o `game` vivo; recusa `database`/`web` diferentes do recibo
-histórico e rede ou volume diferentes da baseline fixada. Só o `game` ganha a
-proveniência `game_rollout_<UTC>`; `database` e `web` continuam `historical`. Sem
-`--game-rollout-receipt`, um `game` recriado continua recusado.
+A captura recusa:
+- um recibo do `game` ausente, adulterado, sem a conferência do config ou que não
+  descreve o `game` vivo;
+- `database` ou `web` diferentes do recibo histórico;
+- rede ou volume diferentes da baseline fixada.
 
-O recorte do banco nunca é aceito em silêncio: se diferir da baseline fixada (hoje
-`qa_character_items` 10 → 11), a captura exige `--db-audit`, um JSON com
-`auditor`, `audited_at_utc`, `explanation`, `baseline_sha256` (a baseline fixada) e
-`db_slice` igual ao recorte lido agora (`counts` e
-`qa_character_projection_sha256`). A auditoria vai para a candidata em `db_audit`.
-O recorte (`qa-character-projection-equivalent-v1`) é exatamente
+Só o `game` ganha a proveniência `game_rollout_<UTC>`; `database` e `web` continuam
+`historical`. Sem `--game-rollout-receipt`, um `game` recriado continua recusado.
+
+O recorte do banco nunca é aceito em silêncio. Se diferir do da baseline fixada, a
+captura exige `--db-audit`, um JSON com:
+- `auditor`, `audited_at_utc` e `explanation`;
+- `baseline_sha256`: a baseline fixada;
+- `db_slice`: igual ao recorte lido agora (`counts` e
+  `qa_character_projection_sha256`).
+
+A auditoria vai para a candidata em `db_audit`. A diferença atual (10 → 11 itens)
+não prova inserção. A baseline de 06/11 contou `player_items WHERE player_id = 66100`
+e fez o hash do player 66100 com
+`SHA2(CONCAT_WS('|', id, account_id, name, level, posx, posy, posz), 256)`. O gate
+conta `player_id >= 66100` e faz o hash das linhas tabuladas abaixo. São escopos e
+métodos diferentes e não comparáveis. A auditoria deve registrar isso.
+
+Para que isso não se repita, a candidata grava `method`, a transação e `sql_sha256`
+(o SHA-256 do texto exato de `DB_SLICE_SQL`). Uma baseline com outro `sql_sha256` é
+recusada pelo gate. O recorte (`qa-character-projection-equivalent-v1`) é exatamente
 `DB_SLICE_SQL` de `stage1_baseline.py`, rodado como
 `docker exec canary-core-qa-database-1 mariadb -ucanary -N -B canary -e "<SQL>"`:
 
@@ -199,15 +236,16 @@ SELECT 'item', player_id, pid, sid, itemtype, count FROM player_items WHERE play
 COMMIT;
 ```
 
-As contagens são as quatro colunas da linha `counts` (`accounts`, `players`,
-`player_items`, `qa_character_items`). O hash é SHA-256 da concatenação, na ordem
+As contagens são as quatro colunas da linha `counts`: `accounts`, `players`,
+`player_items` e `qa_character_items`. O hash é o SHA-256 da concatenação, na ordem
 de saída, de cada linha que começa com `player\t` ou `item\t`, cada uma seguida de
 `\n` (UTF-8).
 
-**6. A etapa 2 continua NO-GO** até a candidata ser revisada e um commit trocar
-`stage1-baseline.json` e `BASELINE_SHA256`. Atenção: o `rollback` da etapa 2 volta a
-imagem `game` da baseline em vigor; com a baseline antiga, isso traria de volta o
-entrypoint com shutdown diário.
+**7. A etapa 2 continua NO-GO** até a candidata ser revisada e um commit trocar
+`stage1-baseline.json` e `BASELINE_SHA256`.
+
+Atenção: o `rollback` da etapa 2 volta a imagem `game` da baseline em vigor. Com a
+baseline antiga, isso traria de volta o entrypoint com shutdown diário.
 
 ## Etapa 2: worker fake (somente QA, nunca produção)
 

@@ -29,6 +29,7 @@ GAME_ENTRYPOINT = HERE.parent / "wsl/game-entrypoint.py"
 CONFIG_DIST = HERE.parent.parent / "config.lua.dist"
 SHUTDOWN_FLAG = "GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN"
 SHUTDOWN_KEY = "globalServerSaveShutdown"
+CLOSE_KEY = "globalServerSaveClose"  # with both false the daily event calls saveServer() itself
 
 
 def command(*args, env=None):
@@ -114,6 +115,8 @@ def assert_game_config(environment):
     config = render_game_config(environment)
     if lua_setting(config, SHUTDOWN_KEY) != "false":
         raise RuntimeError(f"QA game config.lua must render {SHUTDOWN_KEY} = false")
+    if lua_setting(config, CLOSE_KEY) != "false":  # close would kick players; neither state -> explicit save
+        raise RuntimeError(f"QA game config.lua must render {CLOSE_KEY} = false so the daily event saves")
     return config
 
 

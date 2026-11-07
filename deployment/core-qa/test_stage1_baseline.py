@@ -10,6 +10,7 @@ import json
 import re
 import tempfile
 import unittest
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -18,6 +19,8 @@ import stage1_baseline as gate
 
 QA = "canary-core-qa"
 GAME, WEB, DATABASE, BRAIN = gate.GAME, gate.WEB, gate.DATABASE, gate.BRAIN
+GATE_AT = datetime(2026, 11, 7, 8, 0, tzinfo=UTC)  # pre-build gate; the fake rollout recreates game at 09:00Z
+RECORD_AT = datetime(2026, 11, 7, 9, 30, tzinfo=UTC)
 STAGE1_IMAGES = ("canary-core-qa-game:local", "canary-core-qa-web:local", "mariadb:11.4")
 DB_ROWS = ["player\t66100\t65001\tQa Knight\t8\t4\t4200", "player\t66101\t65002\tQa Druid\t8\t2\t4200",
            *(f"item\t{66100 + n % 2}\t{n}\t{100 + n}\t3031\t1" for n in range(10))]
@@ -422,10 +425,22 @@ class Stage1RecaptureTests(unittest.TestCase):
         path.write_text(json.dumps(audit))
         return path
 
-    def record_rollout(self, docker, output="game-rollout-after.json"):
+    def run_gate(self, docker=None, revision="d" * 40, at=GATE_AT, source_error=None):
+        docker = docker or FakeDocker(self.baseline)
+        with patch("preflight.command", side_effect=docker), patch("stage1_baseline.utcnow", return_value=at), \
+             patch("stage1_baseline.qa.assert_source", return_value=revision, side_effect=source_error), \
+             patch("stage1_baseline.qa.assert_compose") as compose:
+            result = gate.game_rollout_gate(revision, self.historical, self.root / "gate.json", self.path, self.sha)
+        compose.assert_called_once_with()
+        return result
+
+    def record_rollout(self, docker, output="game-rollout-after.json", at=RECORD_AT):
+        if not (self.root / "gate.json").exists():
+            self.run_gate()
         with patch("preflight.command", side_effect=docker), patch("stage1_baseline.qa.assert_source"), \
-             patch.dict("os.environ", {"SOURCE_REVISION": "d" * 40}):
-            return gate.record_game_rollout(self.historical, self.root / output, self.path, self.sha)
+             patch("stage1_baseline.utcnow", return_value=at), patch.dict("os.environ", {"SOURCE_REVISION": "d" * 40}):
+            return gate.record_game_rollout(self.historical, self.root / output, self.path, self.sha,
+                                            self.root / "gate.json")
 
     def test_recapture_after_play_is_a_reviewed_candidate_the_gate_accepts_only_once_pinned(self):
         with patch("preflight.command", side_effect=self.played), \
@@ -444,6 +459,8 @@ class Stage1RecaptureTests(unittest.TestCase):
         self.assertTrue(all(all(item["historical_comparison"].values()) and len(item["historical_comparison"]) == 3
                             for item in candidate["containers"]))
         self.assertEqual(candidate["db_logical_snapshot"]["method"], gate.DB_SLICE_METHOD)
+        self.assertEqual(candidate["db_logical_snapshot"]["sql_sha256"],
+                         hashlib.sha256(gate.DB_SLICE_SQL.encode()).hexdigest())
         self.assertEqual(candidate["db_audit"]["auditor"], "Pitagoras")
         self.assertNotIn("game_rollout_receipt", candidate)
         self.assertNotIn("fake-not-a-secret", path.read_text())
@@ -497,7 +514,9 @@ class Stage1RecaptureTests(unittest.TestCase):
 
     def test_game_rollout_receipt_then_recapture_gives_only_game_the_new_provenance(self):
         docker = FakeDocker(self.baseline).game_rollout()
-        docker.counts["qa_character_items"] += 1  # the 10 -> 11 items delta, under audit
+        # The slice the recapture reads differs from the pin (as 10 -> 11 did: another scope and hash method,
+        # not an insertion); only an explicit audit of that exact slice lets it into a candidate.
+        docker.counts["qa_character_items"] += 1
         docker.rows.append("item\t66100\t99\t199\t3031\t1")
         receipt, receipt_sha = self.record_rollout(docker)
         recorded = json.loads(receipt.read_text())
@@ -520,6 +539,12 @@ class Stage1RecaptureTests(unittest.TestCase):
         self.assertEqual(candidate["db_logical_snapshot"]["counts"]["qa_character_items"], 11)
         with patch("preflight.command", side_effect=docker):  # once reviewed and pinned, the gate accepts it
             self.assertIn(provenance, gate.assert_stage1_upgrade(path, sha)["provenance"])
+        other = json.loads(path.read_text())  # a baseline taken with another query/predicate is never compared
+        other["db_logical_snapshot"]["sql_sha256"] = "0" * 64
+        other_path = self.root / "other-query.json"
+        other_path.write_text(json.dumps(other))
+        with patch("preflight.command", side_effect=docker), self.assertRaisesRegex(RuntimeError, "another query"):
+            gate.assert_stage1_upgrade(other_path, hashlib.sha256(other_path.read_bytes()).hexdigest())
 
     def test_game_rollout_refuses_changed_web_db_network_or_volumes(self):
         def web(docker):
@@ -557,6 +582,63 @@ class Stage1RecaptureTests(unittest.TestCase):
             docker.game_config = "c" * 64 + " " + setting
             with self.subTest(setting), self.assertRaisesRegex(RuntimeError, "globalServerSaveShutdown = false"):
                 self.record_rollout(docker)
+
+    def test_pre_build_gate_is_read_only_and_refuses_before_any_change(self):
+        spy = FakeDocker(self.baseline)
+        calls = []
+
+        def docker(*args, **kwargs):
+            calls.append(args)
+            return spy(*args, **kwargs)
+
+        with self.assertRaisesRegex(RuntimeError, "must match"):  # unapproved or dirty checkout: no Docker at all
+            self.run_gate(docker, source_error=RuntimeError("approved SHA, SOURCE_REVISION and HEAD must match"))
+        self.assertEqual(calls, [])
+        changed = FakeDocker(self.baseline)
+        changed.containers[WEB].update(id="6" * 64)
+        recreated = FakeDocker(self.baseline).game_rollout()
+        for name, docker_case, message in (("web", changed, "differs from web-rollout-after.json"),
+                                           ("game", recreated, "before the build")):
+            with self.subTest(name), self.assertRaisesRegex(RuntimeError, message):
+                self.run_gate(docker_case)
+            self.assertEqual(docker_case.log, [])
+        self.assertFalse((self.root / "gate.json").exists())
+        stopped = FakeDocker(self.baseline)  # game stopped by the daily shutdown, DB slice not comparable
+        stopped.containers[GAME].update(status="exited", health=None)
+        stopped.rows[0] = stopped.rows[0].replace("\t4200", "\t9100")
+        path, _ = self.run_gate(docker)
+        self.run_gate(stopped)
+        self.assertFalse(any(call[1] == "exec" or call[1:3] == ("compose", "build") for call in calls))
+        self.assertEqual(spy.log, [])
+        self.assertEqual(json.loads(path.read_text())["stage1_game"]["id"], "2" * 64)
+
+    def test_game_receipt_needs_a_fresh_matching_pre_build_gate_that_predates_the_game(self):
+        docker = FakeDocker(self.baseline).game_rollout()
+        with self.assertRaisesRegex(RuntimeError, "absent or tampered; run game-rollout-gate before the build"), \
+             patch("preflight.command", side_effect=docker), patch("stage1_baseline.qa.assert_source"), \
+             patch.dict("os.environ", {"SOURCE_REVISION": "d" * 40}):
+            gate.record_game_rollout(self.historical, self.root / "r.json", self.path, self.sha, self.root / "gate.json")
+        self.run_gate()
+        cases = (("stale", RECORD_AT + timedelta(hours=12), "stale"),
+                 ("after the game", docker.containers[GAME]["created_at"], "not recreated after"))
+        for name, at, message in cases:
+            if name == "after the game":
+                self.run_gate(at=datetime(2026, 11, 7, 9, 0, 1, tzinfo=UTC))
+                at = RECORD_AT
+            with self.subTest(name), self.assertRaisesRegex(RuntimeError, message):
+                self.record_rollout(docker, f"{name}.json", at=at)
+        self.run_gate(revision="e" * 40)
+        with self.assertRaisesRegex(RuntimeError, "another revision"):
+            self.record_rollout(docker, "other.json")
+        self.run_gate()
+        data = json.loads((self.root / "gate.json").read_text())
+        data["checked_at_utc"] = "2026-11-07T08:30:00+00:00"
+        (self.root / "gate.json").write_text(json.dumps(data))
+        with self.assertRaisesRegex(RuntimeError, "tampered"):
+            self.record_rollout(docker, "tampered.json")
+        self.run_gate()
+        receipt, _ = self.record_rollout(docker)
+        self.assertEqual(json.loads(receipt.read_text())["pre_build_gate"]["checked_at_utc"], GATE_AT.isoformat())
 
     def test_capture_refuses_a_game_receipt_that_differs_from_live_lacks_the_check_or_was_tampered(self):
         receipt, _ = self.record_rollout(FakeDocker(self.baseline).game_rollout())

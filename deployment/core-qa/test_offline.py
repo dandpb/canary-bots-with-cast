@@ -254,6 +254,7 @@ class DailyShutdownContractTests(unittest.TestCase):
         config = assert_game_config(QA_GAME_ENV)
         dist = (SOURCE / "config.lua.dist").read_text()
         self.assertEqual(lua_setting(config, SHUTDOWN_KEY), "false")
+        self.assertEqual(lua_setting(config, "globalServerSaveClose"), "false")  # -> the event calls saveServer()
         self.assertEqual(lua_setting(dist, SHUTDOWN_KEY), "true")  # the repo default stays
         for key in ("globalServerSaveTime", "globalServerSaveNotifyMessage", "globalServerSaveCleanMap",
                     "globalServerSaveClose", "toggleSaveInterval"):
@@ -273,6 +274,18 @@ class DailyShutdownContractTests(unittest.TestCase):
         self.assertNotIn(SHUTDOWN_FLAG, wsl)
         self.assertNotIn(SHUTDOWN_FLAG, (SOURCE / "deployment/wsl/Dockerfile").read_text())
 
+    @unittest.skipUnless(shutil.which("luajit") or shutil.which("lua"), "no Lua interpreter on this host")
+    def test_daily_event_still_saves_without_close_or_shutdown(self):
+        result = subprocess.run([shutil.which("luajit") or shutil.which("lua"), "tests/lua/global_server_save_test.lua"],
+                                cwd=SOURCE, text=True, capture_output=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("no close and no shutdown still saves the world", result.stdout)
+
+    def test_daily_event_has_the_explicit_save_branch(self):
+        script = (SOURCE / "data/scripts/globalevents/global_server_save.lua").read_text()
+        self.assertRegex(script, r"GAME_STATE_SHUTDOWN\)\n\telseif not configManager\.getBoolean\("
+                                 r"configKeys\.GLOBAL_SERVER_SAVE_CLOSE\) then\n(?:\t\t--[^\n]*\n)?\t\tsaveServer\(\)")
+
     def test_contract_fails_closed_when_the_key_is_true_or_missing(self):
         for env in ({**QA_GAME_ENV, SHUTDOWN_FLAG: None}, {key: value for key, value in QA_GAME_ENV.items()
                                                           if key != SHUTDOWN_FLAG}):
@@ -289,6 +302,12 @@ class DailyShutdownContractTests(unittest.TestCase):
                 module.return_value.render = render
                 with self.assertRaisesRegex(RuntimeError, "globalServerSaveShutdown = false"):
                     assert_game_config(QA_GAME_ENV)
+        with self.subTest("close"), patch("preflight.CONFIG_DIST", **{"read_text.return_value": "a = 1\n"}), \
+             patch("importlib.util.module_from_spec") as module, patch("importlib.util.spec_from_file_location"):
+            module.return_value.render = lambda _environ, config: (
+                config + "globalServerSaveShutdown = false\nglobalServerSaveClose = true\n")
+            with self.assertRaisesRegex(RuntimeError, "globalServerSaveClose = false so the daily event saves"):
+                assert_game_config(QA_GAME_ENV)
         self.assertIsNone(lua_setting("-- globalServerSaveShutdown = false\n", SHUTDOWN_KEY))
         self.assertEqual(lua_setting("globalServerSaveShutdown = false\nglobalServerSaveShutdown = true\n",
                                      SHUTDOWN_KEY), "true")
