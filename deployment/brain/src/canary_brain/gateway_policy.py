@@ -374,4 +374,8 @@ async def _authenticate_worker(request: Any, api_key: str) -> Any:
         _dispatch_pin.set(pin)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from None
-    return UserAPIKeyAuth(api_key=api_key, models=sorted(names))
+    identity: dict[str, Any] = {"api_key": api_key, "models": sorted(names)}
+    user_id = os.environ.get("CANARY_GATEWAY_WORKER_USER_ID", "").strip()
+    if user_id:
+        identity.update(user_id=user_id, user_role="internal_user")
+    return UserAPIKeyAuth(**identity)
