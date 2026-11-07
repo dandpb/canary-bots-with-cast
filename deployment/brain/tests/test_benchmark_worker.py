@@ -127,7 +127,13 @@ def exercise_supervised_worker(
         path.write_text(json.dumps(config))
         worker_command = [sys.executable, "-m", "canary_brain.cli"]
         if close_fault:
-            assert close_fault in {"schema", "counter_regression", "budget_stop"}
+            assert close_fault in {
+                "schema",
+                "counter_regression",
+                "budget_stop",
+                "shutdown_timeout",
+                "close_false",
+            }
             # Deterministic finalization boundary injection, not a claim about
             # Selector scheduling: apparent tail confirmation precedes close.
             shim = work / "close_fault.py"
@@ -148,10 +154,19 @@ def exercise_supervised_worker(
                                 Store(Path({str(work / "state.db")!r})).put(
                                     "budget_stop", "7", {{"at": "close-injection"}}
                                 )
-                            else:
+                            elif fault not in ("shutdown_timeout", "close_false"):
                                 recorder.native_delivery_error(7, fault)
                             Path({str(work / "close-injected")!r}).write_text(fault)
-                        original_close(recorder)
+                        closed = original_close(recorder)
+                        if {close_fault!r} == "close_false":
+                            assert closed is True
+                            assert recorder.errors == 0 and not recorder.dropped
+                            assert not recorder.shutdown_timed_out
+                            return False
+                        if {close_fault!r} == "shutdown_timeout":
+                            recorder.shutdown_timed_out = True
+                            recorder.errors += 1
+                        return closed
 
                     Recorder.close = close
                     main()
@@ -366,6 +381,12 @@ def exercise_supervised_worker(
                         .startswith("native_telemetry_tail")
                     ],
                 }
+                if close_fault in {"shutdown_timeout", "close_false"}:
+                    assert reader.run(run)["incomplete"]
+                    assert any(
+                        e["kind"] == "gap" and e["data"].get("after_flush")
+                        for e in events
+                    )
                 if reason == "proposal_timeout":
                     assert 30 < stopped["elapsed_seconds"] <= 32.2
                 assert not (work / "worker.sock").exists()
@@ -431,6 +452,8 @@ def test_external_stop_wins_while_native_tail_is_waiting(reason):
         ("schema", "native_transport_unconfirmed"),
         ("counter_regression", "native_transport_unconfirmed"),
         ("budget_stop", "budget_stop"),
+        ("shutdown_timeout", "recorder_error"),
+        ("close_false", "recorder_error"),
     ],
 )
 def test_finalization_revalidates_after_apparent_tail_confirmation(fault, reason):
