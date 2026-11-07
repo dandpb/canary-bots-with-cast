@@ -28,7 +28,7 @@ from .recording import (
     digest,
 )
 from .replay import campaign, export_archive, export_report, import_archive, summary
-from .runtime import Configuration, read_credential
+from .runtime import Configuration, read_credential, recording_failure
 from .store import USD, Store
 from .testing import FakeProvider
 from .timelapse import export_video
@@ -175,15 +175,17 @@ async def decision_fixtures(args: argparse.Namespace) -> Any:
             )
             rows = await evaluate_decisions(provider, fixtures)
     finally:
-        recorder.close()
+        recording_ok = recorder.close() and recording_failure(recorder) is None
         for manifest in manifests:
             relevant = [row for row in rows if row["bot_id"] == manifest.bot_id]
             RecordingStore(config.recording.path).finish(
                 manifest.run_id,
                 "completed"
-                if relevant and all(row["valid"] for row in relevant)
+                if recording_ok and relevant and all(row["valid"] for row in relevant)
                 else "failed",
             )
+    if not recording_ok:
+        raise RuntimeError("decision fixture recording did not close cleanly")
     return {
         "mode": "real-inference-on-recorded-inputs-no-game-actions",
         "runs": [m.run_id for m in manifests],

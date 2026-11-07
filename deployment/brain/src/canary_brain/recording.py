@@ -466,6 +466,9 @@ class Recorder:
         self.dropped: dict[int, int] = {}
         self.errors = 0
         self.closed = False
+        self.shutdown_timed_out = False
+        self.shutdown_interrupted = False
+        self._shutdown = threading.Event()
         for m in manifests:
             end, previous_wall = self.store.begin(m)
             gap = (
@@ -705,11 +708,43 @@ class Recorder:
             "dropped": sum(self.dropped.values()),
             "errors": self.errors,
             "closed": self.closed,
+            "shutdown_timed_out": self.shutdown_timed_out,
+            "shutdown_interrupted": self.shutdown_interrupted,
         }
 
     def _write(self) -> None:
         while True:
-            event = self.queue.get()
+            try:
+                event = self.queue.get(timeout=0.05)
+            except queue.Empty:
+                if not self._shutdown.is_set():
+                    continue
+                # A blocked append may finish after close has exhausted its budget.
+                # Preserve the timeout in replay as well as in the in-memory gate.
+                if self.shutdown_timed_out or self.shutdown_interrupted:
+                    for manifest in self.manifests.values():
+                        try:
+                            self.store.append(
+                                {
+                                    "run": manifest.run_id,
+                                    "key": "shutdown-timeout:" + self.segment,
+                                    "segment": self.segment,
+                                    "t_ms": self.offsets[manifest.bot_id]
+                                    + max(
+                                        0, int((time.monotonic() - self.started) * 1000)
+                                    ),
+                                    "wall": time.time(),
+                                    "kind": "gap",
+                                    "data": {
+                                        "reason": "recorder_shutdown_timeout"
+                                        if self.shutdown_timed_out
+                                        else "recorder_shutdown_interrupted"
+                                    },
+                                }
+                            )
+                        except (sqlite3.Error, OSError):
+                            self.errors += 1
+                return
             try:
                 if event is None:
                     return
@@ -751,16 +786,47 @@ class Recorder:
             finally:
                 self.queue.task_done()
 
-    def flush(self) -> None:
-        self.queue.join()
+    def flush(self, timeout: float = 5.0) -> None:
+        """Wait for committed events, with a budget even when the writer is stuck."""
+        deadline = time.monotonic() + max(0.0, timeout)
+        with self.queue.all_tasks_done:
+            while self.queue.unfinished_tasks:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("recorder flush timed out")
+                self.queue.all_tasks_done.wait(remaining)
 
-    def close(self) -> None:
+    def close(self, timeout: float = 5.0) -> bool:
+        """Close admission and drain within one total budget; never certify a timeout.
+
+        Python cannot kill a thread blocked in storage. On timeout it remains a
+        daemon, drains accepted events if storage recovers, and records a gap.
+        Callers must treat False as failed recording even if storage never recovers.
+        """
         if self.closed:
-            return
-        self.flush()
+            return not (
+                self.shutdown_timed_out
+                or self.shutdown_interrupted
+                or self.thread.is_alive()
+            )
+        deadline = time.monotonic() + max(0.0, timeout)
         for bot in self.manifests:
             self.emit(bot, "segment", {"phase": "stopped", "errors": self.errors})
-        self.flush()
         self.closed = True
-        self.queue.put(None)
-        self.thread.join(timeout=5)
+        try:
+            self.flush(max(0.0, deadline - time.monotonic()))
+            self._shutdown.set()
+            self.thread.join(timeout=max(0.0, deadline - time.monotonic()))
+            if self.thread.is_alive():
+                raise TimeoutError("recorder writer shutdown timed out")
+        except TimeoutError:
+            self.shutdown_timed_out = True
+            self.errors += 1
+            self._shutdown.set()
+            return False
+        except BaseException:
+            self.shutdown_interrupted = True
+            self.errors += 1
+            self._shutdown.set()
+            raise
+        return True

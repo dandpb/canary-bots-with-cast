@@ -465,10 +465,12 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             await client.close()
         await asyncio.to_thread(tracing.shutdown_bounded)
         if recorder is not None:
-            await asyncio.to_thread(recorder.close)
+            close_failed = await asyncio.to_thread(recorder.close) is False
             if benchmark_stops:
                 ending = store.get("run_stop", "end") or {}
                 failure = recording_failure(recorder)
+                if close_failed and failure is None:
+                    failure = "recorder_error"
                 if ending.get("reason") == "completed":
                     if (
                         benchmark_stops.reason == "world_changed"
@@ -510,7 +512,9 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                                 "segment": "supervisor",
                                 "t_ms": end + 1,
                                 "wall": time.time(),
-                                "kind": "lifecycle",
+                                "kind": "gap"
+                                if close_failed or recorder.shutdown_timed_out
+                                else "lifecycle",
                                 "data": {
                                     "phase": "run_supervisor_stop",
                                     "reason": failure,
