@@ -1,297 +1,301 @@
-"""Real offline worker + private datagram peer; no game or model provider."""
+"""Free harness delegates to production; no game, sockets or provider are started."""
 
+import importlib.util
 import json
-import os
-import socket
-import sqlite3
-import subprocess
-import tempfile
-import time
-import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+import m5_qa as qa
+import m5_worker as worker
+import pytest
+from canary_brain import runtime
+from canary_brain.store import Store
 
 
-class WorkerStopTests(unittest.TestCase):
-    def test_early_runtime_exit_is_not_a_completed_horizon(self):
-        for mode in ["native", "fake"]:
-            with (
-                self.subTest(mode=mode),
-                tempfile.TemporaryDirectory(prefix="m5early-") as temporary,
-            ):
-                work = Path(temporary)
-                (work / "worker.json").write_text(
-                    json.dumps(
-                        {
-                            "provider": mode,
-                            "mode": "shadow" if mode == "native" else "active",
-                            "socket_directory": str(work / "socket"),
-                            "state_file": str(work / "state.db"),
-                            "bots": [65001],
-                        }
-                    )
-                )
-                script = str(ROOT / "tests/fixture/m5_worker.py")
-                inject = (
-                    "import runpy,sys;from canary_brain import runtime;sys.path.insert(0,"
-                    + repr(str(ROOT / "tests/fixture"))
-                    + ")\nasync def early(*a,**kw): return None\nruntime.run=early\nsys.argv="
-                    + repr([script, str(work), mode])
-                    + ";runpy.run_path(sys.argv[0],run_name='__main__')"
-                )
-                subprocess.run(
-                    [os.sys.executable, "-c", inject],
-                    env={
-                        **os.environ,
-                        "PYTHONPATH": str(ROOT / "deployment/brain/src"),
-                    },
-                    check=True,
-                    timeout=10,
-                )
-                self.assertEqual(
-                    json.loads((work / "stop.json").read_text())["reason"],
-                    "runtime_ended",
-                )
+@pytest.fixture
+def attempt(tmp_path, monkeypatch):
+    monkeypatch.setenv("CANARY_M5_PRIVATE_ROOT", str(tmp_path))
+    work = tmp_path / "attempt"
+    work.mkdir(mode=0o700)
+    monkeypatch.setattr(qa, "WORK", tmp_path)
+    manifest = {
+        "fixture_sha256": "a" * 64,
+        "source_revision": "a" * 40,
+        "native_source_revision": "b" * 40,
+        "image_id": "sha256:" + "c" * 64,
+        "overrides": {},
+        "harness_sha256": {},
+    }
 
-    def exercise(self, mode, fault):
-        with tempfile.TemporaryDirectory(prefix="m5stop-") as temporary:
-            work = Path(temporary)
-            ipc = work / "socket"
-            ipc.mkdir()
-            peer = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-            peer.bind(str(ipc / "server.sock"))
-            config = {
-                "provider": mode,
-                "mode": "shadow" if mode == "native" else "active",
-                "socket_directory": str(ipc),
-                "state_file": str(work / "worker.sqlite3"),
-                "bots": [65001],
-                "memory_mode": "frozen",
-                "recording": {
-                    "path": str(work / "recording.sqlite3"),
-                    "namespace": "stop-test",
-                },
-            }
-            (work / "worker.json").write_text(json.dumps(config))
-            with (work / "worker.log").open("w") as log:
-                launch = [
-                    os.sys.executable,
-                    str(ROOT / "tests/fixture/m5_worker.py"),
-                    str(work),
-                    mode,
-                ]
-                if fault in {"proposal_timeout", "stalled"}:
-                    inject = (
-                        "import asyncio,runpy,sys;from canary_brain import runtime;"
-                        "sys.path.insert(0," + repr(str(ROOT / "tests/fixture")) + ");"
-                    )
-                    if fault == "proposal_timeout":
-                        inject += "\nasync def blocked(self,snapshot):\n self.record(snapshot.bot.id,'decision',{'phase':'requested','observation':snapshot.model_dump()})\n await asyncio.sleep(90)\nruntime.Controller._decide=blocked\n"
-                    else:
-                        inject += "import m5_stop;original=m5_stop.Stops;m5_stop.Stops=lambda **kw: original(stall_seconds=1.2,**kw)\n"
-                    inject += (
-                        "sys.argv="
-                        + repr(launch[1:])
-                        + ";runpy.run_path(sys.argv[0],run_name='__main__')"
-                    )
-                    launch = [os.sys.executable, "-c", inject]
-                process = subprocess.Popen(
-                    launch,
-                    env={
-                        **os.environ,
-                        "PYTHONPATH": str(ROOT / "deployment/brain/src"),
-                    },
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                )
-                try:
-                    deadline = time.monotonic() + 10
-                    while not (ipc / "worker.sock").exists():
-                        self.assertIsNone(
-                            process.poll(), (work / "worker.log").read_text()
-                        )
-                        self.assertLess(time.monotonic(), deadline)
-                        time.sleep(0.02)
+    def configure(mode="native"):
+        config = qa.worker_configuration(work, mode, manifest)
+        (work / "worker.json").write_text(json.dumps(config))
+        return config
 
-                    def send(data):
-                        peer.sendto(json.dumps(data).encode(), str(ipc / "worker.sock"))
-
-                    send(
-                        {
-                            "version": 1,
-                            "type": "hello",
-                            "world": "fixture",
-                            "capabilities": {
-                                "lifecycle_telemetry": 1,
-                                "keep_awake": True,
-                            },
-                        }
-                    )
-                    for sequence in range(1, 6):
-                        send(
-                            {
-                                "version": 1,
-                                "type": "observation",
-                                "world": "fixture",
-                                "sequence": sequence,
-                                "captured_ms": sequence * 250,
-                                "lease": "offline",
-                                "objective_generation": 0,
-                                "mode": "shadow" if mode == "native" else "active",
-                                "autonomous": True,
-                                "bot": {
-                                    "id": 65001,
-                                    "name": "fixture",
-                                    "level": 20,
-                                    "vocation": 4,
-                                    "state": "IDLE",
-                                    "position": [1, 2, 7],
-                                    "health": 100,
-                                    "mana": 100,
-                                    "potions": 40,
-                                    "xp": 98800,
-                                    "alive": True,
-                                },
-                                "actions": [
-                                    {
-                                        "id": "continue",
-                                        "action": "continue",
-                                        "description": "continue",
-                                        "ttl_ms": 1500,
-                                    }
-                                ]
-                                + (
-                                    [
-                                        {
-                                            "id": "resupply",
-                                            "action": "resupply",
-                                            "description": "resupply",
-                                            "ttl_ms": 5000,
-                                        }
-                                    ]
-                                    if fault == "proposal_timeout"
-                                    else []
-                                ),
-                            }
-                        )
-                        time.sleep(0.05)
-
-                    def telemetry(sequence, deaths, world="fixture"):
-                        send(
-                            {
-                                "version": 1,
-                                "type": "telemetry",
-                                "world": world,
-                                "sequence": sequence,
-                                "captured_ms": sequence * 250,
-                                "bot_id": 65001,
-                                "deaths": deaths,
-                                "phase": "alive",
-                                "model_owned": False,
-                            }
-                        )
-
-                    telemetry(1, 10)
-                    time.sleep(0.1)
-                    if fault == "deaths_limit":
-                        telemetry(2, 12)
-                        time.sleep(0.1)
-                        self.assertIsNone(process.poll())
-                        telemetry(3, 13)
-                    elif fault == "world_changed":
-                        telemetry(2, 0, "next-world")
-                    elif fault in {"proposal_timeout", "stalled"}:
-                        deadline = time.monotonic() + 38
-                        sequence = 6
-                        while process.poll() is None and time.monotonic() < deadline:
-                            # Repeat observations keep liveness separate from missing decisions.
-                            packet = {
-                                "version": 1,
-                                "type": "observation",
-                                "world": "fixture",
-                                "sequence": sequence,
-                                "captured_ms": sequence * 250,
-                                "lease": "offline",
-                                "objective_generation": 0,
-                                "mode": "active",
-                                "autonomous": True,
-                                "bot": {
-                                    "id": 65001,
-                                    "name": "fixture",
-                                    "level": 20,
-                                    "vocation": 4,
-                                    "state": "IDLE",
-                                    "position": [1, 2, 7],
-                                    "health": 100,
-                                    "mana": 100,
-                                    "potions": 20,
-                                    "xp": 98800,
-                                    "alive": True,
-                                },
-                                "actions": [
-                                    {
-                                        "id": "continue",
-                                        "action": "continue",
-                                        "description": "continue",
-                                        "ttl_ms": 1500,
-                                    },
-                                    {
-                                        "id": "resupply",
-                                        "action": "resupply",
-                                        "description": "resupply",
-                                        "ttl_ms": 5000,
-                                    },
-                                ],
-                            }
-                            try:
-                                send(packet)
-                            except (FileNotFoundError, ConnectionRefusedError):
-                                break
-                            sequence += 1
-                            time.sleep(0.1)
-                    elif fault != "observation_stale":
-                        raise AssertionError("unknown test fault")
-                    self.assertEqual(
-                        process.wait(timeout=12), 0, (work / "worker.log").read_text()
-                    )
-                    stop = json.loads((work / "stop.json").read_text())
-                    self.assertEqual(stop["reason"], fault)
-                    self.assertLess(
-                        stop["elapsed"], 40 if fault == "proposal_timeout" else 10
-                    )
-                    self.assertFalse((ipc / "worker.sock").exists())
-                    with sqlite3.connect(work / "worker.sqlite3") as db:
-                        self.assertEqual(
-                            db.execute("SELECT COUNT(*) FROM requests").fetchone()[0], 0
-                        )
-                finally:
-                    if process.poll() is None:
-                        process.terminate()
-                        process.wait(timeout=10)
-                    peer.close()
-
-    def test_native_and_fake_stop_on_cumulative_deaths(self):
-        for mode in ("native", "fake"):
-            with self.subTest(mode=mode):
-                self.exercise(mode, "deaths_limit")
-
-    def test_native_and_fake_stop_on_generation_change(self):
-        for mode in ("native", "fake"):
-            with self.subTest(mode=mode):
-                self.exercise(mode, "world_changed")
-
-    def test_native_and_fake_stop_after_observation_loss(self):
-        for mode in ("native", "fake"):
-            with self.subTest(mode=mode):
-                self.exercise(mode, "observation_stale")
-
-    def test_fake_stops_after_real_thirty_second_missing_proposal_window(self):
-        self.exercise("fake", "proposal_timeout")
-
-    def test_fake_stops_on_stall_with_scaled_test_threshold(self):
-        self.exercise("fake", "stalled")
+    configure()
+    return work, configure
 
 
-if __name__ == "__main__":
-    unittest.main()
+def integrated(monkeypatch):
+    worker.require_native_admission()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["native", "fake"])
+async def test_delegates_clock_completion_and_stop_details_to_production(
+    attempt, monkeypatch, mode
+):
+    work, configure = attempt
+    configure(mode)
+    integrated(monkeypatch)
+    called = []
+    ending = {
+        "reason": "completed",
+        "observed_seconds": 1800,
+        "native_seconds": 1800,
+        "required_sequence": 1802,
+    }
+
+    async def production(config):
+        called.append(config)
+        assert config.benchmark_supervision is True
+        assert config.run_seconds == 1800
+        assert config.provider == mode
+        assert config.budget_file is None
+        state = runtime.Store(config.state_file)
+        state.put("run_stop", "end", ending)
+
+    monkeypatch.setattr(runtime, "run", production)
+    # A stub verdict alone no longer exports a successful qualification.
+    with pytest.raises(RuntimeError, match="durable admission/replay proof"):
+        await worker.run_worker(work, mode)
+    assert len(called) == 1
+    assert json.loads((work / "stop.json").read_text()) == ending
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reason", [None, "world_changed", "native_transport_unconfirmed"]
+)
+async def test_early_exit_or_production_failure_cannot_become_completed(
+    attempt, monkeypatch, reason
+):
+    work, _ = attempt
+    integrated(monkeypatch)
+
+    async def production(config):
+        state = runtime.Store(config.state_file)
+        if reason:
+            state.put("run_stop", "end", {"reason": reason})
+
+    monkeypatch.setattr(runtime, "run", production)
+    with pytest.raises(RuntimeError, match="did not complete"):
+        await worker.run_worker(work, "native")
+    assert json.loads((work / "stop.json").read_text())["reason"] == (
+        reason or "runtime_ended"
+    )
+
+
+@pytest.mark.asyncio
+async def test_missing_integration_fails_before_config_state_or_runtime(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delitem(runtime.Configuration.model_fields, "native_source_revision")
+
+    async def forbidden_runtime(*_args, **_kwargs):
+        pytest.fail("unqualified runtime entered")
+
+    monkeypatch.setattr(runtime, "run", forbidden_runtime)
+    with pytest.raises(RuntimeError, match="integration is not available"):
+        await worker.run_worker(tmp_path / "nonexistent", "native")
+    assert not list(tmp_path.iterdir())
+
+
+def test_producer_preflight_cannot_start_resources_on_unintegrated_main(monkeypatch):
+    monkeypatch.delitem(runtime.Configuration.model_fields, "native_source_revision")
+    monkeypatch.setattr(
+        qa, "command", lambda *_a, **_k: pytest.fail("resource command")
+    )
+    for action in (qa.prepare, lambda: qa.run("native")):
+        with pytest.raises(RuntimeError, match="integration is not available"):
+            action()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "credential",
+        "client",
+        "provider",
+        "gateway",
+        "reserve",
+        "settle",
+        "outside_store",
+    ],
+)
+async def test_provider_and_financial_operations_are_blocked(
+    attempt, monkeypatch, operation
+):
+    work, _ = attempt
+    integrated(monkeypatch)
+    outside = work.parent / "real-ledger.sqlite3"
+
+    async def production(config):
+        if operation == "credential":
+            runtime.read_credential(outside)
+        elif operation == "client":
+            runtime.AsyncOpenAI()
+        elif operation == "provider":
+            runtime.Provider()
+        elif operation == "gateway":
+            runtime.GatewayProvider()
+        elif operation == "outside_store":
+            runtime.Store(outside)
+        else:
+            getattr(runtime.Store(config.state_file), operation)("id", 1)
+
+    monkeypatch.setattr(runtime, "run", production)
+    with pytest.raises(RuntimeError, match="forbids"):
+        await worker.run_worker(work, "native")
+    assert not outside.exists()
+    assert not (work / "stop.json").exists()
+    # Global guards restore after failure.
+    assert runtime.Store is Store
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"benchmark_supervision": False},
+        {"run_seconds": None},
+        {"provider": "openai"},
+        {"credential_file": "/private/key"},
+        {"budget_file": "/canonical/ledger.sqlite3"},
+        {"state_file": "/canonical/ledger.sqlite3"},
+        {"operator_port": 8765},
+        {"memory_mode": "independent"},
+        {"learning": True},
+    ],
+)
+def test_unsafe_config_rejected_before_runtime(attempt, change):
+    work, _ = attempt
+    config = json.loads((work / "worker.json").read_text())
+    config.update(change)
+    (work / "worker.json").write_text(json.dumps(config))
+    with pytest.raises(ValueError):
+        worker.load_configuration(work, "native")
+
+
+def test_existing_state_never_resumed_or_modified(attempt):
+    work, _ = attempt
+    sentinel = work / "worker.sqlite3"
+    sentinel.write_bytes(b"previous evidence")
+    with pytest.raises(ValueError, match="never resume"):
+        worker.load_configuration(work, "native")
+    assert sentinel.read_bytes() == b"previous evidence"
+
+
+def test_private_paths_and_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("CANARY_M5_PRIVATE_ROOT", str(tmp_path))
+    monkeypatch.setenv("CANARY_M5_QA", str(tmp_path / "new-attempt"))
+    monkeypatch.setenv("CANARY_M5_WORLD", str(tmp_path / "world.otbm"))
+    monkeypatch.setenv("CANARY_M5_NATIVE_BUILD", str(tmp_path / "build"))
+    monkeypatch.setenv("OPENAI_API_KEY", "never-pass")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "never-pass")
+    qa.configure_paths()
+    assert qa.WORK == tmp_path / "new-attempt"
+    assert qa.WORLD == tmp_path / "world.otbm"
+    env = qa.worker_environment(qa.WORK / "native")
+    assert set(env) == {"PATH", "PYTHONPATH", "TMPDIR", "CANARY_M5_PRIVATE_ROOT"}
+    assert env["TMPDIR"] == str(qa.WORK / "native")
+    assert "OPENAI_API_KEY" not in env
+    monkeypatch.setenv("CANARY_M5_QA", str(tmp_path.parent / "escape"))
+    with pytest.raises(ValueError, match="below the private root"):
+        qa.configure_paths()
+
+
+def test_symlink_escape_is_rejected(attempt, monkeypatch):
+    work, _ = attempt
+    alias = work.parent / "alias"
+    alias.symlink_to(work, target_is_directory=True)
+    with pytest.raises(ValueError, match="without symlinks"):
+        worker.load_configuration(alias, "native")
+
+
+def test_import_has_no_runtime_or_cli_side_effects(monkeypatch):
+    monkeypatch.setattr(
+        runtime, "run", lambda *_a, **_k: pytest.fail("runtime on import")
+    )
+    spec = importlib.util.spec_from_file_location(
+        "free_worker_import", Path(worker.__file__)
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+
+def test_socket_symlink_to_another_peer_is_rejected(attempt):
+    work, _ = attempt
+    (work / "socket").symlink_to(work.parent, target_is_directory=True)
+    with pytest.raises(ValueError, match="socket paths"):
+        worker.load_configuration(work, "native")
+
+
+def test_current_source_must_be_clean_and_match_import(monkeypatch):
+    calls = []
+
+    def git(*args, **kwargs):
+        calls.append(args)
+        if "status" in args:
+            return " M tests/fixture/m5_worker.py"
+        pytest.fail("revision attested before dirty check")
+
+    monkeypatch.setattr(qa, "command", git)
+    with pytest.raises(ValueError, match="clean committed"):
+        qa.require_current_source()
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_any_inference_row_blocks_stop_export_even_if_supervisor_completed(
+    attempt, monkeypatch
+):
+    work, _ = attempt
+    integrated(monkeypatch)
+
+    async def production(config):
+        state = runtime.Store(config.state_file)
+        with state.connection() as db:
+            db.execute(
+                "INSERT INTO requests(id,month,reserved,spent) VALUES ('unexpected','2026-11',0,0)"
+            )
+        state.put("run_stop", "end", {"reason": "completed"})
+
+    monkeypatch.setattr(runtime, "run", production)
+    with pytest.raises(RuntimeError, match="forbids"):
+        await worker.run_worker(work, "native")
+    assert not (work / "stop.json").exists()
+
+
+def test_worker_rejects_runtime_imported_from_other_source(monkeypatch, tmp_path):
+    integrated(monkeypatch)
+    monkeypatch.setattr(runtime, "__file__", str(tmp_path / "runtime.py"))
+    with pytest.raises(RuntimeError, match="this source checkout"):
+        worker.require_native_admission()
+
+
+def test_native_build_pin_is_distinct_from_harness_source(attempt):
+    work, configure = attempt
+    config = configure()
+    assert config["native_source_revision"] == "b" * 40
+    assert config["recording"]["manifests"][0]["source_revision"] == "b" * 40
+    assert worker.load_configuration(work, "native").native_source_revision == "b" * 40
+    config["native_source_revision"] = "c" * 40
+    (work / "worker.json").write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="source pins must agree"):
+        worker.load_configuration(work, "native")
+
+
+def test_missing_native_pin_never_falls_back_to_harness_revision(attempt):
+    work, _ = attempt
+    with pytest.raises(ValueError, match="actual native build source"):
+        qa.worker_configuration(work, "native", {"source_revision": "a" * 40})

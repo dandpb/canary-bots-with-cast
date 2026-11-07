@@ -642,6 +642,7 @@ async def _run_campaign(
                     run_cap_nanousd=experiment.run_cap_nanousd,
                     run_seconds=experiment.seconds,
                     benchmark_supervision=True,
+                    native_source_revision=experiment.source_revision,
                     decision_timeout=experiment.decision_timeout
                     if participant.kind == "litellm"
                     else 1.2,

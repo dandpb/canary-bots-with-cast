@@ -23,6 +23,7 @@ from .protocol import (
 from .provider import Proposal
 from .recording import Recorder, attribution, request_context
 from .store import BudgetExceeded, Store
+from .supervised_native import SupervisedNative
 from .supervision import Supervisor
 
 
@@ -56,6 +57,7 @@ class Controller:
         require_benchmark_bridge: bool = False,
         benchmark_stops: Stops | None = None,
         require_telemetry_delivery: bool = False,
+        native_source_revision: str | None = None,
     ) -> None:
         if mode not in {"shadow", "active"}:
             raise ValueError("controller mode must be shadow or active")
@@ -79,6 +81,14 @@ class Controller:
         self.leader_message: dict[int, str] = {}
         self.world = ""
         self.supervisor = Supervisor(self)
+        self.admission_ended = False
+        self.model_admission_closed = False
+        self.operator_tasks: dict[int, asyncio.Task[Any]] = {}
+        self.native_run = (
+            SupervisedNative(self, native_source_revision)
+            if native_source_revision
+            else None
+        )
 
     def record(
         self, bot: int, kind: str, data: dict[str, Any], key: str | None = None
@@ -102,7 +112,7 @@ class Controller:
 
     def _spawn(self, bot: int, kind: str, work: Callable[[], Any]) -> None:
         key = (bot, kind)
-        if key in self.pending:
+        if self.model_admission_closed or key in self.pending:
             return
 
         async def guarded() -> None:
@@ -130,6 +140,12 @@ class Controller:
         self.pending[key] = asyncio.create_task(guarded())
 
     async def handle(self, packet: dict[str, Any]) -> None:
+        if self.native_run:
+            await self.native_run.handle(packet)
+        else:
+            await self._handle(packet)
+
+    async def _handle(self, packet: dict[str, Any]) -> None:
         if packet.get("type") == "telemetry_status":
             if self.recorder is None:
                 return
@@ -150,8 +166,14 @@ class Controller:
             return
         if packet.get("type") == "telemetry":
             telemetry = Telemetry.model_validate(packet)
-            if self.benchmark_stops and (
-                self.roster is None or telemetry.bot_id in self.roster
+            if (
+                self.benchmark_stops
+                and (self.roster is None or telemetry.bot_id in self.roster)
+                and not (
+                    self.native_run
+                    and self.native_run.horizon
+                    and telemetry.captured_ms > self.native_run.horizon.captured_ms
+                )
             ):
                 self.benchmark_stops.observe(telemetry.model_dump(), time.monotonic())
             if self.recorder and (
@@ -196,7 +218,8 @@ class Controller:
                 outcome.model_dump(),
                 f"outcome:{outcome.world}:{outcome.action_id}:{outcome.status}",
             )
-            self._outcome(outcome)
+            if not self.model_admission_closed:
+                self._outcome(outcome)
             return
         snapshot = Observation.model_validate(packet)
         if not self.bridge_ready:
@@ -362,6 +385,8 @@ class Controller:
         *,
         operator: bool = False,
     ) -> str | None:
+        if self.model_admission_closed:
+            return None
         self.record(
             snapshot.bot.id,
             "proposal",
@@ -426,6 +451,8 @@ class Controller:
 
     def reconcile(self) -> None:
         """Recover lost datagrams using one stable identity, including after worker restart."""
+        if self.model_admission_closed:
+            return
         now = time.monotonic()
         for action_id, pending in self.store.records("pending", 1000):
             intent = pending["intent"]
@@ -931,7 +958,30 @@ class Controller:
         while self.pending:
             await asyncio.gather(*list(self.pending.values()), return_exceptions=True)
 
-    async def close(self) -> None:
-        for task in self.pending.values():
+    def require_model_admission(self) -> None:
+        if self.admission_ended or self.model_admission_closed:
+            raise ValueError("A conversa foi encerrada para esta execução.")
+
+    def close_admission(self) -> None:
+        self.admission_ended = True
+        self.model_admission_closed = True
+        self.observe_only = True
+        for task in [*self.pending.values(), *self.operator_tasks.values()]:
             task.cancel()
-        await self.drain()
+
+    async def close(self) -> None:
+        self.close_admission()
+        tasks: set[asyncio.Task[Any]] = {
+            *self.pending.values(),
+            *self.operator_tasks.values(),
+        }
+        if tasks:
+            _, waiting = await asyncio.wait(tasks, timeout=0.5)
+            if waiting and self.native_run:
+                self.native_run.abort("model_shutdown_timeout")
+        for key, task in list(self.pending.items()):
+            if task.done():
+                self.pending.pop(key, None)
+        for bot, chat in list(self.operator_tasks.items()):
+            if chat.done():
+                self.operator_tasks.pop(bot, None)

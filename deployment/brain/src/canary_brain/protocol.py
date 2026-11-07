@@ -105,6 +105,7 @@ class Telemetry(Packet):
     deaths: int = Field(ge=0)
     phase: Literal["alive", "dead", "hibernated", "unavailable"]
     model_owned: bool = False
+    run_nonce: str = Field(default="", max_length=80)
 
 
 class TelemetryStatus(Packet):
@@ -121,6 +122,9 @@ class TelemetryStatus(Packet):
     pending_bytes: int = Field(ge=0)
     overflow_frames: int = Field(ge=0)
     discarded_frames: int = Field(ge=0)
+
+    fence_nonce: str = Field(default="", max_length=80)
+    fault: str = Field(default="", max_length=80)
 
     @model_validator(mode="after")
     def counters(self) -> "TelemetryStatus":
