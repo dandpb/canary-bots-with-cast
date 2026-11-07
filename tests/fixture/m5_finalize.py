@@ -12,16 +12,26 @@ result = json.loads((work / "result.json").read_text())
 assert result["phase"] == "finished", "do not finalize an active or provisioning run"
 stop = result["stop"]
 data = report(work)
-duration_ok = 1795 <= data["observed_seconds"] <= 1805
+progression = data.get("progression", {})
+window = progression.get("window") or {}
+native_seconds = window.get("native_seconds")
+duration_ok = (
+    type(native_seconds) in (int, float)
+    and 1800 <= native_seconds <= 1805
+    and 1800 <= data.get("observed_seconds", 0) <= 1805
+)
 finished = stop["reason"] == "completed"
 data["checks"] = {
     "horizon_completed": finished,
     "observed_duration_ok": duration_ok,
-    "no_recorded_gaps": data["metrics"]["gaps"] == 0,
-    "positive_recorded_xp": data["metrics"]["xp_delta"] > 0,
-    "saved_xp_matches_last_sample": result["saved_character"]["experience"]
-    == data["last_sample"]["data"]["bot"]["xp"],
-    "zero_inference_requests": data["ledger"]["requests"] == 0,
+    "no_recorded_gaps": data["metrics"]["gaps"] == 0
+    and data.get("recording_incomplete") is False,
+    "positive_recorded_xp": window.get("xp_delta", 0) > 0,
+    "window_and_persistence_verified": bool(window) and progression.get("errors") == [],
+    "zero_inference_requests": all(
+        data["ledger"].get(key) == 0
+        for key in ("requests", "spent_nanousd", "reserved_nanousd")
+    ),
 }
 data["attempt"] = result
 data["timed_gate_passed"] = all(data["checks"].values())

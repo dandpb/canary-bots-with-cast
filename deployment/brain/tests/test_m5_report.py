@@ -86,7 +86,13 @@ def evidence():
                 "t_ms": 0,
                 "wall": 1.0,
                 "segment": "one",
-                "data": {"bot": bot, "world": "qa", "objective_generation": 1},
+                "data": {
+                    "bot": bot,
+                    "world": "qa",
+                    "objective_generation": 1,
+                    "captured_ms": 1000,
+                    "sequence": 1,
+                },
             },
             {
                 "kind": "lifecycle",
@@ -96,17 +102,21 @@ def evidence():
                 "data": {
                     "world": "qa",
                     "phase": "alive",
+                    "captured_ms": 1000,
                     "deaths": 0,
                     "model_owned": False,
                 },
             },
             {
                 "kind": "sample",
+                "key": "horizon-final-sample",
                 "t_ms": 1800000,
                 "wall": 1801.0,
                 "segment": "one",
                 "data": {
                     "bot": {**bot, "xp": 110},
+                    "captured_ms": 1801000,
+                    "sequence": 1801,
                     "world": "qa",
                     "objective_generation": 1,
                 },
@@ -193,6 +203,12 @@ def evidence():
                     "posz": 7,
                 },
                 "saved_character": {"id": 7, "level": 20, "experience": 110},
+                "persistence": {
+                    "world": "qa",
+                    "bot_id": 7,
+                    "game_stopped_wall": 1802,
+                    "sql_read_wall": 1803,
+                },
                 "game_image": plan["game_image"],
                 "database_image": plan["database_image"],
                 "images_verified": True,
@@ -848,3 +864,211 @@ def test_archive_import_and_cli_are_read_only_and_refuse_mixed_rerun_output(tmp_
     assert second.returncode != 0
     assert (tmp_path / "report/report.json").read_bytes() == report
     assert before == {p: p.read_bytes() for p in archives}
+
+
+def test_native_clock_cannot_be_replaced_by_receipt_duration():
+    args = evidence()
+    args[1][0]["events"][-2]["data"]["captured_ms"] = 1800999
+    assert "native_horizon_short" in codes(reporter.review(*args))
+
+
+def post_window(args, *, xp=150, level=21):
+    events = args[1][0]["events"]
+    observation = copy.deepcopy(events[-2]["data"])
+    observation.update(captured_ms=1801500, sequence=1802)
+    observation["bot"].update(xp=xp, level=level)
+    events.append(
+        {
+            "kind": "lifecycle",
+            "t_ms": 1800500,
+            "wall": 1801.5,
+            "data": {"phase": "post_horizon_sample", "data": observation},
+        }
+    )
+    args[2][0]["saved_character"].update(experience=xp, level=level)
+
+
+def test_post_cutoff_level_and_xp_are_reconciled_without_inflating_score():
+    args = evidence()
+    post_window(args)
+    result = reporter.review(*args, require_completed=True)
+    assert result["ready_for_review"], result["findings"]
+    progression = result["runs"][0]["progression"]
+    assert progression["window"]["xp_delta"] == 10
+    assert progression["window"]["final_level"] == 20
+    assert progression["final_saved_character"]["experience"] == 150
+    assert progression["final_saved_character"]["level"] == 21
+    assert result["runs"][0]["metrics"]["xp_delta"] == 10
+
+
+@pytest.mark.parametrize(
+    "mutate,expected",
+    [
+        (lambda a: a[2][0].pop("persistence"), "persistence_timing_unverified"),
+        (
+            lambda a: a[2][0]["persistence"].update(sql_read_wall=1800),
+            "persistence_timing_unverified",
+        ),
+        (
+            lambda a: a[2][0]["persistence"].update(game_stopped_wall=1801),
+            "persistence_timing_unverified",
+        ),
+        (
+            lambda a: a[2][0]["saved_character"].update(experience=151),
+            "saved_progress_mismatch",
+        ),
+        (
+            lambda a: a[2][0]["saved_character"].update(level=20),
+            "saved_progress_mismatch",
+        ),
+        (lambda a: a[2][0]["saved_character"].update(id=8), "saved_progress_mismatch"),
+        (
+            lambda a: a[1][0]["events"][-1]["data"]["data"].update(world="reset"),
+            "persistence_identity_changed",
+        ),
+        (
+            lambda a: a[1][0]["events"][-1]["data"]["data"].update(captured_ms=100),
+            "observation_time_regressed",
+        ),
+    ],
+)
+def test_post_window_persistence_rejects_missing_or_contradictory_evidence(
+    mutate, expected
+):
+    args = evidence()
+    post_window(args)
+    mutate(args)
+    result = reporter.review(*args)
+    assert expected in codes(result)
+    assert not result["ready_for_review"]
+
+
+def test_unexplained_regression_fails_even_when_final_sql_matches():
+    args = evidence()
+    post_window(args, xp=99, level=19)
+    assert "progress_regression_unreconciled" in codes(reporter.review(*args))
+
+
+def test_missing_frozen_boundary_does_not_fall_back_to_last_sample():
+    args = evidence()
+    args[1][0]["events"][-2].pop("key")
+    assert "frozen_window_missing" in codes(reporter.review(*args))
+
+
+def test_post_window_death_remains_diagnostic_and_reset_counter_fails():
+    args = evidence()
+    events = args[1][0]["events"]
+    events.append(
+        {
+            "kind": "lifecycle",
+            "t_ms": 1800500,
+            "wall": 1801.5,
+            "data": {
+                "phase": "post_horizon_telemetry",
+                "data": {
+                    "world": "qa",
+                    "captured_ms": 1801500,
+                    "deaths": 1,
+                },
+            },
+        }
+    )
+    progression = reporter.window_persistence(events, args[2][0])
+    assert progression["errors"] == []
+    assert progression["window"]["deaths"] == 0
+    assert progression["death_evidence"][-1]["deaths"] == 1
+    events[1]["data"]["deaths"] = 2
+    assert (
+        "death_counter_reset"
+        in reporter.window_persistence(events, args[2][0])["errors"]
+    )
+
+
+def test_post_window_only_xp_does_not_qualify_free_window():
+    args = evidence()
+    args[1][0]["events"][-2]["data"]["bot"]["xp"] = 100
+    post_window(args)
+    assert "qualification_no_xp" in codes(
+        reporter.review(*args, require_completed=True)
+    )
+
+
+@pytest.mark.parametrize(
+    "fault,expected",
+    [
+        ("no_baseline", "death_baseline_missing"),
+        ("reset", "persistence_reset"),
+        ("gap", "persistence_recording_gap"),
+        ("duplicate_cutoff", "frozen_window_missing"),
+        ("missing_sql", "saved_progress_mismatch"),
+        ("missing_native_time", "native_boundary_invalid"),
+        ("nonfinite_receipt", "persistence_timing_unverified"),
+        ("same_sequence_different_state", "observation_identity_conflict"),
+    ],
+)
+def test_boundary_and_reset_evidence_fail_closed(fault, expected):
+    args = evidence()
+    events, trial = args[1][0]["events"], args[2][0]
+    if fault == "no_baseline":
+        events.pop(1)
+    elif fault == "reset":
+        events.append(
+            {
+                "kind": "lifecycle",
+                "t_ms": 1800001,
+                "wall": 1801.001,
+                "data": {"phase": "fixture_reset"},
+            }
+        )
+    elif fault == "gap":
+        events.append(
+            {
+                "kind": "gap",
+                "t_ms": 1800001,
+                "wall": 1801.001,
+                "data": {"reason": "native_telemetry_loss", "missing": 1},
+            }
+        )
+    elif fault == "duplicate_cutoff":
+        events.append(copy.deepcopy(events[-2]))
+    elif fault == "missing_sql":
+        trial.pop("saved_character")
+    elif fault == "missing_native_time":
+        events[0]["data"].pop("captured_ms")
+    elif fault == "nonfinite_receipt":
+        trial["persistence"]["sql_read_wall"] = float("nan")
+    else:
+        post_window(args)
+        events[-1]["data"]["data"]["sequence"] = 1801
+    result = reporter.window_persistence(events, trial)
+    assert expected in result["errors"]
+    if fault in {"gap", "reset"}:
+        assert result["reset_and_gap_evidence"]
+
+
+@pytest.mark.parametrize("nested", [False, True])
+@pytest.mark.parametrize("counters", [(0, 0), (1, 0)])
+def test_native_telemetry_regression_checked_before_capture_sort(nested, counters):
+    args = evidence()
+    events = args[1][0]["events"]
+    events[1]["data"]["deaths"] = counters[0]
+    packet = {"world": "qa", "captured_ms": 500, "deaths": counters[1]}
+    events.append(
+        {
+            "kind": "lifecycle",
+            "segment": "one",
+            "t_ms": 1800500,
+            "wall": 1801.5,
+            "data": {"phase": "post_horizon_telemetry", "data": packet}
+            if nested
+            else packet,
+        }
+    )
+    result = reporter.window_persistence(events, args[2][0])
+    assert "telemetry_time_regressed" in result["errors"]
+    assert [d["captured_ms"] for d in result["death_evidence_stream"]] == [1000, 500]
+    if counters == (1, 0):
+        assert "death_counter_reset" in result["errors"]
+    reviewed = reporter.review(*args)
+    assert not reviewed["ready_for_review"]
+    assert "telemetry_time_regressed" in codes(reviewed)
