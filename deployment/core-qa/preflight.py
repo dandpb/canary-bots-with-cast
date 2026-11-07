@@ -257,9 +257,10 @@ def save_receipt(path, receipt):
     return hashlib.sha256(content).hexdigest()
 
 
-def record_brain_image(approved_revision, receipt_path=UPGRADE_RECEIPT):
+def record_brain_image(approved_revision, receipt_path=None):
     """After the stage-2 up: bind the built brain image and its source label to the receipt."""
     source = assert_source(approved_revision)
+    receipt_path = receipt_path or UPGRADE_RECEIPT
     receipt = json.loads(receipt_path.read_text())
     label = '{{index .Config.Labels "org.opencontainers.image.revision"}}'
     image_id, revision = (command("docker", "image", "inspect", BRAIN_IMAGE, "--format",
@@ -283,7 +284,7 @@ def run_preflight(resources_only=False, approved_revision=None, receipt_path=Non
         return None
     source_sha = assert_source(approved_revision)
     map_sha = assert_map()
-    return write_receipt(receipt_path or (UPGRADE_RECEIPT if upgrade else RECEIPT), source_sha,
+    return write_receipt(receipt_path or (UPGRADE_RECEIPT if upgrade or brain_fake else RECEIPT), source_sha,
                          compose_sha, images, myaac, map_sha, brain_fake or upgrade, stage1)
 
 

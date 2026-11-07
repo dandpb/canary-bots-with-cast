@@ -157,6 +157,10 @@ python3 preflight.py --record-brain-image --approved-revision "$SOURCE_REVISION"
 $QA exec brain canary-brain status --state /var/lib/canary-human-qa-stage2/ledger.sqlite3
 ```
 
+`--brain-fake` e `--upgrade-from-stage1` gravam o recibo da etapa 2 em
+`runtime/evidence/stage2-upgrade-receipt.json`, que `--record-brain-image`
+atualiza após o build. A etapa 1 mantém seu `preflight-receipt.json`.
+
 O upgrade só aceita exatamente os objetos da etapa 1: os containers
 `canary-core-qa-{database,game,web}-1`, a rede `canary-core-qa_default`, os quatro
 volumes e as tags game/web, todos com os labels Compose do projeto. Ele recusa

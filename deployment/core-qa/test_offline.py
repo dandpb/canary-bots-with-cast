@@ -337,6 +337,24 @@ def docker_shim(*changes):
 class StageUpgradeTests(unittest.TestCase):
     """Stage 1 -> 2 gate, brain base lock and brain image receipt, with a fake Docker CLI."""
 
+    def test_fresh_stage2_receipt_can_record_the_built_brain(self):
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as directory, \
+             patch("preflight.UPGRADE_RECEIPT", Path(directory) / "stage2.json"), \
+             patch("preflight.assert_compose", return_value="f" * 64), \
+             patch("preflight.assert_no_resources"), \
+             patch("preflight.assert_image_lock", return_value={"brain_base": "sha256:base"}), \
+             patch("preflight.verify_myaac", return_value={"entrypoint_sha256": "d", "qa_config_sha256": "e"}), \
+             patch("preflight.assert_source", return_value=sha), \
+             patch("preflight.assert_map", return_value="1" * 64), \
+             patch("preflight.command", side_effect=lambda *a, **k:
+                   f"sha256:brain\t{sha}" if a[1] == "image" else "sha256:brain"):
+            run_preflight(approved_revision=sha, brain_fake=True)
+            record_brain_image(sha)
+            receipt = json.loads((Path(directory) / "stage2.json").read_text())
+        self.assertTrue(receipt["brain_fake"] and receipt["resources_absent"])
+        self.assertEqual(receipt["brain_image"], {"id": "sha256:brain", "source_revision": sha})
+
     def test_running_stage1_is_accepted_and_recorded(self):
         with patch("preflight.command", side_effect=docker_shim()):
             seen = assert_stage1_upgrade()
