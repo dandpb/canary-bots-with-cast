@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -24,6 +25,11 @@ BRAIN_ROOT = Path("/var/lib/canary-human-qa-stage2")
 IMAGE_LOCK = json.loads((HERE / "image-lock.json").read_text())
 RECEIPT = HERE / "runtime/evidence/preflight-receipt.json"
 UPGRADE_RECEIPT = HERE / "runtime/evidence/stage2-upgrade-receipt.json"
+GAME_ENTRYPOINT = HERE.parent / "wsl/game-entrypoint.py"
+CONFIG_DIST = HERE.parent.parent / "config.lua.dist"
+SHUTDOWN_FLAG = "GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN"
+SHUTDOWN_KEY = "globalServerSaveShutdown"
+CLOSE_KEY = "globalServerSaveClose"  # with both false the daily event calls saveServer() itself
 
 
 def command(*args, env=None):
@@ -87,6 +93,33 @@ def assert_fake_brain(service, revision):
         raise RuntimeError("QA worker may only use the fake provider and the disposable ledger")
 
 
+def lua_setting(config, name):
+    """The value Lua ends up with: the last top-level `name = value` assignment, or None when absent."""
+    values = re.findall(rf"(?m)^[ \t]*{name}[ \t]*=[ \t]*([^\s-]+)", config)
+    return values[-1] if values else None
+
+
+def render_game_config(environment):
+    """config.lua as the game entrypoint renders it for this environment; the DB password is a placeholder."""
+    spec = importlib.util.spec_from_file_location("game_entrypoint", GAME_ENTRYPOINT)
+    entrypoint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entrypoint)
+    environ = {key: str(value) for key, value in environment.items() if value is not None}
+    return entrypoint.render({**environ, "MARIADB_PASSWORD": "qa-contract-only"}, CONFIG_DIST.read_text())
+
+
+def assert_game_config(environment):
+    """QA contract: the daily global server save must not shut the QA game down. Fails closed."""
+    if environment.get(SHUTDOWN_FLAG) != "1":
+        raise RuntimeError(f"QA game must set {SHUTDOWN_FLAG}=1")
+    config = render_game_config(environment)
+    if lua_setting(config, SHUTDOWN_KEY) != "false":
+        raise RuntimeError(f"QA game config.lua must render {SHUTDOWN_KEY} = false")
+    if lua_setting(config, CLOSE_KEY) != "false":  # close would kick players; neither state -> explicit save
+        raise RuntimeError(f"QA game config.lua must render {CLOSE_KEY} = false so the daily event saves")
+    return config
+
+
 def assert_compose(brain_fake=False):
     env = os.environ.copy()
     revision = env.get("SOURCE_REVISION", "")
@@ -143,6 +176,7 @@ def assert_compose(brain_fake=False):
     brain_config = "/etc/canary-core-qa/" + ("brain/server.json" if brain_fake else "disabled-brain.json")
     if services["game"]["environment"].get("CANARY_BRAIN_CONFIG") != brain_config:
         raise RuntimeError("QA brain mode differs from the reviewed config")
+    assert_game_config(services["game"]["environment"])
     if brain_fake:
         assert_fake_brain(services["brain"], revision)
     canonical = json.dumps(redact(data), sort_keys=True, separators=(",", ":"), allow_nan=False)
@@ -272,13 +306,18 @@ def main():
                         help="read-only: write a candidate stage-1 baseline for review (never pinned by itself)")
     parser.add_argument("--historical-receipt", type=Path,
                         help="with --capture-stage1-baseline: path to web-rollout-after.json")
+    parser.add_argument("--game-rollout-receipt", type=Path,
+                        help="with --capture-stage1-baseline: the game receipt after a game-only rollout")
+    parser.add_argument("--db-audit", type=Path,
+                        help="with --capture-stage1-baseline: DB audit JSON when the DB slice differs from the pin")
     args = parser.parse_args()
     if args.capture_stage1_baseline:
         import stage1_baseline
 
         if not args.historical_receipt:
             parser.error("--capture-stage1-baseline needs --historical-receipt")
-        stage1_baseline.print_capture(*stage1_baseline.capture(args.historical_receipt))
+        stage1_baseline.print_capture(*stage1_baseline.capture(
+            args.historical_receipt, rollout_receipt=args.game_rollout_receipt, audit=args.db_audit))
         return
     if args.record_brain_image:
         print("Upgrade receipt SHA-256:", record_brain_image(args.approved_revision))

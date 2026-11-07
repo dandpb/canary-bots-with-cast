@@ -10,6 +10,7 @@ import json
 import re
 import tempfile
 import unittest
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -18,6 +19,8 @@ import stage1_baseline as gate
 
 QA = "canary-core-qa"
 GAME, WEB, DATABASE, BRAIN = gate.GAME, gate.WEB, gate.DATABASE, gate.BRAIN
+GATE_AT = datetime(2026, 11, 7, 8, 0, tzinfo=UTC)  # pre-build gate; the fake rollout recreates game at 09:00Z
+RECORD_AT = datetime(2026, 11, 7, 9, 30, tzinfo=UTC)
 STAGE1_IMAGES = ("canary-core-qa-game:local", "canary-core-qa-web:local", "mariadb:11.4")
 DB_ROWS = ["player\t66100\t65001\tQa Knight\t8\t4\t4200", "player\t66101\t65002\tQa Druid\t8\t2\t4200",
            *(f"item\t{66100 + n % 2}\t{n}\t{100 + n}\t3031\t1" for n in range(10))]
@@ -81,6 +84,7 @@ class FakeDocker:
                          "CANARY_BRAIN_CONFIG": gate.DISABLED_BRAIN, "MARIADB_PASSWORD": "fake-not-a-secret"}
         self.game_mounts = [{"Name": f"{QA}_game-logs"}]
         self.config_ports = ["loginProtocolPort = 17171", "gameProtocolPort = 17172", "statusProtocolPort = 17173"]
+        self.game_config = "a" * 64 + " true"  # sha256 and effective globalServerSaveShutdown of the game config.lua
         self.integrity = {"tables": ["4"], "qa": ["2", "2"],
                           "check": {table: "OK" for table in gate.DB_TABLES}, "down": False}
         self.extra = []  # (listing, id, name, project, key)
@@ -88,6 +92,16 @@ class FakeDocker:
         self.fail = None  # a mutating command prefix that fails
         if stage2:
             self.stage2()
+
+    def game_rollout(self):
+        """What the reviewed game-only rollout leaves: rebuilt game image and recreated game, no daily shutdown."""
+        self.tags["canary-core-qa-game:local"] = "sha256:" + "5" * 64
+        self.revisions["sha256:" + "5" * 64] = "d" * 40
+        self.containers[GAME].update(id="5" * 64, image_id="sha256:" + "5" * 64, created_at="2026-11-07T09:00:00Z")
+        self.containers[GAME]["labels"]["com.docker.compose.config-hash"] = "3" * 64
+        self.game_env["GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN"] = "1"
+        self.game_config = "c" * 64 + " false"
+        return self
 
     def stage2(self):
         """What a stage-2 up leaves: rebuilt game image, recreated game, brain container and volumes."""
@@ -151,6 +165,9 @@ class FakeDocker:
             assert "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY" in args[-1]
             counts = "\t".join(str(self.counts[key]) for key in gate.DB_COUNT_KEYS)
             return "".join(row + "\n" for row in [f"counts\t{counts}", *self.rows])
+        if args[1] == "exec" and args[2] == GAME:
+            assert args[3:5] == ("python3", "-c") and "/canary/config.lua" in args[5]
+            return self.game_config + "\n"
         if args[1] == "exec" and args[2] == WEB:
             return "".join(line + "\n" for line in self.config_ports)
         if args[1:3] == ("image", "ls"):
@@ -393,15 +410,45 @@ class Stage1RecaptureTests(unittest.TestCase):
         self.played = FakeDocker(self.baseline)  # the QA character played after the first capture
         self.played.rows[0] = self.played.rows[0].replace("\t4200", "\t9100")
 
-    def capture(self, docker, output="candidate.json"):
+    def capture(self, docker, output="candidate.json", rollout=None, audit=None):
         with patch("preflight.command", side_effect=docker):
-            return gate.capture(self.historical, self.root / output)
+            return gate.capture(self.historical, self.root / output, rollout, audit, self.path, self.sha)
+
+    def audit(self, docker, **changes):
+        """The reviewed DB audit for the slice the docker shim now serves."""
+        rows = docker.rows
+        counts = dict(docker.counts)
+        audit = {"auditor": "Pitagoras", "audited_at_utc": "2026-11-07T10:00:00Z",
+                 "explanation": "QA character looted one item during stage 1", "baseline_sha256": self.sha,
+                 "db_slice": {"counts": counts, "qa_character_projection_sha256": projection(rows)}, **changes}
+        path = self.root / "db-audit.json"
+        path.write_text(json.dumps(audit))
+        return path
+
+    def run_gate(self, docker=None, revision="d" * 40, at=GATE_AT, source_error=None):
+        docker = docker or FakeDocker(self.baseline)
+        with patch("preflight.command", side_effect=docker), patch("stage1_baseline.utcnow", return_value=at), \
+             patch("stage1_baseline.qa.assert_source", return_value=revision, side_effect=source_error), \
+             patch("stage1_baseline.qa.assert_compose") as compose:
+            result = gate.game_rollout_gate(revision, self.historical, self.root / "gate.json", self.path, self.sha)
+        compose.assert_called_once_with()
+        return result
+
+    def record_rollout(self, docker, output="game-rollout-after.json", at=RECORD_AT):
+        if not (self.root / "gate.json").exists():
+            self.run_gate()
+        with patch("preflight.command", side_effect=docker), patch("stage1_baseline.qa.assert_source"), \
+             patch("stage1_baseline.utcnow", return_value=at), patch.dict("os.environ", {"SOURCE_REVISION": "d" * 40}):
+            return gate.record_game_rollout(self.historical, self.root / output, self.path, self.sha,
+                                            self.root / "gate.json")
 
     def test_recapture_after_play_is_a_reviewed_candidate_the_gate_accepts_only_once_pinned(self):
         with patch("preflight.command", side_effect=self.played), \
              self.assertRaisesRegex(RuntimeError, "upgrade refused:\n/db_slice/qa_character_projection_sha256"):
             gate.assert_stage1_upgrade(self.path, self.sha)
-        path, sha = self.capture(self.played)
+        with self.assertRaisesRegex(RuntimeError, "DB slice differs from the pinned baseline; capture needs --db-audit"):
+            self.capture(self.played)
+        path, sha = self.capture(self.played, audit=self.audit(self.played))
         self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), sha)
         candidate = json.loads(path.read_text())
         self.assertEqual(set(candidate["provenance"]), {"historical", "captured_now"})
@@ -412,13 +459,17 @@ class Stage1RecaptureTests(unittest.TestCase):
         self.assertTrue(all(all(item["historical_comparison"].values()) and len(item["historical_comparison"]) == 3
                             for item in candidate["containers"]))
         self.assertEqual(candidate["db_logical_snapshot"]["method"], gate.DB_SLICE_METHOD)
+        self.assertEqual(candidate["db_logical_snapshot"]["sql_sha256"],
+                         hashlib.sha256(gate.DB_SLICE_SQL.encode()).hexdigest())
+        self.assertEqual(candidate["db_audit"]["auditor"], "Pitagoras")
+        self.assertNotIn("game_rollout_receipt", candidate)
         self.assertNotIn("fake-not-a-secret", path.read_text())
         with patch("preflight.command", side_effect=self.played):
             self.assertEqual(gate.assert_stage1_upgrade(path, sha)["baseline_sha256"], sha)
             with self.assertRaisesRegex(RuntimeError, "differs from the pinned"):
                 gate.assert_stage1_upgrade(path, self.sha)  # the pin must change in a reviewed commit
         with self.assertRaisesRegex(RuntimeError, "already exists"):
-            self.capture(self.played)
+            self.capture(self.played, audit=self.audit(self.played))
 
     def test_recapture_refuses_containers_that_differ_from_the_historical_receipt(self):
         cases = {"id": "6" * 64, "image_id": "sha256:" + "6" * 64, "created_at": "2026-11-07T03:00:00Z"}
@@ -445,7 +496,179 @@ class Stage1RecaptureTests(unittest.TestCase):
         with patch("sys.argv", argv), patch("stage1_baseline.capture", return_value=(self.root / "c.json", "s")) as capture, \
              patch("builtins.print"):
             preflight.main()
-        capture.assert_called_once_with(self.historical)
+        capture.assert_called_once_with(self.historical, rollout_receipt=None, audit=None)
+
+    def test_unchanged_stage1_recaptures_without_a_game_receipt_or_audit(self):
+        path, _ = self.capture(FakeDocker(self.baseline))
+        candidate = json.loads(path.read_text())
+        self.assertEqual(set(candidate["provenance"]), {"historical", "captured_now"})
+        self.assertTrue(all(all(item["historical_comparison"].values()) for item in candidate["containers"]))
+
+    def test_recreated_game_without_a_game_receipt_is_refused(self):
+        with self.assertRaisesRegex(RuntimeError, f"{GAME} differs from web-rollout-after.json"):
+            self.capture(FakeDocker(self.baseline).game_rollout())
+        docker = FakeDocker(self.baseline).game_rollout()
+        with patch("preflight.command", side_effect=docker), self.assertRaisesRegex(
+                RuntimeError, "upgrade refused:\n/containers/canary-core-qa-game-1/compose_labels"):
+            gate.assert_stage1_upgrade(self.path, self.sha)
+
+    def test_game_rollout_receipt_then_recapture_gives_only_game_the_new_provenance(self):
+        docker = FakeDocker(self.baseline).game_rollout()
+        # The slice the recapture reads differs from the pin (as 10 -> 11 did: another scope and hash method,
+        # not an insertion); only an explicit audit of that exact slice lets it into a candidate.
+        docker.counts["qa_character_items"] += 1
+        docker.rows.append("item\t66100\t99\t199\t3031\t1")
+        receipt, receipt_sha = self.record_rollout(docker)
+        recorded = json.loads(receipt.read_text())
+        self.assertEqual(hashlib.sha256(receipt.read_bytes()).hexdigest(), receipt_sha)
+        self.assertEqual(recorded["game"]["id"], "5" * 64)
+        self.assertEqual(recorded["game"]["image_source_revision"], "d" * 40)
+        self.assertEqual(recorded["game_config"], {"sha256": "c" * 64, "globalServerSaveShutdown": "false"})
+        self.assertNotIn("fake-not-a-secret", receipt.read_text())
+        with self.assertRaisesRegex(RuntimeError, "needs --db-audit"):
+            self.capture(docker, rollout=receipt)
+        path, sha = self.capture(docker, rollout=receipt, audit=self.audit(docker))
+        candidate = json.loads(path.read_text())
+        game = next(item for item in candidate["containers"] if item["name"] == GAME)
+        self.assertNotIn("historical_comparison", game)
+        self.assertTrue(all(game["game_rollout_comparison"].values()))
+        provenance = candidate["game_rollout_receipt"]["provenance"]
+        self.assertRegex(provenance, r"^game_rollout_\d{8}T\d{6}Z$")
+        self.assertEqual(set(candidate["provenance"]), {"historical", "captured_now", provenance})
+        self.assertNotIn(f"containers[{GAME}].id", candidate["provenance"]["historical"])
+        self.assertEqual(candidate["db_logical_snapshot"]["counts"]["qa_character_items"], 11)
+        with patch("preflight.command", side_effect=docker):  # once reviewed and pinned, the gate accepts it
+            self.assertIn(provenance, gate.assert_stage1_upgrade(path, sha)["provenance"])
+        other = json.loads(path.read_text())  # a baseline taken with another query/predicate is never compared
+        other["db_logical_snapshot"]["sql_sha256"] = "0" * 64
+        other_path = self.root / "other-query.json"
+        other_path.write_text(json.dumps(other))
+        with patch("preflight.command", side_effect=docker), self.assertRaisesRegex(RuntimeError, "another query"):
+            gate.assert_stage1_upgrade(other_path, hashlib.sha256(other_path.read_bytes()).hexdigest())
+
+    def test_game_rollout_refuses_changed_web_db_network_or_volumes(self):
+        def web(docker):
+            docker.containers[WEB].update(id="6" * 64)
+
+        def database(docker):
+            docker.containers[DATABASE].update(created_at="2026-11-07T09:00:01Z")
+
+        def network(docker):
+            docker.network.update(id="6" * 64, created_at="2026-11-07T09:00:01Z")
+
+        def label(docker):
+            docker.volumes[f"{QA}_game-logs"]["compose_labels"]["com.docker.compose.config-hash"] = "6" * 64
+
+        cases = {"web": web, "database": database, "network": network, "label": label}
+        for volume in sorted(preflight.VOLUMES):
+            def recreated(docker, volume=volume):
+                docker.volumes[f"{QA}_{volume}"]["created_at"] = "2026-11-07T09:00:01Z"
+            cases[f"volume {volume}"] = recreated
+        good = self.record_rollout(FakeDocker(self.baseline).game_rollout(), "good.json")[0]
+        for name, change in cases.items():
+            docker = FakeDocker(self.baseline).game_rollout()
+            change(docker)
+            with self.subTest(name), self.assertRaisesRegex(RuntimeError, "refused"):
+                self.record_rollout(docker, f"{name}.json")
+            with self.subTest(name), self.assertRaisesRegex(RuntimeError, "refused"):
+                self.capture(docker, f"{name}-candidate.json", rollout=good)
+            self.assertFalse((self.root / f"{name}.json").exists())
+
+    def test_game_rollout_receipt_refuses_an_old_game_or_a_live_config_with_shutdown(self):
+        with self.assertRaisesRegex(RuntimeError, "not a container recreated"):
+            self.record_rollout(FakeDocker(self.baseline))
+        for setting in ("true", "missing"):
+            docker = FakeDocker(self.baseline).game_rollout()
+            docker.game_config = "c" * 64 + " " + setting
+            with self.subTest(setting), self.assertRaisesRegex(RuntimeError, "globalServerSaveShutdown = false"):
+                self.record_rollout(docker)
+
+    def test_pre_build_gate_is_read_only_and_refuses_before_any_change(self):
+        spy = FakeDocker(self.baseline)
+        calls = []
+
+        def docker(*args, **kwargs):
+            calls.append(args)
+            return spy(*args, **kwargs)
+
+        with self.assertRaisesRegex(RuntimeError, "must match"):  # unapproved or dirty checkout: no Docker at all
+            self.run_gate(docker, source_error=RuntimeError("approved SHA, SOURCE_REVISION and HEAD must match"))
+        self.assertEqual(calls, [])
+        changed = FakeDocker(self.baseline)
+        changed.containers[WEB].update(id="6" * 64)
+        recreated = FakeDocker(self.baseline).game_rollout()
+        for name, docker_case, message in (("web", changed, "differs from web-rollout-after.json"),
+                                           ("game", recreated, "before the build")):
+            with self.subTest(name), self.assertRaisesRegex(RuntimeError, message):
+                self.run_gate(docker_case)
+            self.assertEqual(docker_case.log, [])
+        self.assertFalse((self.root / "gate.json").exists())
+        stopped = FakeDocker(self.baseline)  # game stopped by the daily shutdown, DB slice not comparable
+        stopped.containers[GAME].update(status="exited", health=None)
+        stopped.rows[0] = stopped.rows[0].replace("\t4200", "\t9100")
+        path, _ = self.run_gate(docker)
+        self.run_gate(stopped)
+        self.assertFalse(any(call[1] == "exec" or call[1:3] == ("compose", "build") for call in calls))
+        self.assertEqual(spy.log, [])
+        self.assertEqual(json.loads(path.read_text())["stage1_game"]["id"], "2" * 64)
+
+    def test_game_receipt_needs_a_fresh_matching_pre_build_gate_that_predates_the_game(self):
+        docker = FakeDocker(self.baseline).game_rollout()
+        with self.assertRaisesRegex(RuntimeError, "absent or tampered; run game-rollout-gate before the build"), \
+             patch("preflight.command", side_effect=docker), patch("stage1_baseline.qa.assert_source"), \
+             patch.dict("os.environ", {"SOURCE_REVISION": "d" * 40}):
+            gate.record_game_rollout(self.historical, self.root / "r.json", self.path, self.sha, self.root / "gate.json")
+        self.run_gate()
+        cases = (("stale", RECORD_AT + timedelta(hours=12), "stale"),
+                 ("after the game", docker.containers[GAME]["created_at"], "not recreated after"))
+        for name, at, message in cases:
+            if name == "after the game":
+                self.run_gate(at=datetime(2026, 11, 7, 9, 0, 1, tzinfo=UTC))
+                at = RECORD_AT
+            with self.subTest(name), self.assertRaisesRegex(RuntimeError, message):
+                self.record_rollout(docker, f"{name}.json", at=at)
+        self.run_gate(revision="e" * 40)
+        with self.assertRaisesRegex(RuntimeError, "another revision"):
+            self.record_rollout(docker, "other.json")
+        self.run_gate()
+        data = json.loads((self.root / "gate.json").read_text())
+        data["checked_at_utc"] = "2026-11-07T08:30:00+00:00"
+        (self.root / "gate.json").write_text(json.dumps(data))
+        with self.assertRaisesRegex(RuntimeError, "tampered"):
+            self.record_rollout(docker, "tampered.json")
+        self.run_gate()
+        receipt, _ = self.record_rollout(docker)
+        self.assertEqual(json.loads(receipt.read_text())["pre_build_gate"]["checked_at_utc"], GATE_AT.isoformat())
+
+    def test_capture_refuses_a_game_receipt_that_differs_from_live_lacks_the_check_or_was_tampered(self):
+        receipt, _ = self.record_rollout(FakeDocker(self.baseline).game_rollout())
+        recorded = json.loads(receipt.read_text())
+
+        def write(name, data, reseal=True):
+            data = copy.deepcopy(data)
+            if reseal:
+                data["content_sha256"] = gate.sealed(data)
+            path = self.root / name
+            path.write_text(json.dumps(data))
+            return path
+
+        other_game = copy.deepcopy(recorded)
+        other_game["game"]["id"] = "4" * 64
+        no_check = copy.deepcopy(recorded)
+        del no_check["game_config"]["globalServerSaveShutdown"]
+        tampered = copy.deepcopy(recorded)
+        tampered["game"]["created_at"] = "2026-11-07T09:00:00Z "
+        cases = {"live game differs": (write("other.json", other_game), "differs from other.json"),
+                 "no config check": (write("nocheck.json", no_check), "lacks the config check"),
+                 "tampered": (write("tampered.json", tampered, reseal=False), "tampered"),
+                 "absent": (self.root / "absent.json", "absent")}
+        for name, (path, message) in cases.items():
+            with self.subTest(name), self.assertRaisesRegex(RuntimeError, message):
+                self.capture(FakeDocker(self.baseline).game_rollout(), f"{name}.json", rollout=path)
+        live_changed = FakeDocker(self.baseline).game_rollout()
+        live_changed.game_config = "e" * 64 + " false"  # config.lua changed after the receipt
+        with self.assertRaisesRegex(RuntimeError, "config_match': False"):
+            self.capture(live_changed, rollout=receipt)
 
 
 class Stage1RollbackTests(unittest.TestCase):
