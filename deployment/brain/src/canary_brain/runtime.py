@@ -463,7 +463,7 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             endpoint.unlink(missing_ok=True)
         if client is not None:
             await client.close()
-        await asyncio.to_thread(tracing.shutdown)
+        await asyncio.to_thread(tracing.shutdown_bounded)
         if recorder is not None:
             await asyncio.to_thread(recorder.close)
             if benchmark_stops:
