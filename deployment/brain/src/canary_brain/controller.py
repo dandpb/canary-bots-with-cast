@@ -9,6 +9,7 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any, Protocol
 
+from . import tracing
 from .benchmark_stops import Stops
 from .learning import Policy, episode_reward
 from .protocol import (
@@ -106,8 +107,9 @@ class Controller:
 
         async def guarded() -> None:
             try:
-                with attribution(bot):
+                with attribution(bot), tracing.decision(bot, kind) as trace:
                     await work()
+                    trace.output({"task": kind, "status": "completed"})
             except Exception as error:  # noqa: BLE001 - isolate provider faults and redact their messages
                 self.record(
                     bot,
@@ -417,6 +419,7 @@ class Controller:
                     "at": time.monotonic(),
                 },
             )
+            tracing.begin_action(packet)
             self.send(packet)
 
         return intent.action_id
@@ -795,6 +798,7 @@ class Controller:
         ):
             return
         terminal = outcome.status not in {"accepted", "running"}
+        tracing.action_receipt(outcome.model_dump())
         episode.update(
             status=outcome.status,
             terminal=terminal,

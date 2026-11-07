@@ -15,6 +15,7 @@ from typing import Any, Literal
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from . import tracing
 from .benchmark_stops import Stops, TelemetryTail
 from .controller import Controller
 from .gateway import GatewayConfiguration, GatewayProvider
@@ -166,6 +167,7 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
     previous_signals: dict[signal.Signals, Any] = {}
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        tracing.configure()
         if endpoint.is_symlink() or (
             endpoint.exists() and not stat.S_ISSOCK(endpoint.stat().st_mode)
         ):
@@ -461,6 +463,7 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             endpoint.unlink(missing_ok=True)
         if client is not None:
             await client.close()
+        await asyncio.to_thread(tracing.shutdown_bounded)
         if recorder is not None:
             await asyncio.to_thread(recorder.close)
             if benchmark_stops:

@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from . import tracing
 from .protocol import Observation
 from .recording import Recorder, request_context
 from .sqlite_files import failure_metadata
@@ -81,8 +82,10 @@ class Provider:
         resource = (
             self.client.decisions if endpoint == "decisions" else self.client.responses
         )
-        result = await resource.create(**body)
-        data: dict[str, Any] = result.model_dump(mode="json", by_alias=True)
+        with tracing.model_call(endpoint, body) as trace:
+            result = await resource.create(**body)
+            data: dict[str, Any] = result.model_dump(mode="json", by_alias=True)
+            trace.output(data)
         return data
 
     async def _request(
