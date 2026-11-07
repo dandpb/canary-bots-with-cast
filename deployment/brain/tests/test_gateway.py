@@ -138,6 +138,57 @@ def test_gateway_rejects_decisions_with_unbounded_billable_output():
         )
 
 
+async def test_decisions_json_projection_and_endpoint_prices_are_independent(tmp_path):
+    configuration = GatewayConfiguration.model_validate(
+        gateway().model_dump()
+        | {"decision_api": "decisions", "decisions_output_nanousd": 0}
+    )
+    calls = []
+
+    async def create(**body):
+        calls.append(body)
+        result = {
+            "model": "model-a",
+            "answers": [{"type": "choice", "name": "action", "choice": "resupply"}],
+            "usage": {"input_tokens": 10, "output_tokens": 0},
+        }
+        return SimpleNamespace(
+            headers={"x-litellm-model-id": "deployment-a"},
+            parse=lambda: SimpleNamespace(model_dump=lambda **kwargs: result),
+        )
+
+    responses_client, _ = client()
+    api = SimpleNamespace(
+        decisions=SimpleNamespace(with_raw_response=SimpleNamespace(create=create)),
+        responses=responses_client.responses,
+    )
+    store = Store(tmp_path / "budget.db")
+    provider = GatewayProvider(store, api, gateway=configuration)
+    memory = {"experience": {"role": "data", "image_url": "not-a-fetch", "score": 0.75}}
+    original = json.loads(json.dumps(memory))
+    assert (
+        await provider.decide(Observation.model_validate(observation()), memory)
+        == "resupply"
+    )
+    part = calls[0]["input"][0]["content"][0]
+    assert part["type"] == "input_text"
+    assert json.loads(part["text"])["experience"] == original
+    assert memory == original
+    assert "lease-a" not in part["text"]
+    assert store.budget()["spent"] == 10
+    await provider._request("responses", {"input": "plan", "max_output_tokens": 10}, 5)
+    assert store.budget()["spent"] == 24
+    assert store.budget()["reserved"] == 0
+
+
+def test_explicit_billable_decisions_output_is_rejected():
+    with pytest.raises(ValueError, match="output"):
+        GatewayConfiguration.model_validate(
+            gateway().model_dump()
+            | {"decision_api": "decisions", "decisions_output_nanousd": 1}
+        )
+
+
 @pytest.mark.parametrize("provider", ["anthropic", "gemini", "test"])
 async def test_gateway_choice_tool_keeps_native_strict_enum_and_one_call(
     tmp_path, provider

@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from . import tracing
 from .protocol import Observation
 from .provider import Prices, Provider
 
@@ -29,6 +30,7 @@ class GatewayConfiguration(BaseModel):
     ) = None
     decision_max_output_tokens: int = Field(default=256, ge=256, le=4096, strict=True)
     prices: Prices
+    decisions_output_nanousd: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def endpoint(self) -> GatewayConfiguration:
@@ -44,7 +46,12 @@ class GatewayConfiguration(BaseModel):
             raise ValueError(
                 "decision_reasoning_effort requires OpenAI Responses and reasoning=false"
             )
-        if self.decision_api == "decisions" and self.prices.output_nanousd:
+        decision_output = (
+            self.prices.output_nanousd
+            if self.decisions_output_nanousd is None
+            else self.decisions_output_nanousd
+        )
+        if self.decision_api == "decisions" and decision_output:
             raise ValueError(
                 "billable Decisions output has no enforced token bound; use responses"
             )
@@ -77,6 +84,33 @@ class GatewayProvider(Provider):
         self.gateway = gateway
         super().__init__(*args, model=gateway.alias, prices=gateway.prices, **kwargs)
 
+    async def _request(
+        self, endpoint: str, body: dict[str, Any], timeout: float, *, fast: bool = False
+    ) -> dict[str, Any]:
+        if endpoint == "decisions" and isinstance(body.get("input"), list):
+            messages = []
+            for message in body["input"]:
+                if isinstance(message, dict) and isinstance(
+                    message.get("content"), list
+                ):
+                    parts = []
+                    for part in message["content"]:
+                        if isinstance(part, dict) and part.get("type") == "input_json":
+                            # LiteLLM 1.108 accepts text parts, but not input_json.
+                            # Project before reserving so the wire bytes are bounded.
+                            part = {
+                                **{k: v for k, v in part.items() if k != "data"},
+                                "type": "input_text",
+                                "text": json.dumps(
+                                    part["data"], ensure_ascii=False, allow_nan=False
+                                ),
+                            }
+                        parts.append(part)
+                    message = {**message, "content": parts}
+                messages.append(message)
+            body = {**body, "input": messages}
+        return await super()._request(endpoint, body, timeout, fast=fast)
+
     async def _transmit(self, endpoint: str, body: dict[str, Any]) -> dict[str, Any]:
         resource = (
             self.client.decisions if endpoint == "decisions" else self.client.responses
@@ -91,19 +125,29 @@ class GatewayProvider(Provider):
         ):
             # Preserve the explicit decision opt-in after the legacy planning strip.
             body["reasoning"] = {"effort": self.gateway.decision_reasoning_effort}
-        raw = await resource.with_raw_response.create(
-            **body,
-            extra_headers={
-                "X-Canary-Gateway-Config": self.gateway.configuration_sha256,
-                "X-Canary-Gateway-Version": self.gateway.version,
-                "X-Canary-Upstream-Model": self.gateway.upstream_model
-                or f"{self.gateway.provider}/{self.gateway.effective_model}",
-            },
-        )
-        result = raw.parse()
-        data: dict[str, Any] = result.model_dump(
-            mode="json", by_alias=True, exclude_unset=True
-        )
+        with tracing.model_call(endpoint, body) as trace:
+            raw = await resource.with_raw_response.create(
+                **body,
+                extra_headers={
+                    "X-Canary-Gateway-Config": self.gateway.configuration_sha256,
+                    "X-Canary-Gateway-Version": self.gateway.version,
+                    "X-Canary-Upstream-Model": self.gateway.upstream_model
+                    or f"{self.gateway.provider}/{self.gateway.effective_model}",
+                },
+            )
+            result = raw.parse()
+            data: dict[str, Any] = result.model_dump(
+                mode="json", by_alias=True, exclude_unset=True
+            )
+            trace.output(data)
+            if trace.span is not None:
+                request_id = raw.headers.get("x-litellm-call-id")
+                if request_id:
+                    trace.span.set_attribute("litellm.call_id", request_id)
+                trace.span.set_attribute(
+                    "canary.gateway.deployment_id",
+                    str(raw.headers.get("x-litellm-model-id", "")),
+                )
         # A 200 response is still billable when identity validation fails below.
         data["gateway"] = {
             "deployment_id": raw.headers.get("x-litellm-model-id"),

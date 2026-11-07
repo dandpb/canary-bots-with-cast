@@ -99,11 +99,14 @@ def test_bot_filter_and_exception_redaction(exported):
     with tracing.decision(8, "other"):
         pass
     assert not exported.get_finished_spans()
-    with pytest.raises(RuntimeError), tracing.capture(
-        "failure",
-        "LLM",
-        {"authorization": "secret", "text": "sk-private lens-trace-private"},
-        7,
+    with (
+        pytest.raises(RuntimeError),
+        tracing.capture(
+            "failure",
+            "LLM",
+            {"authorization": "secret", "text": "sk-private lens-trace-private"},
+            7,
+        ),
     ):
         raise RuntimeError("credentials must not appear")
     span = exported.get_finished_spans()[0]
@@ -112,3 +115,32 @@ def test_bot_filter_and_exception_redaction(exported):
     assert "secret" not in span.attributes["input.value"]
     assert "private" not in span.attributes["input.value"]
     assert not span.events
+
+
+async def test_gateway_calls_preserve_trace_and_spend_correlation(tmp_path, exported):
+    from test_gateway import client, gateway
+
+    from canary_brain.gateway import GatewayProvider
+    from canary_brain.protocol import Observation
+    from canary_brain.recording import attribution
+
+    api, calls = client()
+    store = Store(tmp_path / "budget.db")
+    provider = GatewayProvider(store, api, gateway=gateway())
+    with attribution(7), tracing.decision(7, "gateway"):
+        assert (
+            await provider.decide(Observation.model_validate(observation()))
+            == "resupply"
+        )
+    model = next(
+        s for s in exported.get_finished_spans() if s.name == "OpenAI responses"
+    )
+    root = next(s for s in exported.get_finished_spans() if s.name == "Canary gateway")
+    assert model.context.trace_id == root.context.trace_id
+    assert model.parent.span_id == root.context.span_id
+    assert model.attributes["litellm.call_id"] == "gateway-request"
+    assert model.attributes["canary.gateway.deployment_id"] == "deployment-a"
+    recorded = json.loads(model.attributes["input.value"])
+    assert recorded == {k: v for k, v in calls[0].items() if k != "extra_headers"}
+    assert json.loads(model.attributes["output.value"])["model"] == "model-a"
+    assert store.budget()["spent"] == 14

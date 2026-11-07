@@ -83,3 +83,24 @@ async def test_private_benchmark_gateway_never_falls_back_to_admin_auth(monkeypa
     with pytest.raises(ProxyException) as denied:
         await gateway_policy.authenticate(object(), "fixture-master")
     assert denied.value.code == 401
+
+
+@pytest.mark.parametrize("path", ["/model/info", "/lens/tracing/keys", "/key/generate"])
+async def test_spend_owner_identity_does_not_grant_worker_management_access(
+    monkeypatch, path
+):
+    class HTTPException(Exception):
+        def __init__(self, status_code, detail):
+            self.status_code = status_code
+
+    modules = {
+        "yaml": SimpleNamespace(),
+        "fastapi": SimpleNamespace(HTTPException=HTTPException),
+        "litellm.proxy._types": SimpleNamespace(UserAPIKeyAuth=object),
+    }
+    monkeypatch.setattr(gateway_policy.importlib, "import_module", modules.__getitem__)
+    monkeypatch.setenv("CANARY_GATEWAY_WORKER_USER_ID", "trace-owner")
+    request = SimpleNamespace(method="POST", url=SimpleNamespace(path=path))
+    with pytest.raises(HTTPException) as rejected:
+        await gateway_policy._authenticate_worker(request, "fixture-worker")
+    assert rejected.value.status_code == 403
