@@ -123,3 +123,74 @@ env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker co
 Não use `down -v`: isso apagaria o banco e os dados do teste. Os comandos acima
 atuam apenas no projeto `canary-core-qa`, sem parar ou recriar serviços do
 projeto operacional.
+
+## Etapa 2: worker fake (somente QA, nunca produção)
+
+A etapa 1 acima (login, jogo, party e cast) mantém o brain desligado. A etapa 2
+soma `compose.brain-fake.yaml`: liga a ponte só neste projeto e adiciona o
+serviço `brain` com `provider: fake`, que responde por palavras-chave. Ele não
+tem provider, credencial, gateway, claim, porta, variável de ambiente nem rede
+(`network_mode: none`). State, ledger e replay ficam nos volumes descartáveis
+`canary-core-qa_brain-ledger` e `canary-core-qa_brain-socket`. Os pilotos 65001
+(explorador), 65004 e 65003 entram nos 50 bots por `BOT_POPULATION_REFERENCE_BOTS`.
+O roteiro do jogador está em [ROTEIRO.md](ROTEIRO.md).
+
+A imagem `brain` usa `pull: false` e só aceita a base `python:3.12-slim` fixada
+por digest em `image-lock.json`. Se o preflight recusar a base, revise e rode
+`docker pull python@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54`
+e `docker tag python@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54 python:3.12-slim`.
+Lacuna P3: as
+dependências Python vêm do PyPI por versão fixa (`requirements.lock`), sem hashes.
+
+```bash
+cd deployment/core-qa
+export SOURCE_REVISION='COLE_O_SHA_COMPLETO_APROVADO_AQUI'
+QA="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml -f compose.brain-fake.yaml --env-file .env"
+# Host limpo:
+python3 preflight.py --brain-fake --approved-revision "$SOURCE_REVISION"
+$QA up -d --build --wait database game web brain
+# Ou upgrade sobre a etapa 1 já de pé (no lugar dos dois comandos acima):
+python3 preflight.py --upgrade-from-stage1 --approved-revision "$SOURCE_REVISION"
+$QA up -d --build --wait game brain
+# Nos dois casos, depois do up:
+python3 preflight.py --record-brain-image --approved-revision "$SOURCE_REVISION"
+$QA exec brain canary-brain status --state /var/lib/canary-human-qa-stage2/ledger.sqlite3
+```
+
+O upgrade só aceita exatamente os objetos da etapa 1: os containers
+`canary-core-qa-{database,game,web}-1`, a rede `canary-core-qa_default`, os quatro
+volumes e as tags game/web, todos com os labels Compose do projeto. Ele recusa
+qualquer objeto `canary-core-qa*` a mais, a menos ou com label errado, e também
+recusa um container, volume ou imagem `brain` que já exista. O recibo
+`runtime/evidence/stage2-upgrade-receipt.json` registra o SHA, os IDs vistos e o
+`CreatedAt` de cada volume. Só o container `game` é recriado, com nova env e
+montagens; `database` e `web` ficam. Para confirmar que os volumes são os mesmos,
+compare o recibo com
+`docker volume inspect canary-core-qa_database canary-core-qa_game-logs canary-core-qa_authored-data --format '{{.Name}} {{.CreatedAt}}'`.
+`--record-brain-image` só grava o ID da imagem `brain` quando o label
+`org.opencontainers.image.revision` dela, o container em execução e o recibo
+batem com o HEAD aprovado.
+
+Passa quando: `/cavebot _global brain status` (GOD) mostra `"mode":"active"`,
+`"worker_alive":true` e roster `[65001,65004,65003]`; `/brain fique aqui` com
+piloto na party dá `Mensagem enviada ao companheiro.` e a PM `Teste: proposta
+hold; ...`; o piloto para e cerca de 30 s depois o episódio fica `completed`; o
+ledger termina com `spent` 0, `reserved` 0 e nenhuma `request`.
+
+**Kill switch.** No jogo, como GOD: `/cavebot _global brain disable` responde
+`Brain disabled; native behavior retained.`, encerra as metas com
+`cancelled/operator_disabled` e devolve os pilotos ao nativo até
+`/cavebot _global brain reload`. Se o jogo não responder, `$QA stop brain`: sem
+heartbeat por 5 s o servidor marca `worker_alive:false` e o nativo reassume;
+`$QA start brain` religa.
+
+**Rollback.** Use sempre o mesmo `$QA`, nunca `down -v`. Só os dois volumes
+`brain-*` são apagados; banco, logs e cache ficam como na etapa 1.
+
+```bash
+$QA stop -t 180
+mkdir -p runtime/evidence/brain
+$QA cp brain:/var/lib/canary-human-qa-stage2/. runtime/evidence/brain/
+$QA down
+docker volume rm canary-core-qa_brain-ledger canary-core-qa_brain-socket
+```
