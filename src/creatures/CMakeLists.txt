@@ -80,6 +80,8 @@ if(UNIX)
         players/bot/bot_csvedit.cpp  # BOT_CSV: in-game CSV editors + file-reading viewers
     )
 
+    canary_target_source_metadata(bot_engine)
+
     # Same include directories as the main binary
     target_include_directories(bot_engine
         PRIVATE ${CMAKE_SOURCE_DIR}/src
