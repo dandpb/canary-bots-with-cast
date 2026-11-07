@@ -37,6 +37,8 @@ foreach(
     LISTS CANARY_CORE_TARGETS
 )
 
+    canary_target_source_metadata(${core_target})
+
     # Conditional Precompiled Headers
     if(USE_PRECOMPILED_HEADER)
         target_precompile_headers(

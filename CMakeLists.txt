@@ -195,5 +195,6 @@ endif()
 # *****************************************************************************
 # Add project
 # *****************************************************************************
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/SourceMetadata.cmake")
 add_subdirectory(src)
 add_subdirectory(tests)
