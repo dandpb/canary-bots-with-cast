@@ -142,8 +142,15 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def stop_and_read_character(harness, directory):
+def stop_and_read_character(harness, directory, *, terminal=None):
     """Capture fresh operation receipts; never infer timing from old evidence."""
+    if terminal is not None:
+        from canary_brain.persistence_witness import PROFILE
+        from m5_persistence_adapter import stop_and_read
+
+        saved, receipt, bundle = stop_and_read(harness, **terminal)
+        receipt.update(contract=PROFILE, terminal=bundle)
+        return saved, receipt
     stop_started = time.time()
     harness.stop_game()
     stopped = time.time()
@@ -168,6 +175,32 @@ def stop_and_read_character(harness, directory):
         "sql_read_started_wall": sql_started,
         "sql_read_wall": sql_read,
     }
+
+
+def live_audit_script():
+    """Pure existing fixture sampler generator; no resource operations."""
+    encoder = (ROOT / "tests/lua/bot_persistence_no_xp_test.lua").read_text()
+    encoder = encoder[
+        encoder.index("function qa.encode") : encoder.index("local function snapshot")
+    ]
+    audit = (
+        'assert(configManager.getString(configKeys.SERVER_NAME)=="Canary M5 free QA")\nBOT_CONFIG.MASTER_DISABLE=false\nBOT_CONFIG.SINGLE_BOT_NAME="Grizzle Alyronia"\nlocal qa={}\n'
+        + encoder
+    )
+    audit += """
+local event=GlobalEvent("M5FreeAudit")
+function event.onThink()
+ local p=Player("Grizzle Alyronia")
+ if p then
+  local pos=p:getPosition()
+  local f=assert(io.open("/m5/character-live.jsonl","a"))
+  f:write(qa.encode({at=Game.monotonicMs(),xp=p:getExperience(),hp=p:getHealth(),hpmax=p:getMaxHealth(),mana=p:getMana(),manamax=p:getMaxMana(),position={pos.x,pos.y,pos.z},potions=p:getItemCount(266)+p:getItemCount(268),bank=p:getBankBalance(),money=p:getMoney(),level=p:getLevel()}).."\\n");f:close()
+ end
+ return true
+end
+event:interval(1000);event:register()
+"""
+    return audit
 
 
 def prepare():
@@ -280,27 +313,7 @@ def prepare():
     (build / "overrides.json").write_text(json.dumps(overrides))
     entry = "import json,os,shutil\nfrom pathlib import Path\nv=json.loads(Path('/m5-overrides.json').read_text());v['mysqlPass']=os.environ['MARIADB_PASSWORD']\nc=Path('config.lua.dist').read_text()+'\\n'+'\\n'.join(k+'='+json.dumps(x) for k,x in v.items())+'\\n'\nPath('config.lua').write_text(c)\nshutil.copyfile('/etc/canary-brain/server.json','data/bot/brain.json')\nos.execv('/canary/canary',['/canary/canary'])\n"
     (build / "entry.py").write_text(entry)
-    encoder = (ROOT / "tests/lua/bot_persistence_no_xp_test.lua").read_text()
-    encoder = encoder[
-        encoder.index("function qa.encode") : encoder.index("local function snapshot")
-    ]
-    audit = (
-        'assert(configManager.getString(configKeys.SERVER_NAME)=="Canary M5 free QA")\nBOT_CONFIG.MASTER_DISABLE=false\nBOT_CONFIG.SINGLE_BOT_NAME="Grizzle Alyronia"\nlocal qa={}\n'
-        + encoder
-    )
-    audit += """
-local event=GlobalEvent("M5FreeAudit")
-function event.onThink()
- local p=Player("Grizzle Alyronia")
- if p then
-  local pos=p:getPosition()
-  local f=assert(io.open("/m5/character-live.jsonl","a"))
-  f:write(qa.encode({at=Game.monotonicMs(),xp=p:getExperience(),hp=p:getHealth(),hpmax=p:getMaxHealth(),mana=p:getMana(),manamax=p:getMaxMana(),position={pos.x,pos.y,pos.z},potions=p:getItemCount(266)+p:getItemCount(268),bank=p:getBankBalance(),money=p:getMoney(),level=p:getLevel()}).."\\n");f:close()
- end
- return true
-end
-event:interval(1000);event:register()
-"""
+    audit = live_audit_script()
     (build / "scripts/globalevents/aaa_m5_free_qa.lua").write_text(audit)
     (build / "Dockerfile").write_text(
         'FROM canary-party-qa:local\nCOPY scripts/ /canary/data/scripts/\nRUN mv /canary/data/scripts/globalevents/bot_market_funding.lua /canary/qa-disabled-market-funding.lua && mv /canary/data/scripts/globalevents/bot_market.lua /canary/qa-disabled-market.lua\nCOPY entry.py /m5-entry.py\nCOPY overrides.json /m5-overrides.json\nENTRYPOINT ["python3","/m5-entry.py"]\n'
