@@ -105,6 +105,15 @@ Esse recibo não executa o bootstrap do MyAAC nem inicia um container; o login
 real ainda depende do smoke autorizado. Os hashes são recibos locais, não
 digests de registro remoto.
 
+A imagem `game` usa o mesmo `deployment/wsl/Dockerfile` da produção, cujo
+`ARG BASE_IMAGE` continua `ubuntu:24.04` por padrão. Só este QA passa
+`BASE_IMAGE: ubuntu:24.04@sha256:<digest>` no `compose.yaml`, com `pull: false`.
+O digest, a plataforma (`linux/amd64`) e o ID local ficam em `game_base` no
+`image-lock.json`; o valor no `compose.yaml` deve ser o mesmo digest. O preflight
+e o `game-rollout-gate` recusam um lock com placeholder, uma base ausente ou com
+ID, plataforma ou digest diferente. Nunca deixe o build puxar a base: se faltar,
+revise e carregue o digest do recibo do host antes de buildar.
+
 ## Coleta e rollback
 
 Execute no diretório deste QA. `stop -t 180` permite salvar personagens antes
@@ -153,7 +162,7 @@ QA="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docke
 python3 stage1_baseline.py game-rollout-gate --approved-revision "$SOURCE_REVISION" \
   --historical-receipt /caminho/para/web-rollout-after.json
 # 3. só agora: build e recriação só do game (stop -t 180 salva os personagens)
-$QA build game
+$QA build --pull=false game
 $QA stop -t 180 game
 $QA up -d --no-build --no-deps --wait game
 # 4 e 5. recibo do game e conferência do config.lua vivo, só leitura

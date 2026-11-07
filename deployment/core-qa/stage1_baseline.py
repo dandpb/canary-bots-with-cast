@@ -478,6 +478,7 @@ def game_rollout_gate(approved_revision, historical, output=None, path=BASELINE,
     the DB slice is not compared."""
     revision = qa.assert_source(approved_revision)
     qa.assert_compose()
+    qa.assert_game_base()  # the build that follows must find the locked base locally, never pull it
     content = historical.read_bytes() if historical.is_file() else b""
     if not content:
         raise RuntimeError(f"historical receipt {historical} is absent; game rollout gate refused")
