@@ -29,6 +29,11 @@ config += "\n".join(f"{name} = {json.dumps(value)}" for name, value in values.it
 config += f"\nmysqlPort = 3306\nloginProtocolPort = {login_port}\ngameProtocolPort = {game_port}\nstatusProtocolPort = {status_port}\n"
 if os.environ.get("GAME_DISABLE_MAP_DOWNLOAD") == "1":
     config += "toggleDownloadMap = false\n"
+references = os.environ.get("BOT_POPULATION_REFERENCE_BOTS", "")
+if references:
+    if not all(item.isascii() and item.isdecimal() for item in references.split(",")):
+        raise ValueError("BOT_POPULATION_REFERENCE_BOTS must be comma-separated GUIDs")
+    config += f"botPopulationReferenceBots = {json.dumps(references)}\n"
 config += f"botPlayersOnline = {int(os.environ.get('BOT_PLAYERS_ONLINE', '997'))}\n"
 config += "enableMetrics = false\n"
 config += 'houseLoseAfterInactivity = 0\nhouseRentPeriod = "never"\n'

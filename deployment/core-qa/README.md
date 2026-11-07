@@ -123,3 +123,165 @@ env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker co
 Não use `down -v`: isso apagaria o banco e os dados do teste. Os comandos acima
 atuam apenas no projeto `canary-core-qa`, sem parar ou recriar serviços do
 projeto operacional.
+
+## Etapa 2: worker fake (somente QA, nunca produção)
+
+A etapa 1 acima (login, jogo, party e cast) mantém o brain desligado. A etapa 2
+soma `compose.brain-fake.yaml`: liga a ponte só neste projeto e adiciona o
+serviço `brain` com `provider: fake`, que responde por palavras-chave. Ele não
+tem provider, credencial, gateway, claim, porta, variável de ambiente nem rede
+(`network_mode: none`). State, ledger e replay ficam nos volumes descartáveis
+`canary-core-qa_brain-ledger` e `canary-core-qa_brain-socket`. Os pilotos 65001
+(explorador), 65004 e 65003 entram nos 50 bots por `BOT_POPULATION_REFERENCE_BOTS`.
+O roteiro do jogador está em [ROTEIRO.md](ROTEIRO.md).
+
+A imagem `brain` usa `pull: false` e só aceita a base `python:3.12-slim` fixada
+por digest em `image-lock.json`. Se o preflight recusar a base, revise e rode
+`docker pull python@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54`
+e `docker tag python@sha256:4840d514c583a4d3d8cad3940e68dee6f0f6f3635c12fcd0a3d74c21a5b93a54 python:3.12-slim`.
+Lacuna P3: as
+dependências Python vêm do PyPI por versão fixa (`requirements.lock`), sem hashes.
+
+```bash
+cd deployment/core-qa
+export SOURCE_REVISION='COLE_O_SHA_COMPLETO_APROVADO_AQUI'
+QA="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml -f compose.brain-fake.yaml --env-file .env"
+# Host limpo:
+python3 preflight.py --brain-fake --approved-revision "$SOURCE_REVISION"
+$QA up -d --build --wait database game web brain
+# Ou upgrade sobre a etapa 1 já de pé (no lugar dos dois comandos acima):
+python3 preflight.py --upgrade-from-stage1 --approved-revision "$SOURCE_REVISION"
+$QA up -d --build --wait game brain
+# Nos dois casos, depois do up:
+python3 preflight.py --record-brain-image --approved-revision "$SOURCE_REVISION"
+$QA exec brain canary-brain status --state /var/lib/canary-human-qa-stage2/ledger.sqlite3
+```
+
+`--brain-fake` e `--upgrade-from-stage1` gravam o recibo da etapa 2 em
+`runtime/evidence/stage2-upgrade-receipt.json`, que `--record-brain-image`
+atualiza após o build. A etapa 1 mantém seu `preflight-receipt.json`.
+
+### Gate de upgrade: comparação exata com a baseline revisada
+
+`stage1-baseline.json` é a baseline da etapa 1 capturada só em leitura no stage 1
+real por Pitagoras em 2026-11-06T22:20:30Z. Ela está versionada aqui, sanitizada,
+e fixada pelo SHA-256
+`272c35fbab6496376a366565ac81368e8885297c1cc9febf7ef73e7cdd554789` em
+`stage1_baseline.py`. Se o arquivo mudar um byte, o gate recusa. Uma baseline nova
+exige um commit revisado que troque o arquivo e o pino.
+
+`--upgrade-from-stage1` (ou `python3 stage1_baseline.py check`, só leitura) recusa
+com a lista de diferenças quando qualquer item diverge:
+
+- containers `database`, `game` e `web`: ID, ID e ref da imagem, label
+  `org.opencontainers.image.revision`, `CreatedAt`, estado, health e labels
+  Compose (`project`, `service`, `config-hash`);
+- rede `canary-core-qa_default`: ID, `CreatedAt` e labels;
+- os quatro volumes: nome, `CreatedAt` e labels. Um volume recriado com o mesmo
+  nome e label tem outro `CreatedAt` e é recusado;
+- recorte do banco: as quatro contagens (`accounts`, `players`, `player_items`,
+  itens dos personagens de QA) e o SHA-256 da projeção dos personagens de QA;
+- nada de `brain` ainda: nem container, nem `brain-ledger`/`brain-socket`, nem a
+  imagem `canary-core-qa-brain:local`; e nenhum objeto `canary-core-qa*` estranho
+  ou faltando.
+
+Proveniência, separada no código, nos recibos e aqui:
+
+- `historical`: ID, ID da imagem e `CreatedAt` dos três containers. Foram cruzados
+  com o recibo histórico `web-rollout-after.json` (SHA-256 na baseline).
+- `captured_now`: rede, volumes, labels, estado e o recorte do banco. Foram lidos
+  pela primeira vez na captura. São comparados exatamente, mas não são história
+  da primeira subida; o recibo histórico não tinha esses campos.
+
+O recorte do banco roda numa transação `REPEATABLE READ`, `READ ONLY`, `WITH
+CONSISTENT SNAPSHOT`. A baseline não registra a query da projeção, então
+`stage1_baseline.py` usa um equivalente documentado
+(`qa-character-projection-equivalent-v1`): personagens de QA são os players com
+`id >= 66100` (o `AUTO_INCREMENT` de `prepare.py`; todo player semeado tem id
+menor), e o hash cobre as linhas `id, account_id, name, level, vocation,
+experience` e `player_id, pid, sid, itemtype, count` dos itens, na saída exata de
+`mariadb -N -B`. Se não for o método da captura, o gate recusa (falha fechado)
+até alinhar o método ou recapturar a baseline.
+
+**Se a etapa 1 mudou antes do upgrade** (por exemplo, o personagem de QA jogou
+e o recorte do banco diverge), o gate recusa e não há como aceitar a diferença em
+silêncio. O caminho é uma baseline nova:
+
+```bash
+python3 preflight.py --capture-stage1-baseline --historical-receipt /caminho/para/web-rollout-after.json
+```
+
+Só leitura no Docker, ele recusa objeto `brain` ou estranho e grava
+`runtime/evidence/stage1-baseline-candidate-<UTC>.json` sem sobrescrever nada. A
+candidata traz `captured_at_utc`, `provenance` (`historical` e `captured_now`) e o
+SHA-256 do recibo histórico. A captura também recusa quando o ID, o ID da imagem
+ou o `CreatedAt` de um container não estão, juntos, numa mesma entrada de
+`web-rollout-after.json`. A candidata não vale sozinha: depois da revisão, um
+commit copia o arquivo para `stage1-baseline.json` e troca `BASELINE_SHA256` em
+`stage1_baseline.py`.
+
+O recibo `runtime/evidence/stage2-upgrade-receipt.json` guarda o SHA da baseline,
+as duas classes de proveniência e o que foi observado. No upgrade só o `game` é
+recriado, com a imagem rebuildada no SHA aprovado; `database` e `web` ficam. A
+imagem `game` da etapa 1 fica sem tag, mas continua no disco: não rode
+`docker image prune` antes de decidir o rollback, porque ele precisa dela.
+`--record-brain-image` só grava o ID da imagem `brain` quando o label
+`org.opencontainers.image.revision` dela, o container em execução e o recibo
+batem com o HEAD aprovado.
+
+Passa quando: `/cavebot _global brain status` (GOD) mostra `"mode":"active"`,
+`"worker_alive":true` e roster `[65001,65004,65003]`; `/brain fique aqui` com
+piloto na party dá `Mensagem enviada ao companheiro.` e a PM `Teste: proposta
+hold; ...`; o piloto para e cerca de 30 s depois o episódio fica `completed`; o
+ledger termina com `spent` 0, `reserved` 0 e nenhuma `request`.
+
+**Kill switch.** No jogo, como GOD: `/cavebot _global brain disable` responde
+`Brain disabled; native behavior retained.`, encerra as metas com
+`cancelled/operator_disabled` e devolve os pilotos ao nativo até
+`/cavebot _global brain reload`. Se o jogo não responder, `$QA stop brain`: sem
+heartbeat por 5 s o servidor marca `worker_alive:false` e o nativo reassume;
+`$QA start brain` religa.
+
+**Rollback para a etapa 1 jogável.** Nunca `down -v`. Com o mesmo
+`SOURCE_REVISION` exportado (o Compose exige para renderizar; nada é buildado):
+
+```bash
+python3 stage1_baseline.py rollback
+```
+
+O script recusa antes de mudar qualquer coisa se a baseline não bater com o pino,
+se houver objeto `canary-core-qa*` estranho ou se a imagem `game` da etapa 1
+(ID da baseline) não existir mais. Depois executa, nesta ordem, e para no primeiro
+erro:
+
+1. `$QA stop -t 180 brain game` (salva os personagens);
+2. `$QA cp brain:/var/lib/canary-human-qa-stage2/. runtime/evidence/brain/`;
+3. `$QA rm -f brain`, só o container do brain;
+4. `docker volume rm canary-core-qa_brain-ledger`;
+5. `docker tag <ID da imagem game da baseline> canary-core-qa-game:local`;
+6. `env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --no-build --wait`,
+   só o Compose da etapa 1, que recria o `game` sem o override;
+7. `docker volume rm canary-core-qa_brain-socket`, livre só agora.
+
+Banco, logs, dados autorais e cache não são tocados. Em seguida, e também sozinho
+com `python3 stage1_baseline.py verify-restored`, ele confere e falha fechado:
+
+- nenhum container ou volume `brain` restante;
+- `database`, `web`, rede e volumes iguais à baseline; o `game` com novo ID, mas
+  com a imagem, o label de revisão, o `config-hash` e o health da baseline;
+- `game` com `CANARY_BRAIN_CONFIG` desligado, `GAME_*_PORT` 17171–17173,
+  portas publicadas só em `127.0.0.1` e sem o volume do socket;
+- `config.lua` do `web` com `gameProtocolPort = 17172`, e `verify_myaac`;
+- 17171, 17172 e 17173 escutando em loopback e `login.php` em
+  `http://127.0.0.1:18080` respondendo `playersonline`;
+- banco íntegro agora: alcançável com o usuário de QA, tabelas `accounts`,
+  `players`, `player_items` e `player_storage` presentes e com `CHECK TABLE` OK,
+  e ao menos uma conta (`id >= 65001`) e um personagem (`id >= 66100`) de QA.
+
+O recorte do banco não é comparado com a baseline no rollback: jogar nas etapas 1
+e 2 muda posição, XP e itens. A continuidade vem da identidade do volume do banco,
+que precisa ter o mesmo nome e `CreatedAt` da baseline (volumes Docker não têm
+outro ID). O recibo guarda o recorte atual só como informação. Container, rede ou
+volume com ID ou `CreatedAt` diferente continua recusado, no upgrade e no rollback.
+
+Só com tudo certo grava `runtime/evidence/stage1-restored-receipt.json`.

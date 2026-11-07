@@ -1,0 +1,10 @@
+{
+  "mode": "active",
+  "provider": "fake",
+  "bots": [65001, 65004, 65003],
+  "socket_directory": "/var/lib/canary-human-qa-stage2/socket",
+  "state_file": "/var/lib/canary-human-qa-stage2/state.sqlite3",
+  "budget_file": "/var/lib/canary-human-qa-stage2/ledger.sqlite3",
+  "monthly_usd": 1,
+  "recording": {"path": "/var/lib/canary-human-qa-stage2/replay.sqlite3", "namespace": "core-qa-stage2"}
+}
