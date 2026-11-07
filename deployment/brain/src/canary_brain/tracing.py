@@ -75,6 +75,11 @@ class Capture:
         self.span = span
 
     @_optional
+    def attribute(self, name: str, value: str) -> None:
+        if self.span is not None:
+            self.span.set_attribute(name, value)
+
+    @_optional
     def output(self, value: Any) -> None:
         if self.span is not None:
             self.span.set_attribute("output.value", payload(value))

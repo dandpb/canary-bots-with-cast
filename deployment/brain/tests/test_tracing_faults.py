@@ -19,8 +19,9 @@ from canary_brain.store import Store
 @pytest.mark.parametrize(
     "fault", ["start_span", "start_as_current_span", "output", "exit"]
 )
+@pytest.mark.parametrize("route", ["direct", "gateway"])
 async def test_trace_fault_preserves_send_and_actual_settlement(
-    tmp_path, monkeypatch, fault
+    tmp_path, monkeypatch, fault, route
 ):
     span = Mock()
     manager = Mock()
@@ -49,6 +50,15 @@ async def test_trace_fault_preserves_send_and_actual_settlement(
     provider = Provider(
         store, SimpleNamespace(decisions=SimpleNamespace(create=create))
     )
+    expected_spend = 10000
+    if route == "gateway":
+        from test_gateway import client, gateway
+
+        from canary_brain.gateway import GatewayProvider
+
+        api, calls = client()
+        provider = GatewayProvider(store, api, gateway=gateway())
+        expected_spend = 14
     sent = []
     controller = Controller(store, provider, sent.append, mode="active")
     packet = observation()
@@ -58,8 +68,8 @@ async def test_trace_fault_preserves_send_and_actual_settlement(
     assert len([p for p in sent if p["type"] == "intent"]) == 1
     assert len(calls) == 1
     assert settle.call_count == 1
-    assert settle.call_args.args[1] == 10000
-    assert store.budget()["spent"] == 10000
+    assert settle.call_args.args[1] == expected_spend
+    assert store.budget()["spent"] == expected_spend
     assert store.budget()["reserved"] == 0
     assert provider.backoff == {}
     await controller.close()

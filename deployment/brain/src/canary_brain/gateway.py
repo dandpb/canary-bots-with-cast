@@ -140,14 +140,13 @@ class GatewayProvider(Provider):
                 mode="json", by_alias=True, exclude_unset=True
             )
             trace.output(data)
-            if trace.span is not None:
-                request_id = raw.headers.get("x-litellm-call-id")
-                if request_id:
-                    trace.span.set_attribute("litellm.call_id", request_id)
-                trace.span.set_attribute(
-                    "canary.gateway.deployment_id",
-                    str(raw.headers.get("x-litellm-model-id", "")),
-                )
+            request_id = raw.headers.get("x-litellm-call-id")
+            if request_id:
+                trace.attribute("litellm.call_id", request_id)
+            trace.attribute(
+                "canary.gateway.deployment_id",
+                str(raw.headers.get("x-litellm-model-id", "")),
+            )
         # A 200 response is still billable when identity validation fails below.
         data["gateway"] = {
             "deployment_id": raw.headers.get("x-litellm-model-id"),
