@@ -24,7 +24,6 @@ Run it from Windows or from WSL; it talks to Docker either way:
 """
 
 import argparse
-from datetime import datetime, timedelta, timezone
 import json
 import os
 import re
@@ -35,16 +34,18 @@ import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime, timedelta
 
 PROJECT = "canary-bots-wsl"
 GRIZZLE_ID = 65001
 STATUS_PORT = 7173
-DEFAULT_HISTORY = "/home/daniel/canary-bots-wsl/deployment/wsl/runtime/monitor-grizzle.jsonl"
+DEFAULT_HISTORY = (
+    "/home/daniel/canary-bots-wsl/deployment/wsl/runtime/monitor-grizzle.jsonl"
+)
 MIN_PLAYERS_ONLINE = 10
 
-# The game container's own log lines are stamped with an application clock that
-# runs behind the host clock, so `docker logs --since` matches nothing on this
-# deployment. The digest therefore windows on the application's own timestamps.
+# Canary's logger uses year-day-month, not ISO year-month-day. Parse that
+# contract before windowing; swapping these fields creates a false clock skew.
 APP_TIME_PATTERN = re.compile(r"\[(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})")
 
 # Canary logs look like "[2026-06-11 22:34:03.843] [info] ...". Match on the
@@ -61,7 +62,8 @@ NOISE_PATTERN = re.compile(r"(0x[0-9a-f]+|\b\d{3,}\b|[0-9a-f]{8,})", re.IGNORECA
 SAVE_PATTERN = re.compile(r"Saving (\d+) players", re.IGNORECASE)
 SAVED_PATTERN = re.compile(r"Players saved in ([\d.]+) milliseconds", re.IGNORECASE)
 HIBERNATION_PATTERN = re.compile(
-    r"\[BotHibernation\]\s*(\d+) bots:\s*hibernated=(\d+)\s*awake=(\d+)", re.IGNORECASE)
+    r"\[BotHibernation\]\s*(\d+) bots:\s*hibernated=(\d+)\s*awake=(\d+)", re.IGNORECASE
+)
 ACTIVITY_PATTERN = re.compile(r"\[(PTRAIL|MARKET_PASS|BotSupport)\]", re.IGNORECASE)
 PAIR_PATTERN = re.compile(r"([A-Za-z][A-Za-z0-9_]*)=('[^']*'|\"[^\"]*\"|\S+)")
 
@@ -87,6 +89,7 @@ def run(args, timeout=25, stdin=None):
     try:
         proc = subprocess.run(
             args,
+            check=False,
             input=stdin,
             text=True,
             capture_output=True,
@@ -106,10 +109,15 @@ def db_query(sql):
     interpolated into the shell command string.
     """
     args = [
-        "docker", "exec", "-i", f"{PROJECT}-database-1",
-        "sh", "-c",
+        "docker",
+        "exec",
+        "-i",
+        f"{PROJECT}-database-1",
+        "sh",
+        "-c",
         'MYSQL_PWD="$MARIADB_PASSWORD" mariadb -u canary canary -N -B -e "$1"',
-        "sh", sql,
+        "sh",
+        sql,
     ]
     out, err, code = run(args)
     if code != 0:
@@ -121,9 +129,17 @@ def db_query(sql):
 def compose_containers():
     """Map Compose service name -> container name for the deployment."""
     fmt = '{{.Names}}\t{{.Label "com.docker.compose.service"}}\t{{.State}}\t{{.Status}}'
-    out, err, code = run(["docker", "ps", "-a", "--filter",
-                          f"label=com.docker.compose.project={PROJECT}",
-                          "--format", fmt])
+    out, err, code = run(
+        [
+            "docker",
+            "ps",
+            "-a",
+            "--filter",
+            f"label=com.docker.compose.project={PROJECT}",
+            "--format",
+            fmt,
+        ]
+    )
     if code != 0:
         return {}, err.strip()
     containers = {}
@@ -176,10 +192,10 @@ def started_ago(started_at):
     if not started_at or started_at.startswith("0001"):
         return None
     try:
-        stamp = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        stamp = datetime.fromisoformat(started_at)
     except ValueError:
         return None
-    return int((datetime.now(timezone.utc) - stamp).total_seconds())
+    return int((datetime.now(UTC) - stamp).total_seconds())
 
 
 def native_status(host="127.0.0.1", port=STATUS_PORT, timeout=10):
@@ -193,7 +209,7 @@ def native_status(host="127.0.0.1", port=STATUS_PORT, timeout=10):
             while time.monotonic() < deadline:
                 try:
                     chunk = connection.recv(65536)
-                except socket.timeout:
+                except TimeoutError:
                     break
                 if not chunk:
                     break
@@ -214,7 +230,9 @@ def native_status(host="127.0.0.1", port=STATUS_PORT, timeout=10):
         "client_protocol": server.get("client") if server is not None else None,
         "server_version": server.get("version") if server is not None else None,
         "server_name": server.get("servername") if server is not None else None,
-        "players_online": int(players.get("online", 0)) if players is not None else None,
+        "players_online": int(players.get("online", 0))
+        if players is not None
+        else None,
         "players_max": int(players.get("max", 0)) if players is not None else None,
         "players_peak": int(players.get("peak", 0)) if players is not None else None,
         "monsters": int(monsters.get("total", 0)) if monsters is not None else None,
@@ -225,14 +243,27 @@ def http_probe(url, timeout=8):
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
             body = response.read(2048)
-            return {"url": url, "reachable": True, "status": response.status,
-                    "bytes": len(body)}
+            return {
+                "url": url,
+                "reachable": True,
+                "status": response.status,
+                "bytes": len(body),
+            }
     except urllib.error.HTTPError as exc:
-        return {"url": url, "reachable": True, "status": exc.code,
-                "bytes": 0, "note": "reachable but not authorized"}
+        return {
+            "url": url,
+            "reachable": True,
+            "status": exc.code,
+            "bytes": 0,
+            "note": "reachable but not authorized",
+        }
     except Exception as exc:  # noqa: BLE001 - the probe reports, never raises
-        return {"url": url, "reachable": False, "status": None,
-                "note": type(exc).__name__}
+        return {
+            "url": url,
+            "reachable": False,
+            "status": None,
+            "note": type(exc).__name__,
+        }
 
 
 def tcp_probe(host, port, timeout=6):
@@ -248,8 +279,9 @@ def worker_status(containers):
     brain = containers.get("brain")
     if not brain:
         return None, "brain service is not part of the deployment"
-    out, err, code = run(["docker", "exec", brain["container"], "python", "-c",
-                           WORKER_READ], timeout=20)
+    out, err, code = run(
+        ["docker", "exec", brain["container"], "python", "-c", WORKER_READ], timeout=20
+    )
     if code != 0:
         return None, err.strip() or f"exit {code}"
     try:
@@ -266,8 +298,19 @@ def persisted_player():
     if not rows:
         return None, f"no player row for id {GRIZZLE_ID}"
     row = rows[0]
-    names = ["id", "name", "level", "experience", "health", "healthmax",
-             "posx", "posy", "posz", "lastlogin", "now"]
+    names = [
+        "id",
+        "name",
+        "level",
+        "experience",
+        "health",
+        "healthmax",
+        "posx",
+        "posy",
+        "posz",
+        "lastlogin",
+        "now",
+    ]
     values = dict(zip(names, row))
     try:
         return {
@@ -301,7 +344,9 @@ def app_time(line):
     if not match:
         return None
     try:
-        return datetime.fromisoformat(f"{match.group(1)}T{match.group(2)}")
+        return datetime.strptime(
+            f"{match.group(1)} {match.group(2)}", "%Y-%d-%m %H:%M:%S"
+        )
     except ValueError:
         return None
 
@@ -310,14 +355,15 @@ def scan_logs(containers, service, window_seconds):
     """Cluster recent error lines into signatures and read save health.
 
     The window is applied to the application's own timestamps. `docker logs
-    --since` cannot be used here because the container's application clock is
-    skewed against the host clock.
+    --since` is deliberately not used: this collector retains its explicit
+    application-log window and understands Canary's year-day-month format.
     """
     info = containers.get(service)
     if not info:
         return None, f"{service} service is not part of the deployment"
-    out, err, code = run(["docker", "logs", "--tail", "5000", info["container"]],
-                          timeout=45)
+    out, err, code = run(
+        ["docker", "logs", "--tail", "5000", info["container"]], timeout=45
+    )
     if code != 0 and not out:
         return None, err.strip() or f"exit {code}"
 
@@ -361,7 +407,7 @@ def scan_logs(containers, service, window_seconds):
         "top_signatures": [{"count": count, "signature": sig} for sig, count in ranked],
     }
     if newest:
-        skew = (datetime.now(timezone.utc).replace(tzinfo=None) - newest).total_seconds()
+        skew = (datetime.now(UTC).replace(tzinfo=None) - newest).total_seconds()
         result["log_clock"] = {
             "newest_entry": newest.isoformat(),
             "oldest_entry": oldest.isoformat() if oldest else None,
@@ -430,7 +476,7 @@ def latest_history_state(rows):
 
 def build_digest(args):
     report = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "compose_project": PROJECT,
         "warnings": [],
     }
@@ -474,8 +520,10 @@ def build_digest(args):
         "supervision_panel": http_probe("http://127.0.0.1:8091/"),
         "metrics_ui": http_probe("http://127.0.0.1:4318/"),
         "web": http_probe("http://127.0.0.1:8080/"),
-        "game_status_port": {"url": f"tcp://127.0.0.1:{args.status_port}",
-                             "reachable": tcp_probe("127.0.0.1", args.status_port)},
+        "game_status_port": {
+            "url": f"tcp://127.0.0.1:{args.status_port}",
+            "reachable": tcp_probe("127.0.0.1", args.status_port),
+        },
     }
     return report
 
@@ -507,18 +555,25 @@ def evaluate(report):
         restarts = service.get("restarts")
         if restarts:
             escalate("amber")
-            findings.append(f"service `{service['service']}` restarted {restarts} time(s)")
+            findings.append(
+                f"service `{service['service']}` restarted {restarts} time(s)"
+            )
             actions.append(f"check why `{service['service']}` restarted")
 
     status = report.get("status")
     if not status:
         escalate("red")
         findings.append("the game server did not answer the status request")
-        actions.append("confirm the game service is accepting connections on the status port")
+        actions.append(
+            "confirm the game service is accepting connections on the status port"
+        )
     else:
         online = status.get("players_online")
         if online is not None:
-            report["population"] = {"online": online, "peak": status.get("players_peak")}
+            report["population"] = {
+                "online": online,
+                "peak": status.get("players_peak"),
+            }
             if online < 1:
                 escalate("red")
                 findings.append("no players are online")
@@ -529,7 +584,11 @@ def evaluate(report):
 
     live = report.get("grizzle_live")
     if not live:
-        escalate("red" if any("brain worker unreadable" in w for w in report["warnings"]) else "amber")
+        escalate(
+            "red"
+            if any("brain worker unreadable" in w for w in report["warnings"])
+            else "amber"
+        )
         findings.append("no live Grizzle observation")
         actions.append("check the brain worker container and its SQLite state")
     else:
@@ -537,7 +596,7 @@ def evaluate(report):
         age = None
         if observation:
             try:
-                age = int(datetime.now(timezone.utc).timestamp() - float(observation))
+                age = int(datetime.now(UTC).timestamp() - float(observation))
             except (TypeError, ValueError):
                 age = None
         if age is not None and age > 60:
@@ -572,8 +631,8 @@ def evaluate(report):
         report["since_last_record"] = {
             "xp": (live.get("xp") or 0) - (previous.get("xp") or 0),
             "level": (live.get("level") or 0) - (previous.get("level") or 0),
-            "floor": ((live.get("position") or [None] * 3)[2] or 0) -
-                     ((previous.get("position") or [None] * 3)[2] or 0),
+            "floor": ((live.get("position") or [None] * 3)[2] or 0)
+            - ((previous.get("position") or [None] * 3)[2] or 0),
         }
 
     for name, probe in (report.get("endpoints") or {}).items():
@@ -638,7 +697,9 @@ def render(report):
     lines.append("|---|---|---|---|---|")
     for service in report["services"]:
         uptime = service.get("uptime_seconds")
-        uptime_text = "-" if uptime is None else f"{uptime // 3600}h{(uptime % 3600) // 60}m"
+        uptime_text = (
+            "-" if uptime is None else f"{uptime // 3600}h{(uptime % 3600) // 60}m"
+        )
         lines.append(
             f"| {service['service']} | {service['state']} | {service['health']} | "
             f"{service.get('restarts', '-')} | {uptime_text} |"
@@ -649,11 +710,15 @@ def render(report):
     if status:
         lines.append("## Server")
         lines.append("")
-        lines.append(f"- Players online: **{status.get('players_online')}** "
-                     f"(peak {status.get('players_peak')})")
-        lines.append(f"- Server uptime: {status.get('uptime_seconds')}s, "
-                     f"protocol {status.get('client_protocol')}, "
-                     f"version {status.get('server_version')}")
+        lines.append(
+            f"- Players online: **{status.get('players_online')}** "
+            f"(peak {status.get('players_peak')})"
+        )
+        lines.append(
+            f"- Server uptime: {status.get('uptime_seconds')}s, "
+            f"protocol {status.get('client_protocol')}, "
+            f"version {status.get('server_version')}"
+        )
         lines.append(f"- Monsters: {status.get('monsters')}")
         lines.append("")
 
@@ -673,9 +738,15 @@ def render(report):
     lines.append("| Field | Live | Persisted |")
     lines.append("|---|---|---|")
     lines.append(f"| XP | {live.get('xp', '-')} | {persisted.get('experience', '-')} |")
-    lines.append(f"| Level | {live.get('level', '-')} | {persisted.get('level', '-')} |")
-    lines.append(f"| Position | {live.get('position', '-')} | {persisted.get('position', '-')} |")
-    lines.append(f"| Health | {live.get('health', '-')} | {persisted.get('health', '-')} |")
+    lines.append(
+        f"| Level | {live.get('level', '-')} | {persisted.get('level', '-')} |"
+    )
+    lines.append(
+        f"| Position | {live.get('position', '-')} | {persisted.get('position', '-')} |"
+    )
+    lines.append(
+        f"| Health | {live.get('health', '-')} | {persisted.get('health', '-')} |"
+    )
     lines.append(f"| Objective | {live.get('objective', '-')} | - |")
     lines.append(f"| Waypoint | {live.get('waypoint', '-')} | - |")
     lines.append("")
@@ -693,7 +764,9 @@ def render(report):
     lines.append("|---|---|---|")
     for name, probe in (report.get("endpoints") or {}).items():
         status_code = probe.get("status") or ("open" if probe.get("reachable") else "-")
-        lines.append(f"| {name} | {'yes' if probe.get('reachable') else 'no'} | {status_code} |")
+        lines.append(
+            f"| {name} | {'yes' if probe.get('reachable') else 'no'} | {status_code} |"
+        )
     lines.append("")
 
     lines.append("## Findings")
@@ -715,25 +788,31 @@ def render(report):
     lines.append("")
 
     logs = report.get("logs") or {}
-    save_health = ((logs.get("game") or {}).get("save_health") or {})
+    save_health = (logs.get("game") or {}).get("save_health") or {}
     if save_health:
         lines.append("## Save health")
         lines.append("")
-        lines.append(f"- Last save wrote {save_health.get('last_save_count')} players "
-                     f"in {save_health.get('last_save_milliseconds')} ms")
+        lines.append(
+            f"- Last save wrote {save_health.get('last_save_count')} players "
+            f"in {save_health.get('last_save_milliseconds')} ms"
+        )
         if save_health.get("tracked_bots") is not None:
-            lines.append(f"- Tracked bots: {save_health.get('tracked_bots')} "
-                         f"({save_health.get('awake')} awake, "
-                         f"{save_health.get('hibernated')} hibernated)")
+            lines.append(
+                f"- Tracked bots: {save_health.get('tracked_bots')} "
+                f"({save_health.get('awake')} awake, "
+                f"{save_health.get('hibernated')} hibernated)"
+            )
         lines.append("")
 
     for service, scan in (report.get("logs") or {}).items():
         clock = (scan or {}).get("log_clock") or {}
         if clock.get("skew_seconds") is not None:
-            lines.append(f"The `{service}` log clock is {clock['skew_seconds']}s away "
-                         f"from the host clock (newest entry {clock.get('newest_entry')}). "
-                         "Log windows in this digest are applied on the application's own "
-                         "timestamps for that reason.")
+            lines.append(
+                f"The `{service}` log clock is {clock['skew_seconds']}s away "
+                f"from the host clock (newest entry {clock.get('newest_entry')}). "
+                "Log windows in this digest are applied on the application's own "
+                "timestamps for that reason."
+            )
             lines.append("")
 
     if any(scan and scan.get("error_lines") for scan in logs.values()):
@@ -742,9 +821,11 @@ def render(report):
         for service, scan in logs.items():
             if not scan or not scan.get("error_lines"):
                 continue
-            lines.append(f"**{service}** - {scan['error_lines']} error lines "
-                         f"in the last {scan['window_seconds']}s "
-                         f"({scan.get('lines_in_window', 0)} lines)")
+            lines.append(
+                f"**{service}** - {scan['error_lines']} error lines "
+                f"in the last {scan['window_seconds']}s "
+                f"({scan.get('lines_in_window', 0)} lines)"
+            )
             lines.append("")
             for item in scan["top_signatures"]:
                 lines.append(f"- ({item['count']}x) `{item['signature']}`")
@@ -762,14 +843,21 @@ def render(report):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--json", action="store_true", help="emit JSON instead of Markdown")
+    parser.add_argument(
+        "--json", action="store_true", help="emit JSON instead of Markdown"
+    )
     parser.add_argument("--out", type=str, help="write the digest to this file")
-    parser.add_argument("--window", default="30m",
-                        help="log window for the error scan, e.g. 30m, 2h, 1d")
-    parser.add_argument("--history", default=DEFAULT_HISTORY,
-                        help="path to monitor-grizzle.jsonl")
-    parser.add_argument("--status-port", type=int, default=STATUS_PORT,
-                        help="game status port")
+    parser.add_argument(
+        "--window",
+        default="30m",
+        help="log window for the error scan, e.g. 30m, 2h, 1d",
+    )
+    parser.add_argument(
+        "--history", default=DEFAULT_HISTORY, help="path to monitor-grizzle.jsonl"
+    )
+    parser.add_argument(
+        "--status-port", type=int, default=STATUS_PORT, help="game status port"
+    )
     args = parser.parse_args()
     try:
         args.window_seconds = parse_duration(args.window)
@@ -777,7 +865,11 @@ def main():
         parser.error(str(exc))
 
     report = evaluate(build_digest(args))
-    rendered = render(report) if not args.json else json.dumps(report, ensure_ascii=False, indent=2)
+    rendered = (
+        render(report)
+        if not args.json
+        else json.dumps(report, ensure_ascii=False, indent=2)
+    )
     print(rendered)
     if args.out:
         parent = os.path.dirname(os.path.abspath(args.out))

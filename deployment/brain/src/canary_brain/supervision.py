@@ -363,9 +363,11 @@ class Supervisor:
         if (
             previous is None
             or previous.world != snapshot.world
-            or (snapshot.bot.objective == "retreat"
+            or (
+                snapshot.bot.objective == "retreat"
                 and previous.bot.objective != "retreat"
-                and now - progress.get("last_retreat_seen", 0) > 60)
+                and now - progress.get("last_retreat_seen", 0) > 60
+            )
             or now - previous_at > 10
             or origin is None
             or position[2] != origin[2]
@@ -459,16 +461,27 @@ class Supervisor:
         if navigation_stalled and now - state.get("last_navigation_alert", 0) >= 300:
             state["last_navigation_alert"] = now
             self.save(bot)
-            self.event(bot, "retreat_stall", "Retirada sem avanço de posição por cinco minutos, mesmo que haja combate ou XP.")
+            self.event(
+                bot,
+                "retreat_stall",
+                "Retirada sem avanço de posição por cinco minutos, mesmo que haja combate ou XP.",
+            )
             anchor = state.get("retreat_retry_anchor")
-            if anchor is None and state.get("retreat_retries") and state.get("world") == snapshot.world:
+            if (
+                anchor is None
+                and state.get("retreat_retries")
+                and state.get("world") == snapshot.world
+            ):
                 anchor = list(position)
                 state["retreat_retry_anchor"] = anchor
                 state["retreat_retry_world"] = snapshot.world
                 self.save(bot)
-            if (state.get("retreat_retry_world") != snapshot.world or anchor is None
+            if (
+                state.get("retreat_retry_world") != snapshot.world
+                or anchor is None
                 or position[2] != anchor[2]
-                or max(abs(position[0] - anchor[0]), abs(position[1] - anchor[1])) > 3):
+                or max(abs(position[0] - anchor[0]), abs(position[1] - anchor[1])) > 3
+            ):
                 state["retreat_retry_anchor"] = list(position)
                 state["retreat_retry_world"] = snapshot.world
                 state["retreat_retries"] = []
@@ -483,11 +496,19 @@ class Supervisor:
                 try:
                     self.command(bot, "retreat", {}, automatic_recovery=True)
                 except ValueError:
-                    self.event(bot, "waiting", "A nova tentativa da retirada aguarda uma oferta atual.")
+                    self.event(
+                        bot,
+                        "waiting",
+                        "A nova tentativa da retirada aguarda uma oferta atual.",
+                    )
                 else:
                     state["retreat_retries"] = attempts + [now]
                     self.save(bot)
-                    self.event(bot, "retreat_retry", "Retirada solicitada novamente; aguardando confirmação do servidor.")
+                    self.event(
+                        bot,
+                        "retreat_retry",
+                        "Retirada solicitada novamente; aguardando confirmação do servidor.",
+                    )
             return
         stagnant = now - progress["since"] >= 300
         working = snapshot.bot.objective_running and snapshot.bot.objective in {
@@ -556,7 +577,9 @@ class Supervisor:
                     "world": snapshot.world,
                     "observation_age": round(age, 2),
                     "no_progress_seconds": round(quiet),
-                    "no_navigation_progress_seconds": round(now - self.progress.get(bot, {}).get("navigation_since", now)),
+                    "no_navigation_progress_seconds": round(
+                        now - self.progress.get(bot, {}).get("navigation_since", now)
+                    ),
                     "diagnosis": diagnosis,
                     "candidate": self.current_candidate(bot),
                     "actions": [
