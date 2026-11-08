@@ -142,6 +142,23 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def pin_base_image(reference, local_tag):
+    """Resolve a caller-selected local image before the isolated fixture build."""
+    if (
+        not reference
+        or reference.startswith("-")
+        or any(c.isspace() for c in reference)
+    ):
+        raise ValueError("set CANARY_M5_BASE_IMAGE to the reviewed local native image")
+    image = command("docker", "image", "inspect", reference, "--format", "{{.Id}}")
+    if not re.fullmatch(r"sha256:[a-f0-9]{64}", image):
+        raise ValueError("base image inspection did not return a content ID")
+    command("docker", "tag", image, local_tag)
+    if command("docker", "image", "inspect", local_tag, "--format", "{{.Id}}") != image:
+        raise ValueError("private base image tag changed before the fixture build")
+    return {"requested": reference, "image_id": image, "private_tag": local_tag}
+
+
 def stop_and_read_character(harness, directory, *, terminal=None):
     """Capture fresh operation receipts; never infer timing from old evidence."""
     if terminal is not None:
@@ -213,6 +230,10 @@ def prepare():
             "set CANARY_M5_NATIVE_SOURCE_REVISION to the native build commit"
         )
     WORK.mkdir(mode=0o700, exist_ok=False)
+    base = pin_base_image(
+        os.environ.get("CANARY_M5_BASE_IMAGE", ""),
+        "canary-m5-base:" + hashlib.sha256(str(WORK).encode()).hexdigest()[:16],
+    )
     fixture = WORK / "fixture"
     fixture.mkdir()
     seed = "\n".join(
@@ -316,11 +337,12 @@ def prepare():
     audit = live_audit_script()
     (build / "scripts/globalevents/aaa_m5_free_qa.lua").write_text(audit)
     (build / "Dockerfile").write_text(
-        'FROM canary-party-qa:local\nCOPY scripts/ /canary/data/scripts/\nRUN mv /canary/data/scripts/globalevents/bot_market_funding.lua /canary/qa-disabled-market-funding.lua && mv /canary/data/scripts/globalevents/bot_market.lua /canary/qa-disabled-market.lua\nCOPY entry.py /m5-entry.py\nCOPY overrides.json /m5-overrides.json\nENTRYPOINT ["python3","/m5-entry.py"]\n'
+        f'FROM {base["private_tag"]}\nCOPY scripts/ /canary/data/scripts/\nRUN mv /canary/data/scripts/globalevents/bot_market_funding.lua /canary/qa-disabled-market-funding.lua && mv /canary/data/scripts/globalevents/bot_market.lua /canary/qa-disabled-market.lua\nCOPY entry.py /m5-entry.py\nCOPY overrides.json /m5-overrides.json\nENTRYPOINT ["python3","/m5-entry.py"]\n'
     )
-    command("docker", "build", "-t", IMAGE, build)
+    command("docker", "build", "--pull=false", "-t", IMAGE, build)
     manifest = {
         "source_revision": revision,
+        "base_image": base,
         "fixture_sha256": fixture_hash(fixture, WORLD),
         "world_sha256": sha(WORLD),
         "world_bytes": WORLD.stat().st_size,

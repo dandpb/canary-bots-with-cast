@@ -37,6 +37,10 @@ Set absolute paths:
   outside attempt.
 - CANARY_M5_NATIVE_SOURCE_REVISION: the actual clean native build's full source
   commit, independently attested by build/image receipts and runtime admission.
+- CANARY_M5_BASE_IMAGE: reviewed local game image. Preparation resolves its
+  content ID and tags it under the new attempt's private name, records both
+  identities, and still verifies the binaries inside the derived image. It
+  never retags the shared historical canary-party-qa image.
 
 The manifest records source_revision for the clean harness checkout and
 native_source_revision separately for the native build. Worker config and its
