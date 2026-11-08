@@ -1,0 +1,150 @@
+# Quests
+
+## Overview
+Intermediate blueprint grouping 43 subdirectories under `monster/quests`.
+
+## Subdirectories & Boundaries
+- [a_pirates_tail_quest](./a_pirates_tail_quest/README.md) - Component package under `monster/quests/a_pirates_tail_quest` containing 2 files (`ratmiral_blackwhiskers.lua`..`tentuglys_head.lua`).
+- [adventures_of_galthen](./adventures_of_galthen/README.md) - Component package under `monster/quests/adventures_of_galthen` containing 1 files (`megasylvan_yselda.lua`..`megasylvan_yselda.lua`).
+- [ancient_feud](./ancient_feud/README.md) - Component package under `monster/quests/ancient_feud` containing 4 files (`katex_blood_tongue.lua`..`yirkas_blue_scales.lua`).
+- [ancient_tombs](./ancient_tombs/README.md) - Component package under `monster/quests/ancient_tombs` containing 10 files (`ashmunrah.lua`..`vashresamun.lua`).
+- [annihilator](./annihilator/README.md) - Component package under `monster/quests/annihilator` containing 1 files (`angry_demon.lua`..`angry_demon.lua`).
+- [bigfoots_burden](./bigfoots_burden/README.md) - Provides 4 direct files (`humorless_fungus.lua`..`versperoth.lua`) and 1 subdirectories under `monster/quests/bigfoots_burden`.
+- [cults_of_tibia](./cults_of_tibia/README.md) - Provides 28 direct files (`animated_clomp.lua`..`orc_cultist.lua`) and 1 subdirectories under `monster/quests/cults_of_tibia`.
+- [dangerous_depth](./dangerous_depth/README.md) - Provides 12 direct files (`aggressive_lava.lua`..`snail_slime.lua`) and 1 subdirectories under `monster/quests/dangerous_depth`.
+- [dark_trails](./dark_trails/README.md) - Component package under `monster/quests/dark_trails` containing 9 files (`canopic_jar.lua`..`tremor_worm.lua`).
+- [feaster_of_souls](./feaster_of_souls/README.md) - Component package under `monster/quests/feaster_of_souls` containing 9 files (`brother_worm.lua`..`wormling.lua`).
+- [ferumbras_ascension](./ferumbras_ascension/README.md) - Provides 5 direct files (`damned_soul.lua`..`rage_of_mazoran.lua`) and 4 subdirectories under `monster/quests/ferumbras_ascension`.
+- [forgotten_knowledge](./forgotten_knowledge/README.md) - Provides 31 direct files (`animated_sword.lua`..`unbound_demon_outcast.lua`) and 1 subdirectories under `monster/quests/forgotten_knowledge`.
+- [grave_danger](./grave_danger/README.md) - Provides 26 direct files (`azarams_soul.lua`..`vampiric_blood.lua`) and 1 subdirectories under `monster/quests/grave_danger`.
+- [heart_of_destruction](./heart_of_destruction/README.md) - Component package under `monster/quests/heart_of_destruction` containing 26 files (`aftershock.lua`..`world_devourer.lua`).
+- [hero_of_rathleton](./hero_of_rathleton/README.md) - Component package under `monster/quests/hero_of_rathleton` containing 13 files (`deep_terror.lua`..`weakened_glooth_horror.lua`).
+- [hidden_threats](./hidden_threats/README.md) - Component package under `monster/quests/hidden_threats` containing 1 files (`cave_spider.lua`..`cave_spider.lua`).
+- [in_service_of_yalahar](./in_service_of_yalahar/README.md) - Component package under `monster/quests/in_service_of_yalahar` containing 11 files (`azerus.lua`..`yalahari.lua`).
+- [isle_of_evil](./isle_of_evil/README.md) - Component package under `monster/quests/isle_of_evil` containing 6 files (`boogey.lua`..`monstor.lua`).
+- [killing_in_the_name_of](./killing_in_the_name_of/README.md) - Component package under `monster/quests/killing_in_the_name_of` containing 30 files (`bretzecutioner.lua`..`zanakeph.lua`).
+- [kilmaresh](./kilmaresh/README.md) - Component package under `monster/quests/kilmaresh` containing 15 files (`a_shielded_astral_glyph.lua`..`xogixath.lua`).
+- [liquid_black](./liquid_black/README.md) - Component package under `monster/quests/liquid_black` containing 3 files (`jaul.lua`..`tanjis.lua`).
+- [marapur](./marapur/README.md) - Component package under `monster/quests/marapur` containing 1 files (`timira_the_many-headed.lua`..`timira_the_many-headed.lua`).
+- [mysterious_ornate_chest](./mysterious_ornate_chest/README.md) - Component package under `monster/quests/mysterious_ornate_chest` containing 5 files (`an_observer_eye.lua`..`ugly_monster.lua`).
+- [no_rest_for_the_wicked](./no_rest_for_the_wicked/README.md) - Intermediate blueprint grouping 2 subdirectories under `monster/quests/no_rest_for_the_wicked`.
+- [pits_of_inferno](./pits_of_inferno/README.md) - Component package under `monster/quests/pits_of_inferno` containing 9 files (`countess_sorrow.lua`..`the_plasmother.lua`).
+- [primal_ordeal_quest](./primal_ordeal_quest/README.md) - Component package under `monster/quests/primal_ordeal_quest` containing 7 files (`lava_creature.lua`..`unchained_fire.lua`).
+- [roshamuul](./roshamuul/README.md) - Component package under `monster/quests/roshamuul` containing 9 files (`bad_dream.lua`..`terofar.lua`).
+- [rotten_blood](./rotten_blood/README.md) - Component package under `monster/quests/rotten_blood` containing 22 files (`bloated_man-maggot.lua`..`wandering_pillar.lua`).
+- [rottin_wood_and_the_married_men_quest](./rottin_wood_and_the_married_men_quest/README.md) - Component package under `monster/quests/rottin_wood_and_the_married_men_quest` containing 1 files (`travelling_merchant.lua`..`travelling_merchant.lua`).
+- [soul_war](./soul_war/README.md) - Provides 23 direct files (`aspect_of_power.lua`..`weeping_soul.lua`) and 1 subdirectories under `monster/quests/soul_war`.
+- [svargrond_arena](./svargrond_arena/README.md) - Intermediate blueprint grouping 3 subdirectories under `monster/quests/svargrond_arena`.
+- [the_curse_spreads](./the_curse_spreads/README.md) - Component package under `monster/quests/the_curse_spreads` containing 10 files (`black_vixen.lua`..`sharpclaw.lua`).
+- [the_dream_courts](./the_dream_courts/README.md) - Provides 12 direct files (`generator.lua`..`whirling_blades.lua`) and 1 subdirectories under `monster/quests/the_dream_courts`.
+- [the_elemental_spheres](./the_elemental_spheres/README.md) - Component package under `monster/quests/the_elemental_spheres` containing 16 files (`blazing_fire_elemental.lua`..`spirit_overlord.lua`).
+- [the_explorer_society](./the_explorer_society/README.md) - Component package under `monster/quests/the_explorer_society` containing 5 files (`blue_butterfly.lua`..`yellow_butterfly.lua`).
+- [the_first_dragon](./the_first_dragon/README.md) - Provides 9 direct files (`angry_plant.lua`..`unbeatable_dragon.lua`) and 1 subdirectories under `monster/quests/the_first_dragon`.
+- [the_inquisition](./the_inquisition/README.md) - Component package under `monster/quests/the_inquisition` containing 13 files (`a_carved_stone_tile.lua`..`zugurosh.lua`).
+- [the_new_frontier](./the_new_frontier/README.md) - Component package under `monster/quests/the_new_frontier` containing 15 files (`baron_brute.lua`..`tremorak.lua`).
+- [the_order_of_lion](./the_order_of_lion/README.md) - Provides 2 direct files (`lion_commander.lua`..`usurper_commander.lua`) and 1 subdirectories under `monster/quests/the_order_of_lion`.
+- [the_percht_queens_island](./the_percht_queens_island/README.md) - Component package under `monster/quests/the_percht_queens_island` containing 10 files (`baleful_bunny.lua`..`warm_fire.lua`).
+- [the_secret_library](./the_secret_library/README.md) - Provides 47 direct files (`biting_cold.lua`..`yalahari_despoiler.lua`) and 1 subdirectories under `monster/quests/the_secret_library`.
+- [twenty_years_a_cook](./twenty_years_a_cook/README.md) - Intermediate blueprint grouping 1 subdirectories under `monster/quests/twenty_years_a_cook`.
+- [wrath_of_the_emperor](./wrath_of_the_emperor/README.md) - Component package under `monster/quests/wrath_of_the_emperor` containing 9 files (`fury_of_the_emperor.lua`..`wrath_of_the_emperor.lua`).
+
+## Interface
+- `Game.createMonsterType("Ratmiral Blackwhiskers")` and `mType:register(monster)` [ratmiral_blackwhiskers.lua:Game.createMonsterType]
+- Lua script module `tentuglys_head.lua` [tentuglys_head.lua:module]
+- `Game.createMonsterType("Megasylvan Yselda")` and `mType:register(monster)` [megasylvan_yselda.lua:Game.createMonsterType]
+- `Game.createMonsterType("Katex Blood Tongue")` and `mType:register(monster)` [katex_blood_tongue.lua:Game.createMonsterType]
+- `Game.createMonsterType("Srezz Yellow Eyes")` and `mType:register(monster)` [srezz_yellow_eyes.lua:Game.createMonsterType]
+- `Game.createMonsterType("Ashmunrah")` and `mType:register(monster)` [ashmunrah.lua:Game.createMonsterType]
+- `Game.createMonsterType("Dipthrah")` and `mType:register(monster)` [dipthrah.lua:Game.createMonsterType]
+- `Game.createMonsterType("Angry Demon")` and `mType:register(monster)` [angry_demon.lua:Game.createMonsterType]
+- `Game.createMonsterType("Humorless Fungus")` and `mType:register(monster)` [humorless_fungus.lua:Game.createMonsterType]
+- `Game.createMonsterType("Minion of Versperoth")` and `mType:register(monster)` [minion_of_versperoth.lua:Game.createMonsterType]
+- Defines 28 script/configuration files (`animated_clomp.lua` through `orc_cultist.lua`) [animated_clomp.lua]
+- `Game.createMonsterType("Animated Clomp")` and `mType:register(monster)` [animated_clomp.lua:Game.createMonsterType]
+- `Game.createMonsterType("Aggressive Lava")` and `mType:register(monster)` [aggressive_lava.lua:Game.createMonsterType]
+- `Game.createMonsterType("Aggressive Matter")` and `mType:register(monster)` [aggressive_matter.lua:Game.createMonsterType]
+- `Game.createMonsterType("Canopic Jar")` and `mType:register(monster)` [canopic_jar.lua:Game.createMonsterType]
+- `Game.createMonsterType("Death Priest Shargon")` and `mType:register(monster)` [death_priest_shargon.lua:Game.createMonsterType]
+- `Game.createMonsterType("Brother Worm")` and `mType:register(monster)` [brother_worm.lua:Game.createMonsterType]
+- `Game.createMonsterType("Irgix The Flimsy")` and `mType:register(monster)` [irgix_the_flimsy.lua:Game.createMonsterType]
+- `Game.createMonsterType("Damned Soul")` and `mType:register(monster)` [damned_soul.lua:Game.createMonsterType]
+- `Game.createMonsterType("Desperate Soul")` and `mType:register(monster)` [desperate_soul.lua:Game.createMonsterType]
+- Defines 31 script/configuration files (`animated_sword.lua` through `unbound_demon_outcast.lua`) [animated_sword.lua]
+- `Game.createMonsterType("Animated Sword")` and `mType:register(monster)` [animated_sword.lua:Game.createMonsterType]
+- Defines 26 script/configuration files (`azarams_soul.lua` through `vampiric_blood.lua`) [azarams_soul.lua]
+- Lua script module `azarams_soul.lua` [azarams_soul.lua:module]
+- Defines 26 script/configuration files (`aftershock.lua` through `world_devourer.lua`) [aftershock.lua]
+- [a_pirates_tail_quest](./a_pirates_tail_quest/README.md) - Component package under `monster/quests/a_pirates_tail_quest` containing 2 files (`ratmiral_blackwhiskers.lua`..`tentuglys_head.lua`).
+- [adventures_of_galthen](./adventures_of_galthen/README.md) - Component package under `monster/quests/adventures_of_galthen` containing 1 files (`megasylvan_yselda.lua`..`megasylvan_yselda.lua`).
+- [ancient_feud](./ancient_feud/README.md) - Component package under `monster/quests/ancient_feud` containing 4 files (`katex_blood_tongue.lua`..`yirkas_blue_scales.lua`).
+- [ancient_tombs](./ancient_tombs/README.md) - Component package under `monster/quests/ancient_tombs` containing 10 files (`ashmunrah.lua`..`vashresamun.lua`).
+- [annihilator](./annihilator/README.md) - Component package under `monster/quests/annihilator` containing 1 files (`angry_demon.lua`..`angry_demon.lua`).
+- [bigfoots_burden](./bigfoots_burden/README.md) - Provides 4 direct files (`humorless_fungus.lua`..`versperoth.lua`) and 1 subdirectories under `monster/quests/bigfoots_burden`.
+- [cults_of_tibia](./cults_of_tibia/README.md) - Provides 28 direct files (`animated_clomp.lua`..`orc_cultist.lua`) and 1 subdirectories under `monster/quests/cults_of_tibia`.
+- [dangerous_depth](./dangerous_depth/README.md) - Provides 12 direct files (`aggressive_lava.lua`..`snail_slime.lua`) and 1 subdirectories under `monster/quests/dangerous_depth`.
+- [dark_trails](./dark_trails/README.md) - Component package under `monster/quests/dark_trails` containing 9 files (`canopic_jar.lua`..`tremor_worm.lua`).
+- [feaster_of_souls](./feaster_of_souls/README.md) - Component package under `monster/quests/feaster_of_souls` containing 9 files (`brother_worm.lua`..`wormling.lua`).
+- [ferumbras_ascension](./ferumbras_ascension/README.md) - Provides 5 direct files (`damned_soul.lua`..`rage_of_mazoran.lua`) and 4 subdirectories under `monster/quests/ferumbras_ascension`.
+- [forgotten_knowledge](./forgotten_knowledge/README.md) - Provides 31 direct files (`animated_sword.lua`..`unbound_demon_outcast.lua`) and 1 subdirectories under `monster/quests/forgotten_knowledge`.
+- [grave_danger](./grave_danger/README.md) - Provides 26 direct files (`azarams_soul.lua`..`vampiric_blood.lua`) and 1 subdirectories under `monster/quests/grave_danger`.
+- [heart_of_destruction](./heart_of_destruction/README.md) - Component package under `monster/quests/heart_of_destruction` containing 26 files (`aftershock.lua`..`world_devourer.lua`).
+- [hero_of_rathleton](./hero_of_rathleton/README.md) - Component package under `monster/quests/hero_of_rathleton` containing 13 files (`deep_terror.lua`..`weakened_glooth_horror.lua`).
+- [hidden_threats](./hidden_threats/README.md) - Component package under `monster/quests/hidden_threats` containing 1 files (`cave_spider.lua`..`cave_spider.lua`).
+- [in_service_of_yalahar](./in_service_of_yalahar/README.md) - Component package under `monster/quests/in_service_of_yalahar` containing 11 files (`azerus.lua`..`yalahari.lua`).
+- [isle_of_evil](./isle_of_evil/README.md) - Component package under `monster/quests/isle_of_evil` containing 6 files (`boogey.lua`..`monstor.lua`).
+- [killing_in_the_name_of](./killing_in_the_name_of/README.md) - Component package under `monster/quests/killing_in_the_name_of` containing 30 files (`bretzecutioner.lua`..`zanakeph.lua`).
+- [kilmaresh](./kilmaresh/README.md) - Component package under `monster/quests/kilmaresh` containing 15 files (`a_shielded_astral_glyph.lua`..`xogixath.lua`).
+- [liquid_black](./liquid_black/README.md) - Component package under `monster/quests/liquid_black` containing 3 files (`jaul.lua`..`tanjis.lua`).
+- [marapur](./marapur/README.md) - Component package under `monster/quests/marapur` containing 1 files (`timira_the_many-headed.lua`..`timira_the_many-headed.lua`).
+- [mysterious_ornate_chest](./mysterious_ornate_chest/README.md) - Component package under `monster/quests/mysterious_ornate_chest` containing 5 files (`an_observer_eye.lua`..`ugly_monster.lua`).
+- [no_rest_for_the_wicked](./no_rest_for_the_wicked/README.md) - Intermediate blueprint grouping 2 subdirectories under `monster/quests/no_rest_for_the_wicked`.
+- [pits_of_inferno](./pits_of_inferno/README.md) - Component package under `monster/quests/pits_of_inferno` containing 9 files (`countess_sorrow.lua`..`the_plasmother.lua`).
+- [primal_ordeal_quest](./primal_ordeal_quest/README.md) - Component package under `monster/quests/primal_ordeal_quest` containing 7 files (`lava_creature.lua`..`unchained_fire.lua`).
+- [roshamuul](./roshamuul/README.md) - Component package under `monster/quests/roshamuul` containing 9 files (`bad_dream.lua`..`terofar.lua`).
+- [rotten_blood](./rotten_blood/README.md) - Component package under `monster/quests/rotten_blood` containing 22 files (`bloated_man-maggot.lua`..`wandering_pillar.lua`).
+- [rottin_wood_and_the_married_men_quest](./rottin_wood_and_the_married_men_quest/README.md) - Component package under `monster/quests/rottin_wood_and_the_married_men_quest` containing 1 files (`travelling_merchant.lua`..`travelling_merchant.lua`).
+- [soul_war](./soul_war/README.md) - Provides 23 direct files (`aspect_of_power.lua`..`weeping_soul.lua`) and 1 subdirectories under `monster/quests/soul_war`.
+- [svargrond_arena](./svargrond_arena/README.md) - Intermediate blueprint grouping 3 subdirectories under `monster/quests/svargrond_arena`.
+- [the_curse_spreads](./the_curse_spreads/README.md) - Component package under `monster/quests/the_curse_spreads` containing 10 files (`black_vixen.lua`..`sharpclaw.lua`).
+- [the_dream_courts](./the_dream_courts/README.md) - Provides 12 direct files (`generator.lua`..`whirling_blades.lua`) and 1 subdirectories under `monster/quests/the_dream_courts`.
+- [the_elemental_spheres](./the_elemental_spheres/README.md) - Component package under `monster/quests/the_elemental_spheres` containing 16 files (`blazing_fire_elemental.lua`..`spirit_overlord.lua`).
+- [the_explorer_society](./the_explorer_society/README.md) - Component package under `monster/quests/the_explorer_society` containing 5 files (`blue_butterfly.lua`..`yellow_butterfly.lua`).
+- [the_first_dragon](./the_first_dragon/README.md) - Provides 9 direct files (`angry_plant.lua`..`unbeatable_dragon.lua`) and 1 subdirectories under `monster/quests/the_first_dragon`.
+- [the_inquisition](./the_inquisition/README.md) - Component package under `monster/quests/the_inquisition` containing 13 files (`a_carved_stone_tile.lua`..`zugurosh.lua`).
+- [the_new_frontier](./the_new_frontier/README.md) - Component package under `monster/quests/the_new_frontier` containing 15 files (`baron_brute.lua`..`tremorak.lua`).
+- [the_order_of_lion](./the_order_of_lion/README.md) - Provides 2 direct files (`lion_commander.lua`..`usurper_commander.lua`) and 1 subdirectories under `monster/quests/the_order_of_lion`.
+- [the_percht_queens_island](./the_percht_queens_island/README.md) - Component package under `monster/quests/the_percht_queens_island` containing 10 files (`baleful_bunny.lua`..`warm_fire.lua`).
+- [the_secret_library](./the_secret_library/README.md) - Provides 47 direct files (`biting_cold.lua`..`yalahari_despoiler.lua`) and 1 subdirectories under `monster/quests/the_secret_library`.
+- [twenty_years_a_cook](./twenty_years_a_cook/README.md) - Intermediate blueprint grouping 1 subdirectories under `monster/quests/twenty_years_a_cook`.
+- [wrath_of_the_emperor](./wrath_of_the_emperor/README.md) - Component package under `monster/quests/wrath_of_the_emperor` containing 9 files (`fury_of_the_emperor.lua`..`wrath_of_the_emperor.lua`).
+
+## Invariants
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [ratmiral_blackwhiskers.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [megasylvan_yselda.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [katex_blood_tongue.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [ashmunrah.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [angry_demon.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [humorless_fungus.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [animated_clomp.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [aggressive_lava.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [canopic_jar.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [brother_worm.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [damned_soul.lua:monster.flags]
+- Combat and movement behavior is bounded by `monster.flags`, `monster.health`, `monster.elements`, and `monster.immunities` [animated_sword.lua:monster.flags]
+
+## Side Effects
+- Registers monster type `Ratmiral Blackwhiskers` into the global `Game` engine registry via `mType:register(monster)` [ratmiral_blackwhiskers.lua:mType:register]
+- Registers monster type `Megasylvan Yselda` into the global `Game` engine registry via `mType:register(monster)` [megasylvan_yselda.lua:mType:register]
+- Registers monster type `Katex Blood Tongue` into the global `Game` engine registry via `mType:register(monster)` [katex_blood_tongue.lua:mType:register]
+- Registers monster type `Ashmunrah` into the global `Game` engine registry via `mType:register(monster)` [ashmunrah.lua:mType:register]
+- Registers monster type `Angry Demon` into the global `Game` engine registry via `mType:register(monster)` [angry_demon.lua:mType:register]
+- Registers monster type `Humorless Fungus` into the global `Game` engine registry via `mType:register(monster)` [humorless_fungus.lua:mType:register]
+- Registers monster type `Animated Clomp` into the global `Game` engine registry via `mType:register(monster)` [animated_clomp.lua:mType:register]
+- Registers monster type `Aggressive Lava` into the global `Game` engine registry via `mType:register(monster)` [aggressive_lava.lua:mType:register]
+- Registers monster type `Canopic Jar` into the global `Game` engine registry via `mType:register(monster)` [canopic_jar.lua:mType:register]
+- Registers monster type `Brother Worm` into the global `Game` engine registry via `mType:register(monster)` [brother_worm.lua:mType:register]
+- Registers monster type `Damned Soul` into the global `Game` engine registry via `mType:register(monster)` [damned_soul.lua:mType:register]
+- Registers monster type `Animated Sword` into the global `Game` engine registry via `mType:register(monster)` [animated_sword.lua:mType:register]
+
+## Verification
+- Run: `ctest --test-dir build --output-on-failure`

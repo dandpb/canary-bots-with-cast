@@ -464,3 +464,51 @@ Thanks to the Canary contributors and community
 ([Discord](https://discord.gg/gvTj5sh9Mp)), and to the
 [OTClient Redemption](https://github.com/opentibiabr/otclient) project, whose
 cavebot is what makes recording new routes for this server practical.
+
+---
+
+# Canary Bots with Cast Blueprint
+
+## System Overview
+Canary Bots with Cast is a multi-subsystem MMORPG server emulator that pairs the high-performance C++ `canary` game server and dynamic `libbot_engine.so` bot runtime with an in-game `@cast` spectator TV system, an auction-house market bot, web-based world map telemetry, and optional external LLM party companions.
+
+## Local Interface & Invariants
+- `[CMakeLists.txt:project(canary)]` CMake project `canary` (or `canary-debug` when `CMAKE_BUILD_TYPE STREQUAL "Debug"`) requiring CMake >= 3.22; adds subdirectories `src` and `tests`.
+- `[CMakeLists.txt:OPTIONS_ENABLE_CCACHE]`, `[CMakeLists.txt:OPTIONS_ENABLE_SCCACHE]`, `[CMakeLists.txt:OPTIONS_ENABLE_IPO]`, `[CMakeLists.txt:FEATURE_METRICS]`, `[CMakeLists.txt:CANARY_BUILD_SERVER]`, `[CMakeLists.txt:CANARY_BUILD_TESTS]`.
+- `[vcpkg.json:name]` vcpkg manifest declaring dependencies (abseil, argon2, asio, bext-di, bext-ut, curl, eventpp, gtest, libmariadb, luajit, magic-enum, mio, parallel-hashmap, protobuf, pugixml, spdlog, zlib, bshoshany-thread-pool, atomic-queue, nlohmann-json, openssl).
+- `[recompile.sh:main]` Build script entry point accepting positional args `VCPKG_PATH` ($1) and `BUILD_TYPE` ($2).
+- `[start.sh:BIN_PATH]` Server runner script accepting optional binary path ($1, default `./canary`).
+- `[start_gdb.sh:gdb]` GDB server runner loop invoking `./canary` with `--batch -return-child-result --command=gdb_debug`.
+- `[schema.sql:server_config]`, `[schema.sql:accounts]`, `[schema.sql:players]`, `[schema.sql:guilds]`, `[schema.sql:houses]`, `[schema.sql:market_offers]`, `[schema.sql:kv_store]`, `[schema.sql:cast_broadcasters]`.
+- `[config.lua.dist:botPlayersOnline]` Configuration globals for bot population, Table A/B/C odds, navigation jitter, roaming, and combat.
+
+## Subdirectories & System Boundaries
+- `src`: [`./src/README.md`](./src/README.md) - Core C++ game server implementation and hot-reloadable `libbot_engine.so` AI engine.
+- `data`: [`./data/README.md`](./data/README.md) - Datapack scripts, bot system orchestration, chat channels, and global event handlers.
+- `data-canary`: [`./data-canary/README.md`](./data-canary/README.md) - Canary core script datapack (actions, movements, creaturescripts, spells).
+- `data-otservbr-global`: [`./data-otservbr-global/README.md`](./data-otservbr-global/README.md) - Global datapack including monsters, NPCs, raids, quests, world changes, and startup map tables.
+- `database`: [`./database/README.md`](./database/README.md) - Database schema migrations, table definitions, and initial bot population seeding.
+- `deployment`: [`./deployment/README.md`](./deployment/README.md) - Deployment infrastructure, web cast login, browser websocket client, and AI brain companions.
+- `docker`: [`./docker/README.md`](./docker/README.md) - Docker container orchestration, environment configs, and runtime health checks.
+- `docs`: [`./docs/README.md`](./docs/README.md) - Architecture documents, design specifications, and operations guides.
+- `tools`: [`./tools/README.md`](./tools/README.md) - Bot CSV authoring tools, population generators, cavebot importer, and test harnesses.
+
+## Global Invariants
+- `[CMakeLists.txt:cmake_minimum_required]` CMake version must be >= 3.22 (`FATAL_ERROR`).
+- `[CMakeLists.txt:CMAKE_CXX_FLAGS]` On non-MSVC x86_64/AMD64 builds, `-march=x86-64 -mtune=generic -mno-avx -mno-sse4` is enforced to disable AVX/SSE4 for commodity CPU compatibility.
+- `[schema.sql:server_config]` Initial database schema version is seeded as `('db_version', '56')`.
+- `[config.lua.dist:botActivityDwell]` Table A percentages (`botActivityDwell` + `botActivityPoi` + `botActivityHunt` + `botActivityParty` + `botActivityTravel`) must sum to 100.
+- `[config.lua.dist:botPoiDepot]` Table B percentages (`botPoiDepot`..`botPoiImbuingShrine`) must sum to 100.
+- `[config.lua.dist:botHouseIdle]` Table C percentages (`botHouseIdle`..`botHouseShrine`) must sum to 100.
+- `[config.lua.dist:botHouseAccountId]` All bot characters share account ID 65000 (`botHouseAccountId = 65000`).
+- `[config.lua.dist:castOperatorPassword]` Cast operator authentication requires `authType = "password"`.
+
+## Global Side Effects
+- `[recompile.sh:setup_canary]` Compiles `canary` and `libbot_engine.so` under `build/linux-release/bin/`.
+- `[start.sh:logs]` Runs `$BIN_PATH` in an infinite restart loop, logging timestamped stdout/stderr to `logs/`.
+- `[schema.sql:players]` Creates 42 database tables and triggers, cascading player and account state mutations.
+- `[src/creatures/players/bot]` Ticks active bots every 100 ms, generating real in-game creature movements, attacks, chat messages, and market transactions.
+
+## System Verification
+- Run: `ctest --test-dir build --output-on-failure`
+

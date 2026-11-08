@@ -1,0 +1,292 @@
+# Quests
+
+## Overview
+Intermediate blueprint grouping 114 subdirectories under `scripts/quests`.
+
+## Subdirectories & Boundaries
+- [a_pirates_tail](./a_pirates_tail/README.md) - Component package under `scripts/quests/a_pirates_tail` containing 7 files (`actions_cheesy_key.lua`..`creaturescripts_tentugly_death.lua`).
+- [adventures_of_galthen](./adventures_of_galthen/README.md) - Component package under `scripts/quests/adventures_of_galthen` containing 10 files (`actions_ahau.lua`..`actions_yselda_shortcut.lua`).
+- [alawars_vault](./alawars_vault/README.md) - Component package under `scripts/quests/alawars_vault` containing 1 files (`action-lever.lua`..`action-lever.lua`).
+- [an_uneasy_alliance](./an_uneasy_alliance/README.md) - Component package under `scripts/quests/an_uneasy_alliance` containing 2 files (`actions_crystal_ball.lua`..`creaturescripts_renegade_orc_kill.lua`).
+- [assassin_outfit](./assassin_outfit/README.md) - Component package under `scripts/quests/assassin_outfit` containing 1 files (`movements_erayo_house.lua`..`movements_erayo_house.lua`).
+- [barbarian_test](./barbarian_test/README.md) - Component package under `scripts/quests/barbarian_test` containing 2 files (`action_horn.lua`..`action_mead.lua`).
+- [behemoth](./behemoth/README.md) - Component package under `scripts/quests/behemoth` containing 1 files (`action-lever.lua`..`action-lever.lua`).
+- [bigfoot_burden](./bigfoot_burden/README.md) - Component package under `scripts/quests/bigfoot_burden` containing 29 files (`actions_beer.lua`..`movements_warzone_teleport.lua`).
+- [chayenne_realm](./chayenne_realm/README.md) - Component package under `scripts/quests/chayenne_realm` containing 3 files (`actions_lever.lua`..`movements_enter_realm.lua`).
+- [children_of_the_revolution](./children_of_the_revolution/README.md) - Component package under `scripts/quests/children_of_the_revolution` containing 11 files (`actions_mission3_chest.lua`..`movements_temple.lua`).
+- [cradle_of_monsters](./cradle_of_monsters/README.md) - Component package under `scripts/quests/cradle_of_monsters` containing 2 files (`the_monster.lua`..`the_monster_fight.lua`).
+- [cults_of_tibia](./cults_of_tibia/README.md) - Component package under `scripts/quests/cults_of_tibia` containing 42 files (`actions_analyser.lua`..`movements_teleport_from_essence_of_malice.lua`).
+- [dangerous_depth](./dangerous_depth/README.md) - Component package under `scripts/quests/dangerous_depth` containing 24 files (`actions_crude_lava_pump.lua`..`movements_warzone_entrance.lua`).
+- [dark_trails](./dark_trails/README.md) - Component package under `scripts/quests/dark_trails` containing 7 files (`actions_corpse.lua`..`movements_necrometer_tile_access.lua`).
+- [dawnport](./dawnport/README.md) - Component package under `scripts/quests/dawnport` containing 7 files (`actions_legion_helmet.lua`..`movements_legion_helmet.lua`).
+- [deeper_fibula](./deeper_fibula/README.md) - Component package under `scripts/quests/deeper_fibula` containing 1 files (`action-draw_well.lua`..`action-draw_well.lua`).
+- [deeplings_worldchange](./deeplings_worldchange/README.md) - Component package under `scripts/quests/deeplings_worldchange` containing 8 files (`actions_boxramp.lua`..`movements_deepling_bosses.lua`).
+- [demon_helmet](./demon_helmet/README.md) - Component package under `scripts/quests/demon_helmet` containing 2 files (`action-lever.lua`..`movement-walls.lua`).
+- [demon_oak](./demon_oak/README.md) - Component package under `scripts/quests/demon_oak` containing 7 files (`actions_demon_oak.lua`..`movements_squares.lua`).
+- [desert_dungeon_quest](./desert_dungeon_quest/README.md) - Component package under `scripts/quests/desert_dungeon_quest` containing 1 files (`actions_desert_dungeon_lever.lua`..`actions_desert_dungeon_lever.lua`).
+- [devil_helmet](./devil_helmet/README.md) - Component package under `scripts/quests/devil_helmet` containing 1 files (`movements_sewer.lua`..`movements_sewer.lua`).
+- [draconia](./draconia/README.md) - Component package under `scripts/quests/draconia` containing 3 files (`action-lever.lua`..`movement-exit_teleport.lua`).
+- [dreamers_challenge_quest](./dreamers_challenge_quest/README.md) - Component package under `scripts/quests/dreamers_challenge_quest` containing 21 files (`actions_documents.lua`..`movement_wall_teleport.lua`).
+- [druid_outfits_quest](./druid_outfits_quest/README.md) - Component package under `scripts/quests/druid_outfits_quest` containing 2 files (`actions_ceirons_waterskin.lua`..`globalevents_druid_outfits_blooming_griffinclaw.lua`).
+- [edron_rope](./edron_rope/README.md) - Component package under `scripts/quests/edron_rope` containing 1 files (`movements_rope.lua`..`movements_rope.lua`).
+- [elemental_spheres](./elemental_spheres/README.md) - Component package under `scripts/quests/elemental_spheres` containing 11 files (`actions_lever.lua`..`movements_summon_overlord.lua`).
+- [extension_mota](./extension_mota/README.md) - Component package under `scripts/quests/extension_mota` containing 1 files (`movements_extension_mota.lua`..`movements_extension_mota.lua`).
+- [fathers_burden](./fathers_burden/README.md) - Component package under `scripts/quests/fathers_burden` containing 1 files (`actions_corpse.lua`..`actions_corpse.lua`).
+- [feaster_of_souls](./feaster_of_souls/README.md) - Component package under `scripts/quests/feaster_of_souls` containing 14 files (`actions_bosses_killed.lua`..`creaturescripts_wormling_death.lua`).
+- [ferumbras_ascension](./ferumbras_ascension/README.md) - Component package under `scripts/quests/ferumbras_ascension` containing 66 files (`actions_bone_flute.lua`..`movements_zamulosh_teleport.lua`).
+- [forgotten_knowledge](./forgotten_knowledge/README.md) - Component package under `scripts/quests/forgotten_knowledge` containing 43 files (`actions_bird_cage.lua`..`movements_teleport_tree.lua`).
+- [formogar_mine_hoist](./formogar_mine_hoist/README.md) - Component package under `scripts/quests/formogar_mine_hoist` containing 1 files (`movements_hoist.lua`..`movements_hoist.lua`).
+- [giant_smithhammer](./giant_smithhammer/README.md) - Component package under `scripts/quests/giant_smithhammer` containing 1 files (`lever.lua`..`lever.lua`).
+- [grave_danger_quest](./grave_danger_quest/README.md) - Provides 21 direct files (`actions_baeloc_nictros.lua`..`movements_zelos_tp.lua`) and 1 subdirectories under `scripts/quests/grave_danger_quest`.
+- [grimvale](./grimvale/README.md) - Component package under `scripts/quests/grimvale` containing 9 files (`actions_ancient_feud_entrances.lua`..`movements_strangely_glowing_mark.lua`).
+- [heart_of_destruction](./heart_of_destruction/README.md) - Component package under `scripts/quests/heart_of_destruction` containing 39 files (`actions_anomaly.lua`..`movements_vortex_hunger.lua`).
+- [hero_of_rathleton](./hero_of_rathleton/README.md) - Component package under `scripts/quests/hero_of_rathleton` containing 15 files (`actions_machines_deep_terror.lua`..`movements_professor_maxxen.lua`).
+- [hidden_threats](./hidden_threats/README.md) - Component package under `scripts/quests/hidden_threats` containing 4 files (`action-corym_works_doors.lua`..`movement-chests_check.lua`).
+- [hot_cuisine](./hot_cuisine/README.md) - Component package under `scripts/quests/hot_cuisine` containing 2 files (`actions_cookbook1.lua`..`actions_cookbook2.lua`).
+- [hunter_outfits_quest](./hunter_outfits_quest/README.md) - Component package under `scripts/quests/hunter_outfits_quest` containing 2 files (`action_all_hymn_piano_teleport.lua`..`action_music_sheet.lua`).
+- [in_service_of_yalahar](./in_service_of_yalahar/README.md) - Component package under `scripts/quests/in_service_of_yalahar` containing 18 files (`actions_charm.lua`..`quara_leader_kill.lua`).
+- [killing_in_the_name_of](./killing_in_the_name_of/README.md) - Component package under `scripts/quests/killing_in_the_name_of` containing 3 files (`creaturescripts_boss_kill.lua`..`movements_boss.lua`).
+- [kilmaresh_quest](./kilmaresh_quest/README.md) - Provides 25 direct files (`actions_augerfun.lua`..`movements_tpvoc.lua`) and 1 subdirectories under `scripts/quests/kilmaresh_quest`.
+- [koshei_the_deathless_quest](./koshei_the_deathless_quest/README.md) - Component package under `scripts/quests/koshei_the_deathless_quest` containing 3 files (`action_bag.lua`..`action_switch.lua`).
+- [krailos](./krailos/README.md) - Component package under `scripts/quests/krailos` containing 1 files (`movements_access_depot.lua`..`movements_access_depot.lua`).
+- [lions_rock](./lions_rock/README.md) - Component package under `scripts/quests/lions_rock` containing 2 files (`actions_lions_rock.lua`..`movements_lions_rock.lua`).
+- [liquid_black](./liquid_black/README.md) - Component package under `scripts/quests/liquid_black` containing 7 files (`actions_chairteleport.lua`..`movements_shortcut.lua`).
+- [marapur](./marapur/README.md) - Component package under `scripts/quests/marapur` containing 4 files (`actions_boss_timira_fight.lua`..`timira_the_many-headed.lua`).
+- [mintwallin_quest](./mintwallin_quest/README.md) - Component package under `scripts/quests/mintwallin_quest` containing 1 files (`actions_devil_helmet_lever.lua`..`actions_devil_helmet_lever.lua`).
+- [mysterious_ornate](./mysterious_ornate/README.md) - Component package under `scripts/quests/mysterious_ornate` containing 1 files (`actions_mysterious_metal_egg.lua`..`actions_mysterious_metal_egg.lua`).
+- [no_rest_for_the_wicked](./no_rest_for_the_wicked/README.md) - Component package under `scripts/quests/no_rest_for_the_wicked` containing 1 files (`actions_arbaziloth_lever.lua`..`actions_arbaziloth_lever.lua`).
+- [oramond](./oramond/README.md) - Provides 1 direct files (`actions_glooth_fairy_lever.lua`..`actions_glooth_fairy_lever.lua`) and 4 subdirectories under `scripts/quests/oramond`.
+- [others](./others/README.md) - Component package under `scripts/quests/others` containing 12 files (`actions_calassa_comb_door.lua`..`actions_steal_from_thieves.lua`).
+- [parchment_room](./parchment_room/README.md) - Component package under `scripts/quests/parchment_room` containing 1 files (`parchment.lua`..`parchment.lua`).
+- [primal_ordeal_quest](./primal_ordeal_quest/README.md) - Component package under `scripts/quests/primal_ordeal_quest` containing 5 files (`bosses_killed.lua`..`the_primal_menace.lua`).
+- [raging_mage_tower](./raging_mage_tower/README.md) - Component package under `scripts/quests/raging_mage_tower` containing 5 files (`creaturescripts_energized_raging_mage_kill.lua`..`creaturescripts_yielothax_kill.lua`).
+- [roshamuul_quest](./roshamuul_quest/README.md) - Component package under `scripts/quests/roshamuul_quest` containing 9 files (`actions_bone.lua`..`movements_lower_roshamuul.lua`).
+- [rotten_blood_quest](./rotten_blood_quest/README.md) - Component package under `scripts/quests/rotten_blood_quest` containing 9 files (`actions_bakragore_lever.lua`..`movements_blood_entrance.lua`).
+- [rottin_wood_and_married_men](./rottin_wood_and_married_men/README.md) - Component package under `scripts/quests/rottin_wood_and_married_men` containing 3 files (`actions_broken_wall.lua`..`actions_trap.lua`).
+- [sea_of_light](./sea_of_light/README.md) - Component package under `scripts/quests/sea_of_light` containing 1 files (`actions_sea_of_light.lua`..`actions_sea_of_light.lua`).
+- [secret_service](./secret_service/README.md) - Component package under `scripts/quests/secret_service` containing 8 files (`actions_amazon_disguise_kit.lua`..`movements_pirate.lua`).
+- [soul_war](./soul_war/README.md) - Component package under `scripts/quests/soul_war` containing 12 files (`action-reward_soul_war.lua`..`spell-soulsnatcher.lua`).
+- [soulpit](./soulpit/README.md) - Component package under `scripts/quests/soulpit` containing 8 files (`exalted_core.lua`..`soulpit_powerless.lua`).
+- [spike_tasks](./spike_tasks/README.md) - Component package under `scripts/quests/spike_tasks` containing 10 files (`actions_fertilizer.lua`..`creaturescripts_upper_spike_kill.lua`).
+- [spirit_hunters](./spirit_hunters/README.md) - Component package under `scripts/quests/spirit_hunters` containing 1 files (`actions_magical_device.lua`..`actions_magical_device.lua`).
+- [svargrond_arena](./svargrond_arena/README.md) - Component package under `scripts/quests/svargrond_arena` containing 5 files (`creaturescripts_arena_kill.lua`..`movements_arena_trophy.lua`).
+- [thais_lighthouse](./thais_lighthouse/README.md) - Component package under `scripts/quests/thais_lighthouse` containing 2 files (`action-lever.lua`..`movement-stair.lua`).
+- [thais_quest](./thais_quest/README.md) - Component package under `scripts/quests/thais_quest` containing 1 files (`actions_life_ring_lever.lua`..`actions_life_ring_lever.lua`).
+- [the_ancient_tombs](./the_ancient_tombs/README.md) - Component package under `scripts/quests/the_ancient_tombs` containing 23 files (`action_morguthis_wall.lua`..`movements_tomb_teleport.lua`).
+- [the_annihilator](./the_annihilator/README.md) - Component package under `scripts/quests/the_annihilator` containing 2 files (`door.lua`..`lever.lua`).
+- [the_ape_city](./the_ape_city/README.md) - Component package under `scripts/quests/the_ape_city` containing 4 files (`actions_mission09_snake_destroyer.lua`..`movements_mission9_the_deepest_catacomb_teleport.lua`).
+- [the_cursed_crystal](./the_cursed_crystal/README.md) - Component package under `scripts/quests/the_cursed_crystal` containing 4 files (`actions_MedusaOil.lua`..`movements_StepIn_CursedCrystal.lua`).
+- [the_djinn_war_quest](./the_djinn_war_quest/README.md) - Component package under `scripts/quests/the_djinn_war_quest` containing 1 files (`action_water_fountain.lua`..`action_water_fountain.lua`).
+- [the_dream_courts_quest](./the_dream_courts_quest/README.md) - Component package under `scripts/quests/the_dream_courts_quest` containing 36 files (`actions_acidFishingRod.lua`..`movements_spiderSummon.lua`).
+- [the_explorer_society](./the_explorer_society/README.md) - Component package under `scripts/quests/the_explorer_society` containing 11 files (`actions_botanist.lua`..`movements_carvingteleport_port_hope.lua`).
+- [the_first_dragon](./the_first_dragon/README.md) - Component package under `scripts/quests/the_first_dragon` containing 17 files (`actions_lair_entrance.lua`..`movements_zorvorax_secrets.lua`).
+- [the_gravedigger_of_drefia](./the_gravedigger_of_drefia/README.md) - Component package under `scripts/quests/the_gravedigger_of_drefia` containing 29 files (`actions_amforas.lua`..`movements_teleport.lua`).
+- [the_great_dragon_hunt_quest](./the_great_dragon_hunt_quest/README.md) - Component package under `scripts/quests/the_great_dragon_hunt_quest` containing 3 files (`actions_treasure.lua`..`creaturescripts_the_great_dragon_hunt.lua`).
+- [the_hidden_city_of_beregar](./the_hidden_city_of_beregar/README.md) - Component package under `scripts/quests/the_hidden_city_of_beregar` containing 12 files (`actions_bargate_lever.lua`..`moviments_tunnel.lua`).
+- [the_hunt_for_the_sea_serpent](./the_hunt_for_the_sea_serpent/README.md) - Component package under `scripts/quests/the_hunt_for_the_sea_serpent` containing 2 files (`actions_bait.lua`..`movements_teleports.lua`).
+- [the_ice_islands_quest](./the_ice_islands_quest/README.md) - Component package under `scripts/quests/the_ice_islands_quest` containing 8 files (`actions_anthill.lua`..`movements_nibelor_dog_led.lua`).
+- [the_inquisition_quest](./the_inquisition_quest/README.md) - Component package under `scripts/quests/the_inquisition_quest` containing 9 files (`actions_brother_lever.lua`..`movements_teleport_main.lua`).
+- [the_lost_brother](./the_lost_brother/README.md) - Component package under `scripts/quests/the_lost_brother` containing 2 files (`actions_asura_mirror.lua`..`movement-find-remains.lua`).
+- [the_new_frontier](./the_new_frontier/README.md) - Component package under `scripts/quests/the_new_frontier` containing 15 files (`action_arena.lua`..`movements_snake_head_teleport.lua`).
+- [the_order_of_lion](./the_order_of_lion/README.md) - Component package under `scripts/quests/the_order_of_lion` containing 5 files (`action-bounac_entrance.lua`..`moveevent-drume_entrance.lua`).
+- [the_outlaw_camp](./the_outlaw_camp/README.md) - Component package under `scripts/quests/the_outlaw_camp` containing 5 files (`actions_oven.lua`..`movements_entrance.lua`).
+- [the_paradox_tower](./the_paradox_tower/README.md) - Component package under `scripts/quests/the_paradox_tower` containing 11 files (`action_fifth_floor_lever.lua`..`trap_in_the_tree.lua`).
+- [the_pits_of_inferno_quest](./the_pits_of_inferno_quest/README.md) - Component package under `scripts/quests/the_pits_of_inferno_quest` containing 26 files (`actions_bazir_maze_lever.lua`..`movements_trap.lua`).
+- [the_postman_missions_quest](./the_postman_missions_quest/README.md) - Component package under `scripts/quests/the_postman_missions_quest` containing 3 files (`actions_package.lua`..`actions_waldos_posthorn.lua`).
+- [the_primal_ordeal](./the_primal_ordeal/README.md) - Component package under `scripts/quests/the_primal_ordeal` containing 2 files (`creaturescripts_magma_bubble_death.lua`..`creaturescripts_the_primal_menace_killed.lua`).
+- [the_queen_of_the_banshees](./the_queen_of_the_banshees/README.md) - Component package under `scripts/quests/the_queen_of_the_banshees` containing 16 files (`action-1-first_seal_lever.lua`..`movement-7-last_seal_flame.lua`).
+- [the_rookie_guard](./the_rookie_guard/README.md) - Component package under `scripts/quests/the_rookie_guard` containing 11 files (`mission02_defence.lua`..`missions.lua`).
+- [the_secret_library_quest](./the_secret_library_quest/README.md) - Provides 3 direct files (`creaturescripts_kill.lua`..`movement_teleport.lua`) and 7 subdirectories under `scripts/quests/the_secret_library_quest`.
+- [the_shattered_isles_quest](./the_shattered_isles_quest/README.md) - Component package under `scripts/quests/the_shattered_isles_quest` containing 4 files (`action_nargor_maps.lua`..`movement_teleport.lua`).
+- [the_spike_tasks](./the_spike_tasks/README.md) - Component package under `scripts/quests/the_spike_tasks` containing 2 files (`movements_geomantic_charges.lua`..`movements_spike_teleport.lua`).
+- [the_tainted_soul](./the_tainted_soul/README.md) - Component package under `scripts/quests/the_tainted_soul` containing 1 files (`actions_star_herb.lua`..`actions_star_herb.lua`).
+- [the_thieves_guild_quest](./the_thieves_guild_quest/README.md) - Component package under `scripts/quests/the_thieves_guild_quest` containing 5 files (`actions_climbing_vine.lua`..`actions_note.lua`).
+- [the_travelling_trader](./the_travelling_trader/README.md) - Component package under `scripts/quests/the_travelling_trader` containing 1 files (`actions_outlaw_camp_door.lua`..`actions_outlaw_camp_door.lua`).
+- [the_way_of_the_monk](./the_way_of_the_monk/README.md) - Component package under `scripts/quests/the_way_of_the_monk` containing 3 files (`blue_valley_teleport.lua`..`shrines_dawnport.lua`).
+- [their_masters_voice](./their_masters_voice/README.md) - Component package under `scripts/quests/their_masters_voice` containing 5 files (`actions_slime_gobbler.lua`..`movements_entrance.lua`).
+- [thieves_guild](./thieves_guild/README.md) - Component package under `scripts/quests/thieves_guild` containing 1 files (`creaturescripts_nomad_kill.lua`..`creaturescripts_nomad_kill.lua`).
+- [threatened_dreams](./threatened_dreams/README.md) - Component package under `scripts/quests/threatened_dreams` containing 12 files (`action_fairies_release.lua`..`nightmare_monsters_kills.lua`).
+- [tibia_tales](./tibia_tales/README.md) - Component package under `scripts/quests/tibia_tales` containing 1 files (`actions_ultimate_booze_beer_bottle.lua`..`actions_ultimate_booze_beer_bottle.lua`).
+- [tinder_box_quest_chyllfroest](./tinder_box_quest_chyllfroest/README.md) - Component package under `scripts/quests/tinder_box_quest_chyllfroest` containing 4 files (`actions_reward.lua`..`movements_prohibit_entry.lua`).
+- [to_blind_the_enemy_quest](./to_blind_the_enemy_quest/README.md) - Component package under `scripts/quests/to_blind_the_enemy_quest` containing 1 files (`mirror.lua`..`mirror.lua`).
+- [too_hot_to_handle_quest](./too_hot_to_handle_quest/README.md) - Component package under `scripts/quests/too_hot_to_handle_quest` containing 1 files (`the_brainstealer.lua`..`the_brainstealer.lua`).
+- [tower_defence_quest](./tower_defence_quest/README.md) - Component package under `scripts/quests/tower_defence_quest` containing 1 files (`creaturescripts_goblin_leader_kill.lua`..`creaturescripts_goblin_leader_kill.lua`).
+- [triangle_tower_quest](./triangle_tower_quest/README.md) - Component package under `scripts/quests/triangle_tower_quest` containing 1 files (`actions_triangle_tower_lever.lua`..`actions_triangle_tower_lever.lua`).
+- [troll_sabotage](./troll_sabotage/README.md) - Component package under `scripts/quests/troll_sabotage` containing 1 files (`movements_teleport.lua`..`movements_teleport.lua`).
+- [unnatural_selection](./unnatural_selection/README.md) - Component package under `scripts/quests/unnatural_selection` containing 3 files (`actions_mission5_ray_of_light.lua`..`movements_mission3_dance_dance_evolution.lua`).
+- [waterfall](./waterfall/README.md) - Component package under `scripts/quests/waterfall` containing 1 files (`movements_waterfall.lua`..`movements_waterfall.lua`).
+- [what_a_foolish_quest](./what_a_foolish_quest/README.md) - Component package under `scripts/quests/what_a_foolish_quest` containing 8 files (`action_cat_basket.lua`..`movements_destroy_pies.lua`).
+- [white_pearl](./white_pearl/README.md) - Component package under `scripts/quests/white_pearl` containing 1 files (`movements_white_pearl.lua`..`movements_white_pearl.lua`).
+- [wrath_of_the_emperor](./wrath_of_the_emperor/README.md) - Component package under `scripts/quests/wrath_of_the_emperor` containing 22 files (`actions_mission01_crate.lua`..`movements_teleports_access.lua`).
+
+## Interface
+- `action.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [actions_cheesy_key.lua:action.onUse]
+- `Action()` assigned to `action` [actions_cheesy_key.lua:action]
+- `BossLever(config)` assigned to `lever` [actions_ahau.lua:lever]
+- `BossLever(config)` registration [actions_ahau.lua:BossLever]
+- `lever.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [action-lever.lua:lever.onUse]
+- `Action()` assigned to `lever` [action-lever.lua:lever]
+- `revert(position)` [actions_crystal_ball.lua:revert]
+- `crystalball.onUse(player, item, fromPosition, target, toPosition)` [actions_crystal_ball.lua:crystalball.onUse]
+- `erayoHouse.onStepIn(creature, item, position, fromPosition)` [movements_erayo_house.lua:erayoHouse.onStepIn]
+- `MoveEvent()` assigned to `erayoHouse` [movements_erayo_house.lua:erayoHouse]
+- `sendSleepEffect(position)` [action_horn.lua:sendSleepEffect]
+- `barbarianHorn.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [action_horn.lua:barbarianHorn.onUse]
+- Defines 29 script/configuration files (`actions_beer.lua` through `movements_warzone_teleport.lua`) [actions_beer.lua]
+- `bigfootBeer.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [actions_beer.lua:bigfootBeer.onUse]
+- `chayenneLever.onUse(player, item, fromPosition, itemEx, toPosition)` [actions_lever.lua:chayenneLever.onUse]
+- `Action()` assigned to `chayenneLever` [actions_lever.lua:chayenneLever]
+- `childrenMission3.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [actions_mission3_chest.lua:childrenMission3.onUse]
+- `Action()` assigned to `childrenMission3` [actions_mission3_chest.lua:childrenMission3]
+- `BossLever(config)` assigned to `lever` [the_monster.lua:lever]
+- `BossLever(config)` registration [the_monster.lua:BossLever]
+- Defines 42 script/configuration files (`actions_analyser.lua` through `movements_teleport_from_essence_of_malice.lua`) [actions_analyser.lua]
+- `cultsOfTibiaAnalyser.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [actions_analyser.lua:cultsOfTibiaAnalyser.onUse]
+- `dangerousDepthPump.onUse(player, item)` [actions_crude_lava_pump.lua:dangerousDepthPump.onUse]
+- `Action()` assigned to `dangerousDepthPump` [actions_crude_lava_pump.lua:dangerousDepthPump]
+- `darkCorpse.onUse(player)` [actions_corpse.lua:darkCorpse.onUse]
+- [a_pirates_tail](./a_pirates_tail/README.md) - Component package under `scripts/quests/a_pirates_tail` containing 7 files (`actions_cheesy_key.lua`..`creaturescripts_tentugly_death.lua`).
+- [adventures_of_galthen](./adventures_of_galthen/README.md) - Component package under `scripts/quests/adventures_of_galthen` containing 10 files (`actions_ahau.lua`..`actions_yselda_shortcut.lua`).
+- [alawars_vault](./alawars_vault/README.md) - Component package under `scripts/quests/alawars_vault` containing 1 files (`action-lever.lua`..`action-lever.lua`).
+- [an_uneasy_alliance](./an_uneasy_alliance/README.md) - Component package under `scripts/quests/an_uneasy_alliance` containing 2 files (`actions_crystal_ball.lua`..`creaturescripts_renegade_orc_kill.lua`).
+- [assassin_outfit](./assassin_outfit/README.md) - Component package under `scripts/quests/assassin_outfit` containing 1 files (`movements_erayo_house.lua`..`movements_erayo_house.lua`).
+- [barbarian_test](./barbarian_test/README.md) - Component package under `scripts/quests/barbarian_test` containing 2 files (`action_horn.lua`..`action_mead.lua`).
+- [behemoth](./behemoth/README.md) - Component package under `scripts/quests/behemoth` containing 1 files (`action-lever.lua`..`action-lever.lua`).
+- [bigfoot_burden](./bigfoot_burden/README.md) - Component package under `scripts/quests/bigfoot_burden` containing 29 files (`actions_beer.lua`..`movements_warzone_teleport.lua`).
+- [chayenne_realm](./chayenne_realm/README.md) - Component package under `scripts/quests/chayenne_realm` containing 3 files (`actions_lever.lua`..`movements_enter_realm.lua`).
+- [children_of_the_revolution](./children_of_the_revolution/README.md) - Component package under `scripts/quests/children_of_the_revolution` containing 11 files (`actions_mission3_chest.lua`..`movements_temple.lua`).
+- [cradle_of_monsters](./cradle_of_monsters/README.md) - Component package under `scripts/quests/cradle_of_monsters` containing 2 files (`the_monster.lua`..`the_monster_fight.lua`).
+- [cults_of_tibia](./cults_of_tibia/README.md) - Component package under `scripts/quests/cults_of_tibia` containing 42 files (`actions_analyser.lua`..`movements_teleport_from_essence_of_malice.lua`).
+- [dangerous_depth](./dangerous_depth/README.md) - Component package under `scripts/quests/dangerous_depth` containing 24 files (`actions_crude_lava_pump.lua`..`movements_warzone_entrance.lua`).
+- [dark_trails](./dark_trails/README.md) - Component package under `scripts/quests/dark_trails` containing 7 files (`actions_corpse.lua`..`movements_necrometer_tile_access.lua`).
+- [dawnport](./dawnport/README.md) - Component package under `scripts/quests/dawnport` containing 7 files (`actions_legion_helmet.lua`..`movements_legion_helmet.lua`).
+- [deeper_fibula](./deeper_fibula/README.md) - Component package under `scripts/quests/deeper_fibula` containing 1 files (`action-draw_well.lua`..`action-draw_well.lua`).
+- [deeplings_worldchange](./deeplings_worldchange/README.md) - Component package under `scripts/quests/deeplings_worldchange` containing 8 files (`actions_boxramp.lua`..`movements_deepling_bosses.lua`).
+- [demon_helmet](./demon_helmet/README.md) - Component package under `scripts/quests/demon_helmet` containing 2 files (`action-lever.lua`..`movement-walls.lua`).
+- [demon_oak](./demon_oak/README.md) - Component package under `scripts/quests/demon_oak` containing 7 files (`actions_demon_oak.lua`..`movements_squares.lua`).
+- [desert_dungeon_quest](./desert_dungeon_quest/README.md) - Component package under `scripts/quests/desert_dungeon_quest` containing 1 files (`actions_desert_dungeon_lever.lua`..`actions_desert_dungeon_lever.lua`).
+- [devil_helmet](./devil_helmet/README.md) - Component package under `scripts/quests/devil_helmet` containing 1 files (`movements_sewer.lua`..`movements_sewer.lua`).
+- [draconia](./draconia/README.md) - Component package under `scripts/quests/draconia` containing 3 files (`action-lever.lua`..`movement-exit_teleport.lua`).
+- [dreamers_challenge_quest](./dreamers_challenge_quest/README.md) - Component package under `scripts/quests/dreamers_challenge_quest` containing 21 files (`actions_documents.lua`..`movement_wall_teleport.lua`).
+- [druid_outfits_quest](./druid_outfits_quest/README.md) - Component package under `scripts/quests/druid_outfits_quest` containing 2 files (`actions_ceirons_waterskin.lua`..`globalevents_druid_outfits_blooming_griffinclaw.lua`).
+- [edron_rope](./edron_rope/README.md) - Component package under `scripts/quests/edron_rope` containing 1 files (`movements_rope.lua`..`movements_rope.lua`).
+- [elemental_spheres](./elemental_spheres/README.md) - Component package under `scripts/quests/elemental_spheres` containing 11 files (`actions_lever.lua`..`movements_summon_overlord.lua`).
+- [extension_mota](./extension_mota/README.md) - Component package under `scripts/quests/extension_mota` containing 1 files (`movements_extension_mota.lua`..`movements_extension_mota.lua`).
+- [fathers_burden](./fathers_burden/README.md) - Component package under `scripts/quests/fathers_burden` containing 1 files (`actions_corpse.lua`..`actions_corpse.lua`).
+- [feaster_of_souls](./feaster_of_souls/README.md) - Component package under `scripts/quests/feaster_of_souls` containing 14 files (`actions_bosses_killed.lua`..`creaturescripts_wormling_death.lua`).
+- [ferumbras_ascension](./ferumbras_ascension/README.md) - Component package under `scripts/quests/ferumbras_ascension` containing 66 files (`actions_bone_flute.lua`..`movements_zamulosh_teleport.lua`).
+- [forgotten_knowledge](./forgotten_knowledge/README.md) - Component package under `scripts/quests/forgotten_knowledge` containing 43 files (`actions_bird_cage.lua`..`movements_teleport_tree.lua`).
+- [formogar_mine_hoist](./formogar_mine_hoist/README.md) - Component package under `scripts/quests/formogar_mine_hoist` containing 1 files (`movements_hoist.lua`..`movements_hoist.lua`).
+- [giant_smithhammer](./giant_smithhammer/README.md) - Component package under `scripts/quests/giant_smithhammer` containing 1 files (`lever.lua`..`lever.lua`).
+- [grave_danger_quest](./grave_danger_quest/README.md) - Provides 21 direct files (`actions_baeloc_nictros.lua`..`movements_zelos_tp.lua`) and 1 subdirectories under `scripts/quests/grave_danger_quest`.
+- [grimvale](./grimvale/README.md) - Component package under `scripts/quests/grimvale` containing 9 files (`actions_ancient_feud_entrances.lua`..`movements_strangely_glowing_mark.lua`).
+- [heart_of_destruction](./heart_of_destruction/README.md) - Component package under `scripts/quests/heart_of_destruction` containing 39 files (`actions_anomaly.lua`..`movements_vortex_hunger.lua`).
+- [hero_of_rathleton](./hero_of_rathleton/README.md) - Component package under `scripts/quests/hero_of_rathleton` containing 15 files (`actions_machines_deep_terror.lua`..`movements_professor_maxxen.lua`).
+- [hidden_threats](./hidden_threats/README.md) - Component package under `scripts/quests/hidden_threats` containing 4 files (`action-corym_works_doors.lua`..`movement-chests_check.lua`).
+- [hot_cuisine](./hot_cuisine/README.md) - Component package under `scripts/quests/hot_cuisine` containing 2 files (`actions_cookbook1.lua`..`actions_cookbook2.lua`).
+- [hunter_outfits_quest](./hunter_outfits_quest/README.md) - Component package under `scripts/quests/hunter_outfits_quest` containing 2 files (`action_all_hymn_piano_teleport.lua`..`action_music_sheet.lua`).
+- [in_service_of_yalahar](./in_service_of_yalahar/README.md) - Component package under `scripts/quests/in_service_of_yalahar` containing 18 files (`actions_charm.lua`..`quara_leader_kill.lua`).
+- [killing_in_the_name_of](./killing_in_the_name_of/README.md) - Component package under `scripts/quests/killing_in_the_name_of` containing 3 files (`creaturescripts_boss_kill.lua`..`movements_boss.lua`).
+- [kilmaresh_quest](./kilmaresh_quest/README.md) - Provides 25 direct files (`actions_augerfun.lua`..`movements_tpvoc.lua`) and 1 subdirectories under `scripts/quests/kilmaresh_quest`.
+- [koshei_the_deathless_quest](./koshei_the_deathless_quest/README.md) - Component package under `scripts/quests/koshei_the_deathless_quest` containing 3 files (`action_bag.lua`..`action_switch.lua`).
+- [krailos](./krailos/README.md) - Component package under `scripts/quests/krailos` containing 1 files (`movements_access_depot.lua`..`movements_access_depot.lua`).
+- [lions_rock](./lions_rock/README.md) - Component package under `scripts/quests/lions_rock` containing 2 files (`actions_lions_rock.lua`..`movements_lions_rock.lua`).
+- [liquid_black](./liquid_black/README.md) - Component package under `scripts/quests/liquid_black` containing 7 files (`actions_chairteleport.lua`..`movements_shortcut.lua`).
+- [marapur](./marapur/README.md) - Component package under `scripts/quests/marapur` containing 4 files (`actions_boss_timira_fight.lua`..`timira_the_many-headed.lua`).
+- [mintwallin_quest](./mintwallin_quest/README.md) - Component package under `scripts/quests/mintwallin_quest` containing 1 files (`actions_devil_helmet_lever.lua`..`actions_devil_helmet_lever.lua`).
+- [mysterious_ornate](./mysterious_ornate/README.md) - Component package under `scripts/quests/mysterious_ornate` containing 1 files (`actions_mysterious_metal_egg.lua`..`actions_mysterious_metal_egg.lua`).
+- [no_rest_for_the_wicked](./no_rest_for_the_wicked/README.md) - Component package under `scripts/quests/no_rest_for_the_wicked` containing 1 files (`actions_arbaziloth_lever.lua`..`actions_arbaziloth_lever.lua`).
+- [oramond](./oramond/README.md) - Provides 1 direct files (`actions_glooth_fairy_lever.lua`..`actions_glooth_fairy_lever.lua`) and 4 subdirectories under `scripts/quests/oramond`.
+- [others](./others/README.md) - Component package under `scripts/quests/others` containing 12 files (`actions_calassa_comb_door.lua`..`actions_steal_from_thieves.lua`).
+- [parchment_room](./parchment_room/README.md) - Component package under `scripts/quests/parchment_room` containing 1 files (`parchment.lua`..`parchment.lua`).
+- [primal_ordeal_quest](./primal_ordeal_quest/README.md) - Component package under `scripts/quests/primal_ordeal_quest` containing 5 files (`bosses_killed.lua`..`the_primal_menace.lua`).
+- [raging_mage_tower](./raging_mage_tower/README.md) - Component package under `scripts/quests/raging_mage_tower` containing 5 files (`creaturescripts_energized_raging_mage_kill.lua`..`creaturescripts_yielothax_kill.lua`).
+- [roshamuul_quest](./roshamuul_quest/README.md) - Component package under `scripts/quests/roshamuul_quest` containing 9 files (`actions_bone.lua`..`movements_lower_roshamuul.lua`).
+- [rotten_blood_quest](./rotten_blood_quest/README.md) - Component package under `scripts/quests/rotten_blood_quest` containing 9 files (`actions_bakragore_lever.lua`..`movements_blood_entrance.lua`).
+- [rottin_wood_and_married_men](./rottin_wood_and_married_men/README.md) - Component package under `scripts/quests/rottin_wood_and_married_men` containing 3 files (`actions_broken_wall.lua`..`actions_trap.lua`).
+- [sea_of_light](./sea_of_light/README.md) - Component package under `scripts/quests/sea_of_light` containing 1 files (`actions_sea_of_light.lua`..`actions_sea_of_light.lua`).
+- [secret_service](./secret_service/README.md) - Component package under `scripts/quests/secret_service` containing 8 files (`actions_amazon_disguise_kit.lua`..`movements_pirate.lua`).
+- [soul_war](./soul_war/README.md) - Component package under `scripts/quests/soul_war` containing 12 files (`action-reward_soul_war.lua`..`spell-soulsnatcher.lua`).
+- [soulpit](./soulpit/README.md) - Component package under `scripts/quests/soulpit` containing 8 files (`exalted_core.lua`..`soulpit_powerless.lua`).
+- [spike_tasks](./spike_tasks/README.md) - Component package under `scripts/quests/spike_tasks` containing 10 files (`actions_fertilizer.lua`..`creaturescripts_upper_spike_kill.lua`).
+- [spirit_hunters](./spirit_hunters/README.md) - Component package under `scripts/quests/spirit_hunters` containing 1 files (`actions_magical_device.lua`..`actions_magical_device.lua`).
+- [svargrond_arena](./svargrond_arena/README.md) - Component package under `scripts/quests/svargrond_arena` containing 5 files (`creaturescripts_arena_kill.lua`..`movements_arena_trophy.lua`).
+- [thais_lighthouse](./thais_lighthouse/README.md) - Component package under `scripts/quests/thais_lighthouse` containing 2 files (`action-lever.lua`..`movement-stair.lua`).
+- [thais_quest](./thais_quest/README.md) - Component package under `scripts/quests/thais_quest` containing 1 files (`actions_life_ring_lever.lua`..`actions_life_ring_lever.lua`).
+- [the_ancient_tombs](./the_ancient_tombs/README.md) - Component package under `scripts/quests/the_ancient_tombs` containing 23 files (`action_morguthis_wall.lua`..`movements_tomb_teleport.lua`).
+- [the_annihilator](./the_annihilator/README.md) - Component package under `scripts/quests/the_annihilator` containing 2 files (`door.lua`..`lever.lua`).
+- [the_ape_city](./the_ape_city/README.md) - Component package under `scripts/quests/the_ape_city` containing 4 files (`actions_mission09_snake_destroyer.lua`..`movements_mission9_the_deepest_catacomb_teleport.lua`).
+- [the_cursed_crystal](./the_cursed_crystal/README.md) - Component package under `scripts/quests/the_cursed_crystal` containing 4 files (`actions_MedusaOil.lua`..`movements_StepIn_CursedCrystal.lua`).
+- [the_djinn_war_quest](./the_djinn_war_quest/README.md) - Component package under `scripts/quests/the_djinn_war_quest` containing 1 files (`action_water_fountain.lua`..`action_water_fountain.lua`).
+- [the_dream_courts_quest](./the_dream_courts_quest/README.md) - Component package under `scripts/quests/the_dream_courts_quest` containing 36 files (`actions_acidFishingRod.lua`..`movements_spiderSummon.lua`).
+- [the_explorer_society](./the_explorer_society/README.md) - Component package under `scripts/quests/the_explorer_society` containing 11 files (`actions_botanist.lua`..`movements_carvingteleport_port_hope.lua`).
+- [the_first_dragon](./the_first_dragon/README.md) - Component package under `scripts/quests/the_first_dragon` containing 17 files (`actions_lair_entrance.lua`..`movements_zorvorax_secrets.lua`).
+- [the_gravedigger_of_drefia](./the_gravedigger_of_drefia/README.md) - Component package under `scripts/quests/the_gravedigger_of_drefia` containing 29 files (`actions_amforas.lua`..`movements_teleport.lua`).
+- [the_great_dragon_hunt_quest](./the_great_dragon_hunt_quest/README.md) - Component package under `scripts/quests/the_great_dragon_hunt_quest` containing 3 files (`actions_treasure.lua`..`creaturescripts_the_great_dragon_hunt.lua`).
+- [the_hidden_city_of_beregar](./the_hidden_city_of_beregar/README.md) - Component package under `scripts/quests/the_hidden_city_of_beregar` containing 12 files (`actions_bargate_lever.lua`..`moviments_tunnel.lua`).
+- [the_hunt_for_the_sea_serpent](./the_hunt_for_the_sea_serpent/README.md) - Component package under `scripts/quests/the_hunt_for_the_sea_serpent` containing 2 files (`actions_bait.lua`..`movements_teleports.lua`).
+- [the_ice_islands_quest](./the_ice_islands_quest/README.md) - Component package under `scripts/quests/the_ice_islands_quest` containing 8 files (`actions_anthill.lua`..`movements_nibelor_dog_led.lua`).
+- [the_inquisition_quest](./the_inquisition_quest/README.md) - Component package under `scripts/quests/the_inquisition_quest` containing 9 files (`actions_brother_lever.lua`..`movements_teleport_main.lua`).
+- [the_lost_brother](./the_lost_brother/README.md) - Component package under `scripts/quests/the_lost_brother` containing 2 files (`actions_asura_mirror.lua`..`movement-find-remains.lua`).
+- [the_new_frontier](./the_new_frontier/README.md) - Component package under `scripts/quests/the_new_frontier` containing 15 files (`action_arena.lua`..`movements_snake_head_teleport.lua`).
+- [the_order_of_lion](./the_order_of_lion/README.md) - Component package under `scripts/quests/the_order_of_lion` containing 5 files (`action-bounac_entrance.lua`..`moveevent-drume_entrance.lua`).
+- [the_outlaw_camp](./the_outlaw_camp/README.md) - Component package under `scripts/quests/the_outlaw_camp` containing 5 files (`actions_oven.lua`..`movements_entrance.lua`).
+- [the_paradox_tower](./the_paradox_tower/README.md) - Component package under `scripts/quests/the_paradox_tower` containing 11 files (`action_fifth_floor_lever.lua`..`trap_in_the_tree.lua`).
+- [the_pits_of_inferno_quest](./the_pits_of_inferno_quest/README.md) - Component package under `scripts/quests/the_pits_of_inferno_quest` containing 26 files (`actions_bazir_maze_lever.lua`..`movements_trap.lua`).
+- [the_postman_missions_quest](./the_postman_missions_quest/README.md) - Component package under `scripts/quests/the_postman_missions_quest` containing 3 files (`actions_package.lua`..`actions_waldos_posthorn.lua`).
+- [the_primal_ordeal](./the_primal_ordeal/README.md) - Component package under `scripts/quests/the_primal_ordeal` containing 2 files (`creaturescripts_magma_bubble_death.lua`..`creaturescripts_the_primal_menace_killed.lua`).
+- [the_queen_of_the_banshees](./the_queen_of_the_banshees/README.md) - Component package under `scripts/quests/the_queen_of_the_banshees` containing 16 files (`action-1-first_seal_lever.lua`..`movement-7-last_seal_flame.lua`).
+- [the_rookie_guard](./the_rookie_guard/README.md) - Component package under `scripts/quests/the_rookie_guard` containing 11 files (`mission02_defence.lua`..`missions.lua`).
+- [the_secret_library_quest](./the_secret_library_quest/README.md) - Provides 3 direct files (`creaturescripts_kill.lua`..`movement_teleport.lua`) and 7 subdirectories under `scripts/quests/the_secret_library_quest`.
+- [the_shattered_isles_quest](./the_shattered_isles_quest/README.md) - Component package under `scripts/quests/the_shattered_isles_quest` containing 4 files (`action_nargor_maps.lua`..`movement_teleport.lua`).
+- [the_spike_tasks](./the_spike_tasks/README.md) - Component package under `scripts/quests/the_spike_tasks` containing 2 files (`movements_geomantic_charges.lua`..`movements_spike_teleport.lua`).
+- [the_tainted_soul](./the_tainted_soul/README.md) - Component package under `scripts/quests/the_tainted_soul` containing 1 files (`actions_star_herb.lua`..`actions_star_herb.lua`).
+- [the_thieves_guild_quest](./the_thieves_guild_quest/README.md) - Component package under `scripts/quests/the_thieves_guild_quest` containing 5 files (`actions_climbing_vine.lua`..`actions_note.lua`).
+- [the_travelling_trader](./the_travelling_trader/README.md) - Component package under `scripts/quests/the_travelling_trader` containing 1 files (`actions_outlaw_camp_door.lua`..`actions_outlaw_camp_door.lua`).
+- [the_way_of_the_monk](./the_way_of_the_monk/README.md) - Component package under `scripts/quests/the_way_of_the_monk` containing 3 files (`blue_valley_teleport.lua`..`shrines_dawnport.lua`).
+- [their_masters_voice](./their_masters_voice/README.md) - Component package under `scripts/quests/their_masters_voice` containing 5 files (`actions_slime_gobbler.lua`..`movements_entrance.lua`).
+- [thieves_guild](./thieves_guild/README.md) - Component package under `scripts/quests/thieves_guild` containing 1 files (`creaturescripts_nomad_kill.lua`..`creaturescripts_nomad_kill.lua`).
+- [threatened_dreams](./threatened_dreams/README.md) - Component package under `scripts/quests/threatened_dreams` containing 12 files (`action_fairies_release.lua`..`nightmare_monsters_kills.lua`).
+- [tibia_tales](./tibia_tales/README.md) - Component package under `scripts/quests/tibia_tales` containing 1 files (`actions_ultimate_booze_beer_bottle.lua`..`actions_ultimate_booze_beer_bottle.lua`).
+- [tinder_box_quest_chyllfroest](./tinder_box_quest_chyllfroest/README.md) - Component package under `scripts/quests/tinder_box_quest_chyllfroest` containing 4 files (`actions_reward.lua`..`movements_prohibit_entry.lua`).
+- [to_blind_the_enemy_quest](./to_blind_the_enemy_quest/README.md) - Component package under `scripts/quests/to_blind_the_enemy_quest` containing 1 files (`mirror.lua`..`mirror.lua`).
+- [too_hot_to_handle_quest](./too_hot_to_handle_quest/README.md) - Component package under `scripts/quests/too_hot_to_handle_quest` containing 1 files (`the_brainstealer.lua`..`the_brainstealer.lua`).
+- [tower_defence_quest](./tower_defence_quest/README.md) - Component package under `scripts/quests/tower_defence_quest` containing 1 files (`creaturescripts_goblin_leader_kill.lua`..`creaturescripts_goblin_leader_kill.lua`).
+- [triangle_tower_quest](./triangle_tower_quest/README.md) - Component package under `scripts/quests/triangle_tower_quest` containing 1 files (`actions_triangle_tower_lever.lua`..`actions_triangle_tower_lever.lua`).
+- [troll_sabotage](./troll_sabotage/README.md) - Component package under `scripts/quests/troll_sabotage` containing 1 files (`movements_teleport.lua`..`movements_teleport.lua`).
+- [unnatural_selection](./unnatural_selection/README.md) - Component package under `scripts/quests/unnatural_selection` containing 3 files (`actions_mission5_ray_of_light.lua`..`movements_mission3_dance_dance_evolution.lua`).
+- [waterfall](./waterfall/README.md) - Component package under `scripts/quests/waterfall` containing 1 files (`movements_waterfall.lua`..`movements_waterfall.lua`).
+- [what_a_foolish_quest](./what_a_foolish_quest/README.md) - Component package under `scripts/quests/what_a_foolish_quest` containing 8 files (`action_cat_basket.lua`..`movements_destroy_pies.lua`).
+- [white_pearl](./white_pearl/README.md) - Component package under `scripts/quests/white_pearl` containing 1 files (`movements_white_pearl.lua`..`movements_white_pearl.lua`).
+- [wrath_of_the_emperor](./wrath_of_the_emperor/README.md) - Component package under `scripts/quests/wrath_of_the_emperor` containing 22 files (`actions_mission01_crate.lua`..`movements_teleports_access.lua`).
+
+## Invariants
+- Callbacks validate that the triggering creature is a valid `Player` instance (`getPlayer()`) before proceeding [actions_rascacoon_shortcut.lua:getPlayer]
+- Callbacks validate that the triggering creature is a valid `Player` instance (`getPlayer()`) before proceeding [actions_iksupan_entrance.lua:getPlayer]
+- World position operations verify `Tile(...)` existence before manipulating items or creatures [action-lever.lua:Tile]
+- Execution paths are gated by quest/player storage state checks via `getStorageValue` [actions_crystal_ball.lua:getStorageValue]
+- Callbacks validate that the triggering creature is a valid `Player` instance (`getPlayer()`) before proceeding [movements_erayo_house.lua:getPlayer]
+- Execution paths are gated by quest/player storage state checks via `getStorageValue` [action_horn.lua:getStorageValue]
+- Execution paths are gated by quest/player storage state checks via `getStorageValue` [actions_beer.lua:getStorageValue]
+- Execution paths are gated by quest/player storage state checks via `getStorageValue` [actions_lever.lua:getStorageValue]
+- Execution paths are gated by quest/player storage state checks via `getStorageValue` [actions_mission3_chest.lua:getStorageValue]
+- World position operations verify `Tile(...)` existence before manipulating items or creatures [the_monster_fight.lua:Tile]
+- Execution paths are gated by quest/player storage state checks via `getStorageValue` [actions_analyser.lua:getStorageValue]
+- Execution paths are gated by quest/player storage state checks via `getStorageValue` [actions_crude_lava_pump.lua:getStorageValue]
+
+## Side Effects
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_cheesy_key.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_ahau.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [action-lever.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_crystal_ball.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [movements_erayo_house.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [action_horn.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_beer.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_lever.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_mission3_chest.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [the_monster.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_analyser.lua:register]
+- Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_crude_lava_pump.lua:register]
+
+## Verification
+- Run: `ctest --test-dir build --output-on-failure`

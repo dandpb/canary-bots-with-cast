@@ -1,5 +1,7 @@
 # Canary com bots e cast no WSL
 
+## Overview
+
 Para instalar do início, configurar LiteLLM com OpenAI/Gemini e preparar replay
 e benchmark, use o [guia de configuração inicial](../brain/SETUP.pt-BR.md).
 
@@ -9,6 +11,37 @@ registram suas revisões; confira imagem/binário/configuração antes de atribu
 uma revisão da `main` ao runtime atual.
 O projeto Compose é `canary-bots-wsl` e usa volumes próprios. O banco não publica
 porta no host. Jogo e site publicam somente em `127.0.0.1`.
+
+## Interface
+
+- `[setup.py:here]` — Inicializa `.env`, scripts SQL em `initdb/` e arquivos de configuração `runtime/config/{server,worker}.json` sem sobrescrever arquivos existentes.
+- `[setup-gateway.py:prepare]` / `[setup-gateway.py:prepare_coordination]` / `[setup-gateway.py:add_coordination]` — CLI (`--directory`, `--coordination`) que prepara `runtime/config/litellm.yaml`, `runtime/config/litellm-coordination.yaml` e `runtime/secrets/litellm-{provider,worker,db,ui,redis}.env` com modo `0600`.
+- `[game-entrypoint.py:main]` / `[game-entrypoint.py:render]` / `[game-entrypoint.py:port]` — Entrypoint do container `game` que renderiza `config.lua` com overrides de ambiente (`MARIADB_PASSWORD`, `GAME_PUBLIC_IP`, `GAME_LOGIN_PORT`, `GAME_PROTOCOL_PORT`, `GAME_STATUS_PORT`, `GAME_DISABLE_MAP_DOWNLOAD`, `GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN`, `BOT_POPULATION_REFERENCE_BOTS`, `BOT_PLAYERS_ONLINE`), instala `/etc/canary-brain/server.json` em `data/bot/brain.json` e executa `/canary/canary`.
+- `[verify-build-source.py:main]` / `[verify-build-source.py:verify]` — CLI (`--source`, `--revision`) que valida checkout Git standalone, limpo, sem `alternates` ou submódulos, conferindo o SHA-1 de cada blob rastreado.
+- `[monitor-bot.py:main]` / `[monitor-bot.py:sample]` / `[monitor-bot.py:assess]` / `[monitor-bot.py:command]` — CLI (`--seconds`, `--interval`, `--history`, `--require-floor`, `--require-xp-increase`, `--require-level-increase`) que amostra o progresso do piloto 65001 (`Grizzle Alyronia`) via `bot_commands` e SQLite do worker.
+- `[ops-digest.py:main]` / `[ops-digest.py:build_digest]` / `[ops-digest.py:evaluate]` / `[ops-digest.py:render]` — CLI (`--json`, `--out`, `--window`, `--history`, `--status-port`) que agrega saúde de containers, protocolo nativo (`7173`), estado de Grizzle e logs em um veredito (`GREEN`, `AMBER`, `RED`).
+- `[smoke.py:base]` — Smoke test de conectividade HTTP (`http://127.0.0.1:8080/`, `/index.php/worldmap`, `/login.php` com `@cast`) e portas TCP `7171`/`7172`/`7173`.
+- `[runtime-schema.sql:bot_state_persistence]` / `[runtime-schema.sql:bot_startup_config]` / `[runtime-schema.sql:bot_nav_events]` / `[runtime-schema.sql:bot_test_commands]` / `[runtime-schema.sql:player_charms]` / `[runtime-schema.sql:players]` — Tabelas de persistência/telemetria de bots e migrações `INT UNSIGNED` / `BIGINT UNSIGNED`.
+- `[web-entrypoint.sh:myaac-entrypoint]` / `[worldmap-menu.php:$db]` / `[patch-myaac-status.php:$path]` — Scripts de inicialização e patch do container MyAAC (`Web.Dockerfile`).
+- `[compose.yaml:services]` / `[Dockerfile:build]` / `[Dockerfile.release:build]` / `[Web.Dockerfile:ENTRYPOINT]` — Definições de build e serviços Docker Compose do projeto `canary-bots-wsl`.
+
+## Invariants
+
+- `[game-entrypoint.py:render]` — `MARIADB_PASSWORD` deve estar definido; `GAME_LOGIN_PORT`, `GAME_PROTOCOL_PORT` e `GAME_STATUS_PORT` devem ser 3 portas distintas em `1..65535`; `GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN` deve ser `''` ou `'1'`.
+- `[setup.py:env]` / `[setup-gateway.py:prepare]` — Arquivos `.env`, `runtime/config/*` e `runtime/secrets/*` existentes nunca são sobrescritos (`O_CREAT | O_EXCL`, modo `0600`, `umask 0077`); `add_coordination` mantém `cache=False` e `cache_responses=False`.
+- `[verify-build-source.py:verify]` — `SOURCE_REVISION` deve ter 40 caracteres hexadecimais minúsculos idênticos ao `HEAD`, sem worktrees linkadas, `objects/info/alternates` ou alterações na árvore.
+- `[ops-digest.py:evaluate]` — Escala o veredito para `RED` se qualquer serviço não estiver saudável, porta `7173` falhar, `players_online == 0`, observação do Grizzle tiver `> 60s`, XP/nível vivo for menor que o persistido, `> 50` linhas de erro ou `last_save_count == 0`.
+
+## Side Effects
+
+- `[setup.py:here]` / `[setup-gateway.py:prepare]` — Cria diretórios `initdb/` e `runtime/{world,config,secrets}` e grava arquivos `.env`, `.sql`, `.json` e `.yaml` locais.
+- `[game-entrypoint.py:main]` — Escreve `/canary/config.lua`, copia `data/bot/brain.json` e substitui o processo atual por `/canary/canary` via `os.execv`.
+- `[monitor-bot.py:command]` / `[monitor-bot.py:main]` — Executa `docker exec` para inserir comandos em `bot_commands` no MariaDB, lê `state.sqlite3` no container `brain` e acrescenta amostras a `runtime/monitor-grizzle.jsonl`.
+- `[web-entrypoint.sh:myaac-entrypoint]` / `[worldmap-menu.php:$db]` / `[patch-myaac-status.php:file_put_contents]` — Atualiza `myaac_menu` e `myaac_settings` no banco, aplica patch em `/var/www/html/system/status.php` e limpa o cache do MyAAC.
+
+## Verification
+
+- Run: `pytest`
 
 ## Operação
 

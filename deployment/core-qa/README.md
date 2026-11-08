@@ -1,5 +1,7 @@
 # Core jogável em QA isolada
 
+## Overview
+
 Esta branch parte da `main` em `a1caa920e506bacdeff7243f6e0c83fad96e1729`
 e usa o projeto `canary-core-qa`. Ela contém somente MariaDB, Canary e MyAAC.
 Não inicia brain, LiteLLM nem qualquer inferência. O jogo não recebe socket,
@@ -14,6 +16,35 @@ ao jogo de QA, o entrypoint do Canary escuta nas mesmas portas. O HTTP de login
 é `http://127.0.0.1:18080/login.php`; jogo `17172`, login binário `17171` e
 status `17173`, todos publicados apenas em loopback. O cliente deve usar
 protocolo `1500`. Nenhuma dessas portas aponta ao stack `canary-bots-wsl`.
+
+## Interface
+
+- `[prepare.py:main]` / `[prepare.py:checked_map]` — CLI (`--map`, `--download-map`, `--skip-map`) preparing `.env`, `runtime/initdb/*.sql` seeds (`[prepare.py:SEEDS]`), and verified `runtime/world/otservbr.otbm` (`[prepare.py:MAP_SHA256]`).
+- `[verify_myaac.py:verify]` / `[verify_myaac.py:entrypoint_from_image]` / `[verify_myaac.py:rendered_config]` — Read-only verifier checking `web_base` image ID, `/usr/local/bin/myaac-entrypoint` hash, and rendered `config.lua` (`gameProtocolPort = 17172`, `qa_config_sha256`) against `[image-lock.json:database|web_base|brain_base|game_base]`.
+- `[preflight.py:main]` / `[preflight.py:run_preflight]` / `[preflight.py:record_brain_image]` — Preflight gate CLI (`--resources-only`, `--approved-revision`, `--brain-fake`, `--upgrade-from-stage1`, `--record-brain-image`, `--capture-stage1-baseline`, `--historical-receipt`, `--game-rollout-receipt`, `--db-audit`) validating Compose renders (`[preflight.py:assert_compose]`), image locks (`[preflight.py:assert_image_lock]`), game config (`[preflight.py:assert_game_config]`), clean git source (`[preflight.py:assert_source]`), and map hash (`[preflight.py:assert_map]`).
+- `[stage1_baseline.py:main]` — Stage-1 baseline gate and lifecycle CLI (`action={check,capture,rollback,verify-restored,game-rollout-gate,game-rollout}`) verifying live container/network/volume/DB-slice equality against `stage1-baseline.json` (`[stage1_baseline.py:BASELINE_SHA256]`, `[stage1_baseline.py:assert_stage1_upgrade]`, `[stage1_baseline.py:verify_restored]`, `[stage1_baseline.py:rollback]`).
+- `[stage2_handoff.py:main]` / `[stage2_handoff.py:Handoff]` — Stage-2 handoff adapter CLI (`post-build`, `quiescent-post-build`, `pre-stop`, `quiescent-pre-stop`, `post-stop`, `quiescent-slice`, `quiescent-bundle`, `bundle`, `fallback-plan`, `fallback-verify`, `rescue-verify`, `exec-step`) enforcing chained sealed receipts, human-absence diagnostics (`[stage2_handoff.py:Handoff.human_absence]`), strict zero-writer DB probes (`[stage2_handoff.py:Handoff.writers]`), and single-use atomic claims (`[stage2_handoff.py:Handoff.claim_and_run]`).
+- `[qa_return_attempt.py:main]` / `[qa_return_attempt.py:ReturnAttempt]` — Managed quiescent return executor CLI (`start-managed` | `rescue`) coordinating `attempt.lock`, `ABANDONED` markers (`[qa_return_attempt.py:ReturnAttempt.abandon]`), and bounded health/smoke verification (`[qa_return_attempt.py:ReturnAttempt.post_start]`).
+- `[compose.yaml:name]` / `[compose.brain-fake.yaml:services]` / `[compose.game-pin.yaml:services.game]` — Compose stack definitions for project `canary-core-qa`.
+
+## Invariants
+
+- `[preflight.py:assert_source]` / `[preflight.py:assert_compose]` — Requires `SOURCE_REVISION`, `--approved-revision`, and clean `git rev-parse HEAD` to match; all services must set `restart: 'no'`, publish ports only on `127.0.0.1` (`17171`-`17173`, `18080`), disable map download and global save shutdown (`[preflight.py:assert_game_config]`), and match locked digests in `image-lock.json` (`[preflight.py:assert_image_lock]`).
+- `[stage1_baseline.py:load_baseline]` / `[stage1_baseline.py:assert_stage1_upgrade]` — `stage1-baseline.json` must match `BASELINE_SHA256` (`47351521b9b690fce7053e1b6e6e6ea97585f30da0f1a8d4fb5ad41eeb49fb04`); upgrade requires exact container/network/volume identity and `REPEATABLE READ, READ ONLY` DB logical slice equality (`[stage1_baseline.py:DB_SLICE_SQL_SHA256]`).
+- `[stage2_handoff.py:Handoff.__init__]` / `[stage2_handoff.py:Handoff.follow]` — Refuses execution unless adapter bytes match `--adapter-sha256` and git blob at `--adapter-revision`, manifest matches `MANIFEST_SHA256` (`bc4fb5af6c1ff5ff76e08ac15125b463222bcbc27dc98b7b35a75f7f4f4202f0`), evidence/claims reside outside `--source-checkout` with `0700`/`0600` permissions, and normal vs. quiescent receipt chains never mix.
+- `[stage2_handoff.py:Handoff.human_absence]` / `[stage2_handoff.py:Handoff.writers]` — Requires zero `[BotHibernation]` anchors within `30s`, zero online non-bot/QA characters in SQL, zero established TCP sessions on `17171`/`17172`, and zero non-`Daemon` sessions or `INNODB_TRX` rows in MariaDB.
+- `[qa_return_attempt.py:ReturnAttempt.mutate]` — Acquires non-blocking `attempt.lock`, records `ABANDONED` before any gate, enforces pre-claim and post-claim gates within `GATE_MAX_AGE` (`30.0s`), and consumes single-use `.claim` files without retry on failure (`HOLD`).
+
+## Side Effects
+
+- `[prepare.py:main]` — Creates `runtime/initdb`, `runtime/world`, `.env` (`0600`), seed SQL files, and `runtime/world/otservbr.otbm`.
+- `[preflight.py:save_receipt]` / `[stage1_baseline.py:capture]` — Writes mode `0600` JSON receipts (`preflight-receipt.json`, `stage2-upgrade-receipt.json`, `game-rollout-gate.json`, `game-rollout-after-<UTC>.json`, `stage1-baseline-candidate-<UTC>.json`, `stage1-restored-receipt.json`) under `runtime/evidence/`.
+- `[stage1_baseline.py:rollback]` — Stops `brain` and `game`, copies `/var/lib/canary-human-qa-stage2/.` to `runtime/evidence/brain/`, removes `brain` container and `brain-ledger`/`brain-socket` volumes, retags the baseline game image, and recreates the stage-1 `game` container.
+- `[stage2_handoff.py:Handoff.claim_and_run]` / `[qa_return_attempt.py:run_mutation]` — Creates exclusive `.claim` and `.result` files (`O_CREAT|O_EXCL` with `fsync`) and executes sealed container stop/start/up subprocesses.
+
+## Verification
+
+- Run: `pytest`
 
 ## Preparação e verificações offline
 
