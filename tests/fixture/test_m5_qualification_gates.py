@@ -192,6 +192,7 @@ class FullGateTests(unittest.TestCase):
         observed=1800,
         elapsed=1800,
         reason="completed",
+        after_flush=True,
         metrics=None,
         saved_xp=200,
         initial_xp=100,
@@ -215,6 +216,7 @@ class FullGateTests(unittest.TestCase):
                     "lifecycle",
                     phase="run_supervisor_stop",
                     reason=reason,
+                    after_flush=after_flush,
                     observed_seconds=observed,
                     elapsed_seconds=elapsed,
                 ),
@@ -378,6 +380,56 @@ class FullGateTests(unittest.TestCase):
             ]
         )
         self.assertFalse(result["accepted"])
+
+    def test_finalizing_then_matching_post_flush_completion_qualifies(self):
+        result = self.qualified(
+            extra=[
+                event(
+                    1799999,
+                    "lifecycle",
+                    phase="run_supervisor_stop",
+                    reason="native_finalizing",
+                    observed_seconds=1800,
+                    elapsed_seconds=1800,
+                )
+            ]
+        )
+        self.assertTrue(result["accepted"], result["checks"])
+        self.assertEqual(len(result["evidence"]["supervisor"]), 2)
+
+    def test_finalizing_requires_a_matching_post_flush_terminal(self):
+        preliminary = event(
+            1799999,
+            "lifecycle",
+            phase="run_supervisor_stop",
+            reason="native_finalizing",
+            observed_seconds=1800,
+            elapsed_seconds=1800,
+        )
+        for changes in ({"after_flush": False}, {"observed": 1801}, {"elapsed": 1801}):
+            with self.subTest(changes=changes):
+                self.assertFalse(
+                    self.qualified(extra=[preliminary], **changes)["accepted"]
+                )
+
+    def test_finalizing_without_completion_cannot_qualify(self):
+        self.assertFalse(self.qualified(reason="native_finalizing")["accepted"])
+
+    def test_reversed_or_duplicate_finalizing_cannot_qualify(self):
+        for times in ((1800001,), (1799998, 1799999)):
+            with self.subTest(times=times):
+                rows = [
+                    event(
+                        t,
+                        "lifecycle",
+                        phase="run_supervisor_stop",
+                        reason="native_finalizing",
+                        observed_seconds=1800,
+                        elapsed_seconds=1800,
+                    )
+                    for t in times
+                ]
+                self.assertFalse(self.qualified(extra=rows)["accepted"])
 
     def test_hunts_must_be_simultaneous_not_just_ever_present(self):
         events = [
