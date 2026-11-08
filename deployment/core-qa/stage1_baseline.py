@@ -1,8 +1,9 @@
 """Stage 1 <-> stage 2 of canary-core-qa, measured against the reviewed stage-1 baseline.
 
-The baseline (stage1-baseline.json) was captured read-only on the running stage 1 at
-2026-11-06T22:20:30Z and is pinned here by its SHA-256. Its fields fall in two provenance classes,
-kept apart in code, receipts and the README:
+The baseline (stage1-baseline.json) was recaptured read-only on the running stage 1 at
+2026-11-08T00:10:45Z, after the game-only rollout of 2026-11-08T00:06:36Z, and is pinned here by its
+SHA-256 (the previous pin was 272c35fb..., captured 2026-11-06T22:20:30Z). Its fields fall in
+provenance classes kept apart in code, receipts and the README (game_rollout_<UTC> is described below):
 
 - historical: containers[].id, containers[].image_id and containers[].created_at. They were
   cross-checked with the historical receipt web-rollout-after.json (its SHA-256 is in the baseline).
@@ -48,7 +49,8 @@ from verify_myaac import verify as verify_myaac
 
 SCHEMA = "stage1-qa-baseline-v1"
 BASELINE = qa.HERE / "stage1-baseline.json"  # sanitized and reviewed; captured by Pitagoras on WSL
-BASELINE_SHA256 = "272c35fbab6496376a366565ac81368e8885297c1cc9febf7ef73e7cdd554789"
+BASELINE_SHA256 = "47351521b9b690fce7053e1b6e6e6ea97585f30da0f1a8d4fb5ad41eeb49fb04"
+PREVIOUS_BASELINE_SHA256 = "272c35fbab6496376a366565ac81368e8885297c1cc9febf7ef73e7cdd554789"  # 2026-11-06
 RESTORED = qa.HERE / "runtime/evidence/stage1-restored-receipt.json"
 PROVENANCE = {
     "historical": {
@@ -68,6 +70,8 @@ BRAIN = f"{qa.PROJECT}-brain-1"
 LEDGER = f"{qa.PROJECT}_brain-ledger"
 BRAIN_SOCKET = f"{qa.PROJECT}_brain-socket"
 REVISION_LABEL = "org.opencontainers.image.revision"
+CONFIG_HASH = "com.docker.compose.config-hash"
+GAME_IDENTITY = ("id", "image_id", "image_ref", "image_source_revision", "created_at")
 CONTAINER_LABELS = ("config-hash", "project", "service")
 GAME_PORTS = {"GAME_LOGIN_PORT": "17171", "GAME_PROTOCOL_PORT": "17172", "GAME_STATUS_PORT": "17173"}
 DISABLED_BRAIN = "/etc/canary-core-qa/disabled-brain.json"
@@ -196,6 +200,24 @@ def assert_web_image(baseline):
                            f"expected reviewed {web['image_id']}; refused")
 
 
+def baseline_game_image(path=BASELINE, expected_sha256=BASELINE_SHA256):
+    """The exact image ID of the pinned stage-1 game: what compose.game-pin.yaml must pin for stage 2."""
+    baseline = load_baseline(path, expected_sha256)
+    return next(item["image_id"] for item in baseline["containers"] if item["name"] == GAME)
+
+
+def assert_game_image(baseline):
+    """Stage 2 runs the stage-1 game image itself: the local game tag must still resolve to it."""
+    expected = next(item["image_id"] for item in baseline["containers"] if item["name"] == GAME)
+    try:
+        actual = qa.command("docker", "image", "inspect", qa.GAME_TAG, "--format", "{{.Id}}").strip()
+    except RuntimeError as error:
+        raise RuntimeError("the stage-1 game image tag is absent; refused") from error
+    if actual != expected:
+        raise RuntimeError(f"stage-1 game image tag {qa.GAME_TAG} resolves to {actual}, "
+                           f"expected reviewed {expected}; refused")
+
+
 def db_slice():
     """The transactional DB slice: four counts and the QA-character projection SHA-256."""
     rows = mariadb(DB_SLICE_SQL).splitlines()
@@ -308,6 +330,7 @@ def assert_stage1_upgrade(path=BASELINE, expected_sha256=BASELINE_SHA256):
     qa_objects(stage2=False)
     assert_images(brain_allowed=False)
     assert_web_image(baseline)
+    assert_game_image(baseline)
     pinned_sql = baseline["db_logical_snapshot"].get("sql_sha256")
     if pinned_sql is not None and pinned_sql != DB_SLICE_SQL_SHA256:  # same scope and hash method, or no comparison
         raise RuntimeError("the baseline DB slice was taken with another query; upgrade refused")
@@ -374,8 +397,15 @@ def verify_restored(path=BASELINE, expected_sha256=BASELINE_SHA256, receipt_path
     assert_images(brain_allowed=True)  # the brain image may stay; it runs nowhere
     now = comparable(observe(db=False))
     expected = comparable(baseline)
+    game = expected["containers"][GAME]
     for field in ("id", "created_at"):  # stage-1 up recreates game without the override; the rest stays
-        expected["containers"][GAME][field] = now["containers"].get(GAME, {}).get(field)
+        game[field] = now["containers"].get(GAME, {}).get(field)
+    if baseline.get("game_rollout_receipt") and game["image_ref"] == game["image_id"]:
+        # The baseline game ran its reviewed image by exact ID; rollback re-creates it from the local tag with
+        # the stage-1 Compose. Only the ref and the config-hash that follows from it change: image_id and
+        # image_source_revision are still compared with the baseline below, and so is everything else.
+        game["image_ref"] = qa.GAME_TAG
+        game["compose_labels"] = {**game["compose_labels"], CONFIG_HASH: stage1_config_hash()}
     baseline_slice = expected.pop("db_slice")  # not compared after a rollback: play may change it
     integrity = db_integrity()
     problems += differences(expected, now) + integrity + game_contract()
@@ -395,6 +425,35 @@ def verify_restored(path=BASELINE, expected_sha256=BASELINE_SHA256, receipt_path
                "slice_equals_baseline": db_now == baseline_slice},
         "verified_at_utc": datetime.now(UTC).isoformat(),
     })
+
+
+def stage1_config_hash():
+    """The config-hash the stage-1 Compose gives the game (read-only `config --hash`, nothing is built)."""
+    output = qa.command(*STAGE1, "config", "--hash", "game", env=compose_env())
+    found = [line.split()[1] for line in output.splitlines() if line.split()[:1] == ["game"] and len(line.split()) == 2]
+    if len(found) != 1 or not re.fullmatch(r"[0-9a-f]{64}", found[0]):
+        raise RuntimeError("stage-1 Compose did not render one config-hash for game; refused")
+    return found[0]
+
+
+def stage2_game(upgrade, path=BASELINE, expected_sha256=BASELINE_SHA256):
+    """After the stage-2 up: the overlay adds env and mounts, so game is recreated, but from the same reviewed
+    image (no rebuild, by its exact ID); database, web, network and the four volumes are the baseline's."""
+    if upgrade.get("baseline_sha256") != expected_sha256:
+        raise RuntimeError("the upgrade receipt names another baseline; refused")
+    baseline = load_baseline(path, expected_sha256)
+    assert_persistent_stage1(baseline, "stage-2 game receipt")
+    before = upgrade["observed"]["containers"][GAME]
+    after = comparable(observe(db=False))["containers"][GAME]
+    if (after["id"] == before["id"] or after["image_id"] != before["image_id"]
+            or after["image_ref"] != before["image_id"]
+            or after["image_source_revision"] != before["image_source_revision"]):
+        raise RuntimeError("stage-2 game must be recreated from the baseline game image by its exact ID "
+                           "(same image and source revision, no rebuild); refused")
+    return {"recreated": True, "reason": "compose.brain-fake.yaml adds the brain config, reference bots and mounts",
+            "preserved": [DATABASE, WEB, "network", "volumes"],
+            "before": {key: before[key] for key in GAME_IDENTITY},
+            "after": {key: after[key] for key in GAME_IDENTITY}}
 
 
 def strings(value):
@@ -662,7 +721,7 @@ def run(*args, env=None):
     qa.command(*args, env=env)
 
 
-def assert_persistent_stage1(baseline):
+def assert_persistent_stage1(baseline, action="rollback"):
     """Before rollback mutations, preserve DB/web/network/volume identities and labels.
 
     The game is intentionally different in stage 2. Status/health are checked after
@@ -679,7 +738,7 @@ def assert_persistent_stage1(baseline):
     changes = differences(expected, now)
     if changes:
         raise RuntimeError("persistent stage-1 resources differ from the reviewed baseline; "
-                           "rollback refused:\n" + "\n".join(changes))
+                           f"{action} refused:\n" + "\n".join(changes))
 
 
 def rollback(path=BASELINE, expected_sha256=BASELINE_SHA256, receipt_path=None):

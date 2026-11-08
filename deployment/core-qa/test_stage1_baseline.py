@@ -75,12 +75,16 @@ class FakeDocker:
         self.containers = {item["name"]: {**copy.deepcopy(item), "labels": {
             **item["compose_labels"], "com.docker.compose.version": "5.5.1"}} for item in baseline["containers"]}
         for item in self.containers.values():
-            item.pop("historical_comparison")
+            item.pop("historical_comparison", None)
+            item.pop("game_rollout_comparison", None)
             item.pop("compose_labels")
         self.revisions = {item["image_id"]: item["image_source_revision"] for item in baseline["containers"]}
         self.network = copy.deepcopy(baseline["network"])
         self.volumes = {item["name"]: copy.deepcopy(item) for item in baseline["volumes"]}
         self.tags = {item["image_ref"]: item["image_id"] for item in baseline["containers"]}
+        # A game run by exact image ID (game_rollout) keeps the local tag on that same image.
+        self.tags.setdefault(preflight.GAME_TAG, self.containers[GAME]["image_id"])
+        self.stage1_hash = "2" * 64  # what `config --hash game` renders for the stage-1 Compose
         self.counts = dict(baseline["db_logical_snapshot"]["counts"])
         self.rows = list(DB_ROWS)
         self.game_env = {**{key: value for key, value in gate.GAME_PORTS.items()},
@@ -148,14 +152,18 @@ class FakeDocker:
             self.containers.pop(BRAIN)
         elif "up" in args and "compose.brain-fake.yaml" not in args:
             game = self.containers[GAME]
-            game.update(id="7" * 64, image_id=self.tags["canary-core-qa-game:local"], created_at="2026-11-07T02:00:00Z")
-            game["labels"]["com.docker.compose.config-hash"] = "2" * 64
+            game.update(id="7" * 64, image_id=self.tags["canary-core-qa-game:local"], created_at="2026-11-07T02:00:00Z",
+                        image_ref="canary-core-qa-game:local")
+            game["labels"]["com.docker.compose.config-hash"] = self.stage1_hash
             self.game_env["CANARY_BRAIN_CONFIG"] = gate.DISABLED_BRAIN
             self.game_mounts = [mount for mount in self.game_mounts if mount["Name"] != gate.BRAIN_SOCKET]
         return ""
 
     def __call__(self, *args, env=None):
         fmt = args[-1]
+        if args[1] == "compose" and args[-3:] == ("config", "--hash", "game"):
+            assert "compose.brain-fake.yaml" not in args and env is not None and "MARIADB_PASSWORD" not in env
+            return f"game {self.stage1_hash}\n"
         if args[1] in ("tag", "compose") or args[1:3] == ("volume", "rm"):
             return self.mutate(args)
         if args[1] == "exec" and args[2] == DATABASE and self.integrity["down"]:
@@ -253,6 +261,28 @@ class Stage1BaselineGateTests(unittest.TestCase):
         self.assertIn("REPEATABLE READ", gate.DB_SLICE_SQL)
         self.assertNotRegex(gate.DB_SLICE_SQL, r"(?i)\b(insert|update|delete|drop|alter|create|replace)\b")
 
+    def test_committed_baseline_keeps_tooling_and_game_image_revisions_apart(self):
+        """The pinned baseline (2026-11-08) names its predecessor, its game receipt and its DB audit; the game
+        image keeps the source revision it was built from (game_rollout), which is not the tooling HEAD."""
+        baseline = gate.load_baseline()
+        self.assertEqual(baseline["previous_baseline_sha256"], gate.PREVIOUS_BASELINE_SHA256)
+        game = next(item for item in baseline["containers"] if item["name"] == GAME)
+        rollout = baseline["game_rollout_receipt"]
+        self.assertEqual(rollout["provenance"], "game_rollout_20261108T000636Z")
+        self.assertEqual(game["image_source_revision"], rollout["source_revision"])
+        self.assertEqual(game["image_source_revision"], "3431b4046602875b161216ddb7be464eb4842f1a")
+        self.assertEqual((game["image_ref"], game["image_id"]), (gate.baseline_game_image(),) * 2)
+        self.assertTrue(gate.baseline_game_image().endswith("0930181"))
+        self.assertEqual(set(baseline["provenance"]), {"historical", "captured_now", rollout["provenance"]})
+        self.assertNotIn(GAME, " ".join(baseline["provenance"]["historical"]))
+        audit = (gate.qa.HERE / "stage1-db-audit-20261108.json").read_bytes()
+        self.assertEqual(hashlib.sha256(audit).hexdigest(), baseline["db_audit"]["sha256"])
+        audit = json.loads(audit)
+        self.assertEqual(audit["baseline_sha256"], gate.PREVIOUS_BASELINE_SHA256)
+        self.assertEqual(audit["db_slice"], gate.comparable(baseline)["db_slice"])
+        self.assertEqual(baseline["db_logical_snapshot"]["sql_sha256"], gate.DB_SLICE_SQL_SHA256)
+        self.assertEqual(baseline["db_logical_snapshot"]["method"], gate.DB_SLICE_METHOD)
+
     def test_committed_baseline_passes_its_own_gate(self):
         """The real baseline fits the gate's schema; its DB slice is patched (its rows are not in the repo)."""
         baseline = gate.load_baseline()
@@ -325,6 +355,19 @@ class Stage1BaselineGateTests(unittest.TestCase):
             self.assertEqual(docker.containers[WEB]["image_id"], self.baseline["containers"][2]["image_id"])
             self.assertEqual(docker.log, [])
 
+    def test_upgrade_refuses_a_game_tag_that_left_the_baseline_image(self):
+        for image_id in ("sha256:" + "6" * 64, None):
+            docker = FakeDocker(self.baseline)
+            if image_id:
+                docker.tags[preflight.GAME_TAG] = image_id
+                docker.revisions[image_id] = "b" * 40
+            else:
+                docker.tags.pop(preflight.GAME_TAG)
+            with self.subTest(image_id=image_id), \
+                 self.assertRaisesRegex(RuntimeError, "game image tag .* resolves to .*refused|game/web are absent"):
+                self.upgrade(docker)
+            self.assertEqual(docker.log, [])
+
     def test_baseline_hash_mismatch_is_refused(self):
         with patch("preflight.command", side_effect=FakeDocker(self.baseline)) as docker, \
              self.assertRaisesRegex(RuntimeError, "differs from the pinned"):
@@ -388,9 +431,12 @@ class Stage1BaselineGateTests(unittest.TestCase):
             preflight.run_preflight(approved_revision="a" * 40, receipt_path=self.root / "up.json", upgrade=True)
         upgrade.assert_called_once_with()
         fresh.assert_not_called()
+        preflight.assert_compose.assert_called_once_with(True, game_pin=gate.baseline_game_image())
         receipt = json.loads((self.root / "up.json").read_text())
         self.assertEqual((receipt["stage1_upgrade"], receipt["resources_absent"], receipt["brain_fake"]),
                          ({"baseline_sha256": "s"}, False, True))
+        self.assertEqual(receipt["game_image_pin"], gate.baseline_game_image())
+        self.assertEqual(receipt["approved_source_revision"], "a" * 40)  # tooling HEAD, not the game image
         for brain_fake in (False, True):
             with self.subTest(brain_fake=brain_fake), \
                  patch("stage1_baseline.assert_stage1_upgrade") as upgrade, \
@@ -399,6 +445,8 @@ class Stage1BaselineGateTests(unittest.TestCase):
                                         brain_fake=brain_fake)
             upgrade.assert_not_called()
             fresh.assert_called_once_with(brain_fake)
+            preflight.assert_compose.assert_called_with(brain_fake)
+            self.assertNotIn("game_image_pin", json.loads((self.root / "fresh.json").read_text()))
 
 
 class Stage1RecaptureTests(unittest.TestCase):
@@ -518,6 +566,10 @@ class Stage1RecaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, f"{GAME} differs from web-rollout-after.json"):
             self.capture(FakeDocker(self.baseline).game_rollout())
         docker = FakeDocker(self.baseline).game_rollout()
+        with patch("preflight.command", side_effect=docker), self.assertRaisesRegex(
+                RuntimeError, "stage-1 game image tag canary-core-qa-game:local resolves to .*refused"):
+            gate.assert_stage1_upgrade(self.path, self.sha)
+        docker.tags["canary-core-qa-game:local"] = self.baseline["containers"][1]["image_id"]  # tag kept, game not
         with patch("preflight.command", side_effect=docker), self.assertRaisesRegex(
                 RuntimeError, "upgrade refused:\n/containers/canary-core-qa-game-1/compose_labels"):
             gate.assert_stage1_upgrade(self.path, self.sha)
@@ -920,6 +972,149 @@ class Stage1RollbackTests(unittest.TestCase):
                  self.assertRaisesRegex(RuntimeError, "stage 1 is not restored:\n(.|\n)*" + re.escape(message)):
                 gate.verify_restored(self.path, self.sha, self.receipt)
             self.assertFalse(self.receipt.exists())
+
+
+def pinned_baseline():
+    """A recaptured baseline whose game ran its reviewed image by exact ID (provenance game_rollout_<UTC>)."""
+    baseline = baseline_fixture()
+    game = baseline["containers"][1]
+    game["image_ref"] = game["image_id"]
+    game.pop("historical_comparison")
+    game["game_rollout_comparison"] = {f"{key}_match": True for key in (*gate.GAME_ROLLOUT_FIELDS, "config")}
+    baseline["game_rollout_receipt"] = {"provenance": "game_rollout_20261108T000636Z", "filename": "g.json",
+                                        "sha256": "1" * 64, "recorded_at_utc": "2026-11-08T00:06:36+00:00",
+                                        "source_revision": "b" * 40}
+    return baseline
+
+
+class PinnedGameStage2Tests(unittest.TestCase):
+    """Stage 2 over a game run by exact image ID: recreated from the same image, never rebuilt; rollback restores it."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.baseline = pinned_baseline()
+        self.image = self.baseline["containers"][1]["image_id"]
+        self.path = self.root / "stage1-baseline.json"
+        self.path.write_text(json.dumps(self.baseline))
+        self.sha = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        self.receipt = self.root / "restored.json"
+        for mock in (patch.dict("os.environ", {"SOURCE_REVISION": "c" * 40}),  # tooling HEAD != game image "b"
+                     patch("stage1_baseline.qa.HERE", self.root), patch("builtins.print")):
+            mock.start()
+            self.addCleanup(mock.stop)
+
+    def stage2(self, docker):
+        """What the documented pinned up leaves: game recreated from the same image ID, brain added."""
+        docker.stage2()
+        docker.tags[preflight.GAME_TAG] = self.image
+        docker.containers[GAME].update(image_id=self.image, image_ref=self.image)
+        return docker
+
+    def test_upgrade_gate_accepts_the_pinned_game_with_head_unrelated_to_its_revision(self):
+        docker = FakeDocker(self.baseline)
+        with patch("preflight.command", side_effect=docker):
+            receipt = gate.assert_stage1_upgrade(self.path, self.sha)
+            self.assertEqual(gate.baseline_game_image(self.path, self.sha), self.image)
+        self.assertEqual(receipt["observed"]["containers"][GAME]["image_source_revision"], "b" * 40)
+        self.assertIn("game_rollout_20261108T000636Z", receipt["provenance"])
+        self.assertEqual(docker.log, [])
+
+    def test_stage2_game_records_before_and_after_and_refuses_a_rebuild(self):
+        with patch("preflight.command", side_effect=FakeDocker(self.baseline)):
+            upgrade = gate.assert_stage1_upgrade(self.path, self.sha)
+        docker = self.stage2(FakeDocker(self.baseline))
+        with patch("preflight.command", side_effect=docker):
+            recorded = gate.stage2_game(upgrade, self.path, self.sha)
+        self.assertEqual(recorded["before"]["id"], self.baseline["containers"][1]["id"])
+        self.assertEqual(recorded["after"]["id"], "8" * 64)
+        for side in ("before", "after"):
+            self.assertEqual((recorded[side]["image_id"], recorded[side]["image_source_revision"]), (self.image, "b" * 40))
+        self.assertEqual(recorded["preserved"], [DATABASE, WEB, "network", "volumes"])
+
+        def rebuilt(docker):
+            docker.containers[GAME]["image_id"] = "sha256:" + "8" * 64
+            docker.revisions["sha256:" + "8" * 64] = "c" * 40
+
+        def from_tag(docker):
+            docker.containers[GAME]["image_ref"] = preflight.GAME_TAG
+
+        def not_recreated(docker):
+            docker.containers[GAME]["id"] = self.baseline["containers"][1]["id"]
+
+        def db_recreated(docker):
+            docker.containers[DATABASE]["id"] = "6" * 64
+
+        def web_recreated(docker):
+            docker.containers[WEB]["created_at"] = "2026-11-08T01:00:00Z"
+
+        for change, message in ((rebuilt, "exact ID"), (from_tag, "exact ID"), (not_recreated, "exact ID"),
+                                (db_recreated, f"/containers/{DATABASE}/id"),
+                                (web_recreated, f"/containers/{WEB}/created_at")):
+            docker = self.stage2(FakeDocker(self.baseline))
+            change(docker)
+            with self.subTest(change.__name__), patch("preflight.command", side_effect=docker), \
+                 self.assertRaisesRegex(RuntimeError, re.escape(message)):
+                gate.stage2_game(upgrade, self.path, self.sha)
+        with self.assertRaisesRegex(RuntimeError, "another baseline"):
+            gate.stage2_game({**upgrade, "baseline_sha256": "0" * 64}, self.path, self.sha)
+
+    def test_rollback_restores_the_pinned_game_from_the_local_tag(self):
+        docker = self.stage2(FakeDocker(self.baseline))
+        with entered(contextlib.ExitStack(), patch("preflight.command", side_effect=docker), *playable_mocks()):
+            gate.rollback(self.path, self.sha, self.receipt)
+        self.assertIn(("docker", "tag", self.image, preflight.GAME_TAG), docker.log)
+        game = json.loads(self.receipt.read_text())["observed"]["containers"][GAME]
+        self.assertEqual((game["image_ref"], game["image_id"], game["image_source_revision"]),
+                         (preflight.GAME_TAG, self.image, "b" * 40))
+        self.assertEqual(game["compose_labels"][gate.CONFIG_HASH], docker.stage1_hash)
+
+    def test_restore_of_the_pinned_game_refuses_another_image_revision_or_config(self):
+        def retagged(docker):  # the tag was re-pointed: the restored game runs another image
+            other = "sha256:" + "6" * 64
+            docker.revisions[other] = "b" * 40
+            docker.containers[GAME]["image_id"] = other
+
+        def other_revision(docker):  # same ID, but the image no longer carries the baseline source revision
+            docker.revisions[self.image] = "c" * 40
+
+        def stage2_config(docker):  # still the stage-2 render, not the stage-1 Compose
+            docker.containers[GAME]["labels"][gate.CONFIG_HASH] = "f" * 64
+
+        def database_recreated(docker):
+            docker.containers[DATABASE]["id"] = "6" * 64
+
+        def pinned_ref(docker):  # still the pinned stage-2 container, not re-created by rollback
+            docker.containers[GAME]["image_ref"] = self.image
+
+        cases = ((retagged, f"/containers/{GAME}/image_id"),
+                 (other_revision, f"/containers/{GAME}/image_source_revision"),
+                 (stage2_config, f"/containers/{GAME}/compose_labels/{gate.CONFIG_HASH}"),
+                 (database_recreated, f"/containers/{DATABASE}/id"),
+                 (pinned_ref, f"/containers/{GAME}/image_ref"))
+        for change, path in cases:
+            docker = FakeDocker(self.baseline)  # stage 1 as rollback leaves it: game from the tag, stage-1 hash
+            docker.containers[GAME].update(id="7" * 64, created_at="2026-11-08T02:00:00Z", image_ref=preflight.GAME_TAG)
+            docker.containers[GAME]["labels"][gate.CONFIG_HASH] = docker.stage1_hash
+            change(docker)
+            with self.subTest(change.__name__), \
+                 entered(contextlib.ExitStack(), patch("preflight.command", side_effect=docker), *playable_mocks()), \
+                 self.assertRaisesRegex(RuntimeError, "stage 1 is not restored:\n(.|\n)*" + re.escape(path)):
+                gate.verify_restored(self.path, self.sha, self.receipt)
+            self.assertFalse(self.receipt.exists())
+
+    def test_baseline_without_a_game_receipt_keeps_the_exact_ref_and_hash(self):
+        baseline = baseline_fixture()  # game by tag, historical: no normalisation applies
+        baseline["containers"][1]["compose_labels"][gate.CONFIG_HASH] = "2" * 64
+        path = self.root / "tag-baseline.json"
+        path.write_text(json.dumps(baseline))
+        sha = hashlib.sha256(path.read_bytes()).hexdigest()
+        docker = FakeDocker(baseline)
+        docker.containers[GAME].update(id="7" * 64, image_ref="substituted:local")
+        with entered(contextlib.ExitStack(), patch("preflight.command", side_effect=docker), *playable_mocks()), \
+             self.assertRaisesRegex(RuntimeError, re.escape(f"/containers/{GAME}/image_ref")):
+            gate.verify_restored(path, sha, self.receipt)
 
 
 if __name__ == "__main__":

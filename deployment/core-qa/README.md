@@ -200,11 +200,22 @@ O recibo traz:
 recusam (o `game` mudou de ID, imagem e `config-hash`). O caminho é recapturar:
 
 ```bash
+# o script de auditoria fica FORA do checkout e roda por caminho absoluto, com o
+# diretório atual em deployment/core-qa (ele importa stage1_baseline daqui)
+python3 /caminho/fora/do/checkout/make_db_audit.py --auditor "<quem auditou>" \
+  --explanation "<o que foi observado e o que segue desconhecido>" --out runtime/evidence/db-audit.json
 python3 preflight.py --capture-stage1-baseline \
   --historical-receipt /caminho/para/web-rollout-after.json \
   --game-rollout-receipt runtime/evidence/game-rollout-after-<UTC>.json \
-  --db-audit /caminho/para/db-audit.json
+  --db-audit runtime/evidence/db-audit.json
 ```
+
+Nunca copie o script de auditoria para dentro do checkout: um arquivo não rastreado
+suja a árvore, e o preflight da etapa 2 (`assert_source`) recusa árvore suja.
+`runtime/` é ignorado pelo git, então a auditoria e a candidata ficam ali. A captura
+não exige `SOURCE_REVISION` nem compara o HEAD com o `game`: ela só lê o Docker e os
+recibos. Uma candidata capturada num checkout vale igual em outro, desde que o pino
+anterior (`BASELINE_SHA256`) e `DB_SLICE_SQL` sejam os mesmos.
 
 A captura recusa:
 - um recibo do `game` ausente, adulterado, sem a conferência do config ou que não
@@ -250,11 +261,16 @@ As contagens são as quatro colunas da linha `counts`: `accounts`, `players`,
 de saída, de cada linha que começa com `player\t` ou `item\t`, cada uma seguida de
 `\n` (UTF-8).
 
-**7. A etapa 2 continua NO-GO** até a candidata ser revisada e um commit trocar
-`stage1-baseline.json` e `BASELINE_SHA256`.
+**7. Pino da candidata.** A candidata de 2026-11-08T00:10:45Z foi revisada e
+fixada: `stage1-baseline.json` e `BASELINE_SHA256`
+`47351521b9b690fce7053e1b6e6e6ea97585f30da0f1a8d4fb5ad41eeb49fb04`. Ela registra
+`previous_baseline_sha256`
+`272c35fbab6496376a366565ac81368e8885297c1cc9febf7ef73e7cdd554789` (a baseline de
+06/11). A auditoria do banco que a acompanha está em `stage1-db-audit-20261108.json`,
+byte a byte (SHA-256 em `db_audit.sha256` da baseline).
 
-Atenção: o `rollback` da etapa 2 volta a imagem `game` da baseline em vigor. Com a
-baseline antiga, isso traria de volta o entrypoint com shutdown diário.
+O `rollback` da etapa 2 volta a imagem `game` desta baseline
+(`sha256:358ee666…0181`, revisão de origem `3431b404…`, sem shutdown diário).
 
 ## Etapa 2: worker fake (somente QA, nunca produção)
 
@@ -278,29 +294,67 @@ dependências Python vêm do PyPI por versão fixa (`requirements.lock`), sem ha
 cd deployment/core-qa
 export SOURCE_REVISION='COLE_O_SHA_COMPLETO_APROVADO_AQUI'
 QA="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml -f compose.brain-fake.yaml --env-file .env"
+QA_UP="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml -f compose.brain-fake.yaml -f compose.game-pin.yaml --env-file .env"
 # Host limpo:
 python3 preflight.py --brain-fake --approved-revision "$SOURCE_REVISION"
-$QA up -d --build --wait database game web brain
-# Ou upgrade sobre a etapa 1 já de pé (no lugar dos dois comandos acima):
+$QA build game web brain
+$QA up -d --no-build --no-deps --pull never --wait database game web brain
+# Ou upgrade sobre a etapa 1 já de pé (no lugar dos três comandos acima).
+# O game NÃO é rebuildado: roda a imagem da baseline pelo ID exato.
 python3 preflight.py --upgrade-from-stage1 --approved-revision "$SOURCE_REVISION"
-$QA up -d --build --wait game brain
+$QA_UP build brain
+$QA_UP up -d --no-build --no-deps --pull never --wait game brain
 # Nos dois casos, depois do up:
 python3 preflight.py --record-brain-image --approved-revision "$SOURCE_REVISION"
 $QA exec brain canary-brain status --state /var/lib/canary-human-qa-stage2/ledger.sqlite3
 ```
 
+Os builds não puxam base: `compose.yaml` e `compose.brain-fake.yaml` têm
+`pull: false`, e o preflight recusa outra coisa. Nenhum `up` builda ou puxa imagem
+(`--no-build --pull never`), e `--no-deps` impede que o Compose reconcilie
+`database` ou `web`.
+
 `--brain-fake` e `--upgrade-from-stage1` gravam o recibo da etapa 2 em
 `runtime/evidence/stage2-upgrade-receipt.json`, que `--record-brain-image`
 atualiza após o build. A etapa 1 mantém seu `preflight-receipt.json`.
 
+**O upgrade recria o `game`, e isso é esperado.** `compose.brain-fake.yaml`
+acrescenta ao `game` `CANARY_BRAIN_CONFIG`, `BOT_POPULATION_REFERENCE_BOTS`, o
+`server.json` e o volume do socket; com outra configuração, o Compose recria o
+container. O que não muda é a imagem: `compose.game-pin.yaml` fixa `game.image` no
+ID exato da imagem `game` da baseline (`sha256:358ee666…0181`) com
+`pull_policy: never`. Assim nem um rebuild, nem um pull, nem uma troca da tag
+`canary-core-qa-game:local` entre o gate e o `up` mudam o binário. O preflight
+renderiza o Compose com esse override e recusa se ele faltar ou fixar outro ID que
+não o `image_id` do `game` na baseline; o gate também recusa se a tag local não
+apontar para essa imagem. O `#85` (`BASE_IMAGE` fixado por digest) só vale para um
+build novo do `game`; não autoriza nem dispara rebuild no upgrade.
+
+Duas revisões ficam separadas, sem uma ser rotulada como a outra:
+- a das ferramentas: `SOURCE_REVISION` = HEAD aprovado, que builda o `brain` e
+  aparece em `approved_source_revision` e `brain_image.source_revision`;
+- a da imagem `game`: o label `org.opencontainers.image.revision` dela
+  (`3431b404…`), com proveniência `game_rollout_20261108T000636Z`. Ela vem da
+  baseline e do recibo do rollout, nunca do HEAD. Nenhum gate do upgrade exige que
+  as duas sejam iguais.
+
+O recibo da etapa 2 guarda o `game` antes (`stage1_upgrade.observed`) e o pino
+(`game_image_pin`). Depois do `up`, `--record-brain-image` acrescenta
+`stage2_game`, com o `game` antes e depois: outro ID e `CreatedAt`, mas a mesma
+imagem pelo ID e a mesma revisão de origem. Ele recusa se o `game` não foi
+recriado, se foi rebuildado ou se veio da tag, e também se `database`, `web`, a
+rede ou os quatro volumes diferirem da baseline.
+
 ### Gate de upgrade: comparação exata com a baseline revisada
 
-`stage1-baseline.json` é a baseline da etapa 1 capturada só em leitura no stage 1
-real por Pitagoras em 2026-11-06T22:20:30Z. Ela está versionada aqui, sanitizada,
-e fixada pelo SHA-256
-`272c35fbab6496376a366565ac81368e8885297c1cc9febf7ef73e7cdd554789` em
+`stage1-baseline.json` é a baseline da etapa 1 recapturada só em leitura no stage 1
+real por Pitagoras em 2026-11-08T00:10:45Z, depois do rollout só do `game`. Ela
+está versionada aqui, sanitizada, e fixada pelo SHA-256
+`47351521b9b690fce7053e1b6e6e6ea97585f30da0f1a8d4fb5ad41eeb49fb04` em
 `stage1_baseline.py`. Se o arquivo mudar um byte, o gate recusa. Uma baseline nova
-exige um commit revisado que troque o arquivo e o pino.
+exige um commit revisado que troque o arquivo e o pino. A anterior, de
+2026-11-06T22:20:30Z, fica registrada como `previous_baseline_sha256`
+(`272c35fbab6496376a366565ac81368e8885297c1cc9febf7ef73e7cdd554789`).
 
 `--upgrade-from-stage1` (ou `python3 stage1_baseline.py check`, só leitura) recusa
 com a lista de diferenças quando qualquer item diverge:
@@ -319,8 +373,11 @@ com a lista de diferenças quando qualquer item diverge:
 
 Proveniência, separada no código, nos recibos e aqui:
 
-- `historical`: ID, ID da imagem e `CreatedAt` dos três containers. Foram cruzados
-  com o recibo histórico `web-rollout-after.json` (SHA-256 na baseline).
+- `historical`: ID, ID da imagem e `CreatedAt` de `database` e `web`. Foram
+  cruzados com o recibo histórico `web-rollout-after.json` (SHA-256 na baseline).
+- `game_rollout_20261108T000636Z`: ID, ID da imagem, `CreatedAt` e revisão de origem
+  do `game`, conferidos com o recibo selado `game-rollout-after-20261108T000636Z.json`
+  (SHA-256 na baseline).
 - `captured_now`: rede, volumes, labels, estado e o recorte do banco. Foram lidos
   pela primeira vez na captura. São comparados exatamente, mas não são história
   da primeira subida; o recibo histórico não tinha esses campos.
@@ -337,7 +394,20 @@ até alinhar o método ou recapturar a baseline.
 
 **Se a etapa 1 mudou antes do upgrade** (por exemplo, o personagem de QA jogou
 e o recorte do banco diverge), o gate recusa e não há como aceitar a diferença em
-silêncio. O caminho é uma baseline nova:
+silêncio. A igualdade exata do recorte é a política decidida e não é afrouxada.
+
+O recorte se move com o jogo de pé. Ele conta todos os `player_items`, e os 50 bots e
+o save diário os regravam: o total foi 2597 → 2603 → 2613 entre capturas. A
+candidata fixada é só o retrato observado às 00:10:45Z e não promete estabilidade
+futura. Se houver deriva, o gate continua recusando, e o caminho é uma janela de
+quietude:
+
+1. parar o `game` com save (`stop -t 180`), com nenhum humano online;
+2. com o banco estável, auditoria + captura;
+3. revisão da candidata nova e um commit com o pino;
+4. só então o upgrade, com os próprios recibos.
+
+A captura de uma baseline nova:
 
 ```bash
 python3 preflight.py --capture-stage1-baseline --historical-receipt /caminho/para/web-rollout-after.json
@@ -354,13 +424,14 @@ commit copia o arquivo para `stage1-baseline.json` e troca `BASELINE_SHA256` em
 
 Antes do upgrade e antes de qualquer mutação no rollback, o gate também exige
 que a tag `canary-core-qa-web:local` ainda aponte ao ID da imagem web na baseline;
-se faltar ou tiver sido substituída, recusa.
+se faltar ou tiver sido substituída, recusa. Antes do upgrade, exige o mesmo da tag
+`canary-core-qa-game:local` com o ID da imagem `game` da baseline.
 
 O recibo `runtime/evidence/stage2-upgrade-receipt.json` guarda o SHA da baseline,
-as duas classes de proveniência e o que foi observado. No upgrade só o `game` é
-recriado, com a imagem rebuildada no SHA aprovado; `database` e `web` ficam. A
-imagem `game` da etapa 1 fica sem tag, mas continua no disco: não rode
-`docker image prune` antes de decidir o rollback, porque ele precisa dela.
+as classes de proveniência e o que foi observado. No upgrade só o `game` é
+recriado, pela configuração do overlay e com a mesma imagem da baseline (pelo ID);
+`database` e `web` ficam. Não rode `docker image prune` antes de decidir o
+rollback: ele precisa da imagem `game` da baseline.
 `--record-brain-image` só grava o ID da imagem `brain` quando o label
 `org.opencontainers.image.revision` dela, o container em execução e o recibo
 batem com o HEAD aprovado.
@@ -410,7 +481,13 @@ com `python3 stage1_baseline.py verify-restored`, ele confere e falha fechado:
 
 - nenhum container ou volume `brain` restante;
 - `database`, `web`, rede e volumes iguais à baseline; o `game` com novo ID, mas
-  com a imagem, o label de revisão, o `config-hash` e o health da baseline;
+  com o ID da imagem, o label de revisão, o `config-hash` e o health da baseline.
+  Quando o `game` da baseline rodava a imagem pelo ID exato (proveniência
+  `game_rollout_<UTC>`), o rollback o recria pela tag local com o Compose da etapa 1.
+  Então só a ref (`canary-core-qa-game:local`) e o `config-hash` mudam; o hash
+  esperado é o que `config --hash game` do Compose da etapa 1 renderiza. O ID da
+  imagem e a revisão continuam exatamente os da baseline: tag apontando para outra
+  imagem, ou outra revisão, é recusa;
 - `game` com `CANARY_BRAIN_CONFIG` desligado, `GAME_*_PORT` 17171–17173,
   portas publicadas só em `127.0.0.1` e sem o volume do socket;
 - `config.lua` do `web` com `gameProtocolPort = 17172`, e `verify_myaac`;

@@ -1,0 +1,7 @@
+# QA stage-2 upgrade only, never production. Runs the game of the pinned stage-1 baseline
+# (stage1-baseline.json, containers[canary-core-qa-game-1].image_id) by its exact image ID:
+# no rebuild, no pull and no mutable tag. The preflight refuses a pin that differs from the baseline.
+services:
+  game:
+    image: sha256:358ee666db065a79625f5b5491efa363f0fc491fba04d14d5c176715f0930181
+    pull_policy: never
