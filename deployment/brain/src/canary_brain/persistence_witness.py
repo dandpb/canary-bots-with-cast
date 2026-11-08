@@ -8,6 +8,9 @@ import math
 import os
 import stat
 import time
+from collections.abc import Iterable, Sequence
+from pathlib import Path
+from typing import Any
 
 PROFILE = "fixture_shutdown_v1"
 MAX_BYTES = 4 * 1024**2
@@ -23,12 +26,12 @@ BINDING_KEYS = {
 }
 
 
-def digest(data):
+def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def strict_json(data):
-    def unique(pairs):
+def strict_json(data: str | bytes) -> Any:
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result = {}
         for key, value in pairs:
             if key in result:
@@ -43,11 +46,11 @@ def strict_json(data):
     )
 
 
-def integer(value):
+def integer(value: object) -> bool:
     return type(value) is int and 0 <= value <= 2**53 - 1
 
 
-def binding_bytes(binding):
+def binding_bytes(binding: dict[str, Any]) -> bytes:
     if (
         set(binding) != BINDING_KEYS
         or not integer(binding["bot_id"])
@@ -70,7 +73,7 @@ def binding_bytes(binding):
     return json.dumps(binding, sort_keys=True, separators=(",", ":")).encode()
 
 
-def read_private(path, maximum=MAX_BYTES):
+def read_private(path: str | os.PathLike[str], maximum: int = MAX_BYTES) -> bytes:
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(fd, "rb") as stream:
         info = os.fstat(stream.fileno())
@@ -82,7 +85,7 @@ def read_private(path, maximum=MAX_BYTES):
         return data
 
 
-def exclusive(path, data):
+def exclusive(path: str | os.PathLike[str], data: bytes) -> None:
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "wb") as stream:
         stream.write(data)
@@ -90,7 +93,7 @@ def exclusive(path, data):
         os.fsync(stream.fileno())
 
 
-def sync_directory(path):
+def sync_directory(path: str | os.PathLike[str]) -> None:
     fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         os.fsync(fd)
@@ -98,7 +101,7 @@ def sync_directory(path):
         os.close(fd)
 
 
-def publish_request(directory, binding):
+def publish_request(directory: Path, binding: dict[str, Any]) -> dict[str, Any]:
     binding_bytes(binding)
     started = {"wall": time.time(), "monotonic": time.monotonic()}
     body = (
@@ -116,7 +119,9 @@ def publish_request(directory, binding):
     }
 
 
-def parse_journal(raw, binding, world):
+def parse_journal(
+    raw: bytes, binding: dict[str, Any], world: str
+) -> list[dict[str, Any]]:
     binding_bytes(binding)
     if len(raw) > MAX_BYTES or not raw.endswith(b"\n"):
         raise ValueError("truncated or oversized audit")
@@ -190,7 +195,13 @@ def parse_journal(raw, binding, world):
     return rows
 
 
-def durable_complete(directory, binding, world, request, exit_code):
+def durable_complete(
+    directory: Path,
+    binding: dict[str, Any],
+    world: str,
+    request: dict[str, Any],
+    exit_code: int,
+) -> dict[str, Any]:
     """Called only after owned game exit; fsync is not a SQL-derived observation."""
     if type(exit_code) is not int or exit_code != 0:
         raise ValueError("unclean game exit")
@@ -231,7 +242,9 @@ def durable_complete(directory, binding, world, request, exit_code):
     return receipt
 
 
-def verify_native_zero_deaths(events, admitted):
+def verify_native_zero_deaths(
+    events: Iterable[dict[str, Any]], admitted: dict[str, Any]
+) -> None:
     """Reconcile the independent zero-death journal with ALL native diagnostics.
 
     Do not score/filter/sort this stream: post-horizon counters can contradict D0.
@@ -239,7 +252,7 @@ def verify_native_zero_deaths(events, admitted):
     """
     previous = None
     frame = None
-    seen = {}
+    seen: dict[int, dict[str, Any]] = {}
     for event in events:
         data = event.get("data")
         if not isinstance(data, dict):
@@ -270,7 +283,7 @@ def verify_native_zero_deaths(events, admitted):
             raise ValueError("native observation contradicts zero-death audit")
         if "deaths" not in data and not native_frame:
             continue
-        wall = event.get("wall")
+        wall: Any = event.get("wall")
         if (
             not integer(data.get("deaths"))
             or not integer(data.get("captured_ms"))
@@ -320,7 +333,9 @@ def verify_native_zero_deaths(events, admitted):
             frame = sequence
 
 
-def verify_terminal(events, trial):
+def verify_terminal(
+    events: Sequence[dict[str, Any]], trial: dict[str, Any]
+) -> dict[str, Any]:
     """Validate opt-in terminal evidence, returning an independent final-state pair."""
     bundle = trial["persistence"]["terminal"]
     if not isinstance(bundle, dict) or not isinstance(
