@@ -90,8 +90,8 @@ int main() {
   // Reset the physical B-tree too; delete-marked records change gap boundaries.
   assert(db.executeQuery("TRUNCATE TABLE player_items"));
   assert(db.executeQuery("DELETE FROM players"));
-  assert(db.executeQuery("INSERT INTO players VALUES(101,1,100),(102,1,100)"));
-  std::barrier ready(2); bool saved[2]={false,false};
+  assert(db.executeQuery("INSERT INTO players VALUES(101,1,100),(102,1,100),(103,1,100),(104,1,100)"));
+  std::barrier ready(4); bool saved[4]={false,false,false,false};
   auto worker=[&](int i) {
    Database::getInstance();
    unsigned id=101+i;
@@ -103,13 +103,15 @@ int main() {
    ready.arrive_and_wait();
    saved[i]=IOLoginData::persistPlayerSave(snapshot);
   };
-  std::thread first(worker,0),second(worker,1);first.join();second.join();
-  assert(saved[0] && saved[1]);
-  assert(db.storeQuery("SELECT COUNT(*) FROM players WHERE experience=200")->getNumber<int>("count")==2);
-  assert(db.storeQuery("SELECT COUNT(*) FROM player_items WHERE itemtype=999")->getNumber<int>("count")==2);
+  std::vector<std::thread> threads;
+  for(int i=0;i<4;++i) threads.emplace_back(worker,i);
+  for(auto& thread:threads) thread.join();
+  for(bool success:saved) assert(success);
+  assert(db.storeQuery("SELECT COUNT(*) FROM players WHERE experience=200")->getNumber<int>("count")==4);
+  assert(db.storeQuery("SELECT COUNT(*) FROM player_items WHERE itemtype=999")->getNumber<int>("count")==4);
  }
- assert(deadlocks>=5);
- fmt::print("PASS 10 real checkpoints, {} induced deadlocks, XP/inventory atomic\n",deadlocks.load());
+ assert(deadlocks>=15);
+ fmt::print("PASS 20 real checkpoints, {} induced deadlocks, XP/inventory atomic\n",deadlocks.load());
 }
 """
 
@@ -251,15 +253,27 @@ def disposable_database():
                 "--client",
             )
         finally:
-            if created:
+            try:
                 evidence = os.environ.get("BOT_TEST_EVIDENCE")
-                if evidence:
-                    logs = subprocess.check_output(
-                        ["docker", "logs", database], stderr=subprocess.STDOUT
+                if created and evidence:
+                    logs = subprocess.run(
+                        ["docker", "logs", database],
+                        check=False,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
                     )
-                    (Path(evidence) / (identity + ".log")).write_bytes(logs)
-                run("docker", "rm", "-f", database, stdout=subprocess.DEVNULL)
-            run("docker", "network", "rm", identity, stdout=subprocess.DEVNULL)
+                    (Path(evidence) / (identity + ".log")).write_bytes(logs.stdout)
+            finally:
+                try:
+                    if created:
+                        subprocess.run(
+                            ["docker", "rm", "-f", database],
+                            check=False,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE,
+                        )
+                finally:
+                    run("docker", "network", "rm", identity, stdout=subprocess.DEVNULL)
 
 
 if __name__ == "__main__":

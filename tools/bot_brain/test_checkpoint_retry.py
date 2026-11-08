@@ -110,7 +110,7 @@ int main() {
  assert(!persisted);
  queue.finish(snapshot.guid,work->generation,persisted);
  assert(queue.find(snapshot.guid) && !request.completed.get());
- assert(state.attempts==3 && state.committed==0);
+ assert(state.attempts==5 && state.committed==0);
  state={};state.fault=Model::Syntax;
  assert(!IOLoginData::persistPlayerSave(snapshot));
  assert(state.attempts==1 && state.committed==0);

@@ -301,14 +301,15 @@ g++ -std=c++20 -Isrc tools/bot_brain/test_online_time.cpp -o /tmp/test_online_ti
 
 Uma disputa entre os intervalos de chaves de `player_items` pode fazer o
 InnoDB reverter uma transação inteira com erro 1213. O checkpoint repete a
-transação desde o início, usando o mesmo snapshot imutável, em até três
-tentativas com espera curta no worker SQL. Erros de conexão, SQL inválido e
-COMMIT sem confirmação não são repetidos automaticamente. Se o limite for
+transação desde o início, usando o mesmo snapshot imutável, em até cinco
+tentativas com espera curta no worker SQL. A transação não é reiniciada em
+erros de conexão, SQL inválido ou COMMIT sem confirmação; o tratamento de
+reconexão da camada `Database` mantém sua política existente. Se o limite for
 atingido, o save continua pendente; isso não garante durabilidade em uma
 parada com banco indisponível.
 
 O CTest `checkpoint_deadlock_retry` cobre rollback parcial, limite de tentativas
-e retenção da pendência. O ensaio com duas conexões reais exige Docker e uma
+e retenção da pendência. O ensaio com quatro conexões reais exige Docker e uma
 imagem local com compilador e dependências de build:
 
 ```bash
@@ -317,6 +318,6 @@ BOT_TEST_BUILD_IMAGE=<imagem-local-de-build> \
 ```
 
 Esse ensaio usa o MariaDB 11.4 já presente localmente, fixado pelo ID, com rede
-interna e banco em tmpfs próprios. Verifica dez checkpoints e cinco deadlocks
+interna e banco em tmpfs próprios. Verifica vinte checkpoints e deadlocks
 provocados, incluindo XP e inventário; remove seus containers e rede no fim.
 `BOT_TEST_EVIDENCE=<diretorio>` preserva os logs do banco descartável.

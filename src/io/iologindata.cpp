@@ -208,7 +208,7 @@ PlayerSaveSnapshot IOLoginData::capturePlayerSave(const std::shared_ptr<Player>&
 }
 
 bool IOLoginData::persistPlayerSave(const PlayerSaveSnapshot& snapshot) {
-	constexpr unsigned int maxAttempts = 3;
+	constexpr unsigned int maxAttempts = 5;
 	for (unsigned int attempt = 1; attempt <= maxAttempts; ++attempt) {
 		bool rolledBackDeadlock = false;
 		const bool saved = DBTransaction::executeWithinTransaction([&] {
