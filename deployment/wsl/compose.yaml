@@ -93,7 +93,7 @@ services:
     image: canary-bots-wsl-game:local
     build:
       context: ../..
-      dockerfile: deployment/wsl/Dockerfile
+      dockerfile: deployment/wsl/Dockerfile.release
       target: game
       additional_contexts:
         gitmeta: ${BUILD_GIT_DIRECTORY:-../../.git}

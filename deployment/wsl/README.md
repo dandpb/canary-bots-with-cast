@@ -50,7 +50,9 @@ retomariam as casas e transfeririam a decoração antes da ativação dos bots.
 
 ## Identidade do build nativo
 
-O build do jogo exige um clone independente nativo do Linux, completo, limpo e
+O build de release usa `Dockerfile.release`; o Dockerfile legado e o Compose
+fixado de core-qa permanecem inalterados para preservar seus recibos.
+O build de release exige um clone independente nativo do Linux, completo, limpo e
 com commit: não use um checkout Windows com conversão CRLF, linked worktree ou
 clone com `objects/info/alternates`. Execute o build nesse clone, com
 `SOURCE_REVISION` igual ao HEAD e
@@ -63,7 +65,7 @@ python3 verify-build-source.py --source "$(git rev-parse --show-toplevel)" --rev
 docker compose build game
 ```
 
-No comando Docker direto, forneça também
+No comando Docker direto, use `-f deployment/wsl/Dockerfile.release` e
 `--build-context gitmeta="$BUILD_GIT_DIRECTORY"`. O contexto normal continua
 excluindo `.git`; o contexto nomeado fornece os metadados somente durante o
 `RUN` de compilação, em montagem somente leitura. Nenhum `.git` é copiado para
