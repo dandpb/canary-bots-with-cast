@@ -12,7 +12,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import stage1_baseline
 from preflight import (
+    BRAIN_IMAGE,
+    GAME_TAG,
     IMAGE_LOCK,
     SHUTDOWN_FLAG,
     SHUTDOWN_KEY,
@@ -381,19 +384,101 @@ class BrainFakeStageTests(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
-    def test_stage2_commands_are_scoped_and_rollback_spares_shared_volumes(self):
+    STAGE2 = "docker compose -p canary-core-qa -f compose.yaml -f compose.brain-fake.yaml"
+    UNSET = "env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE"
+
+    def stage2_commands(self):
         section = (HERE / "README.md").read_text().split("## Etapa 2", 1)[1]
-        prefix = "docker compose -p canary-core-qa -f compose.yaml -f compose.brain-fake.yaml --env-file .env"
+        block = section.split("```bash\n", 1)[1].split("```", 1)[0]
+        return section, [line.strip() for line in block.splitlines() if line.strip().startswith("$QA")]
+
+    def test_stage2_commands_are_scoped_and_rollback_spares_shared_volumes(self):
+        section, _ = self.stage2_commands()
+        plain = f"{self.STAGE2} --env-file .env"
+        pinned = f"{self.STAGE2} -f compose.game-pin.yaml --env-file .env"
         lines = [line for line in section.splitlines() if "docker " in line or line.startswith("$QA")]
-        self.assertIn(f'QA="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE {prefix}"', lines)
+        self.assertIn(f'QA="{self.UNSET} {plain}"', lines)
+        self.assertIn(f'QA_UP="{self.UNSET} {pinned}"', lines)
         stage1 = "docker compose -p canary-core-qa -f compose.yaml --env-file .env up -d --no-build --no-deps --wait game"
         self.assertIn("python3 stage1_baseline.py rollback", section)
         self.assertIn(stage1, section)
-        self.assertIn("272c35fbab6496376a366565ac81368e8885297c1cc9febf7ef73e7cdd554789", section)
+        self.assertIn(stage1_baseline.BASELINE_SHA256, section)
+        self.assertIn(stage1_baseline.PREVIOUS_BASELINE_SHA256, section)  # named as previous_baseline_sha256
         for line in lines:
             self.assertNotRegex(line, r" (-v|--volumes)\b|docker volume (prune|rm -f)")
             if "docker compose" in line and stage1 not in line:
-                self.assertIn(prefix, line)
+                self.assertTrue(plain in line or pinned in line, line)
+
+    def test_stage2_up_never_builds_or_pulls_and_never_touches_database_or_web(self):
+        _, commands = self.stage2_commands()
+        upgrade = "$QA_UP up -d --no-build --no-deps --pull never --wait game brain"
+        self.assertIn(upgrade, commands)
+        self.assertIn("$QA_UP build brain", commands)  # only the brain is built, at the approved HEAD
+        ups = [command for command in commands if command.split()[1:2] == ["up"]]
+        self.assertGreaterEqual(len(ups), 2)
+        for command in commands:
+            tokens = command.split()
+            with self.subTest(command=command):
+                self.assertNotIn("--build", tokens)
+                self.assertNotRegex(command.replace("--pull never", ""), r"pull")
+                if tokens[0] == "$QA_UP" and tokens[1] == "build":
+                    self.assertEqual(tokens[2:], ["brain"])  # never the game: its image is the baseline's
+                if tokens[1] == "up":
+                    self.assertIn("--no-build", tokens)
+                    self.assertIn("--no-deps", tokens)
+                    self.assertIn("--pull never", command)
+        self.assertEqual(upgrade.split()[-2:], ["game", "brain"])  # database and web are not reconciled
+
+    def test_game_pin_override_pins_exactly_the_baseline_game_image(self):
+        text = (HERE / "compose.game-pin.yaml").read_text()
+        body = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+        image = stage1_baseline.baseline_game_image()
+        self.assertEqual(body, ["services:", "  game:", f"    image: {image}", "    pull_policy: never"])
+        self.assertEqual(image, "sha256:358ee666db065a79625f5b5491efa363f0fc491fba04d14d5c176715f0930181")
+
+    def test_upgrade_compose_gate_requires_the_pin_of_the_baseline_game_image(self):
+        image = stage1_baseline.baseline_game_image()
+        calls = []
+
+        def rendered(game_image, pull_policy="never"):
+            def command(*args, **_kwargs):
+                calls.append(args)
+                volumes = ("database", "game-logs", "authored-data", "website-cache", "brain-socket", "brain-ledger")
+                game = {"image": game_image, "environment": {
+                    **QA_GAME_ENV, "CANARY_BRAIN_CONFIG": "/etc/canary-core-qa/brain/server.json"},
+                    "build": {"dockerfile": "deployment/wsl/Dockerfile",
+                              "args": {"SOURCE_REVISION": "0" * 40, "BASE_IMAGE": FAKE_PIN}}}
+                if pull_policy:
+                    game["pull_policy"] = pull_policy
+                return json.dumps({"name": "canary-core-qa", "volumes": {
+                    name: {"name": f"canary-core-qa_{name}"} for name in volumes}, "services": {
+                    "database": {"image": IMAGE_LOCK["database"]["ref"], "pull_policy": "never"},
+                    "game": game,
+                    "web": {"image": "canary-core-qa-web:local", "build": {"dockerfile": "deployment/wsl/Web.Dockerfile"}},
+                    "brain": {"image": BRAIN_IMAGE, "network_mode": "none",
+                              "build": {"pull": False, "args": {"SOURCE_REVISION": "0" * 40}}}}})
+            return command
+
+        self.enterContext(patch.dict(os.environ, {"SOURCE_REVISION": "0" * 40}))
+        self.enterContext(patch.dict(IMAGE_LOCK["game_base"], FAKE_GAME_BASE))
+        with patch("preflight.command", side_effect=rendered(image)):
+            self.assertRegex(assert_compose(True, game_pin=image), r"^[0-9a-f]{64}$")
+        self.assertEqual(calls[-1][calls[-1].index("compose.brain-fake.yaml") + 1:][:2], ("-f", "compose.game-pin.yaml"))
+        with patch("preflight.command", side_effect=rendered(image)) as docker, \
+             patch("preflight.GAME_PIN", HERE / "missing-game-pin.yaml"), \
+             self.assertRaisesRegex(RuntimeError, "missing-game-pin.yaml is absent"):
+            assert_compose(True, game_pin=image)
+        docker.assert_not_called()
+        for name, game_image, pull_policy, message in (
+                ("another ID", "sha256:" + "6" * 64, "never", "does not pin the baseline game image"),
+                ("the mutable tag", GAME_TAG, "never", "does not pin the baseline game image"),
+                ("pull allowed", image, None, "pull_policy: never")):
+            with self.subTest(name), patch("preflight.command", side_effect=rendered(game_image, pull_policy)), \
+                 self.assertRaisesRegex(RuntimeError, message):
+                assert_compose(True, game_pin=image)
+        with patch("preflight.command", side_effect=rendered(image)), \
+             self.assertRaisesRegex(RuntimeError, "QA image tags differ"):
+            assert_compose(True)  # the fresh stage-2 render never carries the pin
 
     @needs_docker
     def test_override_renders_isolated_under_adverse_compose_env(self):
@@ -487,6 +572,27 @@ class BrainImageProvenanceTests(unittest.TestCase):
             receipt = json.loads((Path(directory) / "stage2.json").read_text())
         self.assertTrue(receipt["brain_fake"] and receipt["resources_absent"])
         self.assertEqual(receipt["brain_image"], {"id": "sha256:brain", "source_revision": sha})
+        self.assertNotIn("stage2_game", receipt)
+
+    def test_upgrade_receipt_records_the_game_before_and_after(self):
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "stage2.json"
+            upgrade = {"baseline_sha256": "s", "observed": {}}
+            path.write_text(json.dumps({"approved_source_revision": sha, "stage1_upgrade": upgrade}))
+            with patch("preflight.assert_source", return_value=sha), \
+                 patch("preflight.command", side_effect=lambda *a, **k:
+                       f"sha256:brain\t{sha}" if a[1] == "image" else "sha256:brain"), \
+                 patch("stage1_baseline.stage2_game", return_value={"before": "b", "after": "c"}) as game:
+                record_brain_image(sha, path)
+            game.assert_called_once_with(upgrade)
+            self.assertEqual(json.loads(path.read_text())["stage2_game"], {"before": "b", "after": "c"})
+            with patch("preflight.assert_source", return_value=sha), \
+                 patch("preflight.command", side_effect=lambda *a, **k:
+                       f"sha256:brain\t{sha}" if a[1] == "image" else "sha256:brain"), \
+                 patch("stage1_baseline.stage2_game", side_effect=RuntimeError("no rebuild; refused")), \
+                 self.assertRaisesRegex(RuntimeError, "no rebuild"):
+                record_brain_image(sha, path)
 
 
     def test_brain_base_is_locked_and_the_built_image_matches_head(self):

@@ -18,13 +18,17 @@ HERE = Path(__file__).resolve().parent
 PROJECT = "canary-core-qa"
 SERVICES = {"database", "game", "web"}
 VOLUMES = {"database", "game-logs", "authored-data", "website-cache"}
-IMAGES = {"canary-core-qa-game:local", "canary-core-qa-web:local"}
+GAME_TAG = "canary-core-qa-game:local"
+WEB_TAG = "canary-core-qa-web:local"
+IMAGES = {GAME_TAG, WEB_TAG}
 BRAIN_IMAGE = "canary-core-qa-brain:local"
 BRAIN_VOLUMES = {"brain-socket", "brain-ledger"}
 BRAIN_ROOT = Path("/var/lib/canary-human-qa-stage2")
 IMAGE_LOCK = json.loads((HERE / "image-lock.json").read_text())
 RECEIPT = HERE / "runtime/evidence/preflight-receipt.json"
 UPGRADE_RECEIPT = HERE / "runtime/evidence/stage2-upgrade-receipt.json"
+# Stage-2 upgrade only: runs the game of the pinned stage-1 baseline by its exact image ID, never a rebuild.
+GAME_PIN = HERE / "compose.game-pin.yaml"
 GAME_ENTRYPOINT = HERE.parent / "wsl/game-entrypoint.py"
 CONFIG_DIST = HERE.parent.parent / "config.lua.dist"
 SHUTDOWN_FLAG = "GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN"
@@ -158,16 +162,22 @@ def assert_game_config(environment):
     return config
 
 
-def assert_compose(brain_fake=False):
+def assert_compose(brain_fake=False, game_pin=None):
+    """The rendered QA Compose. game_pin (stage-2 upgrade): the baseline game image ID that
+    compose.game-pin.yaml must pin, so the game is never rebuilt, pulled or taken from a mutable tag."""
     env = os.environ.copy()
     revision = env.get("SOURCE_REVISION", "")
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise RuntimeError("SOURCE_REVISION must be the full reviewed commit SHA")
+    if game_pin is not None and (not SHA256_ID.fullmatch(game_pin) or not GAME_PIN.is_file()):
+        raise RuntimeError(f"{GAME_PIN.name} is absent or the baseline game image ID is malformed; "
+                           "the stage-2 upgrade runs the baseline game image by its exact ID")
     for name in ("MARIADB_PASSWORD", "MARIADB_ROOT_PASSWORD", "BOT_PLAYERS_ONLINE"):
         env.pop(name, None)
     data = json.loads(command(
         "docker", "compose", "-p", PROJECT, "-f", "compose.yaml",
-        *(["-f", "compose.brain-fake.yaml"] if brain_fake else []), "--env-file", ".env",
+        *(["-f", "compose.brain-fake.yaml"] if brain_fake else []),
+        *(["-f", GAME_PIN.name] if game_pin is not None else []), "--env-file", ".env",
         "config", "--format", "json", env=env,
     ))
     expected_volumes = VOLUMES | BRAIN_VOLUMES if brain_fake else VOLUMES
@@ -184,8 +194,11 @@ def assert_compose(brain_fake=False):
            for name, item in data.get("networks", {}).items()):
         raise RuntimeError("Compose references a foreign network")
     services = data["services"]
-    if {services["game"].get("image"), services["web"].get("image")} != IMAGES:
-        raise RuntimeError("QA image tags differ from the reviewed stack")
+    if services["web"].get("image") != WEB_TAG or services["game"].get("image") != (game_pin or GAME_TAG):
+        raise RuntimeError("QA image tags differ from the reviewed stack" if game_pin is None else
+                           f"{GAME_PIN.name} does not pin the baseline game image ID {game_pin}")
+    if game_pin is not None and services["game"].get("pull_policy") != "never":
+        raise RuntimeError(f"{GAME_PIN.name} must set pull_policy: never for the pinned game image")
     if services["database"].get("image") != IMAGE_LOCK["database"]["ref"]:
         raise RuntimeError("QA database image differs from the reviewed stack")
     if services["database"].get("pull_policy") != "never":
@@ -262,7 +275,7 @@ def assert_map():
 
 
 def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha, brain_fake=False,
-                  stage1=None):
+                  stage1=None, game_pin=None):
     receipt = {
         "schema_version": 1,
         "checked_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -276,6 +289,9 @@ def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha, 
         "resources_absent": stage1 is None,
         "brain_fake": brain_fake,
         **({"stage1_upgrade": stage1} if stage1 else {}),
+        # The tooling revision is approved_source_revision (HEAD); the game image keeps its own source
+        # revision, recorded in stage1_upgrade.observed and never relabelled as HEAD.
+        **({"game_image_pin": game_pin} if game_pin else {}),
     }
     return save_receipt(path, receipt)
 
@@ -308,17 +324,24 @@ def record_brain_image(approved_revision, receipt_path=None):
     if receipt.get("approved_source_revision") != source or revision != source or running != image_id:
         raise RuntimeError("brain image, its source label and the receipt must match the approved HEAD")
     receipt["brain_image"] = {"id": image_id, "source_revision": revision}
+    if "stage1_upgrade" in receipt:  # upgrade: the game before and after, and the stage-1 identities kept
+        import stage1_baseline
+
+        receipt["stage2_game"] = stage1_baseline.stage2_game(receipt["stage1_upgrade"])
     return save_receipt(receipt_path, receipt)
 
 
 def run_preflight(resources_only=False, approved_revision=None, receipt_path=None, brain_fake=False,
                   upgrade=False):
-    compose_sha = assert_compose(brain_fake or upgrade)
+    game_pin = None
     if upgrade:  # exact comparison with the reviewed stage-1 baseline, pinned by SHA-256 in stage1_baseline
         import stage1_baseline
 
+        game_pin = stage1_baseline.baseline_game_image()
+        compose_sha = assert_compose(True, game_pin=game_pin)
         stage1 = stage1_baseline.assert_stage1_upgrade()
     else:  # fresh first up, stage 1 or stage 2: unchanged
+        compose_sha = assert_compose(brain_fake)
         stage1 = None
         assert_no_resources(brain_fake)
     images = assert_image_lock(brain_fake or upgrade)
@@ -328,7 +351,7 @@ def run_preflight(resources_only=False, approved_revision=None, receipt_path=Non
     source_sha = assert_source(approved_revision)
     map_sha = assert_map()
     return write_receipt(receipt_path or (UPGRADE_RECEIPT if upgrade or brain_fake else RECEIPT), source_sha,
-                         compose_sha, images, myaac, map_sha, brain_fake or upgrade, stage1)
+                         compose_sha, images, myaac, map_sha, brain_fake or upgrade, stage1, game_pin)
 
 
 def main():

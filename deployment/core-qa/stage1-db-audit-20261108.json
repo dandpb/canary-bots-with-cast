@@ -1,0 +1,15 @@
+{
+  "auditor": "Pitagoras - Codex - Wsl",
+  "audited_at_utc": "2026-11-08T00:10:45Z",
+  "explanation": "Auditoria somente leitura, sujeita a revisão. Na baseline pinada havia 2597 player_items no total, dos quais 10 eram de personagens QA (ID >= 66100), portanto 2587 abaixo do piso QA. No recorte atual há 2613 no total e 11 QA, portanto 2602 abaixo do piso QA: aumentos líquidos de 16 no total, 1 em QA e 15 abaixo do piso. O recorte intermediário reportado anteriormente era 2603 itens totais, mas não representa o estado atual. Identidade, origem e autor das linhas adicionais permanecem indeterminados sem chaves, timestamps e binlog; nenhuma atribuição ou aprovação automática decorre das contagens.",
+  "baseline_sha256": "272c35fbab6496376a366565ac81368e8885297c1cc9febf7ef73e7cdd554789",
+  "db_slice": {
+    "counts": {
+      "accounts": 4,
+      "players": 1000,
+      "player_items": 2613,
+      "qa_character_items": 11
+    },
+    "qa_character_projection_sha256": "97eaf219721f0524713c05cee57dd8b966d035613b544a3994c3d099240e7259"
+  }
+}
