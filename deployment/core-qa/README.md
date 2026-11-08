@@ -399,19 +399,66 @@ silêncio. A igualdade exata do recorte é a política decidida e não é afroux
 O recorte se move com o jogo de pé. Ele conta todos os `player_items`, e os 50 bots e
 o save diário os regravam: o total foi 2597 → 2603 → 2613 entre capturas. A
 candidata fixada é só o retrato observado às 00:10:45Z e não promete estabilidade
-futura. Se houver deriva, o gate continua recusando, e o caminho é uma janela de
-quietude:
+futura. Se houver deriva, o gate continua recusando. O caminho concreto só é
+decidido depois de uma revisão.
 
-1. parar o `game` com save (`stop -t 180`), com nenhum humano online;
-2. com o banco estável, auditoria + captura;
-3. revisão da candidata nova e um commit com o pino;
-4. só então o upgrade, com os próprios recibos.
+**Janela de quietude: não utilizável até existir um desenho revisado.** O #87
+registrou esta sequência: parar o `game` com save (`stop -t 180`); auditoria e
+captura com o banco estável; revisão e pino; upgrade. Ela não fecha com o que o
+código confere. Não execute essa sequência. Não recapture várias vezes até o gate
+passar. Os conflitos:
+
+1. **A captura precisa do `game` de pé.** Na baseline atual, o `game` tem
+   proveniência `game_rollout_<UTC>`. Ele só entra numa candidata com
+   `--game-rollout-receipt`, e então `game_rollout()` lê o `config.lua` vivo
+   (`stage1_baseline.py:635`) com `docker exec` no `game`
+   (`stage1_baseline.py:506`). Com o `game` parado, o exec falha e a captura
+   recusa. Sem o recibo, o `game` recriado não está em `web-rollout-after.json`, e
+   a captura recusa do mesmo jeito (`stage1_baseline.py:676-679`).
+2. **O gate compara estado e health exatos.** `observe()` grava `status` e
+   `health` de cada container (`stage1_baseline.py:110`, `stage1_baseline.py:270`).
+   `assert_stage1_upgrade` compara os dois com a baseline
+   (`stage1_baseline.py:337-340`), e o preflight do upgrade o chama
+   (`preflight.py:342`). A baseline fixada tem os três containers
+   `running`/`healthy`. Com o `game` parado, o gate vê `exited` e recusa. Com o
+   `game` religado, os bots voltam a gravar e o recorte se move de novo.
+3. **Uma baseline capturada com o `game` parado quebraria o rollback.**
+   `verify-restored` exige no `game` restaurado o estado e o health da baseline
+   (`stage1_baseline.py:401-411`). Ele também exige as portas 17171–17173
+   escutando (`stage1_baseline.py:418`). O `game` não pode estar parado e
+   escutando ao mesmo tempo.
+4. **Sob o pino atual, nenhuma candidata nova passa, nem com o jogo de pé.** O
+   único recibo do `game` (`game-rollout-after-20261108T000636Z.json`) foi gravado
+   antes da baseline de 00:10:45Z. Ele não pode citar o SHA-256 dela, porque a
+   baseline contém o SHA-256 dele. `game_rollout()` exige que o recibo cite o pino
+   atual (`stage1_baseline.py:630-632`). Só um rollout novo do `game` (gate, build,
+   recriação e recibo) daria um recibo aceito.
+
+Desenhos candidatos, só para revisão (nenhum foi implementado):
+
+- **A. Etapa 1 parada do começo ao fim.** A captura obtém o hash do `config.lua`
+  sem `exec`: por `docker cp` do container parado, ou pelo hash do recibo selado
+  quando ID e `CreatedAt` batem. A baseline registra o `game` `exited` como estado
+  esperado, e o gate roda com o `game` parado. `verify-restored` passa a exigir
+  `running`/`healthy` em vez do estado da baseline. Muda captura, gate e rollback.
+- **B. Duas fases na captura e no gate.** Fase 1, com o `game` de pé e saudável:
+  identidades, health e `config.lua` vivo, num recibo selado. Fase 2, depois de
+  `stop -t 180` no mesmo container (mesmo ID e `CreatedAt`): só o recorte do
+  banco. A baseline guarda o `running`/`healthy` da fase 1, então o rollback não
+  muda. O `up` do upgrade religa o `game`.
+
+Os dois mantêm a igualdade exata do recorte. Os dois também precisam resolver o
+conflito 4: aceitar o recibo encadeado pela baseline fixada, ou exigir um rollout
+novo. Até um desses desenhos ser revisado, deriva continua sendo recusa.
 
 A captura de uma baseline nova:
 
 ```bash
 python3 preflight.py --capture-stage1-baseline --historical-receipt /caminho/para/web-rollout-after.json
 ```
+
+Com a baseline atual, a captura também precisa de `--game-rollout-receipt` e, se
+o recorte diferir do pino, de `--db-audit`. Hoje ela recusa pelo conflito 4 acima.
 
 Só leitura no Docker, ele recusa objeto `brain` ou estranho e grava
 `runtime/evidence/stage1-baseline-candidate-<UTC>.json` sem sobrescrever nada. A
