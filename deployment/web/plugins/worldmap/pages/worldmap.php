@@ -121,7 +121,7 @@ $cfg = [
 		</span>
 		<span class="wm-group" id="wm-floorbox"<?php echo $defaultLayer === 'floors' ? '' : ' hidden'; ?>>
 			<button type="button" class="wm-btn" id="wm-floor-up" title="Up one floor (PageUp)" aria-label="Up one floor (PageUp)">&minus;</button>
-			<span id="wm-floor-label"><?php echo (int)($wmCfg['default_floor'] ?? 7); ?></span>
+			<span id="wm-floor-label" aria-live="polite" aria-atomic="true"><?php echo (int)($wmCfg['default_floor'] ?? 7); ?></span>
 			<button type="button" class="wm-btn" id="wm-floor-down" title="Down one floor (PageDown)" aria-label="Down one floor (PageDown)">&plus;</button>
 		</span>
 		<span class="wm-status" id="wm-status" role="status" aria-live="polite">loading&hellip;</span>
