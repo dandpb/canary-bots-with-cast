@@ -67,6 +67,26 @@ Phases (`<phase> --help` for the inputs):
   rescue-verify    after that start: the rescue runs and is healthy by a check newer than its start
   exec-step        refreshes the gates of one sealed step, claims it, runs its argv once
 
+Quiescent mode (a SEPARATE chain; its phases never mix with the normal ones, in either direction):
+  quiescent-post-build  post-build with ONE waiver: the live DB slice is not compared with the
+                   baseline's historical slice before the stop (it moves while the game runs).
+                   Every other identity, health, config, image, bind and fallback check stays
+  quiescent-pre-stop    the pre-stop gates (same waiver only) and a bounded QA window: a JSON notice
+                   with window_start_utc/window_end_utc, at most QUIESCENT_MAX_WINDOW long. It
+                   seals `quiescent-stop-game`: a stop that only collects evidence, NEVER an up
+  quiescent-slice  after that stop: the game exited 0 with the same StartedAt/RestartCount; DB and
+                   web exact; the strict writers gate; integrity; two reads of the UNCHANGED
+                   s1.db_slice (equal reads only corroborate). Writes the quiescent receipt, which
+                   authorizes nothing by itself
+  quiescent-bundle the quiescent receipt pinned by --quiescent-receipt-sha256 AND an independent
+                   --approval (file + sha256) citing exactly that receipt sha, the stop exec-step
+                   (receipt sha and claim) and the window (notice sha, start, end); then the bundle
+                   gates with the slice compared EXACTLY to the quiescent receipt's full slice
+                   (counts, projection sha, method, sql_sha256) and the strict writers gate. Seals
+                   `quiescent-up`; its exec-step re-checks everything and also claims
+                   `<quiescent receipt sha>.activate` (single use). A game start or the window end
+                   voids the receipt and any approval
+
 Privacy: receipts and the raw game log captures (kept for audit, never replaced by the extracted
 lines) are written 0600 inside a 0700 evidence directory; a SANITIZED copy for sharing holds only
 the strictly parsed bot_hibernation.lua lines and records the raw file's sha256. An existing
@@ -133,6 +153,21 @@ CLOCK_SKEW = timedelta(seconds=30)  # WSL host clock vs the Docker Desktop VM cl
 CLAIMS = "runtime/evidence/stage2-handoff-claims"  # under the manifest's project directory, only
 RUNNING = {"running", "restarting", "paused"}
 HEX64 = re.compile(r"[0-9a-f]{64}")
+QUIESCENT = "quiescent"
+NORMAL = "normal"
+QUIESCENT_PHASES = (
+    "quiescent-post-build",
+    "quiescent-pre-stop",
+    "quiescent-slice",
+    "quiescent-bundle",
+)
+NORMAL_PHASES = ("post-build", "pre-stop", "post-stop", "bundle")
+QUIESCENT_STEPS = ("quiescent-stop-game", "quiescent-up")
+NORMAL_STEPS = ("stop-game", "up")
+STOP_STEPS = ("stop-game", "quiescent-stop-game")
+QUIESCENT_MAX_WINDOW = timedelta(hours=2)  # the game is never stopped indefinitely
+APPROVAL_SCHEMA = "qa-stage2-quiescent-approval-v1"
+APPROVAL_AUDIT_FIELDS = ("auditor", "audited_at_utc", "explanation")
 REVISION = re.compile(r"[0-9a-f]{40}")
 # Docker Desktop on WSL: inspect shows a bind's host path translated, either path for path under
 # /run/desktop/mnt/host/wsl/<distro>/... or as docker-desktop-bind-mounts/<distro>/<sha256 of the
@@ -510,6 +545,9 @@ class Handoff:
         self.refreshed: dict[str, Any] | None = None
         self.session_checked = 0.0
         self.fresh_until = datetime.min.replace(tzinfo=UTC)
+        self.mode = NORMAL
+        self.window_end: datetime | None = None
+        self.expired = ""
 
     # -- static checks ---------------------------------------------------------------------------
 
@@ -793,8 +831,12 @@ class Handoff:
             "tag": brain["tag"],
         }
 
-    def live_gate(self) -> dict[str, Any]:
-        """Running/healthy stage 1 equal to the baseline with the exact DB slice. Only before the stop."""
+    def live_gate(self, historical_slice: bool = True) -> dict[str, Any]:
+        """Running/healthy stage 1 equal to the baseline with the exact DB slice. Only before the stop.
+
+        historical_slice=False is the ONLY quiescent waiver: the live slice is recorded, not
+        compared with the baseline's historical one. Nothing else is waived.
+        """
         s1 = self.s1
         if self.stopped:
             raise RuntimeError(
@@ -812,13 +854,30 @@ class Handoff:
                 "the baseline DB slice was taken with another query; refused"
             )
         now = s1.comparable(s1.observe())
-        changes = s1.differences(s1.comparable(self.baseline), now)
+        expected = s1.comparable(self.baseline)
+        moving = None
+        if not historical_slice:
+            if self.mode != QUIESCENT:
+                raise RuntimeError(
+                    "the historical slice may be waived only in quiescent mode; refused"
+                )
+            moving = now.pop("db_slice", None)
+            expected.pop("db_slice", None)
+        changes = s1.differences(expected, now)
         if changes:
             raise RuntimeError(
                 "stage 1 differs from the pinned baseline; refused:\n"
                 + "\n".join(changes)
             )
-        return dict(now)
+        if historical_slice:
+            return dict(now)
+        return {
+            **now,
+            "db_slice_waived": {
+                "informational_live_slice": moving,
+                "waiver": "historical slice comparison before the stop (quiescent mode only)",
+            },
+        }
 
     def stage1_after_stop(self) -> list[str]:
         """Differences from the baseline once the game is stopped: only the game may be exited.
@@ -1079,6 +1138,88 @@ class Handoff:
             "started_at": live["started_at"],
             "restart_count": live.get("restart_count"),
         }
+
+    def assert_not_restarted(self, start: dict[str, Any]) -> dict[str, Any]:
+        """Since the quiescent stop: the game is exited with the same StartedAt and RestartCount.
+
+        Any start (Docker or a person) changes StartedAt (and a policy restart RestartCount), so it
+        voids the quiescent receipt and any approval of it, for good.
+        """
+        try:
+            live = json.loads(
+                self.qa.command(
+                    "docker", "inspect", self.game["id"], "--format", GAME_START
+                )
+            )
+        except (RuntimeError, ValueError):
+            live = {}
+        if (
+            live.get("id") != self.game["id"]
+            or live.get("status") != "exited"
+            or live.get("started_at") != start.get("started_at")
+            or live.get("restart_count") != start.get("restart_count")
+        ):
+            raise RuntimeError(
+                "the game started again since the quiescent stop (StartedAt/RestartCount "
+                "changed) or is not exited: the quiescent receipt and any approval are void; "
+                "refused"
+            )
+        return {
+            "status": "exited",
+            "started_at": live["started_at"],
+            "restart_count": live["restart_count"],
+        }
+
+    def window(self, notice: Path, notice_sha256: str) -> dict[str, Any]:
+        """The bounded QA window from the coordinator's JSON notice, pinned by its sha256."""
+        raw = read(Path(notice))
+        if (
+            not raw
+            or not HEX64.fullmatch(notice_sha256)
+            or sha256(raw) != notice_sha256
+        ):
+            raise RuntimeError(
+                "the coordinator's window notice is absent or not the given sha256; refused"
+            )
+        try:
+            body = json.loads(raw)
+            start = datetime.fromisoformat(body["window_start_utc"])
+            end = datetime.fromisoformat(body["window_end_utc"])
+        except (ValueError, KeyError, TypeError):
+            raise RuntimeError(
+                "the quiescent window notice must be JSON with window_start_utc and "
+                "window_end_utc; refused"
+            ) from None
+        if (
+            start.utcoffset() != timedelta(0)
+            or end.utcoffset() != timedelta(0)
+            or not start < end
+            or end - start > QUIESCENT_MAX_WINDOW
+        ):
+            raise RuntimeError(
+                "the quiescent window must be UTC, start before its end and last at most "
+                f"{QUIESCENT_MAX_WINDOW}; refused"
+            )
+        found = {
+            "notice_path": str(Path(notice).resolve()),
+            "notice_sha256": notice_sha256,
+            "start_utc": start.isoformat(),
+            "end_utc": end.isoformat(),
+        }
+        if utcnow() < start:
+            raise RuntimeError("the quiescent window has not started; refused")
+        self.check_window(found)
+        return found
+
+    def check_window(self, window: dict[str, Any]) -> None:
+        end = datetime.fromisoformat(window["end_utc"])
+        self.window_end = end
+        if utcnow() >= end:
+            raise RuntimeError(
+                f"the QA window ended at {window['end_utc']}: the quiescent receipt and any "
+                "approval are void for activation; return through the reviewed managed "
+                "return; refused"
+            )
 
     def anchor_diagnostic(self, started_at: str | None = None) -> dict[str, Any]:
         """The native evidence: the script bytes, the raw logs and their LAST anchor diagnostic."""
@@ -1390,10 +1531,14 @@ class Handoff:
         return dict(json.loads(raw))
 
     def stop_gate(
-        self, notice: Path, notice_sha256: str, started_at: str | None = None
+        self,
+        notice: Path,
+        notice_sha256: str,
+        started_at: str | None = None,
+        historical_slice: bool = True,
     ) -> dict[str, Any]:
         """Everything the stop needs, refreshed: live gate, game, fallbacks, binds, human exclusion."""
-        stage1 = self.live_gate()
+        stage1 = self.live_gate(historical_slice)
         game = self.container(self.game["id"])
         if (
             not game
@@ -1415,8 +1560,12 @@ class Handoff:
             "human_absence": people,
         }
 
-    def up_gate(self) -> dict[str, Any]:
-        """Everything the up needs, refreshed: post-stop state EXACT, bundle, render, env, binds."""
+    def up_gate(self, quiescent: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Everything the up needs, refreshed: post-stop state EXACT, bundle, render, env, binds.
+
+        With a quiescent receipt, the slice is compared EXACTLY with its full slice (counts,
+        projection sha, method and sql_sha256) instead of the baseline's historical one.
+        """
         files = self.check_bundle_files()
         env_file = self.check_env_file()
         game = self.assert_game_stopped()
@@ -1429,7 +1578,11 @@ class Handoff:
                 "running/healthy exactly); refused:\n" + "\n".join(changes)
             )
         slice_now = self.s1.db_slice()
-        if slice_now != self.s1.comparable(self.baseline)["db_slice"]:
+        if quiescent is None:
+            expected = self.s1.comparable(self.baseline)["db_slice"]
+        else:
+            slice_now, expected = self.full_slice(slice_now), quiescent["db_slice"]
+        if slice_now != expected:
             raise RuntimeError(
                 "the DB slice drifted since the stop; refused (never accepted implicitly)"
             )
@@ -1454,6 +1607,14 @@ class Handoff:
             "binds": self.bind_equivalence(render),
         }
 
+    def full_slice(self, read_slice: dict[str, Any]) -> dict[str, Any]:
+        """The UNCHANGED s1.db_slice read, with the method and the exact query that produced it."""
+        return {
+            **read_slice,
+            "method": self.s1.DB_SLICE_METHOD,
+            "sql_sha256": self.s1.DB_SLICE_SQL_SHA256,
+        }
+
     # -- receipts ------------------------------------------------------------------------------
 
     def follow(
@@ -1462,8 +1623,13 @@ class Handoff:
         phases: tuple[str, ...],
         expected: str | None = None,
         results: tuple[str, ...] = ("pass",),
+        mode: str | None = NORMAL,
     ) -> dict[str, Any]:
-        """Load a receipt and its whole chain; every link sealed, hashed and from this same handoff."""
+        """Load a receipt and its whole chain; every link sealed, hashed and from this same handoff.
+
+        A chain is quiescent when its root is quiescent-post-build, else normal; no receipt or step
+        of the other mode may appear in it, and a phase of one mode never accepts the other.
+        """
         chain: list[dict[str, Any]] = []
         current: tuple[Path, str | None] | None = (Path(path), expected)
         while current:
@@ -1487,14 +1653,34 @@ class Handoff:
             previous = receipt.get("previous")
             current = (Path(previous["path"]), previous["sha256"]) if previous else None
         head = chain[0]
-        if (
-            head["phase"] not in phases
-            or head["result"] not in results
-            or chain[-1]["phase"] != "post-build"
+        if chain[-1]["phase"] not in ("post-build", "quiescent-post-build"):
+            raise RuntimeError(
+                f"receipt {Path(path).name} does not chain to a post-build; refused"
+            )
+        found = QUIESCENT if chain[-1]["phase"] == "quiescent-post-build" else NORMAL
+        other_phases, other_steps = (
+            (NORMAL_PHASES, NORMAL_STEPS)
+            if found == QUIESCENT
+            else (QUIESCENT_PHASES, QUIESCENT_STEPS)
+        )
+        if any(
+            r["phase"] in other_phases
+            or (r.get("step") or {}).get("name") in other_steps
+            for r in chain
         ):
+            raise RuntimeError(
+                f"receipt {Path(path).name} mixes normal and quiescent phases; refused"
+            )
+        if mode is not None and mode != found:
+            raise RuntimeError(
+                f"receipt {Path(path).name} is from a {found} chain; this {mode} phase never "
+                "accepts it; refused"
+            )
+        if head["phase"] not in phases or head["result"] not in results:
             raise RuntimeError(
                 f"receipt {Path(path).name} is {head['phase']}/{head['result']}, expected {'/'.join(phases)}; refused"
             )
+        self.mode = found
         self.chain = chain
         self.previous = {
             "path": str(Path(path).resolve()),
@@ -1502,12 +1688,13 @@ class Handoff:
             "phase": head["phase"],
         }
         self.stopped = any(
-            r["phase"] == "exec-step" and r["step"]["name"] == "stop-game"
-            for r in chain
+            r["phase"] == "exec-step" and r["step"]["name"] in STOP_STEPS for r in chain
         )
         return head
 
     def find(self, phase: str) -> dict[str, Any]:
+        if phase == "post-build" and self.mode == QUIESCENT:
+            phase = "quiescent-post-build"  # the root of a quiescent chain
         return next(receipt for receipt in self.chain if receipt["phase"] == phase)
 
     def executed(self, step: str) -> dict[str, Any]:
@@ -1564,8 +1751,9 @@ class Handoff:
     # -- phases --------------------------------------------------------------------------------
 
     def post_build(
-        self, receipts: dict[str, Path] | None, render: Path
+        self, receipts: dict[str, Path] | None, render: Path, quiescent: bool = False
     ) -> tuple[Path, str]:
+        self.mode = QUIESCENT if quiescent else NORMAL
         for key, given in (receipts or {}).items():
             pinned = self.plan["receipts"].get(key) or {}
             if (
@@ -1618,13 +1806,14 @@ class Handoff:
             )
         env_file = self.check_env_file()
         image = self.assert_brain_image()
-        stage1 = self.live_gate()
+        stage1 = self.live_gate(historical_slice=not quiescent)
         pins = self.assert_stage1_pins()
         fallbacks = self.fallbacks()
         binds = self.bind_equivalence(json.loads(raw))
         return self.write(
-            "post-build",
+            "quiescent-post-build" if quiescent else "post-build",
             {
+                **({"mode": QUIESCENT} if quiescent else {}),
                 "receipts": bound,
                 "sanitized_render": {
                     "path": str(render.resolve()),
@@ -1648,6 +1837,15 @@ class Handoff:
         notice_sha256: str,
     ) -> tuple[Path, str]:
         self.follow(previous, ("post-build",))
+        attestation = self.attestation(attested_by, attested_at)
+        gate = self.stop_gate(notice, notice_sha256)
+        return self.write(
+            "pre-stop",
+            {"attestation": attestation, **gate},
+            step=("stop-game", [*STOP, gate["game"]["id"]]),
+        )
+
+    def attestation(self, attested_by: str, attested_at: str) -> dict[str, str]:
         try:
             when = datetime.fromisoformat(attested_at)
         except ValueError:
@@ -1665,18 +1863,38 @@ class Handoff:
             raise RuntimeError(
                 "the stop needs a fresh human attestation: --attested-by and a UTC --attested-at; refused"
             )
-        gate = self.stop_gate(notice, notice_sha256)
+        return {"by": attested_by.strip(), "at_utc": when.isoformat()}
+
+    def quiescent_pre_stop(
+        self,
+        previous: Path,
+        attested_by: str,
+        attested_at: str,
+        notice: Path,
+        notice_sha256: str,
+    ) -> tuple[Path, str]:
+        """The pre-stop gates with the one waiver, inside a bounded window. Seals a stop that only
+        collects evidence: nothing in this chain runs an up without an independent approval."""
+        self.follow(previous, ("quiescent-post-build",), mode=QUIESCENT)
+        attestation = self.attestation(attested_by, attested_at)
+        window = self.window(notice, notice_sha256)
+        gate = self.stop_gate(notice, notice_sha256, historical_slice=False)
         return self.write(
-            "pre-stop",
+            "quiescent-pre-stop",
             {
-                "attestation": {"by": attested_by.strip(), "at_utc": when.isoformat()},
+                "mode": QUIESCENT,
+                "authorizes": "only the stop that collects quiescent evidence; never an up",
+                "attestation": attestation,
+                "window": window,
                 **gate,
             },
-            step=("stop-game", [*STOP, gate["game"]["id"]]),
+            step=("quiescent-stop-game", [*STOP, gate["game"]["id"]]),
         )
 
     def post_stop(self, previous: Path) -> tuple[Path, str]:
         self.follow(previous, ("exec-step",), results=("pass", "hold"))
+        if self.mode != NORMAL:
+            raise RuntimeError("post-stop never accepts a quiescent chain; refused")
         run = self.executed("stop-game")
         before, problems = self.find("pre-stop")["game"], []
         after = self.container(before["id"])
@@ -1712,7 +1930,9 @@ class Handoff:
         return self.hold("post-stop", {"game": after, "db_slice": slice_now}, problems)
 
     def assert_game_stopped(self) -> dict[str, Any]:
-        before = self.find("pre-stop")["game"]
+        before = self.find(
+            "quiescent-pre-stop" if self.mode == QUIESCENT else "pre-stop"
+        )["game"]
         now = self.container(before["id"])
         if (
             not now
@@ -1830,11 +2050,249 @@ class Handoff:
             step=("up", self.plan["up"]),
         )
 
+    def quiescent_slice(self, previous: Path) -> tuple[Path, str]:
+        """After the evidence stop: the quiescent receipt. It authorizes nothing by itself."""
+        self.follow(previous, ("exec-step",), results=("pass", "hold"), mode=QUIESCENT)
+        run = self.executed("quiescent-stop-game")
+        pre = self.find("quiescent-pre-stop")
+        before, start = pre["game"], pre["human_absence"]["game"]
+        after, problems = self.container(before["id"]), []
+        if run["exit_code"] != 0:
+            problems.append(f"docker stop exited {run['exit_code']}")
+        if not after:
+            problems.append(f"game container {before['id'][:12]} is gone")
+        else:
+            problems += [
+                f"game {key} changed: {before[key]!r} -> {after[key]!r}"
+                for key in (*IDENTITY, "config_sha256")
+                if after[key] != before[key]
+            ]
+            if after["status"] != "exited" or after["exit_code"] != 0:
+                problems.append(
+                    f"game is {after['status']} with exit code {after['exit_code']}, expected a graceful save (exited, 0)"
+                )
+        first = second = writers = None
+        integrity: list[str] | None = None
+        checks: list[tuple[str, Any]] = [
+            ("restart", lambda: self.assert_not_restarted(start)),
+            ("window", lambda: self.check_window(pre["window"])),
+            ("objects", lambda: self.s1.qa_objects(stage2=False)),
+            ("brain", self.assert_brain_image),
+        ]
+        for _name, check in checks:
+            try:
+                check()
+            except RuntimeError as error:
+                problems.append(str(error))
+        try:  # DB and web exactly as before; only the game moved to exited
+            problems += self.stage1_after_stop()
+            first = self.full_slice(self.s1.db_slice())
+            writers = self.writers()  # strict: any other connection refuses
+            integrity = list(self.s1.db_integrity())
+            problems += integrity
+            second = self.full_slice(self.s1.db_slice())
+        except RuntimeError as error:
+            problems.append(str(error))
+        if first is not None and second is not None and first != second:
+            problems.append(
+                "two reads of the DB slice differ: the DB is not stable; HOLD"
+            )
+        historical = self.s1.comparable(self.baseline)["db_slice"]
+        stop_link = dict(self.previous or {})
+        return self.hold(
+            "quiescent-slice",
+            {
+                "mode": QUIESCENT,
+                "authorizes": (
+                    "nothing by itself: activation needs an independent --approval citing this "
+                    "receipt sha, the stop exec-step (receipt sha and claim) and the window"
+                ),
+                "baseline_sha256": self.s1.BASELINE_SHA256,
+                "game": after,
+                "game_start": start,
+                "stop_exec_step": {
+                    "path": stop_link.get("path"),
+                    "sha256": stop_link.get("sha256"),
+                    "claim": run.get("claim"),
+                },
+                "window": pre["window"],
+                "db_slice": first,
+                "db_writers": writers,
+                "db_integrity": integrity
+                if integrity
+                else ("ok" if integrity == [] else None),
+                "corroboration": {
+                    "second_read": second,
+                    "equal": first is not None and first == second,
+                    "note": "two equal reads corroborate; they never prove the absence of writers",
+                },
+                "supersedes_db_slice": historical,
+                "historical_slice_equal": first is not None
+                and {k: first[k] for k in historical} == historical,
+            },
+            problems,
+        )
+
+    def activation(
+        self,
+        quiescent: dict[str, Any],
+        quiescent_sha256: str,
+        approval: Path,
+        approval_sha256: str,
+    ) -> dict[str, Any]:
+        """The independent approval cites EXACTLY this receipt, its stop exec-step and its window.
+
+        The CLI sha only pins bytes; the approval file is the link to the external review of the
+        slice and its audit. Every reference is checked against the chain and the claim files.
+        """
+        raw = read(Path(approval))
+        try:
+            body = json.loads(raw) if raw else {}
+        except ValueError:
+            body = {}
+        if (
+            not raw
+            or not HEX64.fullmatch(approval_sha256)
+            or sha256(raw) != approval_sha256
+            or not isinstance(body, dict)
+            or body.get("schema") != APPROVAL_SCHEMA
+        ):
+            raise RuntimeError(
+                "the approval is absent, not the given sha256 or not a quiescent approval; refused"
+            )
+        self.outside_source(Path(approval))
+        stop, window = quiescent["stop_exec_step"], quiescent["window"]
+        try:
+            approved_at = datetime.fromisoformat(body.get("approved_at_utc", ""))
+        except (TypeError, ValueError):
+            approved_at = None
+        found_audit = body.get("audit")
+        audit: dict[str, Any] = found_audit if isinstance(found_audit, dict) else {}
+        reviewer = body.get("reviewer")
+        if (
+            not isinstance(reviewer, str)
+            or not reviewer.strip()
+            or not all(
+                isinstance(audit.get(key), str) and audit[key].strip()
+                for key in APPROVAL_AUDIT_FIELDS
+            )
+        ):
+            raise RuntimeError(
+                "the approval needs a reviewer and an audit (auditor, audited_at_utc, "
+                "explanation); refused"
+            )
+        if (
+            approved_at is None
+            or approved_at.utcoffset() != timedelta(0)
+            or approved_at < datetime.fromisoformat(quiescent["recorded_at_utc"])
+            or approved_at > utcnow()
+            or approved_at >= datetime.fromisoformat(window["end_utc"])
+        ):
+            raise RuntimeError(
+                "the approval time is not UTC, after the quiescent receipt and inside the "
+                "window; refused"
+            )
+        if body.get("quiescent_receipt_sha256") != quiescent_sha256:
+            raise RuntimeError("the approval cites another quiescent receipt; refused")
+        if body.get("stop_exec_step") != {
+            "receipt_sha256": stop["sha256"],
+            "claim": stop["claim"],
+        }:
+            raise RuntimeError(
+                "the approval cites another stop exec-step or claim; refused"
+            )
+        if body.get("window") != {
+            "notice_sha256": window["notice_sha256"],
+            "start_utc": window["start_utc"],
+            "end_utc": window["end_utc"],
+        }:
+            raise RuntimeError("the approval cites another window; refused")
+        if body.get("db_slice") != quiescent["db_slice"]:
+            raise RuntimeError(
+                "the approval does not name the receipt's exact full slice; refused"
+            )
+        run = self.chain_link("exec-step", stop["sha256"])
+        canonical = (
+            self.claims / f"{run['previous']['sha256']}.quiescent-stop-game.claim"
+        )
+        if (
+            quiescent["previous"]["sha256"] != stop["sha256"]
+            or run["step"]["name"] != "quiescent-stop-game"
+            or run["claim"] != stop["claim"]
+            or Path(stop["claim"]) != canonical
+        ):
+            raise RuntimeError(
+                "the quiescent receipt does not chain to its stop exec-step and canonical claim; refused"
+            )
+        result = json.loads(read(Path(stop["claim"]).with_suffix(".result")) or b"{}")
+        if result.get("sha256") != stop["sha256"] or result.get("exit_code") != 0:
+            raise RuntimeError(
+                "the stop claim has no result naming that exec-step; refused"
+            )
+        pre = self.find("quiescent-pre-stop")
+        if (
+            quiescent["baseline_sha256"] != self.s1.BASELINE_SHA256
+            or pre["window"] != window
+            or quiescent["db_slice"] is None
+            or quiescent["db_slice"].get("sql_sha256") != self.s1.DB_SLICE_SQL_SHA256
+            or quiescent["db_slice"].get("method") != self.s1.DB_SLICE_METHOD
+        ):
+            raise RuntimeError(
+                "the quiescent receipt is not bound to this baseline, window and slice method; refused"
+            )
+        self.check_window(window)
+        self.assert_not_restarted(quiescent["game_start"])
+        return {
+            "path": str(Path(approval).resolve()),
+            "sha256": approval_sha256,
+            "reviewer": reviewer.strip(),
+            "approved_at_utc": approved_at.isoformat(),
+            "audit": {key: audit[key] for key in APPROVAL_AUDIT_FIELDS},
+        }
+
+    def chain_link(self, phase: str, link_sha256: str) -> dict[str, Any]:
+        """The receipt of the loaded chain with this phase whose file has this sha256."""
+        for receipt, below in zip(self.chain, self.chain[1:], strict=False):
+            if below["phase"] == phase and receipt["previous"]["sha256"] == link_sha256:
+                return below
+        raise RuntimeError(f"no {phase} receipt with that sha256 in the chain; refused")
+
+    def quiescent_bundle(
+        self,
+        quiescent: Path,
+        quiescent_sha256: str,
+        approval: Path,
+        approval_sha256: str,
+    ) -> tuple[Path, str]:
+        """The quiescent receipt pinned by sha AND approved independently; then the bundle gates."""
+        head = self.follow(
+            quiescent, ("quiescent-slice",), expected=quiescent_sha256, mode=QUIESCENT
+        )
+        approved = self.activation(head, quiescent_sha256, approval, approval_sha256)
+        gate = self.up_gate(head)
+        return self.write(
+            "quiescent-bundle",
+            {
+                "mode": QUIESCENT,
+                "quiescent_receipt": {
+                    "path": str(Path(quiescent).resolve()),
+                    "sha256": quiescent_sha256,
+                },
+                "approval": approved,
+                **gate,
+                "replaces": "preflight.assert_compose (3 files, brain build/tag) for this 4-file render by image IDs",
+            },
+            step=("quiescent-up", self.plan["up"]),
+        )
+
     def fallback_plan(
         self, previous: Path, rescue_id: str | None = None, receipt: Path | None = None
     ) -> tuple[Path, str]:
         self.follow(
-            previous, ("post-stop", "bundle", "exec-step"), results=("pass", "hold")
+            previous,
+            ("post-stop", "bundle", "exec-step", "quiescent-slice", "quiescent-bundle"),
+            results=("pass", "hold"),
+            mode=None,
         )
         if not self.stopped:
             raise RuntimeError(
@@ -1864,7 +2322,7 @@ class Handoff:
     def fallback_verify(
         self, previous: Path, rescue_id: str | None = None, receipt: Path | None = None
     ) -> tuple[Path, str]:
-        head = self.follow(previous, ("fallback-plan", "exec-step"))
+        head = self.follow(previous, ("fallback-plan", "exec-step"), mode=None)
         if head["phase"] == "fallback-plan" and head.get("step"):
             raise RuntimeError(
                 "run the sealed stop of the new containers first; refused"
@@ -1880,7 +2338,7 @@ class Handoff:
 
     def rescue_verify(self, previous: Path) -> tuple[Path, str]:
         """After the single start: the rescue counts as usable only on a fresh health check."""
-        self.follow(previous, ("exec-step",))
+        self.follow(previous, ("exec-step",), mode=None)
         run = self.executed("start-rescue")
         problems, health, live = [], None, self.container(RESCUE_ID)
         try:
@@ -1908,7 +2366,7 @@ class Handoff:
     def precheck(self, receipt: dict[str, Any], argv: list[str]) -> None:
         """Refresh, right before the mutation, every gate the step depends on."""
         name = receipt["step"]["name"]
-        if name == "stop-game":
+        if name in STOP_STEPS:
             game = receipt["game"]
             if (
                 argv != [*STOP, game["id"]]
@@ -1920,8 +2378,13 @@ class Handoff:
                 )
             people = receipt["human_absence"]
             notice = people["window_notice"]
+            if name == "quiescent-stop-game":
+                self.check_window(receipt["window"])
             gate = self.stop_gate(
-                Path(notice["path"]), notice["sha256"], people["game"]["started_at"]
+                Path(notice["path"]),
+                notice["sha256"],
+                people["game"]["started_at"],
+                historical_slice=name == "stop-game",
             )
             self.refreshed = gate["human_absence"]
             self.deadline = self.session_checked + STOP_DEADLINE
@@ -1933,6 +2396,23 @@ class Handoff:
             if argv != self.plan["up"]:
                 raise RuntimeError("the up argv is not the pinned 4-file argv; refused")
             self.up_gate()
+        elif name == "quiescent-up":
+            if argv != self.plan["up"]:
+                raise RuntimeError("the up argv is not the pinned 4-file argv; refused")
+            pinned = receipt["quiescent_receipt"]
+            quiescent = self.chain[1]
+            if (
+                quiescent["phase"] != "quiescent-slice"
+                or receipt["previous"]["sha256"] != pinned["sha256"]
+            ):
+                raise RuntimeError(
+                    "the quiescent bundle does not chain to its pinned quiescent receipt; refused"
+                )
+            approval = receipt["approval"]
+            self.activation(
+                quiescent, pinned["sha256"], Path(approval["path"]), approval["sha256"]
+            )
+            self.up_gate(quiescent)  # strict writers gate, right before the up
         elif name == "stop-new":
             ids = [row["id"] for row in receipt["new_containers"]]
             if (
@@ -1954,11 +2434,16 @@ class Handoff:
         else:
             raise RuntimeError(f"unknown step {name}; refused")
 
-    def claim_paths(self, receipt_sha256: str, step: dict[str, Any]) -> list[Path]:
-        """Canonical claim files: the receipt's step, and for the rescue start the container itself."""
+    def claim_paths(self, receipt_sha256: str, receipt: dict[str, Any]) -> list[Path]:
+        """Canonical claim files: the receipt's step, for the rescue start the container itself,
+        and for a quiescent up the quiescent receipt (single use, whatever bundle cites it)."""
+        step = receipt["step"]
         paths = [self.claims / f"{receipt_sha256}.{step['name']}.claim"]
         if step["name"] == "start-rescue":
             paths.append(self.claims / f"start-rescue.{RESCUE_ID}.claim")
+        if step["name"] == "quiescent-up":
+            pinned = receipt["quiescent_receipt"]["sha256"]
+            paths.append(self.claims / f"{pinned}.activate.claim")
         return paths
 
     def claimed(self, path: Path) -> str:
@@ -1993,6 +2478,12 @@ class Handoff:
         a result saying it was not executed: the atomic-claim rule (one claim, never retried)
         is kept, and the stop needs a new pre-stop receipt.
         """
+        if self.window_end is not None and utcnow() >= self.window_end:
+            self.expired = "QA window expired"
+            raise RuntimeError(
+                "the QA window ended: the quiescent receipt and any approval are void; "
+                "refused, no mutation"
+            )
         if self.deadline is None:
             return
         now = utcnow()
@@ -2001,6 +2492,7 @@ class Handoff:
             or now > self.fresh_until
             or now - datetime.fromisoformat(receipt["recorded_at_utc"]) > STEP_MAX_AGE
         ):
+            self.expired = "stop deadline expired"
             raise RuntimeError(
                 f"the stop missed its {STOP_DEADLINE:g} s deadline after the final session "
                 "check (or another freshness limit); refused, no mutation"
@@ -2009,13 +2501,21 @@ class Handoff:
     def exec_step(self, path: Path, expected: str) -> tuple[Path, str]:
         receipt = self.follow(
             path,
-            ("pre-stop", "bundle", "fallback-plan", "fallback-verify"),
+            (
+                "pre-stop",
+                "bundle",
+                "fallback-plan",
+                "fallback-verify",
+                "quiescent-pre-stop",
+                "quiescent-bundle",
+            ),
             expected=expected,
+            mode=None,
         )
         step = receipt.get("step")
         if not step or digest(step["argv"]) != step["argv_sha256"]:
             raise RuntimeError(f"receipt {path.name} seals no valid step; refused")
-        claims = self.claim_paths(expected, step)
+        claims = self.claim_paths(expected, receipt)
         for claim in claims:  # early answer; the atomic claim below is what decides
             if claim.exists():
                 raise RuntimeError(self.claimed(claim))
@@ -2026,7 +2526,7 @@ class Handoff:
             raise RuntimeError(
                 f"receipt {path.name} is stale; rerun its phase; refused"
             )
-        self.deadline, self.refreshed = None, None
+        self.deadline, self.refreshed, self.window_end = None, None, None
         self.precheck(receipt, step["argv"])
         self.within_deadline(
             receipt
@@ -2048,7 +2548,9 @@ class Handoff:
             for claim in claims:
                 create_exclusive(
                     claim.with_suffix(".result"),
-                    b'{"executed": false, "reason": "stop deadline expired"}\n',
+                    (
+                        json.dumps({"executed": False, "reason": self.expired}) + "\n"
+                    ).encode(),
                 )
             raise
         started = utcnow()
@@ -2137,33 +2639,67 @@ def main() -> None:
             help="optional: must be the manifest's absolute path",
         )
     post_build.add_argument("--sanitized-render", type=Path, required=True)
-    pre_stop = phases.add_parser("pre-stop")
-    pre_stop.add_argument(
-        "--attested-by",
+    quiescent_post_build = phases.add_parser("quiescent-post-build")
+    for key in RECEIPT_KEYS:
+        quiescent_post_build.add_argument(
+            f"--{key.replace('_', '-')}",
+            type=Path,
+            help="optional: must be the manifest's absolute path",
+        )
+    quiescent_post_build.add_argument("--sanitized-render", type=Path, required=True)
+    stops = {
+        name: phases.add_parser(name) for name in ("pre-stop", "quiescent-pre-stop")
+    }
+    for name, sub in stops.items():
+        sub.add_argument(
+            "--attested-by",
+            required=True,
+            help="the person in the session who authorizes the stop",
+        )
+        sub.add_argument(
+            "--attested-at",
+            required=True,
+            help="UTC time of that authorization, ISO 8601",
+        )
+        sub.add_argument(
+            "--window-notice",
+            type=Path,
+            required=True,
+            help="the coordinator's window notice (file)"
+            + (
+                "; JSON with window_start_utc and window_end_utc"
+                if name.startswith("quiescent")
+                else ""
+            ),
+        )
+        sub.add_argument(
+            "--window-notice-sha256", required=True, help="sha256 of that file"
+        )
+    quiescent_bundle = phases.add_parser("quiescent-bundle")
+    quiescent_bundle.add_argument("--quiescent-receipt", type=Path, required=True)
+    quiescent_bundle.add_argument(
+        "--quiescent-receipt-sha256",
         required=True,
-        help="the person in the session who authorizes the stop",
+        help="pins the bytes; it is not the approval",
     )
-    pre_stop.add_argument(
-        "--attested-at", required=True, help="UTC time of that authorization, ISO 8601"
-    )
-    pre_stop.add_argument(
-        "--window-notice",
+    quiescent_bundle.add_argument(
+        "--approval",
         type=Path,
         required=True,
-        help="the coordinator's window notice (file)",
+        help="the independent approval JSON (" + APPROVAL_SCHEMA + ")",
     )
-    pre_stop.add_argument(
-        "--window-notice-sha256", required=True, help="sha256 of that file"
-    )
+    quiescent_bundle.add_argument("--approval-sha256", required=True)
     for name in (
         "pre-stop",
+        "quiescent-pre-stop",
         "post-stop",
+        "quiescent-slice",
         "bundle",
         "fallback-plan",
         "fallback-verify",
         "rescue-verify",
     ):
-        sub = pre_stop if name == "pre-stop" else phases.add_parser(name)
+        sub = stops.get(name) or phases.add_parser(name)
         sub.add_argument("--previous", type=Path, required=True)
         if name.startswith("fallback"):
             sub.add_argument("--rescue-id", help="optional: must be the manifest's")
@@ -2185,11 +2721,16 @@ def main() -> None:
         args.adapter_revision,
         args.adapter_repo,
     )
-    if args.phase == "post-build":
+    if args.phase in ("post-build", "quiescent-post-build"):
         given = {key: getattr(args, key) for key in RECEIPT_KEYS if getattr(args, key)}
-        path, sha = handoff.post_build(given, args.sanitized_render)
-    elif args.phase == "pre-stop":
-        path, sha = handoff.pre_stop(
+        path, sha = handoff.post_build(
+            given, args.sanitized_render, quiescent=args.phase == "quiescent-post-build"
+        )
+    elif args.phase in ("pre-stop", "quiescent-pre-stop"):
+        phase = (
+            handoff.pre_stop if args.phase == "pre-stop" else handoff.quiescent_pre_stop
+        )
+        path, sha = phase(
             args.previous,
             args.attested_by,
             args.attested_at,
@@ -2198,6 +2739,15 @@ def main() -> None:
         )
     elif args.phase == "post-stop":
         path, sha = handoff.post_stop(args.previous)
+    elif args.phase == "quiescent-slice":
+        path, sha = handoff.quiescent_slice(args.previous)
+    elif args.phase == "quiescent-bundle":
+        path, sha = handoff.quiescent_bundle(
+            args.quiescent_receipt,
+            args.quiescent_receipt_sha256,
+            args.approval,
+            args.approval_sha256,
+        )
     elif args.phase == "bundle":
         path, sha = handoff.bundle(args.previous)
     elif args.phase == "fallback-plan":
