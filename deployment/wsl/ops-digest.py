@@ -20,7 +20,7 @@ Run it from Windows or from WSL; it talks to Docker either way:
 
     python deployment/wsl/ops-digest.py
     python deployment/wsl/ops-digest.py --json
-    python deployment/wsl/ops-digest.py --since 60m --out digest.md
+    python deployment/wsl/ops-digest.py --window 60m --out digest.md
 """
 
 import argparse
@@ -47,6 +47,7 @@ MIN_PLAYERS_ONLINE = 10
 # Canary's logger uses year-day-month, not ISO year-month-day. Parse that
 # contract before windowing; swapping these fields creates a false clock skew.
 APP_TIME_PATTERN = re.compile(r"\[(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})")
+DOCKER_TIME_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2}T[0-9:.]+Z)\s")
 
 # Canary logs look like "[2026-06-11 22:34:03.843] [info] ...". Match on the
 # level marker, not on words such as "failed" that also appear inside metrics
@@ -351,6 +352,32 @@ def app_time(line):
         return None
 
 
+def log_time(line):
+    stamp = app_time(line)
+    if stamp is not None:
+        return stamp
+    match = DOCKER_TIME_PATTERN.match(line)
+    if match:
+        try:
+            return (
+                datetime.fromisoformat(match.group(1))
+                .astimezone(UTC)
+                .replace(tzinfo=None)
+            )
+        except ValueError:
+            pass
+    return None
+
+
+def log_error(line):
+    payload = DOCKER_TIME_PATTERN.sub("", line, count=1)
+    return bool(
+        ERROR_PATTERN.search(payload)
+        or TRACEBACK_PATTERN.search(payload)
+        or payload.startswith("Companion service stopped:")
+    )
+
+
 def scan_logs(containers, service, window_seconds):
     """Cluster recent error lines into signatures and read save health.
 
@@ -362,23 +389,35 @@ def scan_logs(containers, service, window_seconds):
     if not info:
         return None, f"{service} service is not part of the deployment"
     out, err, code = run(
-        ["docker", "logs", "--tail", "5000", info["container"]], timeout=45
+        ["docker", "logs", "--timestamps", "--tail", "5000", info["container"]],
+        timeout=45,
     )
-    if code != 0 and not out:
+    if code != 0:
         return None, err.strip() or f"exit {code}"
 
-    lines = out.splitlines()
-    stamps = [stamp for stamp in (app_time(line) for line in lines) if stamp]
+    combined = out + "\n" + err
+    lines = [line for line in combined.splitlines() if line]
+    stamps = [stamp for stamp in (log_time(line) for line in lines) if stamp]
     newest = max(stamps) if stamps else None
     oldest = min(stamps) if stamps else None
     cutoff = (newest - timedelta(seconds=window_seconds)) if newest else None
+    if lines and newest is None:
+        return (
+            None,
+            f"{service} log tail has no parseable timestamp; error assessment unavailable",
+        )
 
     selected = []
     unparsed = 0
     for line in lines:
-        stamp = app_time(line)
+        stamp = log_time(line)
         if stamp is None:
             unparsed += 1
+            if log_error(line):
+                return (
+                    None,
+                    f"{service} log contains an error without a timestamp; window unavailable",
+                )
             continue
         if cutoff is None or stamp >= cutoff:
             selected.append(line)
@@ -387,7 +426,7 @@ def scan_logs(containers, service, window_seconds):
     errors = 0
     warnings = 0
     for line in selected:
-        is_error = bool(ERROR_PATTERN.search(line) or TRACEBACK_PATTERN.search(line))
+        is_error = log_error(line)
         if is_error:
             errors += 1
         elif WARNING_PATTERN.search(line):
@@ -414,9 +453,9 @@ def scan_logs(containers, service, window_seconds):
             "skew_seconds": int(skew),
         }
     if service == "game":
-        saves = SAVE_PATTERN.findall(out)
-        saved = SAVED_PATTERN.findall(out)
-        hibernation = HIBERNATION_PATTERN.findall(out)
+        saves = SAVE_PATTERN.findall(combined)
+        saved = SAVED_PATTERN.findall(combined)
+        hibernation = HIBERNATION_PATTERN.findall(combined)
         result["save_health"] = {
             "last_save_count": int(saves[-1]) if saves else None,
             "last_save_milliseconds": float(saved[-1]) if saved else None,
@@ -540,6 +579,11 @@ def evaluate(report):
         if order[level] > order[severity]:
             severity = level
 
+    for warning in report.get("warnings", []):
+        escalate("amber")
+        findings.append(f"collector evidence incomplete: {warning}")
+        actions.append("resolve the collector warning before certifying release health")
+
     for service in report["services"]:
         if service["state"] != "running":
             escalate("red")
@@ -594,12 +638,17 @@ def evaluate(report):
     else:
         observation = live.get("last_observation")
         age = None
-        if observation:
+        if observation is not None:
             try:
                 age = int(datetime.now(UTC).timestamp() - float(observation))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 age = None
-        if age is not None and age > 60:
+        if age is None or age < -5:
+            escalate("amber")
+            findings.append(
+                "the live observation timestamp is unavailable or in the future"
+            )
+        elif age > 60:
             escalate("red")
             findings.append(f"the Grizzle observation is stale ({age}s old)")
             actions.append("confirm the brain worker is still consuming events")
@@ -607,16 +656,35 @@ def evaluate(report):
             report["grizzle_age_seconds"] = age
 
     persisted = report.get("grizzle_persisted")
+    if not persisted:
+        escalate("amber")
+        findings.append(
+            "persisted player progress is unavailable; durability is unverified"
+        )
     if live and persisted:
         live_xp = live.get("xp")
         live_level = live.get("level")
-        if live_xp is not None and live_xp > persisted["experience"]:
+        numbers = (
+            live_xp,
+            live_level,
+            persisted.get("experience"),
+            persisted.get("level"),
+        )
+        if not all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            for value in numbers
+        ):
+            escalate("amber")
+            findings.append(
+                "live or saved progress evidence is incomplete; comparison unavailable"
+            )
+        elif live_xp > persisted["experience"] or live_level > persisted["level"]:
             escalate("amber")
             findings.append(
                 f"live XP {live_xp} is ahead of persisted XP {persisted['experience']} "
                 f"(level {live_level} vs {persisted['level']}) - unsaved progress pending"
             )
-        elif live_xp is not None and live_xp < persisted["experience"]:
+        elif live_xp < persisted["experience"] or live_level < persisted["level"]:
             escalate("red")
             findings.append(
                 f"live XP {live_xp} is behind persisted XP {persisted['experience']} "

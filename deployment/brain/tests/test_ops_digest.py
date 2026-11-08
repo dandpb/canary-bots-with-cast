@@ -1,7 +1,7 @@
 """Exercise the operational digest's application-log date contract without Docker."""
 
 import importlib.util
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -49,7 +49,62 @@ def test_month_boundary_log_window_keeps_only_current_minute():
     assert command.call_args.args[0] == [
         "docker",
         "logs",
+        "--timestamps",
         "--tail",
         "5000",
         "fake-game",
     ]
+
+
+def test_worker_fatal_stderr_is_counted_using_docker_utc_time():
+    stderr = "2026-11-08T12:03:07.198960060Z Companion service stopped: RuntimeError\n"
+    with patch.object(DIGEST, "run", return_value=("", stderr, 0)):
+        report, error = DIGEST.scan_logs(
+            {"brain": {"container": "fake-brain"}}, "brain", 60
+        )
+    assert error is None
+    assert report["error_lines"] == 1
+    assert report["lines_in_window"] == 1
+    assert report["log_clock"]["newest_entry"] == "2026-11-08T12:03:07.198960"
+
+
+def test_unscannable_worker_failure_degrades_collector_instead_of_zero_errors():
+    with patch.object(
+        DIGEST, "run", return_value=("", "Companion service stopped: RuntimeError\n", 0)
+    ):
+        report, error = DIGEST.scan_logs(
+            {"brain": {"container": "fake-brain"}}, "brain", 60
+        )
+    assert report is None
+    assert "timestamp" in error
+
+
+def healthy_report():
+    return {
+        "services": [
+            {"service": "game", "state": "running", "health": "healthy", "restarts": 0}
+        ],
+        "warnings": [],
+        "status": {"players_online": 997},
+        "grizzle_live": {
+            "xp": 100,
+            "level": 2,
+            "last_observation": datetime.now(UTC).timestamp(),
+        },
+        "grizzle_persisted": {"experience": 100, "level": 2},
+    }
+
+
+def test_persisted_read_failure_cannot_report_green():
+    assert DIGEST.evaluate(healthy_report())["verdict"] == "GREEN"
+    report = healthy_report()
+    report["grizzle_persisted"] = None
+    report["warnings"] = ["persisted player row unreadable: access denied"]
+    assert DIGEST.evaluate(report)["verdict"] == "AMBER"
+
+
+@pytest.mark.parametrize("key", ["last_observation", "xp", "level"])
+def test_missing_live_progress_evidence_cannot_report_green(key):
+    report = healthy_report()
+    del report["grizzle_live"][key]
+    assert DIGEST.evaluate(report)["verdict"] == "AMBER"
