@@ -4,7 +4,9 @@ import contextlib
 import copy
 import hashlib
 import json
+import os
 import re
+import stat
 import subprocess
 import tempfile
 import threading
@@ -145,6 +147,7 @@ class HandoffDocker(FakeDocker):
         # anchor diagnostics as (seconds before the collection, anchors); None = no line
         self.anchors = [(40, 0), (22, 0), (4, 0)]
         self.logs = None  # raw text instead of the generated lines
+        self.tail = []  # (seconds before, message): lines after the generated ones
         self.runs = []
 
     def find(self, ident):
@@ -248,6 +251,10 @@ class HandoffDocker(FakeDocker):
             )
             lines.append(
                 f"{stamp} [2026-08-11 02:00:00.001] [info] [PROXIMITY] near=0 "
+            )
+        for seconds, message in self.tail:
+            lines.append(
+                f"{self.stamp(seconds)} [2026-08-11 02:00:00.002] [info] {message}"
             )
         return ("\n".join(lines) + "\n").encode()
 
@@ -1179,6 +1186,159 @@ class HandoffTests(unittest.TestCase):
                     else [],
                     [],
                 )
+
+    def test_parser_p2_last_bothibernation_line_is_parsed_strictly(self):
+        """Every [BotHibernation] line is a candidate; only the allowlisted tick is skipped."""
+        singular = "[BotHibernation] 40 bots: hibernated=0 awake=40, 1 real player"
+        truncated = "[BotHibernation] 40 bots: hibernated=0 awake=40, 1"
+        unknown = "[BotHibernation] getBotHibernationStates returned nil"
+        tick = "[BotHibernation] tick #120 firing "
+        refusals = {
+            "singular": ([(10, 0)], [(2, singular)], "malformed or unknown"),
+            "truncated": ([(10, 0)], [(2, truncated)], "malformed or unknown"),
+            "unknown": ([(10, 0)], [(2, unknown)], "malformed or unknown"),
+            "tick_after_a_stale_zero": ([(35, 0)], [(2, tick)], "older than 30 s"),
+        }
+        path, _ = self.post_build()
+        for name, (anchors, tail, message) in refusals.items():
+            with self.subTest(f"pre-stop {name}"):
+                self.docker.anchors, self.docker.tail = anchors, tail
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.attest(self.new(), path)
+        self.assertEqual(list((self.root / "evidence").glob("pre-stop-*.json")), [])
+        for name, (anchors, tail, message) in refusals.items():
+            with self.subTest(f"stop {name}"):
+                self.setUp()
+                stop, digest = self.pre_stop()
+                self.docker.anchors, self.docker.tail = anchors, tail
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.new().exec_step(stop, digest)
+                self.assertEqual(self.docker.runs, [])  # no mutation
+        with self.subTest("benign tick after a fresh zero passes"):
+            self.setUp()
+            self.docker.anchors, self.docker.tail = [(10, 0)], [(2, tick)]
+            stop, digest = self.pre_stop()
+            last = self.receipt(stop)["human_absence"]["last_anchor_diagnostic"]
+            self.assertRegex(last["line"], r", 0 real players ?$")
+            self.new().exec_step(stop, digest)
+            self.assertEqual(len(self.docker.runs), 1)
+
+    def test_privacy_raw_log_is_private_and_bound_to_the_sanitized_copy(self):
+        """0600 files in a 0700 directory; the raw is kept; the sanitized copy names its sha256."""
+        path, _ = self.pre_stop()
+        evidence = self.root / "evidence"
+        self.assertEqual(stat.S_IMODE(evidence.stat().st_mode), 0o700)
+        files = list(evidence.iterdir())
+        self.assertTrue(files)
+        for item in files:
+            with self.subTest(item.name):
+                self.assertEqual(stat.S_IMODE(item.lstat().st_mode), 0o600)
+        logs = self.receipt(path)["human_absence"]["logs"]
+        self.assertIn(
+            "[PROXIMITY]", logs["raw"]
+        )  # kept, not replaced by the extracted lines
+        raw = Path(logs["raw_file"]["path"])
+        self.assertEqual(raw.parent, evidence)
+        self.assertEqual(raw.read_bytes(), logs["raw"].encode())
+        self.assertEqual(sha(raw.read_bytes()), logs["sha256"])
+        self.assertEqual(logs["raw_file"]["sha256"], logs["sha256"])
+        sanitized_path = Path(logs["sanitized_file"]["path"])
+        self.assertEqual(
+            sha(sanitized_path.read_bytes()), logs["sanitized_file"]["sha256"]
+        )
+        sanitized = json.loads(sanitized_path.read_text())
+        self.assertEqual(sanitized["raw_sha256"], logs["sha256"])
+        self.assertEqual(logs["sanitized_file"]["raw_sha256"], logs["sha256"])
+        self.assertEqual(sanitized["raw_file"], raw.name)
+        self.assertTrue(sanitized["lines"])
+        self.assertTrue(all("[BotHibernation]" in line for line in sanitized["lines"]))
+        self.assertNotIn("[PROXIMITY]", sanitized_path.read_text())
+
+    def test_privacy_unsafe_paths_are_refused_and_never_repaired(self):
+        base = self.root / "unsafe"
+        base.mkdir(mode=0o700)
+
+        def directory(mode):
+            def case():
+                target = base / f"dir-{mode:o}"
+                target.mkdir()
+                target.chmod(mode)
+                return target, target / "receipt.json", mode
+
+            return case
+
+        def file_readable():
+            target = base / "private"
+            target.mkdir(mode=0o700)
+            existing = target / "receipt.json"
+            existing.write_text("{}")
+            existing.chmod(0o640)
+            return existing, existing, 0o640
+
+        def symlinked_component():
+            real = base / "real"
+            real.mkdir(mode=0o700)
+            (base / "link").symlink_to(real)
+            return real, base / "link" / "evidence" / "receipt.json", 0o700
+
+        def symlink_target():
+            target = base / "private2"
+            target.mkdir(mode=0o700)
+            (target / "receipt.json").symlink_to(self.root / "elsewhere.json")
+            return target, target / "receipt.json", 0o700
+
+        def not_owned():
+            target = base / "theirs"
+            target.mkdir(mode=0o700)
+            return target, target / "receipt.json", 0o700
+
+        cases = {
+            "group_readable_directory": (
+                directory(0o750),
+                "group- or world-accessible",
+            ),
+            "world_writable_directory": (
+                directory(0o702),
+                "group- or world-accessible",
+            ),
+            "group_writable_directory": (
+                directory(0o720),
+                "group- or world-accessible",
+            ),
+            "group_readable_file": (file_readable, "exists and is group- or world"),
+            "symlinked_component": (symlinked_component, "symlinked path component"),
+            "symlink_target": (symlink_target, "symlink target"),
+            "not_owned_directory": (not_owned, "not owned by the current user"),
+        }
+        for name, (make, message) in cases.items():
+            with self.subTest(name):
+                checked, target, mode = make()
+                uid = os.getuid() + 1 if name == "not_owned_directory" else os.getuid()
+                with (
+                    patch("stage2_handoff.os.getuid", return_value=uid),
+                    self.assertRaisesRegex(RuntimeError, message),
+                ):
+                    handoff.write_private(target, b"raw game log")
+                self.assertEqual(stat.S_IMODE(checked.lstat().st_mode), mode)
+        self.assertFalse((self.root / "elsewhere.json").exists())
+        with self.subTest("an --evidence through a symlink refuses the receipt"):
+            real = self.root / "real-evidence"
+            real.mkdir(mode=0o700)
+            (self.root / "evidence-link").symlink_to(real)
+            receipts = {key: self.receipts[key] for key in handoff.RECEIPT_KEYS}
+            linked = self.new(evidence=self.root / "evidence-link" / "inner")
+            with self.assertRaisesRegex(RuntimeError, "symlinked path component"):
+                linked.post_build(receipts, self.render_path)
+            self.assertEqual(list(real.iterdir()), [])
+        with self.subTest("an existing open evidence directory refuses the receipt"):
+            (self.root / "evidence").mkdir(mode=0o755)
+            (self.root / "evidence").chmod(0o755)
+            with self.assertRaisesRegex(RuntimeError, "group- or world-accessible"):
+                self.post_build()
+            self.assertEqual(list((self.root / "evidence").iterdir()), [])
+            self.assertEqual(
+                stat.S_IMODE((self.root / "evidence").stat().st_mode), 0o755
+            )
 
     def test_stop_deadline_expired_refuses_without_mutation(self):
         """5 monotonic seconds from the final session check to the stop, checked twice."""

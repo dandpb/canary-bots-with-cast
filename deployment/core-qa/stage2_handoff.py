@@ -66,6 +66,12 @@ Phases (`<phase> --help` for the inputs):
                    single start of the rescue
   rescue-verify    after that start: the rescue runs and is healthy by a check newer than its start
   exec-step        refreshes the gates of one sealed step, claims it, runs its argv once
+
+Privacy: receipts and the raw game log captures (kept for audit, never replaced by the extracted
+lines) are written 0600 inside a 0700 evidence directory; a SANITIZED copy for sharing holds only
+the strictly parsed bot_hibernation.lua lines and records the raw file's sha256. An existing
+group/world-accessible directory or file, a symlinked component or target, or a directory owned
+by someone else is refused, never repaired: existing evidence is not rewritten.
 """
 
 import argparse
@@ -74,6 +80,8 @@ import json
 import os
 import posixpath
 import re
+import secrets
+import stat
 import subprocess
 import sys
 import time
@@ -145,12 +153,20 @@ HIBERNATION_SCRIPT = "/canary/data/scripts/globalevents/bot_hibernation.lua"
 HIBERNATION_SHA256 = (  # git show 3431b404:data/scripts/globalevents/bot_hibernation.lua
     "b2496d782f27b31b4f027ddae2b5b26704c2fc379e66501610a665687f92bf01"
 )
-ANCHOR_MARKER = ("[BotHibernation] ", " real players")
-ANCHOR_LINE = re.compile(  # docker logs --timestamps + spdlog + bot_hibernation.lua:140-141
+ANCHOR_MARKER = (
+    "[BotHibernation]"  # EVERY line with it is a candidate, whatever its suffix
+)
+LOG_PREFIX = (  # docker logs --timestamps + the 3431 spdlog pattern, level info
     r"(?P<docker>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z) "
     r"\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}\] \[info\] "
-    r"\[BotHibernation\] \d+ bots: hibernated=\d+ awake=\d+, (?P<anchors>\d+) real players ?"
 )
+ANCHOR_LINE = re.compile(  # bot_hibernation.lua:140-141, parsed strictly
+    LOG_PREFIX
+    + r"\[BotHibernation\] \d+ bots: hibernated=\d+ awake=\d+, (?P<anchors>\d+) real players ?"
+)
+BENIGN_LINES = (  # the ONLY [BotHibernation] lines skipped over: bot_hibernation.lua:66-67
+    re.compile(LOG_PREFIX + r"\[BotHibernation\] tick #\d+ firing ?"),
+)  # anything else last (getBotHibernationStates returned nil, truncated, unknown) refuses
 ANSI = re.compile(r"\x1b\[[0-9;]*m")  # spdlog colors the level only on a terminal
 ANCHOR_MAX_AGE = timedelta(seconds=30)
 LOG_WINDOW = "120s"  # the last anchor older than 30 s refuses anyway
@@ -349,9 +365,10 @@ def fsync_directory(path: Path) -> None:
 
 
 def create_exclusive(path: Path, content: bytes) -> bool:
-    """Create path atomically (O_CREAT|O_EXCL), write and fsync it and its directory. False if it exists."""
+    """Create path atomically (O_CREAT|O_EXCL, 0600), write and fsync it and its directory. False if it exists."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        descriptor = os.open(path, flags, 0o600)
     except FileExistsError:
         return False
     try:
@@ -363,6 +380,58 @@ def create_exclusive(path: Path, content: bytes) -> bool:
         os.close(descriptor)
     fsync_directory(path.parent)
     return True
+
+
+def private_directory(path: Path) -> Path:
+    """The 0700 directory for receipts and raw game logs: missing components are created 0700; an
+    existing one must be a real directory, never a symlink, and the leaf owned by this user with no
+    group/world bits. Unsafe paths are refused and never repaired."""
+    path = Path(os.path.abspath(path))
+    current = Path(path.anchor)
+    info = os.lstat(current)
+    for part in path.parts[1:]:
+        current = current / part
+        try:
+            info = os.lstat(current)
+        except FileNotFoundError:
+            os.mkdir(current, 0o700)
+            os.chmod(current, 0o700)  # mkdir honours the umask; 0700 exactly
+            info = os.lstat(current)
+        if stat.S_ISLNK(info.st_mode):
+            raise RuntimeError(f"{current} is a symlinked path component; refused")
+        if not stat.S_ISDIR(info.st_mode):
+            raise RuntimeError(f"{current} is not a directory; refused")
+    if info.st_uid != os.getuid():
+        raise RuntimeError(f"{path} is not owned by the current user; refused")
+    if info.st_mode & 0o077:
+        raise RuntimeError(
+            f"{path} is group- or world-accessible ({stat.S_IMODE(info.st_mode):04o}); "
+            "refused, never repaired"
+        )
+    return path
+
+
+def private_target(path: Path) -> Path:
+    """A new 0600 file in a private directory: an existing file or symlink at its path refuses."""
+    private_directory(path.parent)
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return path
+    if stat.S_ISLNK(info.st_mode):
+        raise RuntimeError(f"{path} is a symlink target; refused")
+    if info.st_mode & 0o077:
+        raise RuntimeError(
+            f"{path} exists and is group- or world-accessible; refused, never repaired"
+        )
+    raise RuntimeError(f"{path.name} already exists; refused")
+
+
+def write_private(path: Path, content: bytes) -> str:
+    """Write a new private file (0600 in a 0700 directory) and return its sha256."""
+    if not create_exclusive(private_target(path), content):
+        raise RuntimeError(f"{path.name} already exists; refused")
+    return sha256(content)
 
 
 class Handoff:
@@ -405,10 +474,12 @@ class Handoff:
         self.assert_source_checkout()
         project = self.plan["project"]
         self.evidence = (
-            evidence or project / "runtime/evidence/stage2-handoff"
-        ).resolve()
+            Path(  # NOT resolved: a symlinked component must stay visible and refuse
+                os.path.abspath(evidence or project / "runtime/evidence/stage2-handoff")
+            )
+        )
         self.claims = (project / CLAIMS).resolve()  # canonical: never from --evidence
-        self.outside_source(self.evidence, self.claims)
+        self.outside_source(self.evidence, self.evidence.resolve(), self.claims)
         brain = self.plan["brain"]
         self.header = {
             "source_checkout": {"path": str(self.source), "revision": TOOLING_REVISION},
@@ -1021,21 +1092,32 @@ class Handoff:
         wall_start, mono_start = utcnow(), monotonic()
         raw = collect(argv)
         wall_end, mono_end = utcnow(), monotonic()
+        files = self.keep_logs(
+            raw
+        )  # the raw capture is kept for audit, refusals included
         self.game_start(game["started_at"])  # no restart during the collection
         text = raw.decode(errors="surrogateescape")
-        diagnostics = [
-            line
+        candidates = [  # every [BotHibernation] line, NOT only the well-formed ones
+            ANSI.sub("", line).rstrip("\r")
             for line in text.splitlines()
-            if all(marker in line for marker in ANCHOR_MARKER)
+            if ANCHOR_MARKER in line
         ]
-        if not diagnostics:
+        candidates = [
+            line
+            for line in candidates
+            if not any(benign.fullmatch(line) for benign in BENIGN_LINES)
+        ]
+        if not candidates:
             raise RuntimeError(
                 "no anchor diagnostic of bot_hibernation.lua in the game logs; refused"
             )
-        last = ANSI.sub("", diagnostics[-1]).rstrip("\r")
+        last = candidates[-1]
         found = ANCHOR_LINE.fullmatch(last)
         if not found:
-            raise RuntimeError("the last anchor diagnostic is malformed; refused")
+            raise RuntimeError(
+                "the last [BotHibernation] line is malformed or unknown (not a well-formed "
+                "anchor diagnostic nor an allowlisted tick); refused"
+            )
         when = self.s1.docker_time(found["docker"])
         anchors = int(found["anchors"])
         if anchors != 0:
@@ -1063,6 +1145,7 @@ class Handoff:
                 "raw": text,
                 "raw_encoding": "utf-8, surrogateescape",
                 "sha256": sha256(raw),
+                **files,
                 "wall_clock_utc": {
                     "start": wall_start.isoformat(),
                     "end": wall_end.isoformat(),
@@ -1074,6 +1157,50 @@ class Handoff:
                 "docker_timestamp": found["docker"],
                 "anchors": 0,
                 "age_seconds_at_collection_end": (wall_end - when).total_seconds(),
+            },
+        }
+
+    def keep_logs(self, raw: bytes) -> dict[str, Any]:
+        """The raw capture as is (0600), and a sanitized copy for sharing bound to its sha256."""
+        stem = f"game-log-{utcnow():%Y%m%dT%H%M%S%fZ}-{secrets.token_hex(4)}"
+        raw_path = self.evidence / f"{stem}.raw.log"
+        raw_sha256 = write_private(raw_path, raw)
+        lines = [
+            ANSI.sub("", line).rstrip("\r")
+            for line in raw.decode(errors="surrogateescape").splitlines()
+        ]
+        kept = [
+            line
+            for line in lines
+            if ANCHOR_MARKER in line
+            and any(p.fullmatch(line) for p in (ANCHOR_LINE, *BENIGN_LINES))
+        ]
+        sanitized_body = {
+            "schema": "qa-stage2-game-log-sanitized-v1",
+            "raw_sha256": raw_sha256,
+            "raw_file": raw_path.name,
+            "raw_bytes": len(raw),
+            "raw_lines": len(lines),
+            "kept": "only strictly parsed bot_hibernation.lua lines (anchor diagnostic, tick)",
+            "lines": kept,
+            "withheld_bothibernation_lines": sum(
+                ANCHOR_MARKER in line for line in lines
+            )
+            - len(kept),
+        }
+        sanitized_path = self.evidence / f"{stem}.sanitized.json"
+        sanitized_sha256 = write_private(
+            sanitized_path,
+            (json.dumps(sanitized_body, indent=2, sort_keys=True) + "\n").encode(
+                errors="surrogateescape"
+            ),
+        )
+        return {
+            "raw_file": {"path": str(raw_path), "sha256": raw_sha256, "mode": "0600"},
+            "sanitized_file": {
+                "path": str(sanitized_path),
+                "sha256": sanitized_sha256,
+                "raw_sha256": raw_sha256,
             },
         }
 
@@ -1420,9 +1547,9 @@ class Handoff:
             }
         receipt["content_sha256"] = self.s1.sealed(receipt)
         name = f"{phase}-{data['step']['name']}" if phase == "exec-step" else phase
-        path = self.evidence / f"{name}-{utcnow():%Y%m%dT%H%M%S%fZ}.json"
-        if path.exists():
-            raise RuntimeError(f"{path.name} already exists; refused")
+        path = private_target(  # 0600 in a 0700 directory: it may hold the raw game log
+            self.evidence / f"{name}-{utcnow():%Y%m%dT%H%M%S%fZ}.json"
+        )
         return path, self.qa.save_receipt(path, receipt)
 
     def hold(

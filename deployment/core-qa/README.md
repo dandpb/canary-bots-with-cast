@@ -435,9 +435,22 @@ servidor de QA: nenhum endpoint, reload, instrumentação ou rebuild.
   depois da coleta, e desde o pre-stop).
 - Coleta `docker logs --timestamps --since 120s <id>` com timeout. O recibo guarda a
   captura crua, o sha256 e os limites de relógio de parede e monotônico.
-- Interpreta a **última** mensagem de âncoras, de qualquer valor, não a última zerada.
-  Recusa se ela estiver ausente, malformada, diferente de zero, no futuro, com mais de
-  30 s ou anterior ao `StartedAt`.
+- Toda linha com `[BotHibernation]` é candidata, com qualquer sufixo. Só é pulada a
+  linha benigna da lista fechada, `bot_hibernation.lua:66-67`
+  (`[BotHibernation] tick #N firing`, com o prefixo exato do Docker e do spdlog). A
+  **última** candidata é interpretada de forma estrita: tem de ser a mensagem de
+  âncoras completa, de qualquer valor (não a última zerada). Recusa se ela estiver
+  ausente, truncada, no singular, desconhecida (inclusive
+  `getBotHibernationStates returned nil`, linha 128), diferente de zero, no futuro,
+  com mais de 30 s ou anterior ao `StartedAt`.
+- Privacidade: a captura crua fica guardada para auditoria (não é trocada pelas linhas
+  extraídas), em `game-log-*.raw.log`. Uma cópia sanitizada para compartilhar,
+  `game-log-*.sanitized.json`, guarda só as linhas de `bot_hibernation.lua` que
+  passaram na interpretação estrita e o `raw_sha256` do arquivo cru. Recibos e logs
+  são gravados 0600 num diretório de evidência 0700. Um diretório ou arquivo
+  existente acessível ao grupo ou ao mundo, um componente ou alvo que seja symlink, ou
+  um diretório de outro usuário são recusados e nunca consertados; nenhuma evidência
+  existente é reescrita.
 - Recibo: `native_roster_unavailable=true`, `native_anchors=0` e o SQL como
   corroboração possivelmente velha. Não há `bot_only` nem roster completo; a conta
   65000 não prova tipo, e a contagem de bots da linha vem de um cache, nunca é um
