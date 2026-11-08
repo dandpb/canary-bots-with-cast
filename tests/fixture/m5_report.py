@@ -50,6 +50,9 @@ def report(directory):
     if not samples:
         return {"run_id": identity, "samples": 0}
     attempt = json.loads((directory / "result.json").read_text())
+    if attempt.get("persistence", {}).get("contract"):
+        attempt["persistence_run_id"] = identity
+        attempt["persistence_fixture_sha256"] = data["manifest"]["initial_sha256"]
     progression = _evidence.window_persistence(events, attempt)
     start, end = samples[0], samples[-1]
     return {

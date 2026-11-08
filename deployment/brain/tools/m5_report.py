@@ -194,7 +194,22 @@ def window_persistence(
         errors.append("initial_progress_mismatch")
     witness_event, witness = observations[-1]
     result["persistence_witness"] = witness_event
-    if not observation(witness) or not matches(saved, witness):
+    contract = (trial.get("persistence") or {}).get("contract")
+    if contract:
+        from canary_brain.persistence_witness import PROFILE, verify_terminal
+
+        try:
+            if contract != PROFILE:
+                raise ValueError("unknown persistence contract")
+            terminal = verify_terminal(events, trial)
+            if any(
+                terminal["pre"][key] < witness["bot"][key] for key in ("xp", "level")
+            ):
+                raise ValueError("terminal progression regressed")
+            result["persistence_witness"] = terminal
+        except (ValueError, KeyError, TypeError, StopIteration) as exc:
+            errors.append("terminal_persistence_unverified:" + str(exc))
+    elif not observation(witness) or not matches(saved, witness):
         errors.append("saved_progress_mismatch")
     receipt = trial.get("persistence")
     if (
