@@ -10,6 +10,8 @@ from m5_qualification_gates import (
     simultaneous_hunts,
 )
 
+LEGACY_MISSING = object()
+
 
 def event(t_ms, kind, **data):
     return {"t_ms": t_ms, "kind": kind, "data": data}
@@ -216,7 +218,11 @@ class FullGateTests(unittest.TestCase):
                     "lifecycle",
                     phase="run_supervisor_stop",
                     reason=reason,
-                    after_flush=after_flush,
+                    **(
+                        {"after_flush": after_flush}
+                        if after_flush is not LEGACY_MISSING
+                        else {}
+                    ),
                     observed_seconds=observed,
                     elapsed_seconds=elapsed,
                 ),
@@ -414,6 +420,12 @@ class FullGateTests(unittest.TestCase):
 
     def test_finalizing_without_completion_cannot_qualify(self):
         self.assertFalse(self.qualified(reason="native_finalizing")["accepted"])
+
+    def test_single_terminal_preserves_only_field_absent_legacy_contract(self):
+        self.assertTrue(self.qualified(after_flush=LEGACY_MISSING)["accepted"])
+        for value in (False, None, 1, 0, "true", []):
+            with self.subTest(value=value):
+                self.assertFalse(self.qualified(after_flush=value)["accepted"])
 
     def test_reversed_or_duplicate_finalizing_cannot_qualify(self):
         for times in ((1800001,), (1799998, 1799999)):

@@ -218,7 +218,11 @@ def in_horizon(value, seconds):
 
 def terminal_stop(stops):
     """Accept one legacy terminal or the current matching finalize/seal pair."""
-    if len(stops) == 1 and stops[0].get("reason") != "native_finalizing":
+    if (
+        len(stops) == 1
+        and stops[0].get("reason") != "native_finalizing"
+        and ("after_flush" not in stops[0] or stops[0]["after_flush"] is True)
+    ):
         return stops[0]
     if len(stops) == 2:
         preparing, sealed = stops
