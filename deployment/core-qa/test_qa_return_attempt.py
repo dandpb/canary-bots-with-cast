@@ -8,6 +8,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import qa_return_attempt as ret
@@ -23,6 +24,19 @@ IMAGE_ENV = {  # the images' own env in the fake host
     handoff.BRAIN_IMAGE_ID: ["PATH=/usr/bin"],
 }
 COMPOSE_HASHES = {"game": "1" * 64, "brain": "2" * 64}  # `config --hash` of the fake
+IMAGE_DEFAULTS = {  # the images' own Entrypoint/Cmd in the fake host
+    ret.MANAGED_IMAGE: {"entrypoint": ["/entrypoint.sh"], "cmd": ["canary"]},
+    handoff.BRAIN_IMAGE_ID: {"entrypoint": ["/sbin/tini", "--"], "cmd": ["--help"]},
+}
+
+
+def effective(wanted, image):
+    """What Docker stores for a Compose service: an entrypoint override resets the image's Cmd."""
+    if wanted.get("entrypoint") is not None:
+        return wanted["entrypoint"], wanted.get("command")
+    return image["entrypoint"], (
+        wanted["command"] if wanted.get("command") is not None else image["cmd"]
+    )
 
 
 def forbidden(*args, **kwargs):
@@ -41,6 +55,8 @@ class ReturnAttemptTests(base.QuiescentTests):
         self.mutations = []
         self.slept = []
         self.compose_hashes = dict(COMPOSE_HASHES)
+        self.image_defaults = {k: dict(v) for k, v in IMAGE_DEFAULTS.items()}
+        self.image_inspects = []
         rescue_config = self.manifest["rescue_container_config"]["config_sha256"]
         for mock in (
             patch.object(ret, "MANIFEST_SHA256", sha(self.manifest_path.read_bytes())),
@@ -135,6 +151,12 @@ class ReturnAttemptTests(base.QuiescentTests):
             )
         if args[1:3] == ("image", "inspect") and args[-1] == ret.IMAGE_ENV:
             return json.dumps(IMAGE_ENV[args[3]])
+        if args[1:3] == ("image", "inspect") and args[-1] == ret.IMAGE_DEFAULTS:
+            self.image_inspects.append(args[3])
+            answer = self.image_defaults[args[3]]
+            if isinstance(answer, BaseException):
+                raise answer
+            return json.dumps(answer)
         if args[0] == "env" and args[-3:] == tuple(ret.COMPOSE_HASH):
             assert list(args[:-3]) == self.manifest["render_argv"][:-3], args
             return "".join(f"{k} {v}\n" for k, v in self.compose_hashes.items())
@@ -174,8 +196,13 @@ class ReturnAttemptTests(base.QuiescentTests):
             "network_mode": wanted.get("network_mode")
             or render["networks"]["default"]["name"],
             "port_bindings": ports,
-            "entrypoint": wanted.get("entrypoint"),
-            "cmd": wanted.get("command"),
+            **dict(
+                zip(
+                    ("entrypoint", "cmd"),
+                    effective(wanted, IMAGE_DEFAULTS[wanted["image"]]),
+                    strict=True,
+                )
+            ),
         }
 
     def run_up(self, argv):
@@ -1233,6 +1260,202 @@ class ReturnAttemptTests(base.QuiescentTests):
         self.assert_not_executed(key, "start-rescue")
         self.assertEqual(self.starts(RESCUE), 0)
 
+    # -- P2 #4: the effective Entrypoint/Cmd, with the pinned image's defaults --------------
+
+    def test_p2_4_game_entrypoint_and_cmd_altered_while_compose_omits_them_is_refused(
+        self,
+    ):
+        key = self.partial_up()
+        game = self.docker.containers[GAME]
+        render = self.render_dict["services"]["game"]
+        self.assertNotIn("entrypoint", {k for k, v in render.items() if v is not None})
+        self.assertNotIn("command", {k for k, v in render.items() if v is not None})
+        saved = {k: game[k] for k in ("entrypoint", "cmd")}
+        cases = (
+            (
+                "both (the repro)",
+                {"entrypoint": ["/bin/sh", "-c"], "cmd": ["nc -l -p 4444"]},
+                "entrypoint, command",
+            ),
+            ("only Cmd", {"cmd": ["canary", "--debug"]}, "command"),
+            ("only Entrypoint", {"entrypoint": ["/tmp/x"]}, "entrypoint"),
+            ("Cmd null where the image has one", {"cmd": None}, "command"),
+            ("Cmd [] where the image has one", {"cmd": []}, "command"),
+        )
+        for name, change, problem in cases:
+            with self.subTest(name):
+                game.update(change)
+                try:
+                    with self.assertRaisesRegex(
+                        RuntimeError,
+                        f"unverified container aaaaaaaaaaaa in the QA project \\({problem}\\); "
+                        "nothing is stopped or adopted; HOLD",
+                    ):
+                        self.attempt().rescue()
+                finally:
+                    game.update(saved)
+                # the config-hash label stayed right: it proves nothing about these values
+                self.assertEqual(
+                    game["labels"]["com.docker.compose.config-hash"],
+                    COMPOSE_HASHES["game"],
+                )
+        self.assertIn(
+            ret.MANAGED_IMAGE, self.image_inspects
+        )  # the pinned full image ID
+        self.assertEqual(self.mutations, [])  # no stop, no rescue
+        self.assertFalse((self.attempt_dir(key) / "stop-new.claim").exists())
+        self.assertEqual(game["status"], "running")
+        self.assertEqual(self.starts(RESCUE), 0)
+        self.assertEqual(self.attempt().rescue()["branch"], "B")  # the image's defaults
+
+    def test_p2_4_explicit_render_entrypoint_matched_passes_and_mismatched_is_refused(
+        self,
+    ):
+        self.partial_up()
+        brain = self.docker.containers[BRAIN]
+        wanted = self.render_dict["services"]["brain"]
+        self.assertEqual(brain["entrypoint"], wanted["entrypoint"])  # explicit, matched
+        self.assertIsNone(brain["cmd"])  # the override reset the image's Cmd
+        for name, change, problem in (
+            ("Entrypoint", {"entrypoint": ["sh"]}, "entrypoint"),
+            ("the image's Cmd back", {"cmd": ["--help"]}, "command"),
+            ("Cmd [] instead of null", {"cmd": []}, "command"),
+        ):
+            with self.subTest(name):
+                saved = {k: brain[k] for k in change}
+                brain.update(change)
+                try:
+                    with self.assertRaisesRegex(
+                        RuntimeError, f"unverified container .*\\({problem}\\).*HOLD"
+                    ):
+                        self.attempt().rescue()
+                finally:
+                    brain.update(saved)
+        self.assertEqual(self.mutations, [])
+        self.assertEqual(self.attempt().rescue()["branch"], "B")
+
+    def test_p2_4_the_documented_entrypoint_cmd_rules(self):
+        image = {"entrypoint": ["/entrypoint.sh"], "cmd": ["canary"]}
+        calls = []
+
+        def run(wanted, live, defaults=image):
+            def command(*args, env=None):
+                calls.append(args)
+                return json.dumps(defaults)
+
+            fake = SimpleNamespace(qa=SimpleNamespace(command=command))
+            config = {"Entrypoint": live[0], "Cmd": live[1]}
+            return ret.ReturnAttempt.entrypoint_cmd(
+                fake, config, wanted, ret.MANAGED_IMAGE
+            )
+
+        ep, cmd = ["/run"], ["--x"]
+        for wanted, live, defaults, problems in (
+            ({}, (["/entrypoint.sh"], ["canary"]), image, []),  # both from the image
+            ({"command": cmd}, (["/entrypoint.sh"], cmd), image, []),
+            ({"command": cmd}, (["/entrypoint.sh"], ["canary"]), image, ["command"]),
+            ({"entrypoint": ep}, (ep, None), image, []),  # the override resets Cmd
+            ({"entrypoint": ep}, (ep, ["canary"]), image, ["command"]),
+            ({"entrypoint": ep}, (ep, []), image, ["command"]),  # [] is not null
+            ({"entrypoint": ep, "command": cmd}, (ep, cmd), image, []),
+            ({"entrypoint": ep, "command": cmd}, (ep, ["--y"]), image, ["command"]),
+            ({}, (None, None), {"entrypoint": None, "cmd": None}, []),
+            ({}, ([], None), {"entrypoint": None, "cmd": None}, ["entrypoint"]),
+            ({}, (None, None), {"entrypoint": None, "cmd": []}, ["command"]),
+            ({"entrypoint": []}, ([], ["canary"]), image, ["entrypoint form"]),
+            ({"command": []}, (["/entrypoint.sh"], []), image, ["command form"]),
+            ({"command": "canary --x"}, (None, None), image, ["command form"]),
+        ):
+            with self.subTest(wanted=wanted, live=live, defaults=defaults):
+                self.assertEqual(run(wanted, live, defaults), problems)
+        calls.clear()
+        run({"entrypoint": ep}, (ep, None))
+        self.assertEqual(calls, [])  # nothing omitted: the image is not needed
+        run({}, (["/entrypoint.sh"], ["canary"]))
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "docker",
+                    "image",
+                    "inspect",
+                    ret.MANAGED_IMAGE,
+                    "--format",
+                    ret.IMAGE_DEFAULTS,
+                )
+            ],
+        )
+        for answer in ({"id": "x"}, {"entrypoint": "sh", "cmd": None}, [1]):
+            with (
+                self.subTest(answer=answer),
+                self.assertRaisesRegex(RuntimeError, "unreadable; HOLD"),
+            ):
+                run({}, (None, None), answer)
+
+    def test_p2_4_an_image_inspect_timeout_or_failure_holds_with_no_mutation(self):
+        key = self.partial_up()
+        for name, error, kind in (
+            (
+                "timeout",
+                ret.ProbeTimeout("docker image timed out after 10 s"),
+                ret.ProbeTimeout,
+            ),
+            (
+                "failure",
+                RuntimeError("read-only command failed: docker image"),
+                RuntimeError,
+            ),
+        ):
+            with self.subTest(name):
+                self.image_defaults[ret.MANAGED_IMAGE] = error
+                try:
+                    with self.assertRaisesRegex(kind, "timed out|unreadable; HOLD"):
+                        self.attempt().rescue()
+                finally:
+                    self.image_defaults[ret.MANAGED_IMAGE] = dict(
+                        IMAGE_DEFAULTS[ret.MANAGED_IMAGE]
+                    )
+        self.assertEqual(self.mutations, [])
+        self.assertFalse((self.attempt_dir(key) / "stop-new.claim").exists())
+
+    def test_p2_4_entrypoint_cmd_altered_after_the_stop_claim_holds(self):
+        key = self.partial_up()
+
+        def drift():
+            self.docker.containers[GAME].update(entrypoint=["/bin/sh"], cmd=["-c", "x"])
+
+        with (
+            self.on_claim("stop-new.claim", drift),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "HOLD: the gate failed after the claim .*unverified container aaaaaaaaaaaa "
+                "in the QA project \\(entrypoint, command\\)",
+            ),
+        ):
+            self.attempt().rescue()
+        self.assert_not_executed(key, "stop-new")
+        self.assertEqual(self.mutations, [])
+        self.assertEqual(self.docker.containers[GAME]["status"], "running")
+        self.assertEqual(self.starts(RESCUE), 0)
+
+    def test_p2_4_an_image_inspect_timeout_after_the_claim_holds(self):
+        key = self.partial_up()
+
+        def hang():
+            self.image_defaults[ret.MANAGED_IMAGE] = ret.ProbeTimeout(
+                "docker image timed out after 10 s; HOLD, no retry"
+            )
+
+        with (
+            self.on_claim("stop-new.claim", hang),
+            self.assertRaisesRegex(
+                RuntimeError, "HOLD: the gate failed after the claim"
+            ),
+        ):
+            self.attempt().rescue()
+        self.assert_not_executed(key, "stop-new")
+        self.assertEqual(self.mutations, [])
+
     # -- P2 #3: an up claim authorizes Branch B only with a correlated terminal result -----
 
     def crashed_up(self):
@@ -1443,6 +1666,141 @@ class ReturnAttemptTests(base.QuiescentTests):
         with self.assertRaisesRegex(RuntimeError, "start-rescue.claim is consumed"):
             self.attempt().rescue()
         self.assertEqual((self.starts(RESCUE), self.starts(MANAGED)), (1, 0))
+
+    def clocked(self, ident, steps):
+        """Each health probe of the started `ident` takes `advance` monotonic seconds and may
+        turn it healthy; the probe's timeout cap at its start is recorded."""
+        import preflight
+
+        caps = []
+
+        def command(*args, env=None):
+            item = self.docker.find(ident)
+            if (
+                args[1] == "inspect"
+                and args[-1] == handoff.HEALTH_PROBE
+                and args[2] == ident
+                and steps
+                and item["status"] == "running"
+            ):
+                advance, healthy = steps.pop(0)
+                caps.append(ret.probe_timeout())
+                self.mono[0] += advance
+                if healthy:
+                    end = datetime.fromisoformat(item["started_at"]) + timedelta(
+                        seconds=2
+                    )
+                    item.update(
+                        health="healthy",
+                        health_log=[{"End": end.isoformat(), "ExitCode": 0}],
+                    )
+            return self.command(*args, env=env)
+
+        preflight.command.side_effect = command
+        return caps
+
+    def late_hold(self, steps, message):
+        key = self.stopped_attempt()
+        sleep, smoke, events = self.timed(MANAGED)
+        attempt = self.attempt()
+        attempt.sleep = sleep
+        self.clocked(MANAGED, steps)
+        with (
+            patch("stage1_baseline.playable", side_effect=smoke),
+            self.assertRaisesRegex(RuntimeError, message),
+        ):
+            attempt.start_managed()
+        self.assertFalse(any(e[0] == "smoke" for e in events))  # no smoke
+        records = self.attempt_dir(key).glob("verify-start-managed-*.json")
+        verify = json.loads(min(records).read_text())
+        self.assertEqual(verify["result"], "hold")
+        with self.assertRaisesRegex(RuntimeError, "start-managed.claim is consumed"):
+            self.attempt().start_managed()  # no retry
+        with self.assertRaisesRegex(RuntimeError, "Branch A ran"):
+            self.attempt().rescue()  # no fallback
+        self.assertEqual((self.starts(MANAGED), self.starts(RESCUE)), (1, 0))
+
+    def test_late_health_healthy_at_220_s_is_hold_with_no_smoke(self):
+        self.late_hold(
+            [(220.0, True)],
+            "HOLD: eaae6fe2171b has no healthy check within 210 s .*\\(health healthy\\)"
+            ".*no retry, no fallback",
+        )
+
+    def test_late_health_a_fresh_health_from_205_to_212_s_is_hold_with_no_smoke(self):
+        self.late_hold(
+            [
+                (205.0, True),
+                (7.0, None),
+            ],  # the probe at 205 s, fresh_health returns at 212 s
+            "HOLD: eaae6fe2171b has no healthy check within 210 s "
+            ".*confirmed after the deadline",
+        )
+
+    def test_late_health_healthy_at_100_s_runs_the_smoke(self):
+        self.stopped_attempt()
+        sleep, smoke, events = self.timed(MANAGED)
+        attempt = self.attempt()
+        attempt.sleep = sleep
+        self.clocked(MANAGED, [(100.0, True)])
+        with patch("stage1_baseline.playable", side_effect=smoke):
+            done = attempt.start_managed()
+        self.assertEqual(done["health"]["health"], "healthy")
+        self.assertEqual(sum(e[0] == "smoke" for e in events), 1)
+
+    def test_health_sleeps_never_overshoot_the_deadline(self):
+        self.stopped_attempt()
+        sleep, smoke, _events = self.timed(MANAGED)  # never healthy
+        attempt = self.attempt()
+        attempt.sleep = sleep
+        with (
+            patch("stage1_baseline.playable", side_effect=smoke),
+            self.assertRaisesRegex(RuntimeError, "no healthy check within 210 s"),
+        ):
+            attempt.start_managed()
+        self.assertTrue(all(0 < s <= ret.HEALTH_POLL for s in self.slept))
+        self.assertLess(
+            self.slept[-1], ret.HEALTH_POLL
+        )  # the remainder, not a full poll
+        self.assertLessEqual(sum(self.slept), ret.HEALTH_DEADLINE)
+
+    def test_health_probe_timeouts_are_capped_by_the_remaining_time(self):
+        self.stopped_attempt()
+        sleep, smoke, events = self.timed(MANAGED)
+        attempt = self.attempt()
+        attempt.sleep = sleep
+        # starting until 195 s; a 10 s sleep; the next probe and fresh_health have ~5 s left
+        caps = self.clocked(MANAGED, [(195.0, False), (0.0, True), (0.0, None)])
+        with patch("stage1_baseline.playable", side_effect=smoke):
+            attempt.start_managed()
+        self.assertEqual(caps[0], ret.PROBE_TIMEOUT)  # min(10, 210)
+        self.assertLess(caps[1], ret.PROBE_TIMEOUT)
+        self.assertAlmostEqual(caps[1], 5.0, delta=0.5)
+        self.assertLessEqual(caps[2], caps[1])  # fresh_health too
+        self.assertEqual(ret.probe_timeout(), ret.PROBE_TIMEOUT)  # the cap is released
+        self.assertEqual(sum(e[0] == "smoke" for e in events), 1)
+
+    def test_bound_tooling_honours_the_probe_cap(self):
+        seen = []
+
+        def run(args, **kwargs):
+            seen.append(kwargs["timeout"])
+            if args[1] == "slow":
+                raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+            return subprocess.CompletedProcess(args, 0, "ok\n", "")
+
+        tooling = SimpleNamespace(HERE=Path("."))
+        ret.bound_tooling(tooling, run)
+        with ret.probe_cap(3.5):
+            tooling.command("docker", "inspect")
+            with self.assertRaisesRegex(
+                ret.ProbeTimeout, "timed out after 3.5 s; HOLD"
+            ):
+                tooling.command("docker", "slow")
+        with ret.probe_cap(60.0):
+            tooling.command("docker", "inspect")  # never above PROBE_TIMEOUT
+        tooling.command("docker", "inspect")
+        self.assertEqual(seen, [3.5, 3.5, ret.PROBE_TIMEOUT, ret.PROBE_TIMEOUT])
 
     def test_a_smoke_failure_after_a_passing_health_is_its_own_hold(self):
         key = self.stopped_attempt()

@@ -40,7 +40,8 @@ not presumed to exist. New game/brain containers are identified by full ID throu
 project, service, image and ownership labels (working dir, config files, env file), and each
 must equal the reviewed render (pinned by its private and sanitized sha256) for its service:
 env values (private per-key sha256, the image's env under the render's), every mount, restart,
-network, ports, entrypoint/command, image and Compose's config-hash label. Only those verified
+network, ports, the effective Entrypoint/Cmd (the pinned image's defaults for what the render
+omits; see entrypoint_cmd), image and Compose's config-hash label. Only those verified
 IDs are stopped, once. Then every game is stopped with restart=no and no session or transaction
 is open, and only then the rescue starts ONCE, with its image, config (adapter_config_sha256
 626ceb49...) and mounts verified, then a fresh health check and a smoke check. This revises the
@@ -117,6 +118,9 @@ NEW_INSPECT = (
 IMAGE_ENV = (
     "{{json .Config.Env}}"  # the image's own env, under the service's effective env
 )
+IMAGE_DEFAULTS = (  # the pinned image's own Entrypoint/Cmd, for what the render omits
+    '{"entrypoint":{{json .Config.Entrypoint}},"cmd":{{json .Config.Cmd}}}'
+)
 COMPOSE_HASH = [
     "config",
     "--hash",
@@ -148,6 +152,23 @@ class ProbeTimeout(Exception):
     """A bounded call timed out. Not a RuntimeError, so no adapter check reads it as 'absent'."""
 
 
+_PROBE_CAPS: list[float] = []  # the health deadline's remaining balance, while it runs
+
+
+@contextlib.contextmanager
+def probe_cap(seconds: float) -> Iterator[None]:
+    """Every read-only call inside gets at most `seconds` (and never more than PROBE_TIMEOUT)."""
+    _PROBE_CAPS.append(seconds)
+    try:
+        yield
+    finally:
+        _PROBE_CAPS.pop()
+
+
+def probe_timeout() -> float:
+    return min([PROBE_TIMEOUT, *_PROBE_CAPS])
+
+
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -166,6 +187,11 @@ def load_adapter(path: Path, expected: str) -> ModuleType:
     return module
 
 
+def argv_list(value: Any) -> bool:
+    """A JSON list of strings, as Docker and Compose write Entrypoint/Cmd (it may be empty)."""
+    return isinstance(value, list) and all(isinstance(part, str) for part in value)
+
+
 def bound_tooling(qa: ModuleType, run: Callable[..., Any] = subprocess.run) -> None:
     """Every read-only call of the a1d9 tooling in THIS process gets PROBE_TIMEOUT.
 
@@ -174,6 +200,7 @@ def bound_tooling(qa: ModuleType, run: Callable[..., Any] = subprocess.run) -> N
     """
 
     def command(*args: str, env: dict[str, str] | None = None) -> str:
+        timeout = probe_timeout()  # PROBE_TIMEOUT, or less inside a probe_cap
         try:
             result = run(
                 args,
@@ -181,11 +208,11 @@ def bound_tooling(qa: ModuleType, run: Callable[..., Any] = subprocess.run) -> N
                 env=env,
                 text=True,
                 capture_output=True,
-                timeout=PROBE_TIMEOUT,
+                timeout=timeout,
             )
         except subprocess.TimeoutExpired:
             raise ProbeTimeout(
-                f"{args[0]} {args[1]} timed out after {PROBE_TIMEOUT:g} s; HOLD, no retry"
+                f"{args[0]} {args[1]} timed out after {timeout:g} s; HOLD, no retry"
             ) from None
         if result.returncode:
             raise RuntimeError(f"read-only command failed: {args[0]} {args[1]}")
@@ -623,13 +650,15 @@ class ReturnAttempt:
         render: dict[str, Any],
         service: str,
         config_hash: str,
+        image: str,
     ) -> list[str]:
         """The container's effective config against the reviewed render's service, or problems.
 
         The adapter's proofs, per container: env VALUES as private sha256(KEY=VALUE) (the image's
         env under the render's, nothing else), every mount (a bind names the render's host path
         by desktop_form, a volume is the render's named volume, same mode), restart, network,
-        ports, entrypoint/command, image, and Compose's config-hash label.
+        ports, the effective Entrypoint/Cmd (entrypoint_cmd), image, and Compose's config-hash
+        label, which proves none of the others.
         """
         mod, qa = self.mod, self.qa
         wanted = render["services"][service]
@@ -694,14 +723,67 @@ class ReturnAttempt:
         }
         if bound != {key: sorted(value) for key, value in ports.items()}:
             problems.append("ports")
-        for key, field in (("entrypoint", "Entrypoint"), ("command", "Cmd")):
-            if wanted.get(key) is not None and config.get(field) != wanted[key]:
-                problems.append(key)
+        problems.extend(self.entrypoint_cmd(config, wanted, image))
         if config.get("Image") != wanted.get("image"):
             problems.append("config image")
         if labels.get("com.docker.compose.config-hash") != config_hash:
             problems.append("config hash")
         return problems
+
+    def entrypoint_cmd(
+        self, config: dict[str, Any], wanted: dict[str, Any], image: str
+    ) -> list[str]:
+        """The container's EFFECTIVE `.Config.Entrypoint`/`.Config.Cmd` against what the reviewed
+        render gives, with the pinned image's own defaults for what it omits. Problems, or [].
+
+        The rules (Docker's merge of the create config with the image config, as Compose sends a
+        service; Compose's config-hash label is never proof of either value):
+        1. The render's `entrypoint`/`command` is omitted (null) or a non-empty list of strings:
+           `config --format json` writes the string form as a list (the reviewed render has
+           lists). Any other shape, an explicit empty list included, is refused: its effect is
+           not provable here.
+        2. The render sets `entrypoint`: Entrypoint = the render's; Cmd = the render's `command`
+           if set, else null (an entrypoint override resets the image's Cmd).
+        3. The render omits `entrypoint`: Entrypoint = the pinned image's; Cmd = the render's
+           `command` if set, else the pinned image's. The defaults come from
+           `docker image inspect <pinned full image ID>` (bounded, PROBE_TIMEOUT); a failure,
+           an unreadable answer or a timeout is HOLD.
+        4. Each field is compared on its own (not the joined argv), as exact JSON: null and an
+           empty list are different values, and a mismatch either way is refused.
+        """
+        given = {key: wanted.get(key) for key in ("entrypoint", "command")}
+        for key, value in given.items():
+            if value is not None and not (value and argv_list(value)):
+                return [f"{key} form"]
+        entrypoint, cmd = given["entrypoint"], given["command"]
+        if entrypoint is None:
+            try:
+                defaults = json.loads(
+                    self.qa.command(
+                        "docker", "image", "inspect", image, "--format", IMAGE_DEFAULTS
+                    )
+                )
+            except (RuntimeError, ValueError):
+                defaults = None
+            if not (
+                isinstance(defaults, dict)
+                and set(defaults) == {"entrypoint", "cmd"}
+                and all(v is None or argv_list(v) for v in defaults.values())
+            ):
+                raise RuntimeError(
+                    f"the pinned image {image[7:19]} Entrypoint/Cmd are unreadable; HOLD"
+                )
+            entrypoint = defaults["entrypoint"]
+            if cmd is None:
+                cmd = defaults["cmd"]
+        return [
+            key
+            for key, field, expected in (
+                ("entrypoint", "Entrypoint", entrypoint),
+                ("command", "Cmd", cmd),
+            )
+            if json.dumps(config.get(field)) != json.dumps(expected)
+        ]
 
     def new_containers(self) -> list[dict[str, Any]]:
         """New game/brain containers of THIS up, each verified by full ID and effective config.
@@ -761,7 +843,11 @@ class ReturnAttempt:
             ]
             if not problems:
                 problems = self.projection(
-                    item, render, str(service), compose[str(service)]
+                    item,
+                    render,
+                    str(service),
+                    compose[str(service)],
+                    images[str(service)],
                 )
             if problems:
                 raise RuntimeError(
@@ -1059,31 +1145,52 @@ class ReturnAttempt:
         """The container's own health check (the port check of its healthcheck), polled every
         HEALTH_POLL s until a healthy check newer than the start, within HEALTH_DEADLINE s.
 
-        A timeout, `unhealthy` or a stopped container is HOLD. Never a start retry, never a
-        fallback start: the return stops there and a human decides.
+        The deadline is checked before each probe, after each probe and after `fresh_health`
+        returns; each sleep is min(HEALTH_POLL, remaining) and each probe's timeout at most the
+        remaining balance (probe_cap). A success observed at or after the deadline, or a probe
+        that finishes past it, is HOLD like a timeout, `unhealthy` or a stopped container. Never
+        a start retry, never a fallback start, no smoke: the return stops there and a human decides.
         """
         mod = self.mod
         deadline = mod.monotonic() + HEALTH_DEADLINE
-        while True:
-            try:
-                probe = json.loads(
-                    self.qa.command(
-                        "docker", "inspect", ident, "--format", mod.HEALTH_PROBE
-                    )
-                )
-            except (RuntimeError, ValueError):
-                probe = {}
-            status = (probe.get("health") or {}).get("Status")
-            if probe.get("status") != "running":
-                raise RuntimeError(f"HOLD: {ident[:12]} is not running after its start")
-            if status == "healthy":
-                return dict(self.h.fresh_health(ident, since))
-            if status != "starting" or mod.monotonic() >= deadline:
+        status: Any = None
+
+        def remaining() -> float:
+            left = deadline - mod.monotonic()
+            if left <= 0:
                 raise RuntimeError(
                     f"HOLD: {ident[:12]} has no healthy check within {HEALTH_DEADLINE:g} s "
                     f"of its start (health {status}); no retry, no fallback: a human decides"
                 )
-            self.sleep(HEALTH_POLL)
+            return left
+
+        while True:
+            cap = remaining()  # before each probe
+            try:
+                with probe_cap(cap):
+                    probe = json.loads(
+                        self.qa.command(
+                            "docker", "inspect", ident, "--format", mod.HEALTH_PROBE
+                        )
+                    )
+            except (RuntimeError, ValueError):
+                probe = {}
+            status = (probe.get("health") or {}).get("Status")
+            remaining()  # a probe that finishes past the deadline is HOLD, healthy or not
+            if probe.get("status") != "running":
+                raise RuntimeError(f"HOLD: {ident[:12]} is not running after its start")
+            if status == "healthy":
+                with probe_cap(remaining()):
+                    fresh = dict(self.h.fresh_health(ident, since))
+                status = "healthy, but confirmed after the deadline"
+                remaining()  # a fresh_health that straddles the deadline is HOLD
+                return fresh
+            if status != "starting":
+                raise RuntimeError(
+                    f"HOLD: {ident[:12]} has no healthy check within {HEALTH_DEADLINE:g} s "
+                    f"of its start (health {status}); no retry, no fallback: a human decides"
+                )
+            self.sleep(min(HEALTH_POLL, remaining()))
 
     def smoke(self) -> str:
         """The smoke check, separate from the health check and only after it passed."""
