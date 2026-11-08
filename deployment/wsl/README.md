@@ -104,19 +104,33 @@ ARM externo) com `--platform linux/arm64`. Sob emulação, todas as etapas —
 apt, bootstrap e ferramentas de host do vcpkg, compilador — executam como
 arm64, mantendo `--host-triplet=arm64-linux` coerente.
 
-*Preflight de capacidade (responsabilidade do operador, antes de iniciar;*
-*este repositório não instala binfmt nem provisiona builder):*
+*Inventário do builder (readonly, autorizado no estágio atual; este*
+*repositório não instala binfmt nem provisiona builder):* o build é
+vinculado a um builder **nomeado** — escolha um, registre a identidade e
+use o mesmo nome no comando de build:
 
 ```bash
-docker buildx ls                       # builder ativo deve listar linux/arm64
-docker run --rm --platform linux/arm64 ubuntu:24.04@sha256:19cad59657037cffa0ac9a48107019b768900ff1071140965827513ac866bd5e uname -m
-# esperado: aarch64
+docker buildx ls                          # lista builders; 'platforms' = capacidade ANUNCIADA, não prova
+docker buildx inspect <BUILDER> --bootstrap=false
+# registre no handoff: driver, nó(s) e endpoint(s) deste builder
 ```
 
-*Build com plataforma explícita, recursos limitados e saída identificada:*
+*Aviso de identidade da sonda:* `docker run` executa pelo daemon Docker
+corrente, que pode ser **diferente** do builder selecionado pelo
+`buildx build` — sucesso local (QEMU) não atesta builder remoto, e um nó
+ARM externo pode executar etapas ARM mesmo com o daemon local incapaz.
+Uma sonda de execução só vale se rodar **pelo mesmo builder nomeado**
+(por exemplo, um build mínimo `docker buildx build --builder <BUILDER>
+--platform linux/arm64`); como execução de container é ação distinta do
+inventário readonly autorizado, a capacidade de execução do builder fica
+**explicitamente não comprovada** até o build autorizado estabelecê-la.
+
+*Build (somente quando autorizado), com builder nomeado, plataforma*
+*explícita, recursos limitados e saída identificada:*
 
 ```bash
-docker buildx build -f deployment/wsl/Dockerfile.release.arm64 \
+docker buildx build --builder <BUILDER> \
+  -f deployment/wsl/Dockerfile.release.arm64 \
   --platform linux/arm64 \
   --build-context gitmeta="$BUILD_GIT_DIRECTORY" \
   --build-arg SOURCE_REVISION="$SOURCE_REVISION" \
@@ -132,7 +146,8 @@ docker image inspect canary-game:arm64-"$SOURCE_REVISION" \
 levar horas; mantenha `BUILD_JOBS` contido (o padrão do perfil é 3; 2 é um
 ponto de partida seguro sob QEMU), execute apenas o build — nenhum serviço,
 restart ou uso da máquina de produção nesta etapa — e exporte a imagem com
-tag e label identificados como acima antes de qualquer handoff.
+tag, label e identidade do builder (driver/nó/endpoint) registradas no
+handoff antes de qualquer uso.
 
 ## Gateway LiteLLM no mesmo projeto
 
