@@ -397,7 +397,7 @@ e sha256):
    continuam running/healthy **exatamente**; rede, volumes e o **mesmo** recorte
    exato. Deriva é HOLD: recusa, com o recibo guardado.
 4. `bundle`: os 4 Compose, os 2 configs fake e o `.env` pelos hashes; o estado do
-   post-stop de novo; outros games preservados e parados; zero writers e nenhum
+   post-stop de novo; outros games preservados e parados; o gate de sessões do banco e nenhum
    container novo; o render (hash privado e sanitizado); os **valores** do ambiente
    por chave (sha256 de `CHAVE=VALOR`, só hashes); os binds. Sela o argv do `up`.
 5. `fallback-plan` e `fallback-verify`: o resgate do manifesto (ID, config, imagem,
@@ -485,6 +485,88 @@ comando, e nada roda `up` sozinho. Depois do `up`, vale o `--record-brain-image`
 a1d9, a partir do checkout. O `stage1_baseline.py rollback` de a1d9 renderiza o
 Compose relativo ao próprio checkout, então não é rodado do checkout isolado. O
 retorno deste handoff é o fallback.
+
+#### Gate de sessões do banco (substitui o antigo zero writers)
+
+O gate de writers agora roda como a conta de admin que já existe, `root@localhost`, por
+`docker exec` no ID fixado do banco. A senha vem do env do próprio container, dentro do
+`sh -c`; ela nunca aparece em argv, recibos ou logs. Uma única chamada `mariadb`, ou
+seja, uma sessão, roda em ordem: `CONNECTION_ID()`, `CURRENT_USER()` e
+`UTC_TIMESTAMP(6)`; o privilégio PROCESS em `USER_PRIVILEGES` (nome e booleano);
+PROCESSLIST (ID, USER, HOST, DB, COMMAND, TIME, STATE, nunca INFO); `innodb_trx`; e
+de novo `CONNECTION_ID()` e a hora. Isso não é um snapshot atômico.
+
+- HOLD: erro, saída incompleta ou malformada, outra conta efetiva, sem PROCESS, duas
+  sessões, ou a sonda não se ver.
+- Recusa: qualquer outra sessão, de qualquer usuário ou host. Só saem a própria
+  conexão, pelo ID, e `COMMAND='Daemon'`; não há lista de usuários (`system user` e
+  `event_scheduler` fora de Daemon recusam). Qualquer linha de `innodb_trx` recusa,
+  até a da própria sessão.
+- Uma colisão com o healthcheck do banco é HOLD: sem exceção e sem retry automático.
+- A sonda tem um timeout explícito de no máximo 10 s, cortado pelo tempo que resta da
+  janela (ela nunca estende a janela). Um timeout ou uma falha é o erro principal: HOLD,
+  com o timeout e o tempo decorrido, sem retry e sem ativação. Sem tempo na janela, a
+  sonda nem roda.
+- Para cada sessão recusada, o IP é ligado a um container pelo `docker inspect` atual
+  dos IDs fixados: uma **associação observada**, nunca prova de quem abriu a sessão. O
+  IP de um container parado conta como desconhecido. A conexão histórica do bundle
+  continua desconhecida.
+
+Ele roda nos mesmos pontos de antes (`bundle`, logo antes do `up`, `fallback-verify` e
+antes do start do resgate) e, no modo quiescente, antes de emitir o recibo, antes de
+aprovar e logo antes do `up`, dentro do `exec-step`.
+
+#### Modo quiescente (rascunho; nada foi coletado, parado nem ativado)
+
+Uma cadeia **separada** do mesmo adaptador. Ela troca só o recorte inteiro do banco
+por um recorte lido com o `game` parado. A baseline fixada não muda.
+
+1. `quiescent-post-build`: o `post-build` com **uma** dispensa: o recorte vivo não é
+   comparado com o recorte histórico da baseline, porque ele se move com o jogo de pé.
+   O recorte lido fica registrado como informativo. Identidade, health, config,
+   imagens, binds, resgate e candidato continuam exatos.
+2. `quiescent-pre-stop`: os gates do `pre-stop` (com a mesma dispensa e nenhuma
+   outra), a ausência de humanos e uma janela limitada. O aviso do coordenador é um
+   JSON com `window_start_utc` e `window_end_utc`, de no máximo 30 min. Ele sela
+   `quiescent-stop-game`, um stop que **só** coleta evidência e nunca autoriza `up`.
+3. `exec-step` do stop: o mesmo claim canônico, o prazo de 5 s e a janela.
+4. `quiescent-slice`: `game` exited 0, com o mesmo `StartedAt` e `RestartCount`; DB e
+   web exatos; o gate de writers estrito; integridade; duas leituras de
+   `s1.db_slice` (sem mudança). Duas leituras iguais só corroboram; elas não provam
+   a ausência de writers. O recibo guarda o recorte inteiro (contagens, sha da
+   projeção, `method` e `sql_sha256`), o recorte histórico que ele substitui, o
+   `exec-step` do stop (sha e claim) e a janela. Ele não autoriza nada sozinho.
+5. `quiescent-bundle --quiescent-receipt <recibo> --quiescent-receipt-sha256 <sha>
+   --approval <arquivo> --approval-sha256 <sha>`. O sha da linha de comando só fixa
+   os bytes; a aprovação independente (`qa-stage2-quiescent-approval-v1`) tem de citar
+   exatamente o sha do recibo, o `exec-step` do stop (sha e claim), a janela (sha do
+   aviso, início e fim), o recorte inteiro, o revisor, o horário e a auditoria
+   (`auditor`, `audited_at_utc`, `explanation`). Depois vêm os gates do `bundle`, com o
+   recorte comparado **exatamente** ao do recibo, e o gate de writers. Ele sela
+   `quiescent-up`.
+6. `exec-step` do `quiescent-up`: refaz a aprovação, a janela, o `StartedAt` e
+   `RestartCount`, o `up_gate` e o gate de writers. Além do claim do passo, ele grava
+   o claim `<sha do recibo quiescente>.activate`: o recibo é de uso único, qualquer
+   que seja o bundle que o cite.
+
+Um start do `game` ou o fim da janela anulam o recibo e qualquer aprovação pendente.
+Se a revisão não terminar dentro da janela, o retorno é o procedimento gerenciado já
+revisado (do Pitagoras), não um adaptador novo. A cadeia normal recusa qualquer recibo
+quiescente, e a quiescente recusa os normais. Uma cadeia quiescente nunca usa o
+fallback deste adaptador: `fallback-plan`, `fallback-verify`, `rescue-verify` e o
+`exec-step` de um passo que não seja quiescente recusam e apontam só para o
+procedimento gerenciado de retorno. O fallback da cadeia normal não muda.
+
+#### Pino do mapa
+
+O mapa é revalidado no caminho operacional original,
+`<projeto>/runtime/world/otservbr.otbm`, o arquivo que o `game` monta só leitura.
+Nunca a cópia do checkout nem uma cópia de rascunho. O pino é o aprovado antes:
+`prepare.MAP_SHA256` de a1d9 (o mesmo do `preflight.assert_map`), que tem de ser igual
+ao `map_sha256` do recibo de preflight de a1d9 ligado pelo manifesto. Ele nunca é
+tirado do arquivo atual. A checagem roda antes do stop (no `pre-stop`, no
+`quiescent-pre-stop` e no precheck do stop dentro do `exec-step`) e logo antes do `up`
+(no `up_gate`, dentro do `exec-step`). Um mundo trocado recusa nos dois pontos.
 
 ### Gate de upgrade: comparação exata com a baseline revisada
 
