@@ -622,6 +622,58 @@ class ReturnAttemptTests(base.QuiescentTests):
         self.attempt().start_managed()  # the lock free again: the return runs
         self.assertEqual(self.starts(MANAGED), 1)
 
+    def test_the_layout_is_the_adapter_guards(self):
+        self.assertEqual(ret.ATTEMPTS, handoff.RETURN_ATTEMPTS)
+        self.assertEqual(ret.LOCK, handoff.ATTEMPT_LOCK)
+        self.assertEqual(ret.ABANDONED, handoff.ABANDONED)
+
+    def test_return_first_then_the_pending_up_refuses(self):
+        """Order 1: the return abandons the attempt; an approved, pending up never runs."""
+        (bundle, digest), (q_path, q_sha, approval, approval_sha) = self.q_bundled()
+        self.key = next(
+            (self.project / handoff.CLAIMS).glob("*.quiescent-stop-game.claim")
+        ).name.split(".")[0]
+        self.attempt().start_managed()
+        self.assertEqual(self.starts(MANAGED), 1)
+        with self.assertRaisesRegex(RuntimeError, "abandoned for the managed return"):
+            self.new().exec_step(bundle, digest)
+        # a new bundle is refused too (here the started game already voids the approval)
+        with self.assertRaisesRegex(RuntimeError, "abandoned|started again"):
+            self.new().quiescent_bundle(q_path, q_sha, approval, approval_sha)
+        self.assertEqual(self.ups(), 0)
+        claims = self.project / handoff.CLAIMS
+        self.assertFalse((claims / f"{q_sha}.activate.claim").exists())
+        self.assertFalse((claims / f"{digest}.quiescent-up.claim").exists())
+
+    def test_up_in_flight_then_the_return_holds(self):
+        """Order 2: while the up holds the lock, the return is HOLD and writes nothing."""
+        (bundle, digest), _ = self.q_bundled()
+        self.key = next(
+            (self.project / handoff.CLAIMS).glob("*.quiescent-stop-game.claim")
+        ).name.split(".")[0]
+        refused = []
+
+        def up_with_a_concurrent_return(argv):
+            for branch in ("start_managed", "rescue"):
+                try:
+                    getattr(self.attempt(), branch)()
+                except RuntimeError as error:
+                    refused.append(str(error))
+            return self.run_up(argv)
+
+        handoff.execute.side_effect = up_with_a_concurrent_return
+        self.new().exec_step(bundle, digest)
+        self.assertEqual(self.ups(), 1)
+        self.assertEqual(len(refused), 2)
+        for text in refused:
+            self.assertRegex(text, "HOLD: the attempt lock is held")
+        directory = self.attempt_dir(self.key)
+        self.assertEqual(sorted(p.name for p in directory.iterdir()), [ret.LOCK])
+        self.assertEqual(self.mutations, [])
+        with self.assertRaisesRegex(RuntimeError, "start-managed is closed"):
+            self.attempt().start_managed()  # after the up: Branch A is closed for good
+        self.assertEqual(self.starts(MANAGED), 0)
+
     def test_a_consumed_claim_refuses(self):
         key = self.stopped_attempt()
         directory = self.attempt_dir(key)

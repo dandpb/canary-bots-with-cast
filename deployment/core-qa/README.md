@@ -577,6 +577,11 @@ pelo sha256 antes de executar qualquer linha dela.
   fim da mutação e herdado pelo processo filho. O retorno nunca espera: lock ocupado é
   HOLD. Com o lock, ele grava `ABANDONED` antes de qualquer gate. Daí em diante o up desta
   tentativa fica recusado, mesmo que o retorno recuse depois.
+- Guarda no adaptador: o `exec-step` do `quiescent-up` pega o `attempt.lock` da tentativa
+  (a chave vem da própria cadeia) antes do precheck e só solta depois do resultado; o
+  processo do `up` herda o descritor. Lock ocupado ou `ABANDONED` presente recusam, sem
+  claim. O `up_gate` quiescente (também no `quiescent-bundle`) faz a mesma checagem. O
+  stop, o recorte e a cadeia normal não usam o lock.
 - Os gates ligam o sha do adaptador, o manifesto `bc4fb5af…`, o claim do stop e o seu
   resultado (exit 0, a cadeia `exec-step` → `quiescent-pre-stop`), o aviso da janela e os
   IDs e configs. Nenhum ramo exige o recorte histórico: os dados atuais ficam como estão,

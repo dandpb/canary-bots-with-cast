@@ -2,6 +2,7 @@
 
 import contextlib
 import copy
+import fcntl
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ import stage2_handoff as handoff
 from test_stage1_baseline import QA, FakeDocker
 
 REAL_COLLECT = handoff.collect  # the real bounded capture, before setUp patches it
+REAL_EXECUTE = handoff.execute  # the real mutation runner, before setUp patches it
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
@@ -3024,7 +3026,129 @@ class QuiescentSuccessorTests(QuiescentTests):
         )
 
 
-for _successor in (SuccessorFixTests, QuiescentSuccessorTests):
+class QuiescentAbandonGuardTests(QuiescentTests):
+    """The quiescent up consults the managed return's lock and ABANDONED marker."""
+
+    def attempt_dir(self):
+        claims = self.project / handoff.CLAIMS
+        key = next(claims.glob("*.quiescent-stop-game.claim")).name.split(".")[0]
+        return self.project / handoff.RETURN_ATTEMPTS / key
+
+    def up_claims(self):
+        claims = self.project / handoff.CLAIMS
+        return sorted(
+            p.name
+            for p in claims.iterdir()
+            if p.name.endswith((".quiescent-up.claim", ".activate.claim"))
+        )
+
+    @contextlib.contextmanager
+    def held_lock(self, directory):
+        directory.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(directory / handoff.ATTEMPT_LOCK, os.O_RDWR | os.O_CREAT)
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            os.close(descriptor)
+
+    def test_the_attempt_key_is_the_pre_stop_sha_of_the_stop_claim(self):
+        (bundle, digest), _rest = self.q_bundled()
+        h = self.new()
+        h.follow(bundle, ("quiescent-bundle",), expected=digest, mode=handoff.QUIESCENT)
+        pre = next(r for r in h.chain if r["phase"] == "quiescent-pre-stop")
+        stop = next(r for r in h.chain if r["phase"] == "exec-step")
+        self.assertEqual(h.attempt_key(), stop["previous"]["sha256"])
+        self.assertEqual(
+            Path(stop["claim"]).name, f"{h.attempt_key()}.quiescent-stop-game.claim"
+        )
+        self.assertEqual(pre["step"]["name"], "quiescent-stop-game")
+        self.assertEqual(self.attempt_dir().name, h.attempt_key())
+
+    def test_up_refuses_an_abandoned_attempt(self):
+        (bundle, digest), (q_path, q_sha, approval, approval_sha) = self.q_bundled()
+        directory = self.attempt_dir()
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / handoff.ABANDONED).write_text('{"attempt": "x"}\n')
+        with self.assertRaisesRegex(RuntimeError, "abandoned for the managed return"):
+            self.new().exec_step(bundle, digest)
+        with self.assertRaisesRegex(RuntimeError, "abandoned for the managed return"):
+            self.new().quiescent_bundle(q_path, q_sha, approval, approval_sha)
+        self.assertEqual(self.ups(), 0)
+        self.assertEqual(
+            self.up_claims(), []
+        )  # nothing claimed: the marker is read first
+
+    def test_up_refuses_while_the_lock_is_held(self):
+        (bundle, digest), (q_path, q_sha, approval, approval_sha) = self.q_bundled()
+        with self.held_lock(self.attempt_dir()):  # a managed return in progress
+            with self.assertRaisesRegex(RuntimeError, "attempt lock is held"):
+                self.new().exec_step(bundle, digest)
+            with self.assertRaisesRegex(RuntimeError, "attempt lock is held"):
+                self.new().quiescent_bundle(q_path, q_sha, approval, approval_sha)
+        self.assertEqual(self.ups(), 0)
+        self.assertEqual(self.up_claims(), [])
+        self.new().exec_step(
+            bundle, digest
+        )  # the lock free and no marker: the up runs once
+        self.assertEqual(self.ups(), 1)
+
+    def test_up_holds_the_lock_to_its_end_and_passes_it_to_the_child(self):
+        (bundle, digest), _ = self.q_bundled()
+        lock = self.attempt_dir() / handoff.ATTEMPT_LOCK
+        seen = []
+
+        def busy():
+            descriptor = os.open(lock, os.O_RDWR)
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            finally:
+                os.close(descriptor)
+            return False
+
+        def up(argv):
+            seen.append((busy(), list(handoff.HELD_LOCKS)))
+            return self.docker.run(argv)
+
+        victim = self.new()
+        with patch("stage2_handoff.execute", side_effect=up):
+            victim.exec_step(bundle, digest)
+        self.assertEqual(len(seen), 1)
+        self.assertTrue(seen[0][0])  # held during the up
+        self.assertEqual(len(seen[0][1]), 1)  # and handed to the child
+        self.assertFalse(busy())  # released after the result
+        self.assertEqual(handoff.HELD_LOCKS, [])
+        self.assertIsNone(victim.attempt_lock)
+        self.assertEqual(stat.S_IMODE(lock.parent.stat().st_mode), 0o700)
+
+    def test_execute_hands_only_the_held_locks_to_the_child(self):
+        calls = []
+
+        def run(argv, **kwargs):
+            calls.append(kwargs["pass_fds"])
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=run):
+            REAL_EXECUTE(["docker", "version"])
+            handoff.HELD_LOCKS[:] = [7]
+            try:
+                REAL_EXECUTE(["docker", "version"])
+            finally:
+                handoff.HELD_LOCKS.clear()
+        self.assertEqual(calls, [(), (7,)])
+
+    def test_the_quiescent_stop_takes_no_attempt_lock(self):
+        self.q_stopped()  # the stop and the slice never touch the return's namespace
+        self.assertFalse((self.project / handoff.RETURN_ATTEMPTS).exists())
+
+
+for _successor in (
+    SuccessorFixTests,
+    QuiescentSuccessorTests,
+    QuiescentAbandonGuardTests,
+):
     for _inherited in [
         name
         for name in {*vars(HandoffTests), *vars(QuiescentTests)}
