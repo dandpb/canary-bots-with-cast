@@ -385,10 +385,10 @@ e sha256):
    container ou volume `brain`; tags `game`/`web` exatas; identidades, mounts e
    recorte exato; resgate e candidato parados; binds equivalentes aos caminhos do host.
 2. `pre-stop`: gate vivo de novo (running/healthy e recorte exato), resgate e
-   candidato, e a exclusão humana com evidência: cada GUID online em `players_online`
-   precisa estar num roster nativo novo (GUID → bot/humano) do container atual do
-   `game` (`--native-roster` e `--native-roster-sha256`; a conta 65000 não prova que
-   é bot), personagens humanos de QA offline, zero sessões TCP estabelecidas nas portas 17171/17172 (lidas em `/proc/net/tcp*`
+   candidato, e a ausência de humanos: a última mensagem de diagnóstico de âncoras de
+   `bot_hibernation.lua` mostra 0 âncoras, fresca e deste container (ver abaixo),
+   personagens humanos de QA offline no SQL (corroboração, possivelmente velha), zero
+   sessões TCP estabelecidas nas portas 17171/17172 em `/proc/net/tcp` e `tcp6`
    dentro do `game`) e o aviso de janela do coordenador (`--window-notice` e
    `--window-notice-sha256`), além da atestação (`--attested-by`, `--attested-at`).
    Sela `docker stop -t 180 <ID do game>`.
@@ -416,15 +416,41 @@ tem** hash de config no manifesto e é ligado por ID, nome, imagem, `CreatedAt`,
 mounts, `restart` e dono. Qualquer start futuro só conta depois de um health check
 novo.
 
-Roster nativo (`--native-roster`): um JSON coletado de forma independente, sem
-instrumentação nem hook no servidor de QA, fixado pelo sha256. Campos:
-`game_container_id` (ID completo do `game` vivo), `collected_at_utc`, `source` (texto
-livre: qual fonte nativa), `online` (lista de `{guid, type: "bot"|"human"}`) e
-`empty_explanation` (obrigatório quando `online` é vazio). O adaptador recusa:
-hash diferente, outro container, evidência com mais de 15 min ou com data no
-futuro, GUID online no SQL fora do conjunto nativo, qualquer `human`, evidência
-ausente e `players_online` vazio sem um conjunto nativo vazio com
-`empty_explanation`. O `exec-step` refaz essa checagem no instante do stop.
+Ausência de humanos (substitui o contrato `--native-roster` de b4ea4441, retirado:
+a fonte 3431 não tem coletor passivo de GUID → tipo com frescor;
+`bot_active_players` é um espelho assíncrono sem época nem watermark). Nada novo no
+servidor de QA: nenhum endpoint, reload, instrumentação ou rebuild.
+
+- `bot_hibernation.lua` em 3431b404 (`data/scripts/globalevents/`), linhas 84-89:
+  âncoras são os jogadores não-bot **e** os bots assistidos por cast. Linhas 133-141:
+  a cada 60 ticks de 300 ms (18 s nominais) ele registra
+  `[BotHibernation] %d bots: hibernated=%d awake=%d, %d real players`; o último `%d`
+  é o número de âncoras. Com o padrão spdlog de 3431
+  (`[%Y-%d-%m %H:%M:%S.%e] [%^%l%$] %v `) e `docker logs --timestamps`, a linha é
+  `<RFC3339Nano>Z [AAAA-DD-MM hh:mm:ss.mmm] [info] [BotHibernation] N bots:
+  hibernated=H awake=A, K real players `.
+- O adaptador liga o sha256 dos bytes do script lidos de dentro do `game` pelo ID
+  completo (`docker exec <id> cat`) aos bytes de 3431 (`b2496d78…bf01`), a imagem
+  `358ee666…` com revisão 3431, o ID completo e um `StartedAt` inalterado (antes e
+  depois da coleta, e desde o pre-stop).
+- Coleta `docker logs --timestamps --since 120s <id>` com timeout. O recibo guarda a
+  captura crua, o sha256 e os limites de relógio de parede e monotônico.
+- Interpreta a **última** mensagem de âncoras, de qualquer valor, não a última zerada.
+  Recusa se ela estiver ausente, malformada, diferente de zero, no futuro, com mais de
+  30 s ou anterior ao `StartedAt`.
+- Recibo: `native_roster_unavailable=true`, `native_anchors=0` e o SQL como
+  corroboração possivelmente velha. Não há `bot_only` nem roster completo; a conta
+  65000 não prova tipo, e a contagem de bots da linha vem de um cache, nunca é um
+  total nativo.
+- Limitação temporal: o timestamp do Docker é o frescor da emissão do log (logger
+  assíncrono do spdlog, flush a cada 3 s no máximo), não um relógio independente do
+  callback. Entre o último diagnóstico e o stop, um login só é pego pelo TCP.
+- No `exec-step` do stop, tudo é refeito (logs, SQL, `tcp`/`tcp6`, aviso de janela) e
+  o stop tem de rodar até **5 s monotônicos** depois da checagem final de sessão, com
+  os outros limites de frescor ainda válidos. Expirou antes do claim: recusa sem
+  mutação e sem claim (o mesmo recibo pode ser tentado de novo, com tudo refeito).
+  Expirou depois do claim: recusa sem mutação, mas o claim fica consumido, com um
+  resultado `executed: false`; é preciso um novo pre-stop.
 
 Binds no Docker Desktop (WSL): o inspect mostra a origem traduzida. O adaptador
 aceita, para o caminho do host `H`, só `H`, `/run/desktop/mnt/host/wsl/Ubuntu` + `H`

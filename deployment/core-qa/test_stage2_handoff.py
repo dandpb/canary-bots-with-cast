@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import re
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -48,6 +49,8 @@ TCP_LISTEN = (
 TCP_DB = (
     "   1: 0100007F:9C40 0100007F:0CEA 01 00000000:00000000 00:00000000 00000000  1000"
 )
+FAKE_SCRIPT = b"-- stand-in for bot_hibernation.lua at 3431b404\n"
+GAME_STARTED = "2026-11-08T00:05:46.123456789Z"
 TCP_PLAYER = (
     "   2: 0100007F:4314 0100007F:D431 01 00000000:00000000 00:00000000 00000000  1000"
 )
@@ -135,7 +138,13 @@ class HandoffDocker(FakeDocker):
         self.stop_exit = 0
         self.up_fails = False
         self.roster = ["online\t100\t65000", "online\t101\t65000"]
-        self.sessions = 0
+        self.sessions = 0  # established on 17172, in /proc/net/tcp
+        self.sessions6 = 0  # the same, in /proc/net/tcp6
+        self.containers[GAME].update(started_at=GAME_STARTED, restart_count=0)
+        self.script = FAKE_SCRIPT
+        # anchor diagnostics as (seconds before the collection, anchors); None = no line
+        self.anchors = [(40, 0), (22, 0), (4, 0)]
+        self.logs = None  # raw text instead of the generated lines
         self.runs = []
 
     def find(self, ident):
@@ -191,14 +200,56 @@ class HandoffDocker(FakeDocker):
             return f"{self.writers}\n"
         if args[1] == "exec" and args[-1] == handoff.ROSTER_SQL:
             return "".join(row + "\n" for row in self.roster)
-        if args[1] == "exec" and tuple(args[3:]) == handoff.TCP_PROBE:
+        if args[1] == "exec" and args[3] == "cat" and args[4] in handoff.TCP_FILES:
             if self.find(args[2])["status"] != "running":
                 raise RuntimeError("read-only command failed: docker exec")
-            players = [TCP_PLAYER] * self.sessions
-            return (
-                "\n".join([TCP_HEADER, TCP_LISTEN, TCP_DB, *players, TCP_HEADER]) + "\n"
+            count = self.sessions if args[4] == "/proc/net/tcp" else self.sessions6
+            lines = [TCP_HEADER, TCP_LISTEN, TCP_DB, *[TCP_PLAYER] * count]
+            return "\n".join(lines) + "\n"
+        if args[1] == "inspect" and fmt == handoff.GAME_START:
+            item = self.find(args[2])
+            if not item:
+                raise RuntimeError("read-only command failed: docker inspect")
+            return json.dumps(
+                {
+                    "id": item["id"],
+                    "image_id": item["image_id"],
+                    "status": item["status"],
+                    "started_at": item.get("started_at"),
+                    "restart_count": item.get("restart_count", 0),
+                }
             )
         return super().__call__(*args, env=env)
+
+    def stamp(self, seconds_before):
+        when = self.clock.now - timedelta(seconds=seconds_before)
+        return when.strftime("%Y-%m-%dT%H:%M:%S.%f") + "123Z"
+
+    def collect(self, argv, timeout=handoff.LOG_TIMEOUT):
+        """The mocked read-only captures with a timeout: the script bytes and the game logs."""
+        item = self.find(argv[-1] if argv[1] == "logs" else argv[2])
+        if not item or item["status"] != "running":
+            raise RuntimeError("read-only command failed: docker; refused")
+        if argv[1] == "exec":
+            assert argv[3:] == ["cat", handoff.HIBERNATION_SCRIPT]
+            return self.script
+        assert argv[:5] == ["docker", "logs", "--timestamps", "--since", "120s"]
+        if self.logs is not None:
+            return self.logs.encode()
+        lines = []
+        for seconds, anchors in self.anchors:
+            stamp = self.stamp(seconds)
+            lines.append(
+                f"{stamp} [2026-08-11 02:00:00.000] [info] [BotHibernation] tick #60 firing "
+            )
+            lines.append(
+                f"{stamp} [2026-08-11 02:00:00.000] [info] [BotHibernation] 40 bots: "
+                f"hibernated=33 awake=7, {anchors} real players "
+            )
+            lines.append(
+                f"{stamp} [2026-08-11 02:00:00.001] [info] [PROXIMITY] near=0 "
+            )
+        return ("\n".join(lines) + "\n").encode()
 
     def run(self, argv):
         """What the mocked exec-step does to the fake host."""
@@ -256,7 +307,7 @@ class HandoffTests(unittest.TestCase):
         self.clock = Clock()
         self.docker = None
         self.manifest_path = self.write_manifest()
-        self.write_native()
+        self.mono = [100.0]
         self.stack = contextlib.ExitStack()
         self.addCleanup(self.stack.close)
         for mock in (
@@ -265,9 +316,16 @@ class HandoffTests(unittest.TestCase):
             patch("stage2_handoff.git_blob", return_value=ADAPTER),
             patch("stage2_handoff.execute", side_effect=self.docker.run),
             patch("stage2_handoff.utcnow", side_effect=self.clock),
+            patch("stage2_handoff.collect", side_effect=self.docker.collect),
+            patch("stage2_handoff.monotonic", side_effect=self.monotonic),
+            patch("stage2_handoff.HIBERNATION_SHA256", sha(FAKE_SCRIPT)),
         ):
             self.stack.enter_context(mock)
         self.slice_now = copy.deepcopy(gate.comparable(self.baseline)["db_slice"])
+
+    def monotonic(self):
+        self.mono[0] += 0.01
+        return self.mono[0]
 
     def slice(self):
         return copy.deepcopy(self.slice_now)
@@ -381,34 +439,13 @@ class HandoffTests(unittest.TestCase):
         receipts = {key: self.receipts[key] for key in handoff.RECEIPT_KEYS}
         return self.new().post_build(receipts, self.render_path)
 
-    def write_native(self, online=None, **fields):
-        """The native GUID -> bot/human roster a collector would write (contract of the adapter)."""
-        roster = {
-            "game_container_id": self.docker.containers[GAME]["id"],
-            "collected_at_utc": self.clock.now.isoformat(),
-            "source": "fake native roster for the offline tests",
-            "online": [
-                {"guid": 100, "type": "bot"},
-                {"guid": 101, "type": "bot"},
-            ]
-            if online is None
-            else online,
-            **fields,
-        }
-        self.native = self.root / "native-roster.json"
-        self.native.write_text(json.dumps(roster))
-        return self.native
-
-    def attest(self, h, path, notice_sha=None, native=None, native_sha=None):
-        native = native or self.native
+    def attest(self, h, path, notice_sha=None):
         return h.pre_stop(
             path,
             "Daniel",
             self.clock.now.isoformat(),
             self.notice,
             notice_sha or sha(self.notice.read_bytes()),
-            native,
-            native_sha or (sha(native.read_bytes()) if native.is_file() else None),
         )
 
     def pre_stop(self):
@@ -898,12 +935,11 @@ class HandoffTests(unittest.TestCase):
             receipt["step"]["argv"],
             ["docker", "stop", "-t", "180", self.baseline["containers"][1]["id"]],
         )
-        people = receipt["human_exclusion"]
+        people = receipt["human_absence"]
         self.assertEqual(people["window_notice"]["sha256"], notice)
-        self.assertEqual(people["roster"]["online"], 2)
-        self.assertEqual(
-            (people["qa_humans_online"], people["game_port_sessions"]), (0, 0)
-        )
+        self.assertEqual(people["sql_corroboration"]["online_rows"], 2)
+        self.assertEqual(people["sql_corroboration"]["qa_humans_online"], 0)
+        self.assertEqual(people["game_port_sessions"], {"tcp": 0, "tcp6": 0})
 
     def test_p2_4_pre_stop_binds_roster_sessions_and_window_notice(self):
         """P2 #4: the human exclusion is evidence, not a name and a time."""
@@ -925,9 +961,9 @@ class HandoffTests(unittest.TestCase):
             docker.roster = ["oops"]
 
         cases = {
-            qa_human: "non-bot character",
-            god: "non-bot character",
-            orphan: "non-bot character",
+            qa_human: "known QA human",
+            god: "known QA human",
+            orphan: "known QA human",
             tcp_session: "TCP session",
             bad_roster: "unexpected shape",
         }
@@ -942,128 +978,192 @@ class HandoffTests(unittest.TestCase):
             self.attest(self.new(), path, "0" * 64)
         self.assertEqual(list((self.root / "evidence").glob("pre-stop-*.json")), [])
 
-    def test_native_roster_backs_every_online_guid(self):
-        """Account 65000 is no proof of a bot: each players_online GUID needs fresh native evidence."""
-        path, _ = self.post_build()
-        stop, _ = self.attest(self.new(), path)
-        people = self.receipt(stop)["human_exclusion"]
-        native = people["native_roster"]
-        self.assertEqual(native["sha256"], sha(self.native.read_bytes()))
-        self.assertEqual(
-            native["game_container_id"], self.docker.containers[GAME]["id"]
+    def test_hibernation_pin_is_the_3431_bytes(self):
+        found = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO),
+                "cat-file",
+                "blob",
+                f"{handoff.GAME_REVISION}:data/scripts/globalevents/bot_hibernation.lua",
+            ],
+            capture_output=True,
+            check=False,
         )
-        self.assertEqual(native["bots"], [100, 101])
-        self.assertTrue(people["roster"]["bot_only"])
-        # an empty players_online passes only with a native empty set and its explanation
-        self.docker.roster = []
-        self.write_native([], empty_explanation="no bots loaded; no player online")
-        empty, _ = self.attest(self.new(), path)
-        self.assertEqual(self.receipt(empty)["human_exclusion"]["roster"]["online"], 0)
+        if found.returncode:
+            self.skipTest("revision 3431b404 is not in this clone")
+        self.assertEqual(
+            sha(found.stdout),
+            "b2496d782f27b31b4f027ddae2b5b26704c2fc379e66501610a665687f92bf01",
+        )
+        text = found.stdout.decode()
+        self.assertIn(
+            "if (not p:isBotPlayer()) or (p:getCastViewerCount() > 0) then", text
+        )
+        self.assertIn(
+            'logger.info(string.format("[BotHibernation] %d bots: hibernated=%d awake=%d, '
+            '%d real players",',
+            text,
+        )
 
-    def test_native_roster_refusals(self):
+    def test_human_absence_legitimate_control_passes(self):
+        """A fresh zero, empty TCP and the QA humans offline: the stop is sealed and runs."""
+        path, digest = self.pre_stop()
+        people = self.receipt(path)["human_absence"]
+        self.assertTrue(people["native_roster_unavailable"])
+        self.assertEqual(people["native_anchors"], 0)
+        self.assertNotIn("bot_only", json.dumps(people))
+        self.assertTrue(people["sql_corroboration"]["potentially_stale"])
+        self.assertEqual(people["game"]["id"], self.docker.containers[GAME]["id"])
+        self.assertEqual(people["game"]["started_at"], GAME_STARTED)
+        self.assertEqual(people["game"]["source_revision"], handoff.GAME_REVISION)
+        self.assertEqual(people["script"]["sha256"], sha(FAKE_SCRIPT))
+        logs = people["logs"]
+        self.assertEqual(logs["sha256"], sha(logs["raw"].encode()))
+        self.assertLessEqual(
+            logs["wall_clock_utc"]["start"], logs["wall_clock_utc"]["end"]
+        )
+        self.assertLess(
+            logs["monotonic_seconds"]["start"], logs["monotonic_seconds"]["end"]
+        )
+        self.assertRegex(
+            people["last_anchor_diagnostic"]["line"], r", 0 real players ?$"
+        )
+        self.assertIn("not an independent clock", " ".join(people["limitations"]))
+        run, _ = self.new().exec_step(path, digest)
+        refreshed = self.receipt(run)["refreshed_human_absence"]
+        self.assertNotEqual(refreshed["logs"]["wall_clock_utc"], logs["wall_clock_utc"])
+        self.assertEqual(len(self.docker.runs), 1)
+
+    def test_human_absence_refusals(self):
+        """One refusal per case, at pre-stop; nothing is sealed."""
         path, _ = self.post_build()
-        game = self.docker.containers[GAME]["id"]
-        now = self.clock.now
 
-        def hash_mismatch():
-            native = self.write_native()
-            return {"native": native, "native_sha": "0" * 64}
+        def old_zero_then_nonzero():
+            self.docker.anchors = [(25, 0), (4, 1)]
 
-        def missing():
-            self.native.unlink()
-            return {}
+        def absent():
+            self.docker.anchors = []
 
-        def other_container():
-            self.write_native(game_container_id=CANDIDATE)
-            return {}
-
-        def short_container_id():
-            self.write_native(game_container_id=game[:12])
-            return {}
-
-        def stale():
-            self.write_native(
-                collected_at_utc=(now - timedelta(minutes=16)).isoformat()
+        def malformed():
+            self.docker.logs = (
+                f"{self.docker.stamp(4)} [2026-08-11 02:00:00.000] [info] "
+                "[BotHibernation] 40 bots: hibernated=33, 0 real players \n"
             )
-            return {}
 
         def future():
-            self.write_native(collected_at_utc=(now + timedelta(minutes=5)).isoformat())
-            return {}
+            self.docker.anchors = [(10, 0), (-20, 0)]
 
-        def unknown_guid():
-            self.docker.roster.append("online\t42\t65000")
-            return {}
+        def stale():
+            self.docker.anchors = [(35, 0)]
 
-        def native_human():
-            self.write_native(
-                [{"guid": 100, "type": "bot"}, {"guid": 7, "type": "human"}]
-            )
-            return {}
+        def before_started_at():
+            # StartedAt after the last diagnostic (later than the collection's own clock)
+            self.docker.containers[GAME]["started_at"] = self.docker.stamp(-60)
 
-        def empty_sql_native_not_empty():
-            self.docker.roster = []
-            return {}
+        def script_hash():
+            self.docker.script = FAKE_SCRIPT + b"-- edited\n"
 
-        def empty_sql_without_explanation():
-            self.docker.roster = []
-            self.write_native([])
-            return {}
+        def tcp():
+            self.docker.sessions = 1
 
-        def not_the_contract():
-            self.write_native([{"guid": "100", "type": "bot"}])
-            return {}
+        def tcp6():
+            self.docker.sessions6 = 1
+
+        def qa_human():
+            self.docker.roster.append("online\t66102\t65003")
 
         cases = {
-            hash_mismatch: "native roster is not the given sha256",
-            missing: "needs native roster evidence",
-            other_container: "not collected from the current game container",
-            short_container_id: "not collected from the current game container",
-            stale: "stale or dated in the future",
-            future: "stale or dated in the future",
-            unknown_guid: "not in the native roster",
-            native_human: "human\\(s\\) online; bot_only is required",
-            empty_sql_native_not_empty: "players_online is empty without a native empty roster",
-            empty_sql_without_explanation: "players_online is empty without a native empty roster",
-            not_the_contract: "does not follow the contract",
+            old_zero_then_nonzero: "shows 1 anchor",
+            absent: "no anchor diagnostic",
+            malformed: "malformed",
+            future: "dated in the future",
+            stale: "older than 30 s",
+            before_started_at: "not after the game's StartedAt",
+            script_hash: "not the 3431b404 bytes",
+            tcp: "TCP session.*'tcp': 1",
+            tcp6: "TCP session.*'tcp6': 1",
+            qa_human: "known QA human",
         }
         for change, message in cases.items():
             with self.subTest(change.__name__):
-                saved = list(self.docker.roster)
-                self.write_native()
-                self.clock.now = now
-                given = change()
+                saved = copy.deepcopy(
+                    (
+                        self.docker.anchors,
+                        self.docker.logs,
+                        self.docker.script,
+                        self.docker.sessions,
+                        self.docker.sessions6,
+                        self.docker.roster,
+                        self.docker.containers[GAME],
+                    )
+                )
+                change()
                 with self.assertRaisesRegex(RuntimeError, message):
-                    self.attest(self.new(), path, **given)
-                self.docker.roster = saved
+                    self.attest(self.new(), path)
+                (
+                    self.docker.anchors,
+                    self.docker.logs,
+                    self.docker.script,
+                    self.docker.sessions,
+                    self.docker.sessions6,
+                    self.docker.roster,
+                    self.docker.containers[GAME],
+                ) = saved
         self.assertEqual(list((self.root / "evidence").glob("pre-stop-*.json")), [])
-        with self.assertRaisesRegex(RuntimeError, "needs native roster evidence"):
-            self.new().pre_stop(
-                path,
-                "Daniel",
-                now.isoformat(),
-                self.notice,
-                sha(self.notice.read_bytes()),
+
+    def test_human_absence_is_refreshed_at_the_stop(self):
+        """Inside exec-step: logs, SQL, tcp/tcp6, StartedAt and the notice again; no mutation."""
+
+        def nonzero_now():
+            self.docker.anchors = [(30, 0), (3, 2)]
+
+        def stale_now():
+            self.docker.anchors = [(45, 0)]
+
+        def restarted():
+            self.docker.containers[GAME]["started_at"] = self.docker.stamp(60)
+            self.docker.containers[GAME]["restart_count"] = 1
+
+        def restart_during_collection():
+            original = self.docker.collect
+
+            def collect(argv, timeout=handoff.LOG_TIMEOUT):
+                out = original(argv, timeout)
+                if argv[1] == "logs":
+                    self.docker.containers[GAME]["started_at"] = self.docker.stamp(0)
+                return out
+
+            self.stack.enter_context(
+                patch("stage2_handoff.collect", side_effect=collect)
             )
 
-    def test_native_roster_is_refreshed_at_the_stop(self):
-        def stale():
-            self.clock.now += timedelta(minutes=16)
+        def script_now():
+            self.docker.script = b"-- other\n"
 
-        def unknown_guid():
-            self.docker.roster.append("online\t42\t65000")
+        def tcp_now():
+            self.docker.sessions = 1
 
-        def file_changed():
-            self.write_native([{"guid": 100, "type": "bot"}])
+        def tcp6_now():
+            self.docker.sessions6 = 2
 
-        def emptied():
-            self.docker.roster = []
+        def qa_human_now():
+            self.docker.roster.append("online\t66100\t65001")
+
+        def notice_now():
+            self.notice.write_text("window cancelled\n")
 
         cases = {
-            stale: "stale",
-            unknown_guid: "not in the native roster",
-            file_changed: "native roster is not the given sha256",
-            emptied: "players_online is empty",
+            nonzero_now: "shows 2 anchor",
+            stale_now: "older than 30 s",
+            restarted: "StartedAt changed",
+            restart_during_collection: "StartedAt changed",
+            script_now: "not the 3431b404 bytes",
+            tcp_now: "'tcp': 1",
+            tcp6_now: "'tcp6': 2",
+            qa_human_now: "known QA human",
+            notice_now: "window notice",
         }
         for change, message in cases.items():
             with self.subTest(change.__name__):
@@ -1073,6 +1173,50 @@ class HandoffTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, message):
                     self.new().exec_step(path, digest)
                 self.assertEqual(self.docker.runs, [])
+                self.assertEqual(
+                    list((self.project / handoff.CLAIMS).glob("*"))
+                    if (self.project / handoff.CLAIMS).exists()
+                    else [],
+                    [],
+                )
+
+    def test_stop_deadline_expired_refuses_without_mutation(self):
+        """5 monotonic seconds from the final session check to the stop, checked twice."""
+        path, digest = self.pre_stop()
+        original = handoff.Handoff.precheck
+
+        def slow_precheck(h, receipt, argv):
+            original(h, receipt, argv)
+            self.mono[0] += handoff.STOP_DEADLINE + 0.5
+
+        with (
+            patch.object(handoff.Handoff, "precheck", slow_precheck),
+            self.assertRaisesRegex(RuntimeError, "missed its 5 s deadline"),
+        ):
+            self.new().exec_step(path, digest)
+        self.assertEqual(self.docker.runs, [])
+        claims = self.project / handoff.CLAIMS
+        self.assertFalse(claims.exists() and any(claims.iterdir()))  # nothing claimed
+        original_claim = handoff.Handoff.claim
+
+        def slow_claim(h, claim, body):  # the claim itself overruns the deadline
+            original_claim(h, claim, body)
+            self.mono[0] += handoff.STOP_DEADLINE + 0.5
+
+        with (
+            patch.object(handoff.Handoff, "claim", slow_claim),
+            self.assertRaisesRegex(RuntimeError, "missed its 5 s deadline"),
+        ):
+            self.new().exec_step(path, digest)
+        self.assertEqual(self.docker.runs, [])
+        result = claims / f"{digest}.stop-game.result"
+        self.assertEqual(
+            json.loads(result.read_text()),
+            {"executed": False, "reason": "stop deadline expired"},
+        )
+        with self.assertRaisesRegex(RuntimeError, "already claimed"):
+            self.new().exec_step(path, digest)
+        self.assertEqual(self.docker.runs, [])
 
     def test_p2_4_human_exclusion_is_refreshed_at_the_stop(self):
         def qa_human():
@@ -1085,7 +1229,7 @@ class HandoffTests(unittest.TestCase):
             self.notice.write_text("window cancelled\n")
 
         cases = {
-            qa_human: "non-bot character",
+            qa_human: "known QA human",
             tcp_session: "TCP session",
             notice_changed: "window notice",
         }

@@ -32,7 +32,8 @@ Who executes what:
   fsync of the file and of its directory) at a canonical place under the manifest's project
   directory, keyed by the receipt sha256 and the step and never by `--evidence`. Only then the
   sealed argv runs, once. A claim without a result (a crash, a failed receipt write) stays
-  consumed: HOLD, never retried. Nobody retypes a command.
+  consumed: HOLD, never retried. The stop runs within STOP_DEADLINE (5) monotonic seconds of
+  its final session check (see within_deadline). Nobody retypes a command.
 - Nothing runs `up` on its own: `bundle` seals the up argv; only an exec-step of that receipt runs it.
   After the up, the a1d9 recorder (`preflight.py --record-brain-image`, from the source checkout) stays the check.
 - The return path is `fallback-plan` -> exec-step -> `fallback-verify` -> exec-step (start the
@@ -51,9 +52,9 @@ Phases (`<phase> --help` for the inputs):
                    (manifest and live); .env raw bytes; no brain container or volume; identities and
                    the exact DB slice; rescue and candidate stopped; binds equal to the host paths
   pre-stop         fresh live gate (running/healthy + exact slice), rescue and candidate, human
-                   exclusion (players_online against a fresh native GUID->bot/human roster of the
-                   current game container, QA humans offline, no TCP sessions on the game ports,
-                   the coordinator's window notice by sha256); seals `docker stop -t 180 <game ID>`
+                   absence (zero anchors in the last, fresh bot_hibernation.lua diagnostic of the
+                   game container, QA humans offline, no TCP sessions on the game ports, the
+                   coordinator's window notice by sha256); seals `docker stop -t 180 <game ID>`
   post-stop        no running/healthy gate for the game only: same ID, CreatedAt, image and config,
                    exited with code 0. DB and web stay running/healthy EXACTLY; network, volumes and
                    the SAME exact slice. Drift is HOLD
@@ -75,6 +76,7 @@ import posixpath
 import re
 import subprocess
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -130,24 +132,60 @@ REVISION = re.compile(r"[0-9a-f]{40}")
 DESKTOP_ROOT = "/run/desktop/mnt/host/wsl"
 DESKTOP_BINDS = f"{DESKTOP_ROOT}/docker-desktop-bind-mounts"
 WSL_DISTRO = "Ubuntu"
-# Human exclusion. players_online is the game's own roster table: bots (account 65000) are kept
-# there by bot_manager.lua, real players by a 10-minute sweep (Game::updatePlayersOnline), so the
-# live TCP sessions on the login and game ports are checked too, inside the game container.
-BOT_ACCOUNT = 65000  # where bots live; NOT proof that a GUID is a bot
-# Native roster: GUID -> bot/human from the game's own state, collected independently (no hook
-# in the QA server) and pinned by sha256. Contract of the JSON file:
-#   {"game_container_id": <full ID of the live game>, "collected_at_utc": <ISO 8601, UTC>,
-#    "source": <free text: which native source>, "online": [{"guid": <int>, "type": "bot"|"human"}],
-#    "empty_explanation": <text, required when "online" is empty>}
-NATIVE_ROSTER_MAX_AGE = STEP_MAX_AGE
-NATIVE_TYPES = {"bot", "human"}
+# Human absence (no native roster exists: bot_active_players is an async mirror without an epoch
+# or watermark). Proof: the LAST anchor diagnostic of bot_hibernation.lua at 3431b404 (lines
+# 84-89 build the anchors: every non-bot player and every cast-watched bot; lines 133-141 log
+# them every 60 ticks of 300 ms, nominally every 18 s) says 0 anchors, fresh, from this game
+# container; plus zero TCP sessions on the game ports and the QA humans offline in SQL.
+# players_online is corroboration only (real players enter it by a 10-minute sweep) and account
+# 65000 proves no type. The spdlog pattern of 3431 is "[%Y-%d-%m %H:%M:%S.%e] [%^%l%$] %v ".
+BOT_ACCOUNT = 65000  # SQL corroboration only: NOT proof that a GUID is a bot
+GAME_REVISION = "3431b4046602875b161216ddb7be464eb4842f1a"
+HIBERNATION_SCRIPT = "/canary/data/scripts/globalevents/bot_hibernation.lua"
+HIBERNATION_SHA256 = (  # git show 3431b404:data/scripts/globalevents/bot_hibernation.lua
+    "b2496d782f27b31b4f027ddae2b5b26704c2fc379e66501610a665687f92bf01"
+)
+ANCHOR_MARKER = ("[BotHibernation] ", " real players")
+ANCHOR_LINE = re.compile(  # docker logs --timestamps + spdlog + bot_hibernation.lua:140-141
+    r"(?P<docker>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z) "
+    r"\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}\] \[info\] "
+    r"\[BotHibernation\] \d+ bots: hibernated=\d+ awake=\d+, (?P<anchors>\d+) real players ?"
+)
+ANSI = re.compile(r"\x1b\[[0-9;]*m")  # spdlog colors the level only on a terminal
+ANCHOR_MAX_AGE = timedelta(seconds=30)
+LOG_WINDOW = "120s"  # the last anchor older than 30 s refuses anyway
+LOG_TIMEOUT = 20.0  # seconds, for each read-only capture
+STOP_DEADLINE = 5.0  # monotonic seconds from the final session check to the stop
 SESSION_PORTS = (17171, 17172)  # GAME_LOGIN_PORT, GAME_PROTOCOL_PORT
 ROSTER_SQL = (
     "SELECT 'online', o.player_id, COALESCE(p.account_id, -1) FROM players_online o "
     "LEFT JOIN players p ON p.id = o.player_id ORDER BY o.player_id;"
 )
-TCP_PROBE = ("cat", "/proc/net/tcp", "/proc/net/tcp6")
+TCP_FILES = ("/proc/net/tcp", "/proc/net/tcp6")
 TCP_ESTABLISHED = "01"
+GAME_START = (
+    '{"id":{{json .Id}},"image_id":{{json .Image}},"status":{{json .State.Status}},'
+    '"started_at":{{json .State.StartedAt}},"restart_count":{{json .RestartCount}}}'
+)
+LIMITATIONS = [
+    (
+        "The Docker log timestamp is the freshness of the log emission (spdlog async logger, "
+        "flushed at least every 3 s), not an independent clock of the onThink callback."
+    ),
+    (
+        "Zero anchors means no non-bot player and no cast-watched bot at that tick; it is not "
+        "a roster and proves no GUID type."
+    ),
+    "The bot count in that line comes from a Lua/C++ cache and is never a native total.",
+    (
+        "players_online is corroboration only and potentially stale (10-minute sweep); "
+        "account 65000 proves no type."
+    ),
+    (
+        "Between the last diagnostic (nominal 18 s cadence) and the stop, a login is caught "
+        "only by the TCP check; the stop runs within 5 monotonic seconds of that check."
+    ),
+]
 WRITERS_SQL = (
     "SELECT COUNT(*) FROM information_schema.PROCESSLIST "
     "WHERE ID <> CONNECTION_ID() AND COMMAND <> 'Daemon';"
@@ -200,6 +238,23 @@ def git_blob(repo: Path, revision: str, path: str) -> bytes | None:
         capture_output=True,
     )
     return None if found.returncode else found.stdout
+
+
+def collect(argv: list[str], timeout: float = LOG_TIMEOUT) -> bytes:
+    """A read-only capture with a timeout: the raw stdout bytes. Any failure refuses."""
+    try:
+        result = subprocess.run(argv, check=False, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"read-only command timed out after {timeout:g} s: {argv[0]} {argv[1]}; refused"
+        ) from None
+    if result.returncode:
+        raise RuntimeError(f"read-only command failed: {argv[0]} {argv[1]}; refused")
+    return result.stdout
+
+
+def monotonic() -> float:
+    return time.monotonic()
 
 
 def execute(argv: list[str]) -> tuple[int, str, str]:
@@ -380,6 +435,10 @@ class Handoff:
         self.chain: list[dict[str, Any]] = []
         self.previous: dict[str, Any] | None = None
         self.stopped = False
+        self.deadline: float | None = None
+        self.refreshed: dict[str, Any] | None = None
+        self.session_checked = 0.0
+        self.fresh_until = datetime.min.replace(tzinfo=UTC)
 
     # -- static checks ---------------------------------------------------------------------------
 
@@ -894,97 +953,138 @@ class Handoff:
             "last_check_end": last["End"],
         }
 
-    def game_connections(self) -> int:
-        """Established TCP sessions on the login and game ports, from inside the stage-1 game."""
-        text = self.qa.command("docker", "exec", self.game["id"], *TCP_PROBE)
+    def game_connections(self) -> dict[str, int]:
+        """Established TCP sessions on the login and game ports, per file, from inside the game."""
         ports = {f"{port:04X}" for port in SESSION_PORTS}
-        headers, count = 0, 0
-        for line in text.splitlines():
-            fields = line.split()
-            if fields[:1] == ["sl"]:
-                headers += 1
-            elif (
-                len(fields) >= 4
-                and fields[1].rpartition(":")[2] in ports
-                and fields[3] == TCP_ESTABLISHED
-            ):
-                count += 1
-        if headers != len(TCP_PROBE) - 1:
-            raise RuntimeError(
-                "the game TCP probe returned an unexpected shape; refused"
-            )
-        return count
+        found = {}
+        for name in TCP_FILES:
+            text = self.qa.command("docker", "exec", self.game["id"], "cat", name)
+            headers, count = 0, 0
+            for line in text.splitlines():
+                fields = line.split()
+                if fields[:1] == ["sl"]:
+                    headers += 1
+                elif (
+                    len(fields) >= 4
+                    and fields[1].rpartition(":")[2] in ports
+                    and fields[3] == TCP_ESTABLISHED
+                ):
+                    count += 1
+            if headers != 1:
+                raise RuntimeError(
+                    f"the game TCP probe of {name} returned an unexpected shape; refused"
+                )
+            found[Path(name).name] = count
+        return found
 
-    def native_roster(
-        self, path: Path | None, expected: str | None, game_id: str
-    ) -> dict[str, Any]:
-        """The native GUID -> bot/human evidence: pinned by sha256, of this game container, fresh."""
-        raw = read(Path(path)) if path is not None else b""
-        if path is None or not raw or not expected:
-            raise RuntimeError(
-                "the stop needs native roster evidence (--native-roster and its sha256); refused"
-            )
-        if not HEX64.fullmatch(expected) or sha256(raw) != expected:
-            raise RuntimeError("the native roster is not the given sha256; refused")
-        self.outside_source(Path(path))
+    def game_start(self, started_at: str | None = None) -> dict[str, Any]:
+        """The live game by full ID: the pinned image (revision 3431) and an unchanged StartedAt."""
         try:
-            roster = json.loads(raw)
-            when = datetime.fromisoformat(roster["collected_at_utc"])
-            online = roster["online"]
-        except (ValueError, KeyError, TypeError):
-            raise RuntimeError(
-                "the native roster does not follow the contract; refused"
-            ) from None
-        if (
-            not isinstance(online, list)
-            or not isinstance(roster.get("source"), str)
-            or not roster["source"].strip()
-            or when.utcoffset() != timedelta(0)
-            or any(
-                not isinstance(item, dict)
-                or set(item) != {"guid", "type"}
-                or type(item["guid"]) is not int
-                or item["type"] not in NATIVE_TYPES
-                for item in online
+            live = json.loads(
+                self.qa.command(
+                    "docker", "inspect", self.game["id"], "--format", GAME_START
+                )
             )
-            or len({item["guid"] for item in online}) != len(online)
+        except (RuntimeError, ValueError):
+            live = {}
+        if (
+            live.get("id") != self.game["id"]
+            or live.get("image_id") != self.game["image_id"]
+            or self.game["image_source_revision"] != GAME_REVISION
+            or live.get("status") != "running"
         ):
             raise RuntimeError(
-                "the native roster does not follow the contract; refused"
+                "the game is not the running container of image "
+                f"{self.game['image_id']} (revision {GAME_REVISION}); refused"
             )
-        if roster.get("game_container_id") != game_id:
+        if started_at is not None and live.get("started_at") != started_at:
             raise RuntimeError(
-                "the native roster was not collected from the current game container; refused"
-            )
-        age = utcnow() - when
-        if age < timedelta(0) or age > NATIVE_ROSTER_MAX_AGE:
-            raise RuntimeError(
-                "the native roster is stale or dated in the future; refused"
-            )
-        humans = [item["guid"] for item in online if item["type"] == "human"]
-        if humans:
-            raise RuntimeError(
-                f"the native roster shows {len(humans)} human(s) online; bot_only is required; refused"
+                "the game container restarted (StartedAt changed); refused"
             )
         return {
-            "path": str(Path(path).resolve()),
-            "sha256": expected,
-            "game_container_id": game_id,
-            "collected_at_utc": roster["collected_at_utc"],
-            "source": roster["source"],
-            "bots": sorted(item["guid"] for item in online),
-            "empty_explanation": roster.get("empty_explanation"),
+            "id": live["id"],
+            "image_id": live["image_id"],
+            "source_revision": GAME_REVISION,
+            "started_at": live["started_at"],
+            "restart_count": live.get("restart_count"),
         }
 
-    def human_exclusion(
-        self,
-        notice: Path,
-        notice_sha256: str,
-        native: Path | None = None,
-        native_sha256: str | None = None,
-        game_id: str = "",
+    def anchor_diagnostic(self, started_at: str | None = None) -> dict[str, Any]:
+        """The native evidence: the script bytes, the raw logs and their LAST anchor diagnostic."""
+        game = self.game_start(started_at)
+        script = collect(["docker", "exec", game["id"], "cat", HIBERNATION_SCRIPT])
+        if sha256(script) != HIBERNATION_SHA256:
+            raise RuntimeError(
+                "the deployed bot_hibernation.lua is not the 3431b404 bytes; refused"
+            )
+        argv = ["docker", "logs", "--timestamps", "--since", LOG_WINDOW, game["id"]]
+        wall_start, mono_start = utcnow(), monotonic()
+        raw = collect(argv)
+        wall_end, mono_end = utcnow(), monotonic()
+        self.game_start(game["started_at"])  # no restart during the collection
+        text = raw.decode(errors="surrogateescape")
+        diagnostics = [
+            line
+            for line in text.splitlines()
+            if all(marker in line for marker in ANCHOR_MARKER)
+        ]
+        if not diagnostics:
+            raise RuntimeError(
+                "no anchor diagnostic of bot_hibernation.lua in the game logs; refused"
+            )
+        last = ANSI.sub("", diagnostics[-1]).rstrip("\r")
+        found = ANCHOR_LINE.fullmatch(last)
+        if not found:
+            raise RuntimeError("the last anchor diagnostic is malformed; refused")
+        when = self.s1.docker_time(found["docker"])
+        anchors = int(found["anchors"])
+        if anchors != 0:
+            raise RuntimeError(
+                f"the last anchor diagnostic shows {anchors} anchor(s) (non-bot players or "
+                "cast-watched bots); refused"
+            )
+        if when > wall_end:
+            raise RuntimeError(
+                "the last anchor diagnostic is dated in the future; refused"
+            )
+        if wall_end - when > ANCHOR_MAX_AGE:
+            raise RuntimeError("the last anchor diagnostic is older than 30 s; refused")
+        if when <= self.s1.docker_time(game["started_at"]):
+            raise RuntimeError(
+                "the last anchor diagnostic is not after the game's StartedAt; refused"
+            )
+        self.fresh_until = when + ANCHOR_MAX_AGE
+        return {
+            "game": game,
+            "script": {"path": HIBERNATION_SCRIPT, "sha256": sha256(script)},
+            "logs": {
+                "argv": argv,
+                "timeout_seconds": LOG_TIMEOUT,
+                "raw": text,
+                "raw_encoding": "utf-8, surrogateescape",
+                "sha256": sha256(raw),
+                "wall_clock_utc": {
+                    "start": wall_start.isoformat(),
+                    "end": wall_end.isoformat(),
+                },
+                "monotonic_seconds": {"start": mono_start, "end": mono_end},
+            },
+            "last_anchor_diagnostic": {
+                "line": last,
+                "docker_timestamp": found["docker"],
+                "anchors": 0,
+                "age_seconds_at_collection_end": (wall_end - when).total_seconds(),
+            },
+        }
+
+    def human_absence(
+        self, notice: Path, notice_sha256: str, started_at: str | None = None
     ) -> dict[str, Any]:
-        """Evidence that no human plays: roster vs native roster, QA humans offline, no sessions, notice."""
+        """Absence of humans: zero fresh native anchors, QA humans offline, no sessions, notice.
+
+        The TCP read is the final session check; the stop must follow it within STOP_DEADLINE
+        monotonic seconds (see exec_step).
+        """
         raw = read(Path(notice))
         if (
             not raw
@@ -995,6 +1095,7 @@ class Handoff:
                 "the coordinator's window notice is absent or not the given sha256; refused"
             )
         self.outside_source(Path(notice))
+        native = self.anchor_diagnostic(started_at)
         rows = [
             r.split("\t") for r in self.s1.mariadb(ROSTER_SQL).splitlines() if r.strip()
         ]
@@ -1015,46 +1116,36 @@ class Handoff:
         ]
         if humans:
             raise RuntimeError(
-                f"{len(humans)} non-bot character(s) are online in the game roster "
-                "(players_online); every QA human must be offline; refused"
-            )
-        evidence = self.native_roster(native, native_sha256, game_id)
-        bots = set(evidence["bots"])
-        unknown = [player for player, _account in online if player not in bots]
-        if unknown:
-            raise RuntimeError(
-                f"{len(unknown)} online GUID(s) in players_online are not in the native roster "
-                "(account 65000 is no proof of a bot); refused"
-            )
-        if not online and (
-            bots
-            or not isinstance(evidence["empty_explanation"], str)
-            or not evidence["empty_explanation"].strip()
-        ):
-            raise RuntimeError(
-                "players_online is empty without a native empty roster and its "
-                "empty_explanation; refused"
+                f"{len(humans)} known QA human character(s) are online in players_online; "
+                "every QA human must be offline; refused"
             )
         sessions = self.game_connections()
-        if sessions:
+        self.session_checked = monotonic()
+        if any(sessions.values()):
             raise RuntimeError(
-                f"{sessions} established TCP session(s) on the game ports "
-                f"{', '.join(map(str, SESSION_PORTS))}; refused"
+                f"established TCP session(s) on the game ports "
+                f"{', '.join(map(str, SESSION_PORTS))}: {sessions}; refused"
             )
         return {
+            "contract": "zero anchors in the last bot_hibernation.lua diagnostic "
+            "(3431b404, lines 84-89 and 133-141)",
+            "native_roster_unavailable": True,
+            "native_anchors": 0,
+            **native,
+            "sql_corroboration": {
+                "source": "players_online",
+                "potentially_stale": True,
+                "online_rows": len(online),
+                "rows_sha256": sha256(json.dumps(online).encode()),
+                "qa_humans_online": 0,
+            },
+            "game_port_sessions": sessions,
+            "final_session_check_monotonic": self.session_checked,
             "window_notice": {
                 "path": str(Path(notice).resolve()),
                 "sha256": notice_sha256,
             },
-            "roster": {
-                "source": "players_online",
-                "online": len(online),
-                "bot_only": True,
-                "rows_sha256": sha256(json.dumps(online).encode()),
-            },
-            "native_roster": evidence,
-            "qa_humans_online": 0,
-            "game_port_sessions": 0,
+            "limitations": LIMITATIONS,
         }
 
     def bind_equivalence(self, render: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1172,11 +1263,7 @@ class Handoff:
         return dict(json.loads(raw))
 
     def stop_gate(
-        self,
-        notice: Path,
-        notice_sha256: str,
-        native: Path | None = None,
-        native_sha256: str | None = None,
+        self, notice: Path, notice_sha256: str, started_at: str | None = None
     ) -> dict[str, Any]:
         """Everything the stop needs, refreshed: live gate, game, fallbacks, binds, human exclusion."""
         stage1 = self.live_gate()
@@ -1192,15 +1279,13 @@ class Handoff:
         self.assert_stage1_pins()
         fallbacks = self.fallbacks()
         binds = self.bind_equivalence(self.pinned_render())
-        people = self.human_exclusion(
-            notice, notice_sha256, native, native_sha256, game["id"]
-        )
+        people = self.human_absence(notice, notice_sha256, started_at)
         return {
             "stage1": stage1,
             "game": game,
             "fallbacks": fallbacks,
             "binds": binds,
-            "human_exclusion": people,
+            "human_absence": people,
         }
 
     def up_gate(self) -> dict[str, Any]:
@@ -1434,8 +1519,6 @@ class Handoff:
         attested_at: str,
         notice: Path,
         notice_sha256: str,
-        native: Path | None = None,
-        native_sha256: str | None = None,
     ) -> tuple[Path, str]:
         self.follow(previous, ("post-build",))
         try:
@@ -1455,7 +1538,7 @@ class Handoff:
             raise RuntimeError(
                 "the stop needs a fresh human attestation: --attested-by and a UTC --attested-at; refused"
             )
-        gate = self.stop_gate(notice, notice_sha256, native, native_sha256)
+        gate = self.stop_gate(notice, notice_sha256)
         return self.write(
             "pre-stop",
             {
@@ -1708,14 +1791,13 @@ class Handoff:
                 raise RuntimeError(
                     "the stop must target the verified game container ID; refused"
                 )
-            people = receipt["human_exclusion"]
-            notice, native = people["window_notice"], people["native_roster"]
+            people = receipt["human_absence"]
+            notice = people["window_notice"]
             gate = self.stop_gate(
-                Path(notice["path"]),
-                notice["sha256"],
-                Path(native["path"]),
-                native["sha256"],
+                Path(notice["path"]), notice["sha256"], people["game"]["started_at"]
             )
+            self.refreshed = gate["human_absence"]
+            self.deadline = self.session_checked + STOP_DEADLINE
             if gate["game"] != game:
                 raise RuntimeError(
                     "the game container changed since the pre-stop gate; refused"
@@ -1775,6 +1857,28 @@ class Handoff:
         ):
             raise RuntimeError(self.claimed(path))
 
+    def within_deadline(self, receipt: dict[str, Any]) -> None:
+        """The stop runs within STOP_DEADLINE monotonic seconds of the final session check.
+
+        Checked twice. Before the claim, an expiry refuses with nothing claimed (nothing ran,
+        and the same pre-stop receipt may be tried again, with every gate refreshed). After
+        the claim, an expiry also refuses with no mutation, but the claim stays consumed, with
+        a result saying it was not executed: the atomic-claim rule (one claim, never retried)
+        is kept, and the stop needs a new pre-stop receipt.
+        """
+        if self.deadline is None:
+            return
+        now = utcnow()
+        if (
+            monotonic() > self.deadline
+            or now > self.fresh_until
+            or now - datetime.fromisoformat(receipt["recorded_at_utc"]) > STEP_MAX_AGE
+        ):
+            raise RuntimeError(
+                f"the stop missed its {STOP_DEADLINE:g} s deadline after the final session "
+                "check (or another freshness limit); refused, no mutation"
+            )
+
     def exec_step(self, path: Path, expected: str) -> tuple[Path, str]:
         receipt = self.follow(
             path,
@@ -1795,7 +1899,11 @@ class Handoff:
             raise RuntimeError(
                 f"receipt {path.name} is stale; rerun its phase; refused"
             )
+        self.deadline, self.refreshed = None, None
         self.precheck(receipt, step["argv"])
+        self.within_deadline(
+            receipt
+        )  # expired here: refused, nothing claimed, nothing ran
         body = {
             "receipt_sha256": expected,
             "step": step["name"],
@@ -1805,6 +1913,17 @@ class Handoff:
         }
         for claim in claims:
             self.claim(claim, body)
+        try:
+            self.within_deadline(receipt)
+        except (
+            RuntimeError
+        ):  # expired after the claim: consumed, certainly not executed
+            for claim in claims:
+                create_exclusive(
+                    claim.with_suffix(".result"),
+                    b'{"executed": false, "reason": "stop deadline expired"}\n',
+                )
+            raise
         started = utcnow()
         try:
             code, out, err = execute(step["argv"])
@@ -1814,6 +1933,11 @@ class Handoff:
                 "claim": str(claims[0]),
                 "started_at_utc": started.isoformat(),
                 "finished_at_utc": utcnow().isoformat(),
+                **(
+                    {"refreshed_human_absence": self.refreshed}
+                    if self.refreshed
+                    else {}
+                ),
                 "stdout_sha256": sha256(out.encode()),
                 "stdout_tail": out[-2000:],
                 "stderr_tail": err[-2000:],
@@ -1904,15 +2028,6 @@ def main() -> None:
     pre_stop.add_argument(
         "--window-notice-sha256", required=True, help="sha256 of that file"
     )
-    pre_stop.add_argument(
-        "--native-roster",
-        type=Path,
-        required=True,
-        help="native GUID -> bot/human roster of the live game (JSON, see NATIVE_ROSTER_MAX_AGE)",
-    )
-    pre_stop.add_argument(
-        "--native-roster-sha256", required=True, help="sha256 of that file"
-    )
     for name in (
         "pre-stop",
         "post-stop",
@@ -1953,8 +2068,6 @@ def main() -> None:
             args.attested_at,
             args.window_notice,
             args.window_notice_sha256,
-            args.native_roster,
-            args.native_roster_sha256,
         )
     elif args.phase == "post-stop":
         path, sha = handoff.post_stop(args.previous)
