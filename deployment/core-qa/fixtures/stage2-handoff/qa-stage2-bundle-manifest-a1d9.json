@@ -1,5 +1,14 @@
 {
   "approved_revision": "a1d9fe803c77da63f4aa1bf943d3d488d3117850",
+  "brain_image": {
+    "id": "sha256:9ea0a34688db0443dabfa6c64736f78b53e954a19c9ead8c61d52f2bbdefa0cd",
+    "platform": "linux/amd64",
+    "source_revision_label": "a1d9fe803c77da63f4aa1bf943d3d488d3117850",
+    "tag": "canary-core-qa-brain:local"
+  },
+  "brain_image_id": "sha256:9ea0a34688db0443dabfa6c64736f78b53e954a19c9ead8c61d52f2bbdefa0cd",
+  "brain_platform": "linux/amd64",
+  "brain_revision": "a1d9fe803c77da63f4aa1bf943d3d488d3117850",
   "bundle_directory": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9",
   "bundle_files": {
     "brain/server.json": {
@@ -230,6 +239,11 @@
       "status": "exited"
     }
   },
+  "env_file": {
+    "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/.env",
+    "method": "SHA256 of exact file bytes; values not stored",
+    "sha256": "4cda5ef63dedbbaf8790e2527f2aaaf5c902cb35ad2f0d836027ba1a184a15a2"
+  },
   "env_file_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/.env",
   "env_file_variable_names_only": [
     "BOT_PLAYERS_ONLINE",
@@ -336,6 +350,36 @@
     "name": "canary-core-qa_default"
   },
   "qa_project_directory": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa",
+  "receipt_files": {
+    "brain_after": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/stage2-a1d9/brain-build-after.json",
+      "sha256": "df7f1822c210751b1d55921e70b0111adcfa77df7aa8053d65bca02d3bd73481"
+    },
+    "brain_before": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/stage2-a1d9/brain-build-before.json",
+      "sha256": "0a540e5d36089961d3b08f7eba9ed1b4d11e996952d02d7ccf8d18ca11d700c1"
+    },
+    "brain_build_log": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/stage2-a1d9/brain-build.log",
+      "sha256": "19d7927e1cf4db5710b97d5854aebc47ed072c63abff2ae8bbb976708afaf837"
+    },
+    "game_rollout_after": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/game-rollout-after-20261108T000636Z.json",
+      "sha256": "1c3fd7b8af24e99384344cb4243c767e1f5bd8c62b517ff01616321b51fa8d65"
+    },
+    "rescue_result": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/qa-old-rescue-result-20261107.json",
+      "sha256": "9f68b39c897aa2c274439d0e75d87cdaf8909f404729db5117a487ee0e143d9a"
+    },
+    "stage1_baseline": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/stage2-a1d9/stage1-baseline.json",
+      "sha256": "47351521b9b690fce7053e1b6e6e6ea97585f30da0f1a8d4fb5ad41eeb49fb04"
+    },
+    "stage2_full_preflight": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/stage2-a1d9/stage2-upgrade-receipt.json",
+      "sha256": "7eaacc11b4818396a6414f3e163cca36557e1a1ad907c8856d283c7a51598d59"
+    }
+  },
   "receipts": {
     "brain_after": "df7f1822c210751b1d55921e70b0111adcfa77df7aa8053d65bca02d3bd73481",
     "brain_before": "0a540e5d36089961d3b08f7eba9ed1b4d11e996952d02d7ccf8d18ca11d700c1",
@@ -409,6 +453,31 @@
       "MYAAC_CLIENT_VERSION",
       "MYAAC_SITE_URL"
     ]
+  },
+  "rescue_container_config": {
+    "adapter_config_sha256": "626ceb4905042d9410effb4a76da5b9c97432ab831cdccd4766ed6608482f4d2",
+    "adapter_method": "docker inspect full ID --format JSON with config=.Config, host_config=.HostConfig; SHA256(json.dumps({config,host_config}, sort_keys=True).encode()) using Python defaults",
+    "config_sha256": "626ceb4905042d9410effb4a76da5b9c97432ab831cdccd4766ed6608482f4d2",
+    "container_id": "64385641c847ad44d6acf1dc7f5d10e206451212b4320973a27ba278e428d608",
+    "legacy_config_only_sha256": "54df371805321dd19eabd07dc0693efa9e78d4d015f906da11a26452d9d67c1c",
+    "method": "SHA256 of UTF-8 JSON of docker inspect[0].Config, sort_keys=true, separators=(comma,colon), ensure_ascii=false; no Config values stored"
+  },
+  "rescue_stopped_state": {
+    "exit_code": 0,
+    "finished_at": "2026-11-07T23:04:40.459976298Z",
+    "health_field_after_stop": "unhealthy",
+    "interpretation": "health field is not a current running-health claim while container is exited; prior receipt proves two healthy starts, but a future start requires fresh health check",
+    "prior_receipt_first_start_healthy": true,
+    "prior_receipt_second_start_healthy_same_id": true,
+    "prior_receipt_two_clean_stops": true,
+    "restart_policy": "no",
+    "status": "exited"
+  },
+  "verification": {
+    "brain_id_in_brain_after": true,
+    "brain_id_in_brain_before": false,
+    "render_private_recomputed_sha256": "adcbd2dea69f4e18141fdb4aec4102edbb7d8231d6b1de772f410f7d1ea90f29",
+    "render_recomputed_equal_to_original_stdout_bytes": true
   },
   "volumes": {
     "authored-data": {

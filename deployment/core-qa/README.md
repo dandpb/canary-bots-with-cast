@@ -364,33 +364,74 @@ aqui e executado como **cópia fixada pelo sha256**, fora do checkout a1d9:
   a1d9), imagem `game` (label `3431b404…`) e a revisão do próprio adaptador. Nada é
   rerrotulado.
 
+O manifesto fixado (`qa-stage2-bundle-manifest-a1d9.json`, sha256
+`bc4fb5af6c1ff5ff76e08ac15125b463222bcbc27dc98b7b35a75f7f4f4202f0`) liga, e o
+adaptador confere ao vivo contra ele:
+
+- cada recibo por caminho absoluto e sha256 (`receipt_files`);
+- a imagem `brain` por ID completo, plataforma, label de revisão e tag
+  (`brain_image`), contra o manifesto **e** o `docker image inspect`;
+- a config do resgate por `rescue_container_config.config_sha256`, com a mesma
+  serialização de `container()`: `json.dumps({"config", "host_config"},
+  sort_keys=True)` com os padrões do Python (um hash só de `Config` ou com
+  separadores compactos não confere);
+- o `.env` original pelo sha256 dos bytes crus (`env_file`);
+- o render pelo sha256 do stdout cru de `render_argv` e pelo sanitizado.
+
 Fases, cada uma só leitura e com um recibo JSON selado que cita o anterior (caminho
 e sha256):
 
-1. `post-build`: imagem `brain` pelo ID completo, `linux/amd64` e label a1d9 (pelo ID
-   e pela tag); recibos de preflight e build pelos hashes do manifesto; nenhum
-   container ou volume `brain`; tags `game`/`web` exatas; identidades e recorte exato.
-2. `pre-stop`: gate vivo de novo (running/healthy e recorte exato) e atestação humana
-   (`--attested-by`, `--attested-at` em UTC). Sela `docker stop -t 180 <ID do game>`.
-3. `post-stop`: sem gate de running/healthy. Mesmo ID, `CreatedAt`, imagem e config
-   do `game`, `exited` com código 0; banco, `web`, rede, volumes e o **mesmo** recorte
-   exato. Deriva após o save é HOLD: recusa, com o recibo guardado.
-4. `bundle`: os 4 Compose e os 2 configs fake pelos hashes do manifesto, e o render
-   com o diretório original e o `.env`. Substitui `preflight.assert_compose` (3
-   arquivos, build e tag do `brain`) neste handoff. Sela o argv do `up`.
-5. `fallback-plan` e `fallback-verify`: o resgate do manifesto (ID, imagem, mounts,
-   sem dono Compose) parado e com `restart=no`. Para os containers novos de
-   `game`/`brain` (pelos labels), prova zero conexões no banco e sela um único
-   `docker start` do resgate.
+1. `post-build`: todos os recibos do manifesto; imagem `brain`; `.env`; nenhum
+   container ou volume `brain`; tags `game`/`web` exatas; identidades, mounts e
+   recorte exato; resgate e candidato parados; binds equivalentes aos caminhos do host.
+2. `pre-stop`: gate vivo de novo (running/healthy e recorte exato), resgate e
+   candidato, e a exclusão humana com evidência: o roster nativo do jogo
+   (`players_online`, só a conta de bots 65000), personagens humanos de QA offline,
+   zero sessões TCP estabelecidas nas portas 17171/17172 (lidas em `/proc/net/tcp*`
+   dentro do `game`) e o aviso de janela do coordenador (`--window-notice` e
+   `--window-notice-sha256`), além da atestação (`--attested-by`, `--attested-at`).
+   Sela `docker stop -t 180 <ID do game>`.
+3. `post-stop`: só o `game` pode passar a `exited` (código 0, mesmo ID, `CreatedAt`,
+   imagem e config; só o health dele, agora velho, sai da comparação). Banco e `web`
+   continuam running/healthy **exatamente**; rede, volumes e o **mesmo** recorte
+   exato. Deriva é HOLD: recusa, com o recibo guardado.
+4. `bundle`: os 4 Compose, os 2 configs fake e o `.env` pelos hashes; o estado do
+   post-stop de novo; outros games preservados e parados; zero writers e nenhum
+   container novo; o render (hash privado e sanitizado); os **valores** do ambiente
+   por chave (sha256 de `CHAVE=VALOR`, só hashes); os binds. Sela o argv do `up`.
+5. `fallback-plan` e `fallback-verify`: o resgate do manifesto (ID, config, imagem,
+   mounts, sem dono Compose) parado com código 0 e `restart=no`. Para os containers
+   novos de `game`/`brain` (pelos labels), prova zero conexões no banco e sela um
+   único `docker start` do resgate.
+6. `rescue-verify`: depois desse start, o resgate só conta como usável com um health
+   check `healthy` mais novo que o próprio start.
+
+Fallbacks fora do Compose: `qa-game-candidate-3431b404` (`4188037d…b605`) e
+`qa-old-rescue-20261107` (`64385641…d608`). Os dois estão `exited`, código 0,
+`restart=no`, com um Health "unhealthy" velho. Parados, esse Health é ignorado e
+vale exited + 0 + `restart=no` + ID, config e dono fixados. Qualquer start futuro só
+conta depois de um health check novo.
+
+Binds no Docker Desktop (WSL): o inspect mostra a origem traduzida. O adaptador
+aceita, para o caminho do host `H`, só `H`, `/run/desktop/mnt/host/wsl/Ubuntu` + `H`
+ou `/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/Ubuntu/<sha256(H)>`. A forma
+com hash é a que o manifesto real mostra para o mapa e o `initdb`, e os testes
+conferem essa equivalência nos dados reais.
 
 Quem executa: Pitagoras, no WSL, roda as fases e cada mutação só como
-`stage2_handoff.py exec-step --receipt <recibo> --receipt-sha256 <sha>`. Ele confere
-de novo as pré-condições, roda uma vez o argv selado e grava o código de saída. A fase
-seguinte recusa se o argv executado não for o selado. Ninguém redigita comando, e
-nada roda `up` sozinho. Depois do `up`, vale o `--record-brain-image` de a1d9, a
-partir do checkout. O `stage1_baseline.py rollback` de a1d9 renderiza o Compose
-relativo ao próprio checkout, então não é rodado do checkout isolado. O retorno deste
-handoff é o fallback.
+`stage2_handoff.py exec-step --receipt <recibo> --receipt-sha256 <sha>`. Logo antes
+da mutação, ele refaz todos os gates do passo (antes do stop: gate vivo, resgate,
+candidato e exclusão humana; antes do `up`: o estado exato do post-stop, o recorte, o
+render, o ambiente, outros games, writers). Depois grava um claim durável e atômico
+(`O_CREAT|O_EXCL`, fsync do arquivo e do diretório) em
+`<projeto>/runtime/evidence/stage2-handoff-claims/`, pela chave sha256 do recibo +
+passo, independente de `--evidence`. Só então roda o argv selado, uma vez. Um claim
+sem resultado (queda, falha ao gravar o recibo) continua consumido: HOLD, nunca se
+repete. Recibo com data no futuro ou com mais de 15 min é recusado. Ninguém redigita
+comando, e nada roda `up` sozinho. Depois do `up`, vale o `--record-brain-image` de
+a1d9, a partir do checkout. O `stage1_baseline.py rollback` de a1d9 renderiza o
+Compose relativo ao próprio checkout, então não é rodado do checkout isolado. O
+retorno deste handoff é o fallback.
 
 ### Gate de upgrade: comparação exata com a baseline revisada
 
