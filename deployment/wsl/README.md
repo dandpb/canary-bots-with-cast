@@ -296,3 +296,34 @@ python3 tools/bot_brain/test_movement.py
 g++ -std=c++20 -Isrc tools/bot_brain/test_online_time.cpp -o /tmp/test_online_time
 /tmp/test_online_time
 ```
+
+### Checkpoints concorrentes e deadlocks
+
+Uma disputa entre os intervalos de chaves de `player_items` pode fazer o
+InnoDB reverter uma transação inteira com erro 1213. O checkpoint repete a
+transação desde o início, usando o mesmo snapshot imutável, em até cinco
+tentativas com espera curta no worker SQL. A transação não é reiniciada em
+erros de conexão, SQL inválido ou COMMIT sem confirmação; o tratamento de
+reconexão da camada `Database` mantém sua política existente. Se o limite for
+atingido, o save continua pendente; isso não garante durabilidade em uma
+parada com banco indisponível.
+
+O contexto inclui a identidade da conexão e um contador de recuperações da
+thread. Se houver falha de transporte ou troca de conexão durante a tentativa,
+um 1213 posterior não autoriza reiniciar o snapshot. As regressões usam o
+classificador real de erros e cobrem falha mista na mesma instrução, em uma
+instrução anterior e reconexão transparente.
+
+O CTest `checkpoint_deadlock_retry` cobre rollback parcial, limite de tentativas
+e retenção da pendência. O ensaio com quatro conexões reais exige Docker e uma
+imagem local com compilador e dependências de build:
+
+```bash
+BOT_TEST_BUILD_IMAGE=<imagem-local-de-build> \
+  python3 tools/bot_brain/test_checkpoint_deadlock_db.py
+```
+
+Esse ensaio usa o MariaDB 11.4 já presente localmente, fixado pelo ID, com rede
+interna e banco em tmpfs próprios. Verifica vinte checkpoints e deadlocks
+provocados, incluindo XP e inventário; remove seus containers e rede no fim.
+`BOT_TEST_EVIDENCE=<diretorio>` preserva os logs do banco descartável.

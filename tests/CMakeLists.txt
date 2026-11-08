@@ -130,6 +130,11 @@ if(UNIX AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set_tests_properties(bot_engine_loader_regression PROPERTIES
         ENVIRONMENT "BOT_TEST_CXX=${CMAKE_CXX_COMPILER};BOT_TEST_INCLUDES=${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
         TIMEOUT 180)
+    add_test(NAME checkpoint_deadlock_retry
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/bot_brain/test_checkpoint_retry.py)
+    set_tests_properties(checkpoint_deadlock_retry PROPERTIES
+        ENVIRONMENT "BOT_TEST_CXX=${CMAKE_CXX_COMPILER};BOT_TEST_INCLUDES=${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
+        TIMEOUT 30)
     find_program(BOT_TEST_LUAJIT luajit HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/luajit")
     if(BOT_TEST_LUAJIT)
         foreach(BOT_RELOAD_TEST test_reload test_reload_missing test_reload_failures)
