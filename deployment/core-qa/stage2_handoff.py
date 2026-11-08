@@ -72,7 +72,7 @@ Quiescent mode (a SEPARATE chain; its phases never mix with the normal ones, in 
                    baseline's historical slice before the stop (it moves while the game runs).
                    Every other identity, health, config, image, bind and fallback check stays
   quiescent-pre-stop    the pre-stop gates (same waiver only) and a bounded QA window: a JSON notice
-                   with window_start_utc/window_end_utc, at most QUIESCENT_MAX_WINDOW long. It
+                   with window_start_utc/window_end_utc, at most 30 minutes long. It
                    seals `quiescent-stop-game`: a stop that only collects evidence, NEVER an up
   quiescent-slice  after that stop: the game exited 0 with the same StartedAt/RestartCount; DB and
                    web exact; the strict writers gate; integrity; two reads of the UNCHANGED
@@ -165,7 +165,7 @@ NORMAL_PHASES = ("post-build", "pre-stop", "post-stop", "bundle")
 QUIESCENT_STEPS = ("quiescent-stop-game", "quiescent-up")
 NORMAL_STEPS = ("stop-game", "up")
 STOP_STEPS = ("stop-game", "quiescent-stop-game")
-QUIESCENT_MAX_WINDOW = timedelta(hours=2)  # the game is never stopped indefinitely
+QUIESCENT_MAX_WINDOW = timedelta(minutes=30)  # the game is never stopped indefinitely
 APPROVAL_SCHEMA = "qa-stage2-quiescent-approval-v1"
 APPROVAL_AUDIT_FIELDS = ("auditor", "audited_at_utc", "explanation")
 REVISION = re.compile(r"[0-9a-f]{40}")
@@ -283,6 +283,12 @@ DB_PROBE_LIMITATIONS = [
     ),
 ]
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+DB_PROBE_TIMEOUT = 10.0  # seconds, capped further by the time left in a QA window
+QUIESCENT_RETURN = (
+    "a quiescent chain never uses the adapter's fallback: return only through the approved "
+    "managed-return procedure (Pitagoras); refused"
+)
+MAP_FILE = "runtime/world/otservbr.otbm"  # under the deployment project directory; the game mounts it
 NETWORK_PROBE = (
     '{"id":{{json .Id}},"name":{{json .Name}},"status":{{json .State.Status}},'
     '"ips":[{{range $name, $net := .NetworkSettings.Networks}}{{json $net.IPAddress}},{{end}}""]}'
@@ -998,14 +1004,23 @@ class Handoff:
         (from any user or host, COMMAND='Daemon' aside) and on ANY innodb_trx row.
         """
         ident = self.manifest["containers"][self.s1.DATABASE]["id"]
+        timeout = DB_PROBE_TIMEOUT
+        if self.window_end is not None:  # never past the window, never extending it
+            timeout = min(timeout, (self.window_end - utcnow()).total_seconds())
+        if timeout <= 0:
+            raise RuntimeError(
+                "HOLD: no time left in the QA window for the DB session probe; no retry, "
+                "no activation; refused"
+            )
+        argv = ["docker", "exec", ident, "sh", "-c", DB_PROBE_SCRIPT, DB_PROBE_SQL]
         wall_start, mono_start = utcnow(), monotonic()
         try:
-            out = self.qa.command(
-                "docker", "exec", ident, "sh", "-c", DB_PROBE_SCRIPT, DB_PROBE_SQL
-            )
-        except RuntimeError:
+            out = collect(argv, timeout).decode(errors="replace")
+        except RuntimeError as error:  # a timeout or a failure stays the primary error
             raise RuntimeError(
-                "HOLD: the DB session probe failed (an error, no output); no retry; refused"
+                f"HOLD: the DB session probe did not complete ({error}); timeout "
+                f"{timeout:g} s, elapsed {monotonic() - mono_start:.3f} s; no retry, no "
+                "activation; refused"
             ) from None
         wall_end, mono_end = utcnow(), monotonic()
         rows = [line.split("\t") for line in out.splitlines() if line.strip()]
@@ -1022,7 +1037,7 @@ class Handoff:
                 raise ValueError("order or shape")
             begin, privilege, end = rows[0], rows[1], rows[-1]
             connection = int(begin[1])
-            sessions = [
+            sessions: list[dict[str, Any]] = [
                 {
                     "id": int(row[1]),
                     "user": row[2],
@@ -1073,6 +1088,7 @@ class Handoff:
             "account": DB_PROBE_ACCOUNT,
             "privilege": {"PROCESS": True},
             "connection_id": connection,
+            "timeout_seconds": timeout,
             "sequence": list(DB_PROBE_SEQUENCE),
             "server_utc": {"begin": begin[3], "end": end[2]},
             "wall_clock_utc": {
@@ -1108,6 +1124,32 @@ class Handoff:
                 + json.dumps(refused, sort_keys=True)
             )
         return record
+
+    def assert_map(self) -> dict[str, str]:
+        """The map bytes at the ORIGINAL operational path (the project's file the game mounts)
+        against the approved pin: prepare.MAP_SHA256 of the a1d9 tooling, which must also be the
+        map_sha256 of the bound a1d9 preflight receipt. Never derived from the current file and
+        never read from the source checkout's copy."""
+        pin = self.qa.MAP_SHA256
+        _bound, raw = self.bound_receipt("stage2_full_preflight")
+        if not HEX64.fullmatch(str(pin)) or json.loads(raw).get("map_sha256") != pin:
+            raise RuntimeError(
+                "the approved map pin and the a1d9 preflight receipt's map_sha256 differ; refused"
+            )
+        path = self.plan["project"] / MAP_FILE
+        self.outside_source(path)
+        try:
+            with path.open("rb") as stream:
+                actual = hashlib.file_digest(stream, "sha256").hexdigest()
+        except OSError:
+            actual = ""
+        if actual != pin:
+            raise RuntimeError(f"the QA map at {path} is not the approved pin; refused")
+        return {
+            "path": str(path),
+            "sha256": actual,
+            "pin_source": "prepare.MAP_SHA256 (a1d9) = map_sha256 of the bound a1d9 preflight receipt",
+        }
 
     def observed_ips(self) -> dict[str, str]:
         """IP -> name of the pinned containers that RUN now (current docker inspect only)."""
@@ -1729,12 +1771,14 @@ class Handoff:
         self.assert_stage1_pins()
         fallbacks = self.fallbacks()
         binds = self.bind_equivalence(self.pinned_render())
+        world = self.assert_map()
         people = self.human_absence(notice, notice_sha256, started_at)
         return {
             "stage1": stage1,
             "game": game,
             "fallbacks": fallbacks,
             "binds": binds,
+            "map": world,
             "human_absence": people,
         }
 
@@ -1770,9 +1814,11 @@ class Handoff:
             raise RuntimeError(
                 f"new game/brain containers already exist: {', '.join(r['id'][:12] for r in new)}; refused"
             )
+        world = self.assert_map()
         writers = self.writers()
         render, hashes = self.fresh_render()
         return {
+            "map": world,
             "files": files,
             "env_file": env_file,
             "brain_image": brain,
@@ -1802,6 +1848,7 @@ class Handoff:
         expected: str | None = None,
         results: tuple[str, ...] = ("pass",),
         mode: str | None = NORMAL,
+        quiescent_refusal: str | None = None,
     ) -> dict[str, Any]:
         """Load a receipt and its whole chain; every link sealed, hashed and from this same handoff.
 
@@ -1849,6 +1896,8 @@ class Handoff:
             raise RuntimeError(
                 f"receipt {Path(path).name} mixes normal and quiescent phases; refused"
             )
+        if found == QUIESCENT and quiescent_refusal:
+            raise RuntimeError(quiescent_refusal)
         if mode is not None and mode != found:
             raise RuntimeError(
                 f"receipt {Path(path).name} is from a {found} chain; this {mode} phase never "
@@ -2468,9 +2517,10 @@ class Handoff:
     ) -> tuple[Path, str]:
         self.follow(
             previous,
-            ("post-stop", "bundle", "exec-step", "quiescent-slice", "quiescent-bundle"),
+            ("post-stop", "bundle", "exec-step"),
             results=("pass", "hold"),
             mode=None,
+            quiescent_refusal=QUIESCENT_RETURN,
         )
         if not self.stopped:
             raise RuntimeError(
@@ -2500,7 +2550,12 @@ class Handoff:
     def fallback_verify(
         self, previous: Path, rescue_id: str | None = None, receipt: Path | None = None
     ) -> tuple[Path, str]:
-        head = self.follow(previous, ("fallback-plan", "exec-step"), mode=None)
+        head = self.follow(
+            previous,
+            ("fallback-plan", "exec-step"),
+            mode=None,
+            quiescent_refusal=QUIESCENT_RETURN,
+        )
         if head["phase"] == "fallback-plan" and head.get("step"):
             raise RuntimeError(
                 "run the sealed stop of the new containers first; refused"
@@ -2516,7 +2571,9 @@ class Handoff:
 
     def rescue_verify(self, previous: Path) -> tuple[Path, str]:
         """After the single start: the rescue counts as usable only on a fresh health check."""
-        self.follow(previous, ("exec-step",), mode=None)
+        self.follow(
+            previous, ("exec-step",), mode=None, quiescent_refusal=QUIESCENT_RETURN
+        )
         run = self.executed("start-rescue")
         problems, health, live = [], None, self.container(RESCUE_ID)
         try:
@@ -2693,6 +2750,8 @@ class Handoff:
         step = receipt.get("step")
         if not step or digest(step["argv"]) != step["argv_sha256"]:
             raise RuntimeError(f"receipt {path.name} seals no valid step; refused")
+        if self.mode == QUIESCENT and step["name"] not in QUIESCENT_STEPS:
+            raise RuntimeError(QUIESCENT_RETURN)
         claims = self.claim_paths(expected, receipt)
         for claim in claims:  # early answer; the atomic claim below is what decides
             if claim.exists():

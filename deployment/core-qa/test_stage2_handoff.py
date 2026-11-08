@@ -19,6 +19,8 @@ import stage1_baseline as gate
 import stage2_handoff as handoff
 from test_stage1_baseline import QA, FakeDocker
 
+REAL_COLLECT = handoff.collect  # the real bounded capture, before setUp patches it
+
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 FIXTURES = HERE / "fixtures/stage2-handoff"
@@ -35,6 +37,9 @@ ROOT_SECRET = (
 )
 VISIBILITY = FIXTURES / "qa-db-process-visibility-20261108.json"  # Pitagoras, read-only
 OWN = 24187  # the probe's own CONNECTION_ID in the fake DB
+FAKE_MAP = (
+    b"stand-in for otservbr.otbm v3.4.1\n"  # its sha256 replaces prepare.MAP_SHA256
+)
 IPS = {DATABASE: "172.22.0.2", "canary-core-qa-game-1": "172.22.0.3", WEB: "172.22.0.4"}
 GAME_ENV = {  # values only for the fake render; the real ones never leave the host
     "BOT_PLAYERS_ONLINE": "50",
@@ -155,6 +160,7 @@ class HandoffDocker(FakeDocker):
             "own": True,
         }
         self.calls = []
+        self.probe_timeouts = []
         self.stop_exit = 0
         self.up_fails = False
         self.roster = ["online\t100\t65000", "online\t101\t65000"]
@@ -300,7 +306,11 @@ class HandoffDocker(FakeDocker):
         return when.strftime("%Y-%m-%dT%H:%M:%S.%f") + "123Z"
 
     def collect(self, argv, timeout=handoff.LOG_TIMEOUT):
-        """The mocked read-only captures with a timeout: the script bytes and the game logs."""
+        """The mocked read-only captures with a timeout: the script bytes, the game logs, the DB probe."""
+        if argv[-1] == handoff.DB_PROBE_SQL:
+            self.calls.append(tuple(argv))
+            self.probe_timeouts.append(timeout)
+            return self.probe_output(tuple(argv)).encode()
         item = self.find(argv[-1] if argv[1] == "logs" else argv[2])
         if not item or item["status"] != "running":
             raise RuntimeError("read-only command failed: docker; refused")
@@ -397,6 +407,7 @@ class HandoffTests(unittest.TestCase):
             patch("stage2_handoff.collect", side_effect=self.docker.collect),
             patch("stage2_handoff.monotonic", side_effect=self.monotonic),
             patch("stage2_handoff.HIBERNATION_SHA256", sha(FAKE_SCRIPT)),
+            patch("preflight.MAP_SHA256", sha(FAKE_MAP)),
         ):
             self.stack.enter_context(mock)
         self.slice_now = copy.deepcopy(gate.comparable(self.baseline)["db_slice"])
@@ -426,6 +437,9 @@ class HandoffTests(unittest.TestCase):
         (bundle / "brain").mkdir(parents=True, exist_ok=True)
         env_file = self.project / ".env"
         env_file.write_text("MARIADB_PASSWORD=fake\n")
+        self.map_file = self.project / handoff.MAP_FILE
+        self.map_file.parent.mkdir(parents=True, exist_ok=True)
+        self.map_file.write_bytes(FAKE_MAP)
         manifest["env_file"]["sha256"] = sha(env_file.read_bytes())
         for name, entry in manifest["bundle_files"].items():
             path = Path(entry["absolute_path"])
@@ -460,6 +474,7 @@ class HandoffTests(unittest.TestCase):
                     "brain_fake": True,
                     "stage1_upgrade": {"baseline_sha256": gate.BASELINE_SHA256},
                     "game_image_pin": game,
+                    "map_sha256": sha(FAKE_MAP),
                 }
             ),
             "brain_before": json.dumps(
@@ -2063,7 +2078,7 @@ class QuiescentTests(HandoffTests):
     def setUp(self):
         super().setUp()
         self.slice_now["counts"]["player_items"] = 2616  # the moved slice of the smoke
-        self.notice_json(-60, 7000)
+        self.notice_json(-60, 1700)
 
     def notice_json(self, start, end):
         now = self.clock.now
@@ -2429,9 +2444,9 @@ class QuiescentTests(HandoffTests):
                 lambda: self.notice.write_text("window 02:00-03:00\n"),
                 "must be JSON",
             ),
-            "too_long": (lambda: self.notice_json(-60, 3 * 3600), "at most"),
-            "not_started": (lambda: self.notice_json(600, 3600), "not started"),
-            "ended": (lambda: self.notice_json(-7000, -10), "ended"),
+            "too_long": (lambda: self.notice_json(-60, 1800), "at most"),
+            "not_started": (lambda: self.notice_json(600, 1500), "not started"),
+            "ended": (lambda: self.notice_json(-1700, -10), "ended"),
             "not_utc": (
                 lambda: self.notice.write_text(
                     json.dumps(
@@ -2580,6 +2595,64 @@ class QuiescentTests(HandoffTests):
             self.new().quiescent_bundle(normal_pre, normal_sha, approval, approval_sha)
         self.assertEqual(self.ups(), 0)
 
+    def test_quiescent_chain_never_uses_the_adapter_fallback(self):
+        """The repro q_slice -> fallback-plan started the mocked rescue; now it never can."""
+        stopped, _ = self.q_stopped()
+        with self.assertRaisesRegex(RuntimeError, "managed-return procedure"):
+            self.new().fallback_plan(stopped, RESCUE, self.receipts["rescue_result"])
+        q_path, _ = self.new().quiescent_slice(stopped)
+        with self.assertRaisesRegex(RuntimeError, "managed-return procedure"):
+            self.new().fallback_plan(q_path, RESCUE, self.receipts["rescue_result"])
+        with self.assertRaisesRegex(RuntimeError, "managed-return procedure"):
+            self.new().fallback_verify(stopped, RESCUE, self.receipts["rescue_result"])
+        with self.assertRaisesRegex(RuntimeError, "managed-return procedure"):
+            self.new().rescue_verify(stopped)
+        self.assertEqual(self.docker.find(RESCUE)["status"], "exited")
+        self.assertEqual(len(self.docker.runs), 1)  # only the evidence stop
+        self.assertFalse(list((self.root / "evidence").glob("fallback-*.json")))
+
+    def test_quiescent_probe_timeout_before_the_receipt_holds(self):
+        stopped, _ = self.q_stopped()
+        real = REAL_COLLECT
+
+        def hung(argv, timeout=handoff.LOG_TIMEOUT):
+            if argv[-1] != handoff.DB_PROBE_SQL:
+                return self.docker.collect(argv, timeout)
+            self.docker.probe_timeouts.append(timeout)
+            with patch(
+                "stage2_handoff.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(argv, timeout),
+            ):
+                return real(argv, timeout)
+
+        with (
+            patch("stage2_handoff.collect", side_effect=hung),
+            self.assertRaisesRegex(
+                RuntimeError, "HOLD: the DB session probe did not complete"
+            ),
+        ):
+            self.new().quiescent_slice(stopped)
+        held = min((self.root / "evidence").glob("quiescent-slice-*.json"))
+        receipt = self.receipt(held)
+        self.assertEqual(receipt["result"], "hold")
+        self.assertIn("timed out", " ".join(receipt["problems"]))
+        self.assertIn("no activation", " ".join(receipt["problems"]))
+        self.assertEqual(len(self.docker.runs), 1)
+        self.assertLessEqual(max(self.docker.probe_timeouts), handoff.DB_PROBE_TIMEOUT)
+
+    def test_quiescent_probe_timeout_is_capped_by_the_window(self):
+        h = self.new()
+        # under 10 s left in the window: the probe gets only that
+        h.window_end = self.clock.now + timedelta(seconds=4)
+        h.writers()
+        self.assertTrue(0 < self.docker.probe_timeouts[-1] <= 4)
+        # the window is over: no probe at all, never past the window
+        h.window_end = self.clock.now - timedelta(seconds=1)
+        calls = len(self.docker.probe_timeouts)
+        with self.assertRaisesRegex(RuntimeError, "HOLD: no time left"):
+            h.writers()
+        self.assertEqual(len(self.docker.probe_timeouts), calls)
+
     def test_a_forged_chain_that_mixes_modes_is_refused(self):
         """A resealed receipt cannot graft a normal phase onto a quiescent root (or back)."""
         q_build, _ = self.q_post_build()
@@ -2599,6 +2672,34 @@ class QuiescentTests(HandoffTests):
         with self.assertRaisesRegex(RuntimeError, "mixes normal and quiescent"):
             self.new().exec_step(path, sha(path.read_bytes()))
         self.assertEqual(self.docker.runs, [])
+
+    def test_a_fallback_step_grafted_onto_a_quiescent_chain_never_executes(self):
+        """The return exec-step: a resealed fallback-plan on a quiescent head is refused."""
+        q_path, _ = self.q_slice()
+        forged = self.receipt(q_path)
+        forged.update(
+            phase="fallback-plan",
+            previous={
+                "path": str(q_path),
+                "sha256": sha(q_path.read_bytes()),
+                "phase": "quiescent-slice",
+            },
+            step={
+                "name": "stop-new",
+                "argv": [*handoff.STOP, "f" * 64],
+                "argv_sha256": handoff.digest([*handoff.STOP, "f" * 64]),
+            },
+            recorded_at_utc=self.clock.now.isoformat(),
+        )
+        forged["content_sha256"] = gate.sealed(forged)
+        path = self.root / "evidence" / "forged-fallback-plan.json"
+        path.write_text(json.dumps(forged, sort_keys=True, indent=2) + "\n")
+        runs = len(self.docker.runs)
+        with self.assertRaisesRegex(RuntimeError, "managed-return procedure"):
+            self.new().exec_step(path, sha(path.read_bytes()))
+        self.assertEqual(len(self.docker.runs), runs)
+        claims = self.project / "runtime" / "evidence" / "stage2-handoff-claims"
+        self.assertFalse(list(claims.glob(f"{sha(path.read_bytes())}*")))
 
 
 for _inherited in [name for name in vars(HandoffTests) if name.startswith("test_")]:
@@ -2638,7 +2739,7 @@ class DbSessionProbeTests(HandoffTests):
                 "HOLD: .*incomplete or malformed",
             ),
             "wrong_account": ({"account": "canary@%"}, "HOLD: .*another account"),
-            "query_error": ({"error": True}, "HOLD: .*probe failed"),
+            "query_error": ({"error": True}, "HOLD: .*did not complete"),
             "incomplete_output": ({"drop": "end"}, "HOLD: .*incomplete or malformed"),
             "two_sessions": ({"end_connection": OWN + 1}, "HOLD: .*one session"),
             "does_not_see_itself": ({"own": False}, "HOLD: .*its own session"),
@@ -2777,6 +2878,160 @@ class DbSessionProbeTests(HandoffTests):
 
 for _inherited in [name for name in vars(HandoffTests) if name.startswith("test_")]:
     setattr(DbSessionProbeTests, _inherited, None)
+
+
+class SuccessorFixTests(HandoffTests):
+    """#90 review fixes: the probe timeout on the real exec path and the map pin. Docker is mocked."""
+
+    def hung_probe(self):
+        real = REAL_COLLECT
+
+        def hung(argv, timeout=handoff.LOG_TIMEOUT):
+            if argv[-1] != handoff.DB_PROBE_SQL:
+                return self.docker.collect(argv, timeout)
+            self.docker.probe_timeouts.append(timeout)
+            with patch(
+                "stage2_handoff.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(argv, timeout),
+            ):
+                return real(argv, timeout)
+
+        return patch("stage2_handoff.collect", side_effect=hung)
+
+    def test_probe_timeout_on_the_real_exec_up_path_holds(self):
+        bundle, digest = self.bundled()
+        with (
+            self.hung_probe(),
+            self.assertRaisesRegex(
+                RuntimeError, "HOLD: .*timed out after 10 s.*no activation"
+            ),
+        ):
+            self.new().exec_step(bundle, digest)
+        self.assertEqual(sum("up" in argv for argv in self.docker.runs), 0)
+        self.assertFalse(
+            (self.project / handoff.CLAIMS / f"{digest}.up.claim").exists()
+        )
+        self.assertEqual(self.docker.probe_timeouts[-1], handoff.DB_PROBE_TIMEOUT)
+        self.new().exec_step(
+            bundle, digest
+        )  # nothing claimed, nothing ran: the same receipt
+        self.assertEqual(sum("up" in argv for argv in self.docker.runs), 1)
+
+    def test_normal_fallback_contract_is_unchanged(self):
+        held = self.failed_up()
+        plan, plan_sha = self.new().fallback_plan(
+            held, RESCUE, self.receipts["rescue_result"]
+        )
+        stopped, _ = self.new().exec_step(plan, plan_sha)
+        verify, verify_sha = self.new().fallback_verify(stopped)
+        self.new().exec_step(verify, verify_sha)
+        self.assertEqual(self.docker.find(RESCUE)["status"], "running")
+
+    def test_a_swapped_world_refuses_before_the_stop_and_before_the_up(self):
+        def swap():
+            self.map_file.write_bytes(b"another world\n")
+
+        with self.subTest("pre-stop"):
+            path, _ = self.post_build()
+            swap()
+            with self.assertRaisesRegex(
+                RuntimeError, "QA map at .* is not the approved pin"
+            ):
+                self.attest(self.new(), path)
+        with self.subTest("the stop, inside exec-step"):
+            self.setUp()
+            path, digest = self.pre_stop()
+            self.assertEqual(self.receipt(path)["map"]["sha256"], sha(FAKE_MAP))
+            swap()
+            with self.assertRaisesRegex(RuntimeError, "not the approved pin"):
+                self.new().exec_step(path, digest)
+            self.assertEqual(self.docker.runs, [])
+        with self.subTest("bundle"):
+            self.setUp()
+            held, _ = self.post_stop()
+            swap()
+            with self.assertRaisesRegex(RuntimeError, "not the approved pin"):
+                self.new().bundle(held)
+        with self.subTest("the up, inside exec-step"):
+            self.setUp()
+            bundle, digest = self.bundled()
+            swap()
+            with self.assertRaisesRegex(RuntimeError, "not the approved pin"):
+                self.new().exec_step(bundle, digest)
+            self.assertEqual(sum("up" in argv for argv in self.docker.runs), 0)
+        with self.subTest("a removed world"):
+            self.setUp()
+            bundle, digest = self.bundled()
+            self.map_file.unlink()
+            with self.assertRaisesRegex(RuntimeError, "not the approved pin"):
+                self.new().exec_step(bundle, digest)
+
+    def test_the_map_pin_is_the_approved_one_never_the_current_file(self):
+        path, _ = self.post_build()
+        world = self.new()
+        self.assertEqual(world.assert_map()["sha256"], sha(FAKE_MAP))
+        self.assertIn("prepare.MAP_SHA256", world.assert_map()["pin_source"])
+        self.assertEqual(
+            world.assert_map()["path"], str(self.project / handoff.MAP_FILE)
+        )
+        with (
+            patch("preflight.MAP_SHA256", sha(b"another approved release\n")),
+            self.assertRaisesRegex(
+                RuntimeError, "map pin and the a1d9 preflight receipt"
+            ),
+        ):
+            self.attest(
+                self.new(), path
+            )  # the pin must also be the receipt's map_sha256
+        self.map_file.write_bytes(b"current file\n")
+        with (
+            patch("preflight.MAP_SHA256", sha(b"current file\n")),
+            self.assertRaisesRegex(
+                RuntimeError, "map pin and the a1d9 preflight receipt"
+            ),
+        ):
+            self.attest(
+                self.new(), path
+            )  # a pin taken from the current file never passes
+
+
+class QuiescentSuccessorTests(QuiescentTests):
+    def test_quiescent_swapped_world_refuses_at_the_stop_and_before_the_up(self):
+        with self.subTest("evidence stop"):
+            path, digest = self.q_pre_stop()
+            self.map_file.write_bytes(b"another world\n")
+            with self.assertRaisesRegex(RuntimeError, "not the approved pin"):
+                self.new().exec_step(path, digest)
+            self.assertEqual(self.docker.runs, [])
+        with self.subTest("quiescent up"):
+            self.setUp()
+            (bundle, digest), _refs = self.q_bundled()
+            self.map_file.write_bytes(b"another world\n")
+            with self.assertRaisesRegex(RuntimeError, "not the approved pin"):
+                self.new().exec_step(bundle, digest)
+            self.assertEqual(self.ups(), 0)
+
+    def test_quiescent_probe_timeout_right_before_the_up_holds(self):
+        (bundle, digest), (_q, q_sha, _a, _s) = self.q_bundled()
+        with (
+            SuccessorFixTests.hung_probe(self),
+            self.assertRaisesRegex(RuntimeError, "HOLD: .*timed out"),
+        ):
+            self.new().exec_step(bundle, digest)
+        self.assertEqual(self.ups(), 0)
+        self.assertFalse(
+            (self.project / handoff.CLAIMS / f"{q_sha}.activate.claim").exists()
+        )
+
+
+for _successor in (SuccessorFixTests, QuiescentSuccessorTests):
+    for _inherited in [
+        name
+        for name in {*vars(HandoffTests), *vars(QuiescentTests)}
+        if name.startswith("test_")
+    ]:
+        setattr(_successor, _inherited, None)
+del _successor
 
 if __name__ == "__main__":
     unittest.main()

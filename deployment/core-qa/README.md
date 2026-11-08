@@ -503,6 +503,10 @@ de novo `CONNECTION_ID()` e a hora. Isso não é um snapshot atômico.
   `event_scheduler` fora de Daemon recusam). Qualquer linha de `innodb_trx` recusa,
   até a da própria sessão.
 - Uma colisão com o healthcheck do banco é HOLD: sem exceção e sem retry automático.
+- A sonda tem um timeout explícito de no máximo 10 s, cortado pelo tempo que resta da
+  janela (ela nunca estende a janela). Um timeout ou uma falha é o erro principal: HOLD,
+  com o timeout e o tempo decorrido, sem retry e sem ativação. Sem tempo na janela, a
+  sonda nem roda.
 - Para cada sessão recusada, o IP é ligado a um container pelo `docker inspect` atual
   dos IDs fixados: uma **associação observada**, nunca prova de quem abriu a sessão. O
   IP de um container parado conta como desconhecido. A conexão histórica do bundle
@@ -523,7 +527,7 @@ por um recorte lido com o `game` parado. A baseline fixada não muda.
    imagens, binds, resgate e candidato continuam exatos.
 2. `quiescent-pre-stop`: os gates do `pre-stop` (com a mesma dispensa e nenhuma
    outra), a ausência de humanos e uma janela limitada. O aviso do coordenador é um
-   JSON com `window_start_utc` e `window_end_utc`, de no máximo 2 h. Ele sela
+   JSON com `window_start_utc` e `window_end_utc`, de no máximo 30 min. Ele sela
    `quiescent-stop-game`, um stop que **só** coleta evidência e nunca autoriza `up`.
 3. `exec-step` do stop: o mesmo claim canônico, o prazo de 5 s e a janela.
 4. `quiescent-slice`: `game` exited 0, com o mesmo `StartedAt` e `RestartCount`; DB e
@@ -548,7 +552,21 @@ por um recorte lido com o `game` parado. A baseline fixada não muda.
 Um start do `game` ou o fim da janela anulam o recibo e qualquer aprovação pendente.
 Se a revisão não terminar dentro da janela, o retorno é o procedimento gerenciado já
 revisado (do Pitagoras), não um adaptador novo. A cadeia normal recusa qualquer recibo
-quiescente, e a quiescente recusa os normais.
+quiescente, e a quiescente recusa os normais. Uma cadeia quiescente nunca usa o
+fallback deste adaptador: `fallback-plan`, `fallback-verify`, `rescue-verify` e o
+`exec-step` de um passo que não seja quiescente recusam e apontam só para o
+procedimento gerenciado de retorno. O fallback da cadeia normal não muda.
+
+#### Pino do mapa
+
+O mapa é revalidado no caminho operacional original,
+`<projeto>/runtime/world/otservbr.otbm`, o arquivo que o `game` monta só leitura.
+Nunca a cópia do checkout nem uma cópia de rascunho. O pino é o aprovado antes:
+`prepare.MAP_SHA256` de a1d9 (o mesmo do `preflight.assert_map`), que tem de ser igual
+ao `map_sha256` do recibo de preflight de a1d9 ligado pelo manifesto. Ele nunca é
+tirado do arquivo atual. A checagem roda antes do stop (no `pre-stop`, no
+`quiescent-pre-stop` e no precheck do stop dentro do `exec-step`) e logo antes do `up`
+(no `up_gate`, dentro do `exec-step`). Um mundo trocado recusa nos dois pontos.
 
 ### Gate de upgrade: comparação exata com a baseline revisada
 
