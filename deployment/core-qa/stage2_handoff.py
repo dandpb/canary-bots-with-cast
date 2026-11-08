@@ -59,10 +59,10 @@ Phases (`<phase> --help` for the inputs):
                    exited with code 0. DB and web stay running/healthy EXACTLY; network, volumes and
                    the SAME exact slice. Drift is HOLD
   bundle           the pinned 4 Compose files, 2 fake configs and .env, the post-stop state again,
-                   others preserved, zero writers, the render (private and sanitized hash), the
+                   others preserved, the DB session gate, the render (private and sanitized hash), the
                    environment values per key (hashes only) and the binds; seals the up argv
   fallback-plan    rescue bound to the manifest; seals the stop of the NEW game/brain containers
-  fallback-verify  new containers stopped, other games preserved, zero DB writers; seals the
+  fallback-verify  new containers stopped, other games preserved, the DB session gate; seals the
                    single start of the rescue
   rescue-verify    after that start: the rescue runs and is healthy by a check newer than its start
   exec-step        refreshes the gates of one sealed step, claims it, runs its argv once
@@ -237,9 +237,55 @@ LIMITATIONS = [
         "only by the TCP check; the stop runs within 5 monotonic seconds of that check."
     ),
 ]
-WRITERS_SQL = (
-    "SELECT COUNT(*) FROM information_schema.PROCESSLIST "
-    "WHERE ID <> CONNECTION_ID() AND COMMAND <> 'Daemon';"
+# The strict DB session gate: the existing admin account (root@localhost, which has PROCESS),
+# by `docker exec` on the pinned DB container. The password comes from the container's own env
+# inside `sh -c` (never argv, receipts or logs). ONE mariadb invocation, so one session, runs
+# the statements in this order; the probe never selects INFO (query text).
+DB_PROBE_ACCOUNT = "root@localhost"
+DB_PROBE_SCRIPT = 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" exec mariadb -uroot -N -B -e "$0"'
+DB_PROBE_SQL = (
+    "SELECT 'begin', CONNECTION_ID(), CURRENT_USER(), UTC_TIMESTAMP(6); "
+    "SELECT 'privilege', 'PROCESS', COUNT(*) > 0 FROM information_schema.USER_PRIVILEGES "
+    "WHERE GRANTEE = CONCAT(CHAR(39), SUBSTRING_INDEX(CURRENT_USER(), '@', 1), CHAR(39), '@', "
+    "CHAR(39), SUBSTRING_INDEX(CURRENT_USER(), '@', -1), CHAR(39)) "
+    "AND PRIVILEGE_TYPE = 'PROCESS'; "
+    "SELECT 'process', ID, USER, HOST, IFNULL(DB, ''), COMMAND, IFNULL(TIME, -1), "
+    "IFNULL(STATE, '') FROM information_schema.PROCESSLIST ORDER BY ID; "
+    "SELECT 'trx', trx_mysql_thread_id, trx_state, trx_rows_modified "
+    "FROM information_schema.INNODB_TRX ORDER BY trx_mysql_thread_id; "
+    "SELECT 'end', CONNECTION_ID(), UTC_TIMESTAMP(6);"
+)
+DB_PROBE_SEQUENCE = (
+    "1 begin: CONNECTION_ID(), CURRENT_USER(), UTC_TIMESTAMP(6)",
+    "2 privilege: information_schema.USER_PRIVILEGES, PROCESS (name and boolean only)",
+    "3 processlist: ID, USER, HOST, DB, COMMAND, TIME, STATE (never INFO)",
+    "4 innodb_trx: trx_mysql_thread_id, trx_state, trx_rows_modified",
+    "5 end: CONNECTION_ID(), UTC_TIMESTAMP(6)",
+)
+DB_PROBE_FIELDS = {"begin": 4, "privilege": 3, "process": 8, "trx": 4, "end": 3}
+DB_PROBE_LIMITATIONS = [
+    (
+        "The statements run in sequence in ONE session (the same CONNECTION_ID at begin and "
+        "end); this is not an atomic snapshot."
+    ),
+    (
+        "Excluded: only the probe's own connection, by ID, and COMMAND='Daemon'. No user "
+        "allowlist; any innodb_trx row refuses, an excluded session's included."
+    ),
+    (
+        "A collision with the DB healthcheck (healthcheck.sh, every 10 s) refuses as HOLD: "
+        "there is no healthcheck exception and no automatic retry."
+    ),
+    (
+        "An IP is matched to a container by the CURRENT docker inspect of the pinned IDs: an "
+        "observed association, never proof of the process that opened the session; a stopped "
+        "container's IP counts as unknown. No retrospective attribution."
+    ),
+]
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+NETWORK_PROBE = (
+    '{"id":{{json .Id}},"name":{{json .Name}},"status":{{json .State.Status}},'
+    '"ips":[{{range $name, $net := .NetworkSettings.Networks}}{{json $net.IPAddress}},{{end}}""]}'
 )
 CONTAINER = (
     '{"id":{{json .Id}},"name":{{json .Name}},"created_at":{{json .Created}},'
@@ -944,13 +990,145 @@ class Handoff:
             if row["service"] in ("game", "brain") and row["id"] != self.game["id"]
         ]
 
-    def writers(self) -> int:
-        found = self.s1.mariadb(WRITERS_SQL).split()
-        if found != ["0"]:
-            raise RuntimeError(
-                f"the database still has {found or 'unknown'} other connections (writers); refused"
+    def writers(self) -> dict[str, Any]:
+        """The strict DB session gate, as root@localhost in ONE session (see DB_PROBE_SQL).
+
+        HOLD on an error, an incomplete or malformed output, another effective account, no
+        PROCESS visibility or a probe that does not see itself. Refused on ANY other session
+        (from any user or host, COMMAND='Daemon' aside) and on ANY innodb_trx row.
+        """
+        ident = self.manifest["containers"][self.s1.DATABASE]["id"]
+        wall_start, mono_start = utcnow(), monotonic()
+        try:
+            out = self.qa.command(
+                "docker", "exec", ident, "sh", "-c", DB_PROBE_SCRIPT, DB_PROBE_SQL
             )
-        return 0
+        except RuntimeError:
+            raise RuntimeError(
+                "HOLD: the DB session probe failed (an error, no output); no retry; refused"
+            ) from None
+        wall_end, mono_end = utcnow(), monotonic()
+        rows = [line.split("\t") for line in out.splitlines() if line.strip()]
+        tags = [row[0] for row in rows]
+        middle = tags[2:-1]
+        try:
+            if (
+                tags[:2] != ["begin", "privilege"]
+                or tags[-1:] != ["end"]
+                or any(tag not in ("process", "trx") for tag in middle)
+                or middle != sorted(middle, key=lambda tag: tag != "process")
+                or any(len(row) != DB_PROBE_FIELDS[row[0]] for row in rows)
+            ):
+                raise ValueError("order or shape")
+            begin, privilege, end = rows[0], rows[1], rows[-1]
+            connection = int(begin[1])
+            sessions = [
+                {
+                    "id": int(row[1]),
+                    "user": row[2],
+                    "host": row[3],
+                    "db": row[4],
+                    "command": row[5],
+                    "time_seconds": int(row[6]),
+                    "state": row[7],
+                }
+                for row in rows
+                if row[0] == "process"
+            ]
+            transactions = [
+                {
+                    "thread_id": int(row[1]),
+                    "state": row[2],
+                    "rows_modified": int(row[3]),
+                }
+                for row in rows
+                if row[0] == "trx"
+            ]
+        except (ValueError, IndexError, KeyError):
+            raise RuntimeError(
+                "HOLD: the DB session probe output is incomplete or malformed; refused"
+            ) from None
+        if int(end[1]) != connection:
+            raise RuntimeError(
+                "HOLD: the DB session probe did not run in one session; refused"
+            )
+        if begin[2] != DB_PROBE_ACCOUNT:
+            raise RuntimeError(
+                f"HOLD: the DB session probe ran as another account, not {DB_PROBE_ACCOUNT}; refused"
+            )
+        if privilege[1:] != ["PROCESS", "1"]:
+            raise RuntimeError(
+                "HOLD: the DB session probe has no PROCESS visibility; refused"
+            )
+        if not any(row["id"] == connection for row in sessions):
+            raise RuntimeError(
+                "HOLD: the DB session probe does not see its own session; refused"
+            )
+        others = [
+            row
+            for row in sessions
+            if row["id"] != connection and row["command"] != "Daemon"
+        ]
+        record = {
+            "account": DB_PROBE_ACCOUNT,
+            "privilege": {"PROCESS": True},
+            "connection_id": connection,
+            "sequence": list(DB_PROBE_SEQUENCE),
+            "server_utc": {"begin": begin[3], "end": end[2]},
+            "wall_clock_utc": {
+                "start": wall_start.isoformat(),
+                "end": wall_end.isoformat(),
+            },
+            "monotonic_seconds": {"start": mono_start, "end": mono_end},
+            "excluded": {
+                "own_connection_id": connection,
+                "daemon_sessions": sum(row["command"] == "Daemon" for row in sessions),
+            },
+            "other_sessions": len(others),
+            "transactions": len(transactions),
+            "limitations": DB_PROBE_LIMITATIONS,
+        }
+        if others or transactions:
+            seen = self.observed_ips()
+            for row in others:
+                address = row["host"].rpartition(":")[0] or row["host"]
+                row["observed_association"] = (
+                    "database container (local socket or loopback)"
+                    if address in LOCAL_HOSTS
+                    else seen.get(address, "unknown")
+                )
+            refused = {
+                "sessions": others,
+                "innodb_trx": transactions,
+                "note": DB_PROBE_LIMITATIONS[3],
+            }
+            raise RuntimeError(
+                f"the database has {len(others)} other connection(s) (writers or unknown) and "
+                f"{len(transactions)} transaction(s); refused: "
+                + json.dumps(refused, sort_keys=True)
+            )
+        return record
+
+    def observed_ips(self) -> dict[str, str]:
+        """IP -> name of the pinned containers that RUN now (current docker inspect only)."""
+        pinned = [item["id"] for item in self.baseline["containers"]]
+        pinned += [RESCUE_ID, CANDIDATE_ID]
+        found: dict[str, str] = {}
+        for ident in pinned:
+            try:
+                item = json.loads(
+                    self.qa.command(
+                        "docker", "inspect", ident, "--format", NETWORK_PROBE
+                    )
+                )
+            except (RuntimeError, ValueError):
+                continue
+            if item.get("status") != "running":
+                continue  # a stopped container's IP counts as unknown
+            for address in item.get("ips") or []:
+                if address:
+                    found[address] = str(item.get("name", "")).lstrip("/")
+        return found
 
     def assert_stage1_pins(self) -> dict[str, Any]:
         """database, game and web: the manifest's ID, image, CreatedAt, restart policy and mounts."""

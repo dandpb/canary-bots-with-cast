@@ -397,7 +397,7 @@ e sha256):
    continuam running/healthy **exatamente**; rede, volumes e o **mesmo** recorte
    exato. Deriva é HOLD: recusa, com o recibo guardado.
 4. `bundle`: os 4 Compose, os 2 configs fake e o `.env` pelos hashes; o estado do
-   post-stop de novo; outros games preservados e parados; zero writers e nenhum
+   post-stop de novo; outros games preservados e parados; o gate de sessões do banco e nenhum
    container novo; o render (hash privado e sanitizado); os **valores** do ambiente
    por chave (sha256 de `CHAVE=VALOR`, só hashes); os binds. Sela o argv do `up`.
 5. `fallback-plan` e `fallback-verify`: o resgate do manifesto (ID, config, imagem,
@@ -485,6 +485,32 @@ comando, e nada roda `up` sozinho. Depois do `up`, vale o `--record-brain-image`
 a1d9, a partir do checkout. O `stage1_baseline.py rollback` de a1d9 renderiza o
 Compose relativo ao próprio checkout, então não é rodado do checkout isolado. O
 retorno deste handoff é o fallback.
+
+#### Gate de sessões do banco (substitui o antigo zero writers)
+
+O gate de writers agora roda como a conta de admin que já existe, `root@localhost`, por
+`docker exec` no ID fixado do banco. A senha vem do env do próprio container, dentro do
+`sh -c`; ela nunca aparece em argv, recibos ou logs. Uma única chamada `mariadb`, ou
+seja, uma sessão, roda em ordem: `CONNECTION_ID()`, `CURRENT_USER()` e
+`UTC_TIMESTAMP(6)`; o privilégio PROCESS em `USER_PRIVILEGES` (nome e booleano);
+PROCESSLIST (ID, USER, HOST, DB, COMMAND, TIME, STATE, nunca INFO); `innodb_trx`; e
+de novo `CONNECTION_ID()` e a hora. Isso não é um snapshot atômico.
+
+- HOLD: erro, saída incompleta ou malformada, outra conta efetiva, sem PROCESS, duas
+  sessões, ou a sonda não se ver.
+- Recusa: qualquer outra sessão, de qualquer usuário ou host. Só saem a própria
+  conexão, pelo ID, e `COMMAND='Daemon'`; não há lista de usuários (`system user` e
+  `event_scheduler` fora de Daemon recusam). Qualquer linha de `innodb_trx` recusa,
+  até a da própria sessão.
+- Uma colisão com o healthcheck do banco é HOLD: sem exceção e sem retry automático.
+- Para cada sessão recusada, o IP é ligado a um container pelo `docker inspect` atual
+  dos IDs fixados: uma **associação observada**, nunca prova de quem abriu a sessão. O
+  IP de um container parado conta como desconhecido. A conexão histórica do bundle
+  continua desconhecida.
+
+Ele roda nos mesmos pontos de antes (`bundle`, logo antes do `up`, `fallback-verify` e
+antes do start do resgate) e, no modo quiescente, antes de emitir o recibo, antes de
+aprovar e logo antes do `up`, dentro do `exec-step`.
 
 #### Modo quiescente (rascunho; nada foi coletado, parado nem ativado)
 

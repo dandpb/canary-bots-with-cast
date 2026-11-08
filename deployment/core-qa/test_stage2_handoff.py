@@ -30,6 +30,12 @@ RESCUE = "64385641c847ad44d6acf1dc7f5d10e206451212b4320973a27ba278e428d608"
 CANDIDATE = "4188037d71a5455ef40e76e05d0fa145a9e71d977a10f0774e491286b968b605"
 ADAPTER = Path(handoff.__file__).read_bytes()
 SECRET = "fake-not-a-secret"
+ROOT_SECRET = (
+    "fake-root-not-a-secret"  # the DB container's MARIADB_ROOT_PASSWORD stand-in
+)
+VISIBILITY = FIXTURES / "qa-db-process-visibility-20261108.json"  # Pitagoras, read-only
+OWN = 24187  # the probe's own CONNECTION_ID in the fake DB
+IPS = {DATABASE: "172.22.0.2", "canary-core-qa-game-1": "172.22.0.3", WEB: "172.22.0.4"}
 GAME_ENV = {  # values only for the fake render; the real ones never leave the host
     "BOT_PLAYERS_ONLINE": "50",
     "BOT_POPULATION_REFERENCE_BOTS": "65001,65004,65003",
@@ -89,6 +95,7 @@ def render_env(render):
         env = render["services"][name]["environment"]
         render["services"][name]["environment"] = {key: "x" for key in env}
     render["services"]["database"]["environment"]["MARIADB_PASSWORD"] = SECRET
+    render["services"]["database"]["environment"]["MARIADB_ROOT_PASSWORD"] = ROOT_SECRET
 
 
 class HandoffDocker(FakeDocker):
@@ -136,7 +143,18 @@ class HandoffDocker(FakeDocker):
             if name not in self.containers
         }
         self.render = ""
-        self.writers = 0
+        self.writers = 0  # foreign canary Sleep sessions from the game IP
+        self.probe = {
+            "account": "root@localhost",
+            "process": "1",
+            "error": False,
+            "drop": None,
+            "end_connection": OWN,
+            "rows": [],
+            "trx": [],
+            "own": True,
+        }
+        self.calls = []
         self.stop_exit = 0
         self.up_fails = False
         self.roster = ["online\t100\t65000", "online\t101\t65000"]
@@ -156,7 +174,46 @@ class HandoffDocker(FakeDocker):
                 return item
         return None
 
+    def probe_output(self, args):
+        """The fake root probe: one session, the statements in order, TSV like mariadb -N -B."""
+        db = self.containers[DATABASE]["id"]
+        assert args[2:6] == (db, "sh", "-c", handoff.DB_PROBE_SCRIPT), args[:6]
+        probe = self.probe
+        if probe["error"]:
+            raise RuntimeError("read-only command failed: docker exec")
+        sessions = [
+            ["1", "system user", "", "", "Daemon", "-1", "InnoDB purge coordinator"],
+            *[
+                [
+                    str(24116 + i),
+                    "canary",
+                    f"172.22.0.3:{56590 + i}",
+                    "canary",
+                    "Sleep",
+                    "3",
+                    "",
+                ]
+                for i in range(self.writers)
+            ],
+            *probe["rows"],
+        ]
+        if probe["own"]:
+            user = probe["account"].split("@")[0]
+            sessions.append(
+                [str(OWN), user, "localhost", "", "Query", "0", "Filling schema table"]
+            )
+        rows = [
+            ["begin", str(OWN), probe["account"], "2026-11-08 02:00:00.000001"],
+            ["privilege", "PROCESS", probe["process"]],
+            *[["process", *row] for row in sorted(sessions, key=lambda r: int(r[0]))],
+            *[["trx", *row] for row in probe["trx"]],
+            ["end", str(probe["end_connection"]), "2026-11-08 02:00:00.000900"],
+        ]
+        rows = [row for row in rows if row[0] != probe["drop"]]
+        return "".join("\t".join(row) + "\n" for row in rows)
+
     def __call__(self, *args, env=None):
+        self.calls.append(args)
         if args[:2] == ("git", "rev-parse"):
             return handoff.TOOLING_REVISION + "\n"
         if args[:2] == ("git", "status"):
@@ -199,8 +256,22 @@ class HandoffDocker(FakeDocker):
                 for i in self.containers.values()
                 if i["labels"].get("com.docker.compose.project") == QA
             )
-        if args[1] == "exec" and args[-1] == handoff.WRITERS_SQL:
-            return f"{self.writers}\n"
+        if args[1] == "exec" and args[-1] == handoff.DB_PROBE_SQL:
+            return self.probe_output(args)
+        if args[1] == "inspect" and fmt == handoff.NETWORK_PROBE:
+            item = self.find(args[2])
+            if not item:
+                raise RuntimeError("read-only command failed: docker inspect")
+            # even a stopped container's last IP is returned: the adapter must ignore it
+            ips = [IPS.get(item["name"], "172.22.0.9"), ""]
+            return json.dumps(
+                {
+                    "id": item["id"],
+                    "name": "/" + item["name"],
+                    "status": item["status"],
+                    "ips": ips,
+                }
+            )
         if args[1] == "exec" and args[-1] == handoff.ROSTER_SQL:
             return "".join(row + "\n" for row in self.roster)
         if args[1] == "exec" and args[3] == "cat" and args[4] in handoff.TCP_FILES:
@@ -2078,7 +2149,8 @@ class QuiescentTests(HandoffTests):
         )
         self.assertEqual(q["supersedes_db_slice"]["counts"]["player_items"], 2613)
         self.assertFalse(q["historical_slice_equal"])
-        self.assertEqual(q["db_writers"], 0)
+        self.assertEqual(q["db_writers"]["other_sessions"], 0)
+        self.assertEqual(q["db_writers"]["transactions"], 0)
         self.assertTrue(q["corroboration"]["equal"])
         self.assertEqual(q["baseline_sha256"], gate.BASELINE_SHA256)
         self.assertEqual(q["game_start"]["started_at"], GAME_STARTED)
@@ -2385,7 +2457,7 @@ class QuiescentTests(HandoffTests):
         with self.subTest("before the receipt: HOLD"):
             stopped, _ = self.q_stopped()
             self.docker.writers = 1
-            with self.assertRaisesRegex(RuntimeError, "other connections"):
+            with self.assertRaisesRegex(RuntimeError, "other connection"):
                 self.new().quiescent_slice(stopped)
             held = min((self.root / "evidence").glob("quiescent-slice-*.json"))
             self.assertEqual(self.receipt(held)["result"], "hold")
@@ -2394,13 +2466,13 @@ class QuiescentTests(HandoffTests):
             q_path, q_sha = self.q_slice()
             approval, approval_sha = self.approval(q_path, q_sha)
             self.docker.writers = 1
-            with self.assertRaisesRegex(RuntimeError, "other connections"):
+            with self.assertRaisesRegex(RuntimeError, "other connection"):
                 self.new().quiescent_bundle(q_path, q_sha, approval, approval_sha)
         with self.subTest("right before the up, inside exec-step"):
             self.setUp()
             (bundle, digest), _refs = self.q_bundled()
             self.docker.writers = 1
-            with self.assertRaisesRegex(RuntimeError, "other connections"):
+            with self.assertRaisesRegex(RuntimeError, "other connection"):
                 self.new().exec_step(bundle, digest)
             self.assertEqual(self.ups(), 0)
 
@@ -2533,6 +2605,178 @@ for _inherited in [name for name in vars(HandoffTests) if name.startswith("test_
     setattr(
         QuiescentTests, _inherited, None
     )  # the quiescent class runs only its own tests
+
+
+class DbSessionProbeTests(HandoffTests):
+    """The strict root probe that replaces zero_writers, on the real bundle path. Docker is mocked."""
+
+    def test_own_connection_and_daemon_only_pass(self):
+        bundle, _ = self.bundled()
+        record = self.receipt(bundle)["db_writers"]
+        self.assertEqual(record["account"], "root@localhost")
+        self.assertEqual(record["privilege"], {"PROCESS": True})
+        self.assertEqual(record["connection_id"], OWN)
+        self.assertEqual(
+            record["excluded"], {"own_connection_id": OWN, "daemon_sessions": 1}
+        )
+        self.assertEqual((record["other_sessions"], record["transactions"]), (0, 0))
+        self.assertEqual([step[0] for step in record["sequence"]], list("12345"))
+        self.assertIn("not an atomic snapshot", " ".join(record["limitations"]))
+        self.assertIn("no automatic retry", " ".join(record["limitations"]))
+        self.assertLessEqual(
+            record["wall_clock_utc"]["start"], record["wall_clock_utc"]["end"]
+        )
+
+    def test_probe_failures_hold(self):
+        cases = {
+            "no_process_visibility": (
+                {"process": "0"},
+                "HOLD: .*no PROCESS visibility",
+            ),
+            "privilege_row_missing": (
+                {"drop": "privilege"},
+                "HOLD: .*incomplete or malformed",
+            ),
+            "wrong_account": ({"account": "canary@%"}, "HOLD: .*another account"),
+            "query_error": ({"error": True}, "HOLD: .*probe failed"),
+            "incomplete_output": ({"drop": "end"}, "HOLD: .*incomplete or malformed"),
+            "two_sessions": ({"end_connection": OWN + 1}, "HOLD: .*one session"),
+            "does_not_see_itself": ({"own": False}, "HOLD: .*its own session"),
+            "malformed_row": (
+                {"rows": [["7", "canary", "x"]]},
+                "HOLD: .*incomplete or malformed",
+            ),
+        }
+        for name, (change, message) in cases.items():
+            with self.subTest(name):
+                self.setUp()
+                held, _ = self.post_stop()
+                self.docker.probe.update(change)
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.new().bundle(held)
+                self.assertEqual(
+                    self.docker.runs, [self.docker.runs[0]]
+                )  # only the stop
+
+    def test_any_other_session_or_transaction_refuses(self):
+        def foreign_sleep():
+            self.docker.writers = 1
+
+        def web_sleep():
+            self.docker.probe["rows"] = [
+                ["24200", "canary", "172.22.0.4:40000", "canary", "Sleep", "5", ""]
+            ]
+
+        def system_user_not_daemon():
+            self.docker.probe["rows"] = [
+                ["2", "system user", "", "", "Query", "0", "x"]
+            ]
+
+        def event_scheduler_not_daemon():
+            self.docker.probe["rows"] = [
+                ["3", "event_scheduler", "localhost", "", "Sleep", "9", "Waiting"]
+            ]
+
+        def another_root_session():
+            self.docker.probe["rows"] = [
+                ["24191", "root", "localhost", "", "Sleep", "1", ""]
+            ]
+
+        def healthcheck_collision():
+            self.docker.probe["rows"] = [
+                ["24190", "healthcheck", "localhost", "", "Query", "0", "starting"]
+            ]
+
+        def trx_on_own_session():
+            self.docker.probe["trx"] = [[str(OWN), "RUNNING", "0"]]
+
+        def trx_on_daemon():
+            self.docker.probe["trx"] = [["1", "RUNNING", "0"]]
+
+        def trx_unknown_thread():
+            self.docker.probe["trx"] = [["0", "RUNNING", "3"]]
+
+        cases = {
+            foreign_sleep: "1 other connection",
+            web_sleep: "1 other connection",
+            system_user_not_daemon: "1 other connection",
+            event_scheduler_not_daemon: "1 other connection",
+            healthcheck_collision: "1 other connection",
+            another_root_session: "1 other connection",
+            trx_on_own_session: "0 other connection.* and 1 transaction",
+            trx_on_daemon: "0 other connection.* and 1 transaction",
+            trx_unknown_thread: "0 other connection.* and 1 transaction",
+        }
+        for change, message in cases.items():
+            with self.subTest(change.__name__):
+                self.setUp()
+                held, _ = self.post_stop()
+                change()
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.new().bundle(held)
+
+    def test_refused_sessions_carry_only_an_observed_association(self):
+        held, _ = self.post_stop()
+        self.docker.writers = 1  # from the game IP; the game is stopped now
+        self.docker.probe["rows"] = [
+            ["24200", "canary", "172.22.0.4:40000", "canary", "Sleep", "5", ""],
+            ["24201", "healthcheck", "localhost", "", "Query", "0", ""],
+        ]
+        with self.assertRaises(RuntimeError) as refused:
+            self.new().bundle(held)
+        detail = json.loads(str(refused.exception).split("refused: ", 1)[1])
+        seen = {row["id"]: row["observed_association"] for row in detail["sessions"]}
+        self.assertEqual(
+            seen[24116], "unknown"
+        )  # a stopped game's IP counts as unknown
+        self.assertEqual(seen[24200], WEB)
+        self.assertEqual(seen[24201], "database container (local socket or loopback)")
+        self.assertIn("observed association", detail["note"])
+        self.assertIn("never proof", detail["note"])
+        self.assertNotIn("info", json.dumps(detail).lower().replace("information", ""))
+
+    def test_the_measured_visibility_file_refuses_six_game_sessions(self):
+        measured = json.loads(VISIBILITY.read_text())
+        self.assertEqual(measured["schema"], "qa-db-process-visibility-v1")
+        self.assertEqual(sha(VISIBILITY.read_bytes())[:8], "9a0eaeb6")
+        own = measured["own_connection_id"]
+        rows = [
+            [
+                str(row["id"]),
+                row["user"],
+                row["host"],
+                row["db"] or "",
+                row["command"],
+                str(row["time_seconds"]),
+                row["state"],
+            ]
+            for row in measured["processlist"]
+            if row["id"] != own
+        ]
+        self.docker.probe["rows"] = rows  # the game RUNS here, as when it was measured
+        with self.assertRaises(RuntimeError) as refused:
+            self.new().writers()
+        detail = json.loads(str(refused.exception).split("refused: ", 1)[1])
+        self.assertEqual(len(detail["sessions"]), 6)
+        self.assertEqual(
+            {row["observed_association"] for row in detail["sessions"]},
+            {"canary-core-qa-game-1"},
+        )
+
+    def test_the_credential_never_reaches_argv_or_receipts(self):
+        self.bundled()
+        probes = [c for c in self.docker.calls if c[-1:] == (handoff.DB_PROBE_SQL,)]
+        self.assertTrue(probes)
+        for call in self.docker.calls:
+            self.assertFalse(any(ROOT_SECRET in str(arg) for arg in call), call[:3])
+        for call in probes:
+            self.assertIn('MYSQL_PWD="$MARIADB_ROOT_PASSWORD"', call[5])
+            self.assertNotIn("INFO", call[6])
+        self.assertNotIn(ROOT_SECRET, self.evidence_text())
+
+
+for _inherited in [name for name in vars(HandoffTests) if name.startswith("test_")]:
+    setattr(DbSessionProbeTests, _inherited, None)
 
 if __name__ == "__main__":
     unittest.main()
