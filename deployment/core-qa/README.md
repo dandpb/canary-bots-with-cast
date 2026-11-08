@@ -345,6 +345,147 @@ imagem pelo ID e a mesma revisão de origem. Ele recusa se o `game` não foi
 recriado, se foi rebuildado ou se veio da tag, e também se `database`, `web`, a
 rede ou os quatro volumes diferirem da baseline.
 
+### Handoff do build a1d9: adaptador `stage2_handoff.py`
+
+Depois de `$QA_UP build brain`, repetir `--upgrade-from-stage1` recusa a própria
+imagem do build autorizado (`assert_images(brain_allowed=False)`), e a ordem acima
+não tem gate entre o build e o `up`. Para o build a1d9 já feito, os gates de a1d9
+ficam como estão, estritos. O caminho é o adaptador `stage2_handoff.py`, revisado
+aqui e executado como **cópia fixada pelo sha256**, fora do checkout a1d9:
+
+- `--source-checkout`: o checkout a1d9 limpo. Só fornece as ferramentas
+  (`preflight.py`, `stage1_baseline.py`, importadas sem alteração) e o gravador
+  `--record-brain-image`.
+- O diretório do projeto Compose é o diretório original de QA, que o manifesto do
+  bundle fixa (`qa_project_directory`, com seu `.env`). Arquivo `-f`, mount ou
+  diretório do projeto dentro do checkout, ou cópia fora do projeto que não esteja no
+  manifesto, é recusa.
+- Revisões separadas em todo recibo: ferramentas (a1d9), imagem `brain` (label
+  a1d9), imagem `game` (label `3431b404…`) e a revisão do próprio adaptador. Nada é
+  rerrotulado.
+
+O manifesto fixado (`qa-stage2-bundle-manifest-a1d9.json`, sha256
+`bc4fb5af6c1ff5ff76e08ac15125b463222bcbc27dc98b7b35a75f7f4f4202f0`) liga, e o
+adaptador confere ao vivo contra ele:
+
+- cada recibo por caminho absoluto e sha256 (`receipt_files`);
+- a imagem `brain` por ID completo, plataforma, label de revisão e tag
+  (`brain_image`), contra o manifesto **e** o `docker image inspect`;
+- a config do resgate por `rescue_container_config.config_sha256`, com a mesma
+  serialização de `container()`: `json.dumps({"config", "host_config"},
+  sort_keys=True)` com os padrões do Python (um hash só de `Config` ou com
+  separadores compactos não confere);
+- o `.env` original pelo sha256 dos bytes crus (`env_file`);
+- o render pelo sha256 do stdout cru de `render_argv` e pelo sanitizado.
+
+Fases, cada uma só leitura e com um recibo JSON selado que cita o anterior (caminho
+e sha256):
+
+1. `post-build`: todos os recibos do manifesto; imagem `brain`; `.env`; nenhum
+   container ou volume `brain`; tags `game`/`web` exatas; identidades, mounts e
+   recorte exato; resgate e candidato parados; binds equivalentes aos caminhos do host.
+2. `pre-stop`: gate vivo de novo (running/healthy e recorte exato), resgate e
+   candidato, e a ausência de humanos: a última mensagem de diagnóstico de âncoras de
+   `bot_hibernation.lua` mostra 0 âncoras, fresca e deste container (ver abaixo),
+   personagens humanos de QA offline no SQL (corroboração, possivelmente velha), zero
+   sessões TCP estabelecidas nas portas 17171/17172 em `/proc/net/tcp` e `tcp6`
+   dentro do `game`) e o aviso de janela do coordenador (`--window-notice` e
+   `--window-notice-sha256`), além da atestação (`--attested-by`, `--attested-at`).
+   Sela `docker stop -t 180 <ID do game>`.
+3. `post-stop`: só o `game` pode passar a `exited` (código 0, mesmo ID, `CreatedAt`,
+   imagem e config; só o health dele, agora velho, sai da comparação). Banco e `web`
+   continuam running/healthy **exatamente**; rede, volumes e o **mesmo** recorte
+   exato. Deriva é HOLD: recusa, com o recibo guardado.
+4. `bundle`: os 4 Compose, os 2 configs fake e o `.env` pelos hashes; o estado do
+   post-stop de novo; outros games preservados e parados; zero writers e nenhum
+   container novo; o render (hash privado e sanitizado); os **valores** do ambiente
+   por chave (sha256 de `CHAVE=VALOR`, só hashes); os binds. Sela o argv do `up`.
+5. `fallback-plan` e `fallback-verify`: o resgate do manifesto (ID, config, imagem,
+   mounts, sem dono Compose) parado com código 0 e `restart=no`. Para os containers
+   novos de `game`/`brain` (pelos labels), prova zero conexões no banco e sela um
+   único `docker start` do resgate.
+6. `rescue-verify`: depois desse start, o resgate só conta como usável com um health
+   check `healthy` mais novo que o próprio start.
+
+Fallbacks fora do Compose: `qa-game-candidate-3431b404` (`4188037d…b605`) e
+`qa-old-rescue-20261107` (`64385641…d608`). Os dois estão `exited`, código 0,
+`restart=no`, com um Health "unhealthy" velho. Parados, esse Health é ignorado e
+vale exited + 0 + `restart=no` + ID e dono fixados. Só o resgate tem hash de config
+no manifesto (`rescue_container_config`) e é conferido por ele; o candidato **não
+tem** hash de config no manifesto e é ligado por ID, nome, imagem, `CreatedAt`,
+mounts, `restart` e dono. Qualquer start futuro só conta depois de um health check
+novo.
+
+Ausência de humanos (substitui o contrato `--native-roster` de b4ea4441, retirado:
+a fonte 3431 não tem coletor passivo de GUID → tipo com frescor;
+`bot_active_players` é um espelho assíncrono sem época nem watermark). Nada novo no
+servidor de QA: nenhum endpoint, reload, instrumentação ou rebuild.
+
+- `bot_hibernation.lua` em 3431b404 (`data/scripts/globalevents/`), linhas 84-89:
+  âncoras são os jogadores não-bot **e** os bots assistidos por cast. Linhas 133-141:
+  a cada 60 ticks de 300 ms (18 s nominais) ele registra
+  `[BotHibernation] %d bots: hibernated=%d awake=%d, %d real players`; o último `%d`
+  é o número de âncoras. Com o padrão spdlog de 3431
+  (`[%Y-%d-%m %H:%M:%S.%e] [%^%l%$] %v `) e `docker logs --timestamps`, a linha é
+  `<RFC3339Nano>Z [AAAA-DD-MM hh:mm:ss.mmm] [info] [BotHibernation] N bots:
+  hibernated=H awake=A, K real players `.
+- O adaptador liga o sha256 dos bytes do script lidos de dentro do `game` pelo ID
+  completo (`docker exec <id> cat`) aos bytes de 3431 (`b2496d78…bf01`), a imagem
+  `358ee666…` com revisão 3431, o ID completo e um `StartedAt` inalterado (antes e
+  depois da coleta, e desde o pre-stop).
+- Coleta `docker logs --timestamps --since 120s <id>` com timeout. O recibo guarda a
+  captura crua, o sha256 e os limites de relógio de parede e monotônico.
+- Toda linha com `[BotHibernation]` é candidata, com qualquer sufixo. Só é pulada a
+  linha benigna da lista fechada, `bot_hibernation.lua:66-67`
+  (`[BotHibernation] tick #N firing`, com o prefixo exato do Docker e do spdlog). A
+  **última** candidata é interpretada de forma estrita: tem de ser a mensagem de
+  âncoras completa, de qualquer valor (não a última zerada). Recusa se ela estiver
+  ausente, truncada, no singular, desconhecida (inclusive
+  `getBotHibernationStates returned nil`, linha 128), diferente de zero, no futuro,
+  com mais de 30 s ou anterior ao `StartedAt`.
+- Privacidade: a captura crua fica guardada para auditoria (não é trocada pelas linhas
+  extraídas), em `game-log-*.raw.log`. Uma cópia sanitizada para compartilhar,
+  `game-log-*.sanitized.json`, guarda só as linhas de `bot_hibernation.lua` que
+  passaram na interpretação estrita e o `raw_sha256` do arquivo cru. Recibos e logs
+  são gravados 0600 num diretório de evidência 0700. Um diretório ou arquivo
+  existente acessível ao grupo ou ao mundo, um componente ou alvo que seja symlink, ou
+  um diretório de outro usuário são recusados e nunca consertados; nenhuma evidência
+  existente é reescrita.
+- Recibo: `native_roster_unavailable=true`, `native_anchors=0` e o SQL como
+  corroboração possivelmente velha. Não há `bot_only` nem roster completo; a conta
+  65000 não prova tipo, e a contagem de bots da linha vem de um cache, nunca é um
+  total nativo.
+- Limitação temporal: o timestamp do Docker é o frescor da emissão do log (logger
+  assíncrono do spdlog, flush a cada 3 s no máximo), não um relógio independente do
+  callback. Entre o último diagnóstico e o stop, um login só é pego pelo TCP.
+- No `exec-step` do stop, tudo é refeito (logs, SQL, `tcp`/`tcp6`, aviso de janela) e
+  o stop tem de rodar até **5 s monotônicos** depois da checagem final de sessão, com
+  os outros limites de frescor ainda válidos. Expirou antes do claim: recusa sem
+  mutação e sem claim (o mesmo recibo pode ser tentado de novo, com tudo refeito).
+  Expirou depois do claim: recusa sem mutação, mas o claim fica consumido, com um
+  resultado `executed: false`; é preciso um novo pre-stop.
+
+Binds no Docker Desktop (WSL): o inspect mostra a origem traduzida. O adaptador
+aceita, para o caminho do host `H`, só `H`, `/run/desktop/mnt/host/wsl/Ubuntu` + `H`
+ou `/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/Ubuntu/<sha256(H)>`. A forma
+com hash é a que o manifesto real mostra para o mapa e o `initdb`, e os testes
+conferem essa equivalência nos dados reais.
+
+Quem executa: Pitagoras, no WSL, roda as fases e cada mutação só como
+`stage2_handoff.py exec-step --receipt <recibo> --receipt-sha256 <sha>`. Logo antes
+da mutação, ele refaz todos os gates do passo (antes do stop: gate vivo, resgate,
+candidato e exclusão humana; antes do `up`: o estado exato do post-stop, o recorte, o
+render, o ambiente, outros games, writers). Depois grava um claim durável e atômico
+(`O_CREAT|O_EXCL`, fsync do arquivo e do diretório) em
+`<projeto>/runtime/evidence/stage2-handoff-claims/`, pela chave sha256 do recibo +
+passo, independente de `--evidence`. Só então roda o argv selado, uma vez. Um claim
+sem resultado (queda, falha ao gravar o recibo) continua consumido: HOLD, nunca se
+repete. Recibo com data no futuro ou com mais de 15 min é recusado. Ninguém redigita
+comando, e nada roda `up` sozinho. Depois do `up`, vale o `--record-brain-image` de
+a1d9, a partir do checkout. O `stage1_baseline.py rollback` de a1d9 renderiza o
+Compose relativo ao próprio checkout, então não é rodado do checkout isolado. O
+retorno deste handoff é o fallback.
+
 ### Gate de upgrade: comparação exata com a baseline revisada
 
 `stage1-baseline.json` é a baseline da etapa 1 recapturada só em leitura no stage 1

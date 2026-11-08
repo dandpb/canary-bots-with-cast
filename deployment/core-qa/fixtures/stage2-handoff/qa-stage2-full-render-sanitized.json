@@ -1,0 +1,265 @@
+{
+  "name": "canary-core-qa",
+  "networks": {
+    "default": {
+      "ipam": {},
+      "name": "canary-core-qa_default"
+    }
+  },
+  "services": {
+    "brain": {
+      "command": null,
+      "depends_on": {
+        "game": {
+          "condition": "service_healthy",
+          "required": true
+        }
+      },
+      "entrypoint": [
+        "canary-brain",
+        "serve",
+        "--config",
+        "/etc/canary-core-qa/brain/worker.json"
+      ],
+      "image": "sha256:9ea0a34688db0443dabfa6c64736f78b53e954a19c9ead8c61d52f2bbdefa0cd",
+      "network_mode": "none",
+      "pull_policy": "never",
+      "restart": "no",
+      "volumes": [
+        {
+          "read_only": true,
+          "source": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/brain/worker.json",
+          "target": "/etc/canary-core-qa/brain/worker.json",
+          "type": "bind"
+        },
+        {
+          "source": "brain-ledger",
+          "target": "/var/lib/canary-human-qa-stage2",
+          "type": "volume",
+          "volume": {}
+        },
+        {
+          "source": "brain-socket",
+          "target": "/var/lib/canary-human-qa-stage2/socket",
+          "type": "volume",
+          "volume": {}
+        }
+      ]
+    },
+    "database": {
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "MARIADB_DATABASE": "<redacted>",
+        "MARIADB_PASSWORD": "<redacted>",
+        "MARIADB_ROOT_PASSWORD": "<redacted>",
+        "MARIADB_USER": "<redacted>"
+      },
+      "healthcheck": {
+        "interval": "10s",
+        "retries": 60,
+        "start_period": "2m0s",
+        "test": [
+          "CMD",
+          "healthcheck.sh",
+          "--connect",
+          "--innodb_initialized"
+        ],
+        "timeout": "5s"
+      },
+      "image": "mariadb:11.4",
+      "networks": {
+        "default": null
+      },
+      "pull_policy": "never",
+      "restart": "no",
+      "volumes": [
+        {
+          "source": "database",
+          "target": "/var/lib/mysql",
+          "type": "volume",
+          "volume": {}
+        },
+        {
+          "bind": {},
+          "read_only": true,
+          "source": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/initdb",
+          "target": "/docker-entrypoint-initdb.d",
+          "type": "bind"
+        }
+      ]
+    },
+    "game": {
+      "command": null,
+      "depends_on": {
+        "database": {
+          "condition": "service_healthy",
+          "required": true
+        }
+      },
+      "entrypoint": null,
+      "environment": {
+        "BOT_PLAYERS_ONLINE": "<redacted>",
+        "BOT_POPULATION_REFERENCE_BOTS": "<redacted>",
+        "CANARY_BRAIN_CONFIG": "<redacted>",
+        "GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN": "<redacted>",
+        "GAME_DISABLE_MAP_DOWNLOAD": "<redacted>",
+        "GAME_LOGIN_PORT": "<redacted>",
+        "GAME_PROTOCOL_PORT": "<redacted>",
+        "GAME_PUBLIC_IP": "<redacted>",
+        "GAME_STATUS_PORT": "<redacted>",
+        "MARIADB_PASSWORD": "<redacted>"
+      },
+      "healthcheck": {
+        "interval": "30s",
+        "retries": 10,
+        "start_period": "10m0s",
+        "test": [
+          "CMD",
+          "python3",
+          "-c",
+          "import socket; socket.create_connection(('127.0.0.1',17173),2).close()"
+        ],
+        "timeout": "5s"
+      },
+      "image": "sha256:358ee666db065a79625f5b5491efa363f0fc491fba04d14d5c176715f0930181",
+      "networks": {
+        "default": null
+      },
+      "ports": [
+        {
+          "host_ip": "127.0.0.1",
+          "mode": "ingress",
+          "protocol": "tcp",
+          "published": "17171",
+          "target": 17171
+        },
+        {
+          "host_ip": "127.0.0.1",
+          "mode": "ingress",
+          "protocol": "tcp",
+          "published": "17172",
+          "target": 17172
+        },
+        {
+          "host_ip": "127.0.0.1",
+          "mode": "ingress",
+          "protocol": "tcp",
+          "published": "17173",
+          "target": 17173
+        }
+      ],
+      "pull_policy": "never",
+      "restart": "no",
+      "volumes": [
+        {
+          "bind": {},
+          "read_only": true,
+          "source": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/world/otservbr.otbm",
+          "target": "/canary/data-otservbr-global/world/otservbr.otbm",
+          "type": "bind"
+        },
+        {
+          "source": "game-logs",
+          "target": "/canary/logs",
+          "type": "volume",
+          "volume": {}
+        },
+        {
+          "source": "authored-data",
+          "target": "/canary/data/bot/authored",
+          "type": "volume",
+          "volume": {}
+        },
+        {
+          "read_only": true,
+          "source": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/brain/server.json",
+          "target": "/etc/canary-core-qa/brain/server.json",
+          "type": "bind"
+        },
+        {
+          "source": "brain-socket",
+          "target": "/var/lib/canary-human-qa-stage2/socket",
+          "type": "volume",
+          "volume": {}
+        }
+      ]
+    },
+    "web": {
+      "command": null,
+      "depends_on": {
+        "database": {
+          "condition": "service_healthy",
+          "required": true
+        }
+      },
+      "entrypoint": null,
+      "environment": {
+        "CANARY_DB_HOST": "<redacted>",
+        "CANARY_DB_NAME": "<redacted>",
+        "CANARY_DB_PASSWORD": "<redacted>",
+        "CANARY_DB_USER": "<redacted>",
+        "CANARY_GAME_PORT": "<redacted>",
+        "CANARY_LOGIN_PORT": "<redacted>",
+        "CANARY_SERVER_IP": "<redacted>",
+        "CANARY_SERVER_NAME": "<redacted>",
+        "CANARY_STATUS_PORT": "<redacted>",
+        "MYAAC_CLIENT_VERSION": "<redacted>",
+        "MYAAC_SITE_URL": "<redacted>"
+      },
+      "healthcheck": {
+        "interval": "30s",
+        "retries": 10,
+        "start_period": "2m0s",
+        "test": [
+          "CMD-SHELL",
+          "curl -fsS -H 'Content-Type: application/json' --data '{\"type\":\"cacheinfo\"}' http://127.0.0.1/login.php | grep -q '\"playersonline\"'"
+        ],
+        "timeout": "10s"
+      },
+      "image": "canary-core-qa-web:local",
+      "networks": {
+        "default": null
+      },
+      "ports": [
+        {
+          "host_ip": "127.0.0.1",
+          "mode": "ingress",
+          "protocol": "tcp",
+          "published": "18080",
+          "target": 80
+        }
+      ],
+      "pull_policy": "never",
+      "restart": "no",
+      "volumes": [
+        {
+          "source": "website-cache",
+          "target": "/var/www/html/system/cache",
+          "type": "volume",
+          "volume": {}
+        }
+      ]
+    }
+  },
+  "volumes": {
+    "authored-data": {
+      "name": "canary-core-qa_authored-data"
+    },
+    "brain-ledger": {
+      "name": "canary-core-qa_brain-ledger"
+    },
+    "brain-socket": {
+      "name": "canary-core-qa_brain-socket"
+    },
+    "database": {
+      "name": "canary-core-qa_database"
+    },
+    "game-logs": {
+      "name": "canary-core-qa_game-logs"
+    },
+    "website-cache": {
+      "name": "canary-core-qa_website-cache"
+    }
+  }
+}
