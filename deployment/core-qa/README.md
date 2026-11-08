@@ -557,6 +557,46 @@ fallback deste adaptador: `fallback-plan`, `fallback-verify`, `rescue-verify` e 
 `exec-step` de um passo que não seja quiescente recusam e apontam só para o
 procedimento gerenciado de retorno. O fallback da cadeia normal não muda.
 
+#### Retorno gerenciado de uma tentativa quiescente (rascunho; nada foi executado)
+
+O `exec-step` é o executor de stop e up deste adaptador. O retorno tem um executor
+separado, revisado à parte: `qa_return_attempt.py`, derivado do `qa_return_once.py`
+aprovado (sha256 `52bac981b99d232e3336cb96722e1443bb01939540a05154292d8a98e535d04b`).
+Ele roda como cópia fixada pelo sha256, com `python3 -I`, e carrega a cópia do adaptador
+pelo sha256 antes de executar qualquer linha dela.
+
+- Chave da tentativa: o sha256 do recibo `quiescent-pre-stop`. É a chave do claim do stop
+  (`<chave>.quiescent-stop-game.claim`), então ela existe assim que o stop foi
+  reivindicado, com ou sem recibo de recorte.
+- Namespace novo por tentativa: `<projeto>/runtime/evidence/qa-return-claims/attempts/<chave>/`
+  (0700), com `attempt.lock`, `ABANDONED`, `gate-*.json`, os claims e resultados
+  (`start-managed`, `stop-new`, `start-rescue`), `verify-*.json` e `private/` com a cópia
+  0600 do `rescue_result`. O `flow.lock` e os claims `stop-rescue`/`start-managed` de
+  03:33 nunca são abertos, limpos nem reusados.
+- Exclusão: o up quiescente e o retorno usam o mesmo `attempt.lock` (flock), seguro até o
+  fim da mutação e herdado pelo processo filho. O retorno nunca espera: lock ocupado é
+  HOLD. Com o lock, ele grava `ABANDONED` antes de qualquer gate. Daí em diante o up desta
+  tentativa fica recusado, mesmo que o retorno recuse depois.
+- Os gates ligam o sha do adaptador, o manifesto `bc4fb5af…`, o claim do stop e o seu
+  resultado (exit 0, a cadeia `exec-step` → `quiescent-pre-stop`), o aviso da janela e os
+  IDs e configs. Nenhum ramo exige o recorte histórico: os dados atuais ficam como estão,
+  com a sonda estrita de root do adaptador (importada) e a integridade.
+- Ramo A, `start-managed`, antes de qualquer up desta tentativa (nenhum claim de
+  `quiescent-up`/`activate` desde o stop): o original `eaae6fe2…` exato (ID, `CreatedAt`,
+  imagem, config, `StartedAt`, `RestartCount`), exited 0 e restart=no; resgate e candidato
+  parados; nenhum container novo; sessões, transações, integridade, DB, web, rede e
+  volumes. Um único `docker start <ID completo>` por tentativa.
+- Ramo B, `rescue`, depois de um up tentado ou parcial: não presume que `eaae6fe2…`
+  exista. Os containers novos são identificados pelo ID completo, pelo projeto, serviço,
+  imagem e labels de dono do Compose (working dir, arquivos de config, env file, one-off) e
+  criados depois do stop. Só esses IDs param, uma vez. Depois, todos os games parados com
+  restart=no, sem sessões nem transações, e só então um único start do resgate
+  `64385641…`, com imagem, config (`626ceb49…`) e mounts conferidos.
+- Limites: cada probe tem 10 s; `docker stop -t 180` tem 200 s; `docker start` tem 60 s;
+  o health tem até 600 s (o `start_period` do game), consultado a cada 10 s. O smoke exige
+  17171-17173 abertas em loopback e `login.php` com `playersonline`. Um timeout é HOLD,
+  sem retry. Um claim consumido é HOLD e nunca se repete.
+
 #### Pino do mapa
 
 O mapa é revalidado no caminho operacional original,
