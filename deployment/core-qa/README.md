@@ -345,6 +345,53 @@ imagem pelo ID e a mesma revisão de origem. Ele recusa se o `game` não foi
 recriado, se foi rebuildado ou se veio da tag, e também se `database`, `web`, a
 rede ou os quatro volumes diferirem da baseline.
 
+### Handoff do build a1d9: adaptador `stage2_handoff.py`
+
+Depois de `$QA_UP build brain`, repetir `--upgrade-from-stage1` recusa a própria
+imagem do build autorizado (`assert_images(brain_allowed=False)`), e a ordem acima
+não tem gate entre o build e o `up`. Para o build a1d9 já feito, os gates de a1d9
+ficam como estão, estritos. O caminho é o adaptador `stage2_handoff.py`, revisado
+aqui e executado como **cópia fixada pelo sha256**, fora do checkout a1d9:
+
+- `--source-checkout`: o checkout a1d9 limpo. Só fornece as ferramentas
+  (`preflight.py`, `stage1_baseline.py`, importadas sem alteração) e o gravador
+  `--record-brain-image`.
+- O diretório do projeto Compose é o diretório original de QA, que o manifesto do
+  bundle fixa (`qa_project_directory`, com seu `.env`). Arquivo `-f`, mount ou
+  diretório do projeto dentro do checkout, ou cópia fora do projeto que não esteja no
+  manifesto, é recusa.
+- Revisões separadas em todo recibo: ferramentas (a1d9), imagem `brain` (label
+  a1d9), imagem `game` (label `3431b404…`) e a revisão do próprio adaptador. Nada é
+  rerrotulado.
+
+Fases, cada uma só leitura e com um recibo JSON selado que cita o anterior (caminho
+e sha256):
+
+1. `post-build`: imagem `brain` pelo ID completo, `linux/amd64` e label a1d9 (pelo ID
+   e pela tag); recibos de preflight e build pelos hashes do manifesto; nenhum
+   container ou volume `brain`; tags `game`/`web` exatas; identidades e recorte exato.
+2. `pre-stop`: gate vivo de novo (running/healthy e recorte exato) e atestação humana
+   (`--attested-by`, `--attested-at` em UTC). Sela `docker stop -t 180 <ID do game>`.
+3. `post-stop`: sem gate de running/healthy. Mesmo ID, `CreatedAt`, imagem e config
+   do `game`, `exited` com código 0; banco, `web`, rede, volumes e o **mesmo** recorte
+   exato. Deriva após o save é HOLD: recusa, com o recibo guardado.
+4. `bundle`: os 4 Compose e os 2 configs fake pelos hashes do manifesto, e o render
+   com o diretório original e o `.env`. Substitui `preflight.assert_compose` (3
+   arquivos, build e tag do `brain`) neste handoff. Sela o argv do `up`.
+5. `fallback-plan` e `fallback-verify`: o resgate do manifesto (ID, imagem, mounts,
+   sem dono Compose) parado e com `restart=no`. Para os containers novos de
+   `game`/`brain` (pelos labels), prova zero conexões no banco e sela um único
+   `docker start` do resgate.
+
+Quem executa: Pitagoras, no WSL, roda as fases e cada mutação só como
+`stage2_handoff.py exec-step --receipt <recibo> --receipt-sha256 <sha>`. Ele confere
+de novo as pré-condições, roda uma vez o argv selado e grava o código de saída. A fase
+seguinte recusa se o argv executado não for o selado. Ninguém redigita comando, e
+nada roda `up` sozinho. Depois do `up`, vale o `--record-brain-image` de a1d9, a
+partir do checkout. O `stage1_baseline.py rollback` de a1d9 renderiza o Compose
+relativo ao próprio checkout, então não é rodado do checkout isolado. O retorno deste
+handoff é o fallback.
+
 ### Gate de upgrade: comparação exata com a baseline revisada
 
 `stage1-baseline.json` é a baseline da etapa 1 recapturada só em leitura no stage 1
