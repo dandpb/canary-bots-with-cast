@@ -86,6 +86,11 @@ Quiescent mode (a SEPARATE chain; its phases never mix with the normal ones, in 
                    `quiescent-up`; its exec-step re-checks everything and also claims
                    `<quiescent receipt sha>.activate` (single use). A game start or the window end
                    voids the receipt and any approval
+  managed return   qa_return_attempt.py, a separate executor. The attempt is keyed by the
+                   quiescent-pre-stop receipt sha (the stop claim's key). The quiescent up holds
+                   that attempt's lock (<project>/runtime/evidence/qa-return-claims/attempts/
+                   <key>/attempt.lock) from before its precheck to the end of the up, and
+                   refuses when it is busy or when the return wrote ABANDONED there
 
 Privacy: receipts and the raw game log captures (kept for audit, never replaced by the extracted
 lines) are written 0600 inside a 0700 evidence directory; a SANITIZED copy for sharing holds only
@@ -95,6 +100,8 @@ by someone else is refused, never repaired: existing evidence is not rewritten.
 """
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -105,6 +112,7 @@ import stat
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -288,6 +296,13 @@ QUIESCENT_RETURN = (
     "a quiescent chain never uses the adapter's fallback: return only through the approved "
     "managed-return procedure (Pitagoras); refused"
 )
+# The managed return (qa_return_attempt.py) of a quiescent attempt: the same directory, lock and
+# marker. The attempt key is the quiescent-pre-stop receipt sha, the key of the stop claim.
+# Under the project directory. HELD_LOCKS go to the up's child: a crashed parent cannot free them.
+RETURN_ATTEMPTS = "runtime/evidence/qa-return-claims/attempts"
+ATTEMPT_LOCK = "attempt.lock"
+ABANDONED = "ABANDONED"
+HELD_LOCKS: list[int] = []
 MAP_FILE = "runtime/world/otservbr.otbm"  # under the deployment project directory; the game mounts it
 NETWORK_PROBE = (
     '{"id":{{json .Id}},"name":{{json .Name}},"status":{{json .State.Status}},'
@@ -362,7 +377,9 @@ def monotonic() -> float:
 
 def execute(argv: list[str]) -> tuple[int, str, str]:
     """The only place a mutation runs: the argv sealed in a receipt, nothing else."""
-    result = subprocess.run(argv, check=False, text=True, capture_output=True)
+    result = subprocess.run(
+        argv, check=False, text=True, capture_output=True, pass_fds=tuple(HELD_LOCKS)
+    )
     return result.returncode, result.stdout, result.stderr
 
 
@@ -600,6 +617,7 @@ class Handoff:
         self.mode = NORMAL
         self.window_end: datetime | None = None
         self.expired = ""
+        self.attempt_lock: int | None = None
 
     # -- static checks ---------------------------------------------------------------------------
 
@@ -1786,8 +1804,13 @@ class Handoff:
         """Everything the up needs, refreshed: post-stop state EXACT, bundle, render, env, binds.
 
         With a quiescent receipt, the slice is compared EXACTLY with its full slice (counts,
-        projection sha, method and sql_sha256) instead of the baseline's historical one.
+        projection sha, method and sql_sha256) instead of the baseline's historical one, and
+        the attempt's lock and ABANDONED marker are consulted first.
         """
+        if quiescent is not None:
+            # alone (quiescent-bundle) a check; inside exec-step the held lock, re-entrant
+            with self.attempt_guard():
+                pass
         files = self.check_bundle_files()
         env_file = self.check_env_file()
         game = self.assert_game_stopped()
@@ -2669,6 +2692,56 @@ class Handoff:
         else:
             raise RuntimeError(f"unknown step {name}; refused")
 
+    def attempt_key(self) -> str:
+        """The quiescent attempt of the loaded chain: its quiescent-pre-stop receipt sha256, the
+        key of its stop claim (<key>.quiescent-stop-game.claim) and of the managed return."""
+        stops = [
+            receipt
+            for receipt in self.chain
+            if receipt["phase"] == "exec-step"
+            and receipt["step"]["name"] == "quiescent-stop-game"
+        ]
+        key = str(stops[0]["previous"]["sha256"]) if len(stops) == 1 else ""
+        if not HEX64.fullmatch(key):
+            raise RuntimeError("no single quiescent stop keys this attempt; refused")
+        return key
+
+    @contextlib.contextmanager
+    def attempt_guard(self) -> Iterator[None]:
+        """The lock shared with the managed return, and its ABANDONED marker.
+
+        Never waited for: busy refuses. Re-entrant in one Handoff (exec-step holds it across
+        its precheck, claim, up and result). A marker this check does not see cannot exist:
+        the return writes it only while it holds the same lock.
+        """
+        directory = self.plan["project"] / RETURN_ATTEMPTS / self.attempt_key()
+        for part in (directory.parent.parent, directory.parent, directory):
+            private_directory(part)
+        owner = self.attempt_lock is None
+        if owner:
+            flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(directory / ATTEMPT_LOCK, flags, 0o600)
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                os.close(descriptor)
+                raise RuntimeError(
+                    "the attempt lock is held: the managed return of this quiescent attempt "
+                    "is running; no up, refused"
+                ) from None
+            self.attempt_lock = descriptor
+        try:
+            if os.path.lexists(directory / ABANDONED):
+                raise RuntimeError(
+                    "this quiescent attempt was abandoned for the managed return (ABANDONED); "
+                    "no up, refused"
+                )
+            yield
+        finally:
+            if owner:
+                self.attempt_lock = None
+                os.close(descriptor)
+
     def claim_paths(self, receipt_sha256: str, receipt: dict[str, Any]) -> list[Path]:
         """Canonical claim files: the receipt's step, for the rescue start the container itself,
         and for a quiescent up the quiescent receipt (single use, whatever bundle cites it)."""
@@ -2756,6 +2829,24 @@ class Handoff:
         for claim in claims:  # early answer; the atomic claim below is what decides
             if claim.exists():
                 raise RuntimeError(self.claimed(claim))
+        with contextlib.ExitStack() as guard:
+            # the quiescent up holds the attempt lock to its end, and so does its child
+            if step["name"] == "quiescent-up":
+                guard.enter_context(self.attempt_guard())
+                if self.attempt_lock is None:  # the guard just took it
+                    raise RuntimeError("the attempt lock is not held; refused")
+                HELD_LOCKS[:] = [self.attempt_lock]
+                guard.callback(HELD_LOCKS.clear)
+            return self.claim_and_run(path, expected, receipt, step, claims)
+
+    def claim_and_run(
+        self,
+        path: Path,
+        expected: str,
+        receipt: dict[str, Any],
+        step: dict[str, Any],
+        claims: list[Path],
+    ) -> tuple[Path, str]:
         age = utcnow() - datetime.fromisoformat(receipt["recorded_at_utc"])
         if age < timedelta(0):
             raise RuntimeError(f"receipt {path.name} is dated in the future; refused")
