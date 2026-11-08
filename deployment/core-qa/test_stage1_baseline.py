@@ -737,6 +737,51 @@ class Stage1RecaptureTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "config_match': False"):
             self.capture(live_changed, rollout=receipt)
 
+    def test_quiescence_window_is_documented_as_blocked_by_capture_and_gate(self):
+        """README: the quiescence window is not usable until a reviewed design exists. Pin its conflicts."""
+
+        def stopped(docker):  # `stop -t 180` on the same game container: exited, and docker exec refuses
+            docker.containers[GAME].update(status="exited", health="unhealthy")
+
+            def call(*args, env=None):
+                if args[1] == "exec" and args[2] == GAME:
+                    raise RuntimeError("read-only command failed: docker exec")
+                return docker(*args, env=env)
+            return call
+
+        receipt, _ = self.record_rollout(FakeDocker(self.baseline).game_rollout())
+        # Conflict 1: with the game stopped, the capture cannot read the live config.lua.
+        with self.assertRaisesRegex(RuntimeError, "docker exec"):
+            self.capture(stopped(FakeDocker(self.baseline).game_rollout()), "stopped.json", rollout=receipt)
+        # Conflict 2: a candidate captured with the game running is gated on running/healthy.
+        path, sha = self.capture(FakeDocker(self.baseline).game_rollout(), rollout=receipt)
+        with patch("preflight.command", side_effect=FakeDocker(self.baseline).game_rollout()):
+            gate.assert_stage1_upgrade(path, sha)
+        status = re.escape(f"/containers/{GAME}/status: baseline 'running' != now 'exited'")
+        with patch("preflight.command", side_effect=stopped(FakeDocker(self.baseline).game_rollout())), \
+             self.assertRaisesRegex(RuntimeError, status):
+            gate.assert_stage1_upgrade(path, sha)
+        # Conflict 4: once that candidate is pinned, the receipt it embeds names the previous pin.
+        with patch("preflight.command", side_effect=FakeDocker(self.baseline).game_rollout()), \
+             self.assertRaisesRegex(RuntimeError, "names another baseline"):
+            gate.capture(self.historical, self.root / "next.json", receipt, None, path, sha)
+        # The README cites the code by file:line; each citation must still point at that code.
+        readme = (gate.qa.HERE / "README.md").read_text()
+        section = readme.split("**Janela de quietude: não utilizável até existir um desenho revisado.**", 1)[1]
+        section = section.split("A captura de uma baseline nova:", 1)[0]
+        cited = {
+            ("stage1_baseline.py", 635): "game_config()", ("stage1_baseline.py", 506): '"exec", GAME',
+            ("stage1_baseline.py", 676): 'item["historical_comparison"]', ("stage1_baseline.py", 110): "State.Health",
+            ("stage1_baseline.py", 270): '"status": item["status"]', ("stage1_baseline.py", 337): "observe()",
+            ("preflight.py", 342): "assert_stage1_upgrade()", ("stage1_baseline.py", 401): '("id", "created_at")',
+            ("stage1_baseline.py", 418): "playable()", ("stage1_baseline.py", 630): '"baseline_sha256") != expected',
+        }
+        found = {(name, int(line)) for name, line in re.findall(r"`(stage1_baseline\.py|preflight\.py):(\d+)", section)}
+        self.assertEqual(found, set(cited))
+        for (name, line), token in cited.items():
+            with self.subTest(f"{name}:{line}"):
+                self.assertIn(token, (gate.qa.HERE / name).read_text().splitlines()[line - 1])
+
 
 class Stage1RollbackTests(unittest.TestCase):
     def setUp(self):
