@@ -11,6 +11,7 @@ import tempfile
 import textwrap
 import time
 from collections import deque
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,7 @@ class SyntheticPublisher:
         self.pending_bytes = 0
         self.issued_sequence = self.accepted_sequence = 0
         self.overflow_frames = self.discarded_frames = 0
+        self.capture_clock = lambda: int(time.monotonic() * 1000)
 
     def enqueue(self, packet):
         sequence = None
@@ -79,7 +81,12 @@ class SyntheticPublisher:
     def publish_control(self, packet):
         # Native observations/status bypass its telemetry outbox. This also lets
         # a deliberate pending-tail fixture report its real unaccepted frame.
-        assert packet["type"] in {"hello", "observation", "telemetry_status"}
+        assert packet["type"] in {
+            "hello",
+            "observation",
+            "telemetry_status",
+            "telemetry_admitted",
+        }
         self.send_frozen(json.dumps(packet).encode())
 
     def delivery_status(self, world):
@@ -89,7 +96,7 @@ class SyntheticPublisher:
             "world": world,
             "bot_id": 7,
             # Capture after flushing, rather than reusing the preceding tick time.
-            "captured_ms": int(time.monotonic() * 1000),
+            "captured_ms": self.capture_clock(),
             "issued_sequence": self.issued_sequence,
             "accepted_sequence": self.accepted_sequence,
             "pending_frames": len(self.pending),
@@ -108,7 +115,9 @@ def exercise_supervised_worker(
     close_fault=None,
 ):
     with tempfile.TemporaryDirectory(prefix="bench-stop-") as temporary:
-        work = Path(temporary)
+        scratch_descriptor = os.open(temporary, os.O_RDONLY | os.O_DIRECTORY)
+        work = Path(f"/proc/self/fd/{scratch_descriptor}/lab")
+        work.mkdir()
         peer = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         peer.bind(str(work / "server.sock"))
         peer.setblocking(False)
@@ -121,6 +130,7 @@ def exercise_supervised_worker(
             "memory_mode": "frozen",
             "run_seconds": 60 if reason == "proposal_timeout" else 10,
             "benchmark_supervision": True,
+            "native_source_revision": "a" * 40,
             "recording": {"path": str(work / "replay.db"), "namespace": "stops"},
         }
         path = work / "config.json"
@@ -186,6 +196,7 @@ def exercise_supervised_worker(
                     **os.environ,
                     "PYTHONPATH": str(Path(__file__).parents[1] / "src"),
                 },
+                pass_fds=(scratch_descriptor,),
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
@@ -230,6 +241,14 @@ def exercise_supervised_worker(
                     ]
                 started = time.monotonic()
                 publisher = SyntheticPublisher(peer, str(work / "worker.sock"))
+                publisher.capture_clock = lambda: (
+                    1000000
+                    + int(
+                        (time.monotonic() - started)
+                        * (1000 if reason == "proposal_timeout" else 180000)
+                    )
+                )
+                admission_reply = None
                 hello_world = None
                 next_delivery = 0
                 injected = False
@@ -283,7 +302,7 @@ def exercise_supervised_worker(
                         injected = True
                     if reason != "observation_stale" or elapsed < 0.4:
                         packet["sequence"] += 1
-                        packet["captured_ms"] = int(time.monotonic() * 1000)
+                        packet["captured_ms"] = publisher.capture_clock()
                         if reason == "world_changed" and elapsed > 0.3:
                             packet["world"] = "changed"
                     try:
@@ -297,6 +316,8 @@ def exercise_supervised_worker(
                                         "lifecycle_telemetry": 1,
                                         "keep_awake": True,
                                         "telemetry_delivery": 1,
+                                        "telemetry_admission": 1,
+                                        "telemetry_fence": 1,
                                     },
                                 }
                             )
@@ -310,7 +331,7 @@ def exercise_supervised_worker(
                                     "type": "telemetry",
                                     "world": packet["world"],
                                     "bot_id": 7,
-                                    "captured_ms": int(time.monotonic() * 1000),
+                                    "captured_ms": publisher.capture_clock(),
                                     "deaths": 13
                                     if reason == "deaths_limit" and elapsed > 0.3
                                     else 10,
@@ -337,8 +358,50 @@ def exercise_supervised_worker(
                     except (FileNotFoundError, ConnectionRefusedError):
                         break
                     try:
-                        while peer.recv(32768):
-                            pass
+                        while True:
+                            control = json.loads(peer.recv(32768))
+                            if control["type"] == "telemetry_admit":
+                                if admission_reply is None:
+                                    initial = deepcopy(packet)
+                                    publisher.publish(
+                                        {
+                                            "version": 1,
+                                            "type": "telemetry",
+                                            "world": packet["world"],
+                                            "bot_id": 7,
+                                            "captured_ms": initial["captured_ms"],
+                                            "deaths": 10,
+                                            "phase": "alive",
+                                            "run_nonce": control["nonce"],
+                                        }
+                                    )
+                                    admission_reply = {
+                                        "version": 1,
+                                        "type": "telemetry_admitted",
+                                        "world": packet["world"],
+                                        "bot_id": 7,
+                                        "nonce": control["nonce"],
+                                        "begin_sequence": publisher.issued_sequence,
+                                        "captured_ms": initial["captured_ms"],
+                                        "deaths": 10,
+                                        "observation": initial,
+                                        "source": "a" * 40,
+                                        "source_dirty": False,
+                                        "fault": "",
+                                    }
+                                publisher.publish_control(admission_reply)
+                            elif (
+                                control["type"] == "telemetry_fence"
+                                and delivery_mode != "missing_status"
+                            ):
+                                reply = (
+                                    frozen_status
+                                    if delivery_mode == "stale_status"
+                                    else publisher.delivery_status(packet["world"])
+                                )
+                                publisher.publish_control(
+                                    {**reply, "fence_nonce": control["nonce"]}
+                                )
                     except BlockingIOError:
                         pass
                     time.sleep(0.05)
@@ -405,6 +468,7 @@ def exercise_supervised_worker(
                     process.terminate()
                     process.wait(timeout=4)
                 peer.close()
+                os.close(scratch_descriptor)
 
 
 @pytest.mark.parametrize("provider", ["native", "fake"])

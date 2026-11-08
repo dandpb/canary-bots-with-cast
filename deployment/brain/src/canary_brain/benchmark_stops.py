@@ -64,6 +64,10 @@ class Stops:
     opportunity: float | None = None
     world: str | None = None
     deaths_base: int | None = None
+    native_start_ms: int | None = None
+    native_last_ms: int | None = None
+    cutoff_ms: int | None = None
+    cutoff_reason: str | None = None
     deaths: int = 0
     reason: str | None = None
     sequences: dict[str, int] = field(default_factory=dict)
@@ -79,6 +83,11 @@ class Stops:
                 return
             self.sequences[kind] = sequence
         if packet["type"] == "telemetry":
+            if (
+                self.cutoff_ms is not None
+                and packet.get("captured_ms", 0) > self.cutoff_ms
+            ):
+                return
             value = packet["deaths"]
             if self.deaths_base is None:
                 self.deaths_base = value
@@ -90,6 +99,9 @@ class Stops:
         if self.start is None:
             self.start = now
         self.last = now
+        if self.cutoff_ms is not None:
+            return  # Keep receipt watchdogs live without changing the scored policy.
+        self.native_last_ms = packet.get("captured_ms")
         signature = (
             tuple(bot["position"]),
             bot["xp"],
@@ -107,8 +119,14 @@ class Stops:
         ):
             self.opportunity = None
 
+    def freeze_window(self, captured_ms: int, now: float) -> None:
+        if self.cutoff_ms is None:
+            reason = self.check(now)
+            self.cutoff_ms = captured_ms
+            self.cutoff_reason = reason if reason != "completed" else None
+
     def decision(self, data: dict[str, Any], now: float) -> None:
-        if not self.model:
+        if not self.model or self.cutoff_ms is not None:
             return
         if data["phase"] == "requested":
             if len(data["observation"]["actions"]) > 1:
@@ -128,6 +146,8 @@ class Stops:
             return "observation_stale"
         if self.deaths >= self.deaths_limit:
             return "deaths_limit"
+        if self.cutoff_ms is not None:
+            return self.cutoff_reason or "completed"
         if (
             self.progress_at is not None
             and now - self.progress_at >= self.stall_seconds
@@ -138,6 +158,13 @@ class Stops:
             and now - self.opportunity > self.proposal_seconds
         ):
             return "proposal_timeout"
-        if self.last is not None and self.last - self.start >= self.horizon:
+        if self.native_start_ms is not None:
+            if (
+                self.native_last_ms is not None
+                and self.native_last_ms - self.native_start_ms
+                >= max(1800000, self.horizon * 1000)
+            ):
+                return "completed"
+        elif self.last is not None and self.last - self.start >= self.horizon:
             return "completed"
         return None

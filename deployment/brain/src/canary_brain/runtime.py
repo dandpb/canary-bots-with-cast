@@ -4,6 +4,7 @@ import asyncio
 import fcntl
 import json
 import os
+import re
 import signal
 import socket
 import sqlite3
@@ -55,6 +56,7 @@ class Configuration(BaseModel):
     run_cap_nanousd: int | None = Field(default=None, gt=0)
     run_seconds: int | None = Field(default=None, ge=10, le=86400)
     benchmark_supervision: bool = False
+    native_source_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{40}$")
 
     @model_validator(mode="after")
     def isolated_recording(self) -> "Configuration":
@@ -64,6 +66,24 @@ class Configuration(BaseModel):
             raise ValueError(
                 "benchmark supervision requires a timed, recorded single-bot run"
             )
+        if self.benchmark_supervision:
+            if (
+                self.native_source_revision is None
+                and self.recording
+                and self.recording.manifests
+            ):
+                source = self.recording.manifests[0].source_revision
+                if re.fullmatch(r"[a-f0-9]{40}", source):
+                    self.native_source_revision = source
+            if self.native_source_revision is None:
+                raise ValueError(
+                    "supervised admission requires a pinned native source commit"
+                )
+            if self.recording and any(
+                m.source_revision != self.native_source_revision
+                for m in self.recording.manifests
+            ):
+                raise ValueError("manifest and native source pins must agree")
         if self.provider != "litellm" and self.decision_timeout > 3:
             raise ValueError("legacy decision timeout must not exceed three seconds")
         if self.provider == "litellm" and self.gateway is None:
@@ -116,7 +136,14 @@ class DatagramProtocol(asyncio.DatagramProtocol):
         self.tasks: set[asyncio.Task[None]] = set()
 
     def datagram_received(self, data: bytes, address: Any) -> None:
-        if address != self.server or len(data) > 32768 or len(self.tasks) >= 32:
+        if address != self.server:
+            return
+        native = self.controller.native_run
+        if native and not native.check_peer(self.server):
+            return
+        if len(data) > 32768 or len(self.tasks) >= 32:
+            if native:
+                native.abort("worker_ingress_overflow")
             return
 
         async def consume() -> None:
@@ -124,12 +151,19 @@ class DatagramProtocol(asyncio.DatagramProtocol):
                 packet = json.loads(data)
                 if isinstance(packet, dict):
                     await self.controller.handle(packet)
+                elif native:
+                    native.abort("native_packet_invalid")
             except (ValueError, KeyError, TypeError):
-                pass
+                if native:
+                    native.abort("native_packet_invalid")
 
         task = asyncio.create_task(consume())
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
+
+    def error_received(self, exc: Exception) -> None:
+        if self.controller.native_run:
+            self.controller.native_run.abort("native_peer_lost")
 
 
 def recording_failure(recorder: Recorder) -> str | None:
@@ -196,6 +230,7 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                         else "gpt-6-luna"
                     ),
                     memory_mode=configuration.memory_mode,
+                    source_revision=configuration.native_source_revision or "unknown",
                 )
                 for bot in configuration.bots
             ]
@@ -289,6 +324,9 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             ),
             benchmark_stops=benchmark_stops,
             require_telemetry_delivery=configuration.benchmark_supervision,
+            native_source_revision=configuration.native_source_revision
+            if configuration.benchmark_supervision
+            else None,
         )
         if configuration.memory_mode != "existing":
             import random
@@ -342,19 +380,26 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                         reason = failure
                 if reason == "completed" and recorder:
                     if tail is None:
-                        snapshot = active_controller.latest.get(configuration.bots[0])
+                        snapshot = (
+                            active_controller.native_run.horizon
+                            if active_controller.native_run
+                            else None
+                        )
                         if snapshot is None:
                             reason = "native_transport_unconfirmed"
                         else:
                             # Freeze the actual observed horizon and deadline before
                             # cancellation can await SQL or an in-flight provider.
-                            tail = TelemetryTail(snapshot, deadline=now + 3.0)
-                            tail_observed = (
-                                benchmark_stops.last - benchmark_stops.start
-                                if benchmark_stops.last is not None
-                                and benchmark_stops.start is not None
-                                else None
+                            native = active_controller.native_run
+                            assert (
+                                native is not None
+                                and native.admission is not None
+                                and native.deadline is not None
                             )
+                            tail = TelemetryTail(snapshot, deadline=native.deadline)
+                            tail_observed = (
+                                snapshot.captured_ms - native.admission.captured_ms
+                            ) / 1000
                             if not recorder.freeze_horizon(snapshot):
                                 reason = "recorder_error"
                             else:
@@ -375,10 +420,15 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                                 continue
                     elif now >= tail.deadline:
                         reason = "native_transport_unconfirmed"
-                    elif tail.confirm(
-                        recorder.delivery.get(tail.observation.bot.id),
-                        recorder.native.get(tail.observation.bot.id),
-                        invalid=tail.observation.bot.id in recorder.delivery_invalid,
+                    elif (
+                        active_controller.native_run
+                        and active_controller.native_run.confirmed
+                        and tail.confirm(
+                            active_controller.native_run.terminal,
+                            recorder.native.get(tail.observation.bot.id),
+                            invalid=tail.observation.bot.id
+                            in recorder.delivery_invalid,
+                        )
                     ):
                         recorder.emit(
                             tail.observation.bot.id,
@@ -411,14 +461,30 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                             else None
                         ),
                     }
-                    store.put("run_stop", "end", details)
+                    store.put(
+                        "run_stop",
+                        "end",
+                        {
+                            **details,
+                            "reason": "native_finalizing"
+                            if reason == "completed"
+                            else reason,
+                        },
+                    )
                     if recorder:
                         recorder.emit(
                             configuration.bots[0],
                             "lifecycle",
-                            {"phase": "run_supervisor_stop", **details},
+                            {
+                                "phase": "run_supervisor_stop",
+                                **details,
+                                "reason": "native_finalizing"
+                                if reason == "completed"
+                                else reason,
+                            },
                         )
-                    stopped.set()
+                    if reason != "completed":
+                        stopped.set()
                     break
             if configuration.run_seconds is not None and benchmark_stops is None:
                 clock = store.get("run_clock", "start")
@@ -434,6 +500,8 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 if ledger.path != store.path:
                     ledger.prune()
                 last_maintenance = time.monotonic()
+            if controller.native_run:
+                controller.native_run.request()
             if controller.world:
                 send({"version": 1, "type": "heartbeat", "world": controller.world})
                 if tail is None:
@@ -449,7 +517,12 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 else "operator_stop"
             )
             store.put("run_stop", "end", {"reason": reason})
-        await asyncio.gather(*protocol.tasks, return_exceptions=True)
+        if protocol.tasks:
+            _, waiting = await asyncio.wait(protocol.tasks, timeout=1.0)
+            if waiting and controller.native_run:
+                controller.native_run.abort("native_ingress_shutdown_timeout")
+            for task in waiting:
+                task.cancel()
     finally:
         for sig, previous in previous_signals.items():
             asyncio.get_running_loop().remove_signal_handler(sig)
@@ -471,7 +544,7 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 failure = recording_failure(recorder)
                 if close_failed and failure is None:
                     failure = "recorder_error"
-                if ending.get("reason") == "completed":
+                if ending.get("reason") in {"completed", "native_finalizing"}:
                     if (
                         benchmark_stops.reason == "world_changed"
                         or (
@@ -485,15 +558,76 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                         "budget_stop", str(configuration.bots[0])
                     ):
                         failure = "budget_stop"
+                    if failure is None and stopped.is_set():
+                        failure = "operator_stop"
                     if failure is None and (
                         tail is None
                         or not tail.confirm(
-                            recorder.delivery.get(configuration.bots[0]),
+                            controller.native_run.terminal
+                            if controller and controller.native_run
+                            else None,
                             recorder.native.get(configuration.bots[0]),
                             invalid=configuration.bots[0] in recorder.delivery_invalid,
                         )
                     ):
                         failure = "native_transport_unconfirmed"
+                if (
+                    ending.get("reason") in {"completed", "native_finalizing"}
+                    and failure is None
+                ):
+                    native = controller.native_run if controller else None
+                    try:
+                        valid = (
+                            native is not None
+                            and not native.failure
+                            and native.check_peer(server)
+                            and await asyncio.wait_for(
+                                asyncio.to_thread(native.durable_complete), timeout=1.0
+                            )
+                        )
+                    except (TimeoutError, sqlite3.Error, OSError, ValueError):
+                        valid = False
+                    if valid and native:
+                        # Awaited durable proof is not the final decision point:
+                        # stops or peer faults can arrive while its thread reads.
+                        failure = native.failure
+                        if failure is None and not native.check_peer(server):
+                            failure = native.failure
+                        if failure is None and store.get(
+                            "budget_stop", str(configuration.bots[0])
+                        ):
+                            failure = "budget_stop"
+                        if failure is None and stopped.is_set():
+                            failure = "operator_stop"
+                        valid = failure is None
+                    if not valid:
+                        failure = failure or (
+                            native.failure
+                            if native and native.failure
+                            else "native_transport_unconfirmed"
+                        )
+                    else:
+                        manifest = next(iter(recorder.manifests.values()))
+                        end = ReplayReader(recorder.config.path).run(manifest.run_id)[
+                            "duration_ms"
+                        ]
+                        RecordingStore(recorder.config.path).append(
+                            {
+                                "run": manifest.run_id,
+                                "key": "supervisor-native-qualified",
+                                "segment": "supervisor",
+                                "t_ms": end + 1,
+                                "wall": time.time(),
+                                "kind": "lifecycle",
+                                "data": {
+                                    "phase": "run_supervisor_stop",
+                                    **ending,
+                                    "reason": "completed",
+                                    "after_flush": True,
+                                },
+                            }
+                        )
+                        store.put("run_stop", "end", {**ending, "reason": "completed"})
                 if failure:
                     if (
                         failure == "recording_gap"

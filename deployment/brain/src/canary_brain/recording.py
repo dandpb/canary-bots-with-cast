@@ -18,6 +18,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .native_admission import Admission
 from .protocol import Observation, TelemetryStatus
 from .sqlite_files import prepare_database, sqlite_operation
 
@@ -528,6 +529,31 @@ class Recorder:
             return False
         return True
 
+    def admit_native(self, admission: Admission) -> None:
+        bot = admission.bot_id
+        if bot in self.native:
+            raise ValueError("native admission cannot replace an existing boundary")
+        if not self.emit(
+            bot,
+            "lifecycle",
+            {"phase": "native_admitted", **admission.model_dump()},
+            "native-admission",
+        ):
+            raise ValueError("native admission recording failed")
+        self.observe(admission.observation)
+        self.flush(timeout=1.0)
+        if self.errors or self.dropped:
+            raise ValueError("native admission recording failed")
+        run = self.manifests[bot].run_id
+        reader = ReplayReader(self.config.path)
+        expected = {"phase": "native_admitted", **public_data(admission.model_dump())}
+        if reader.run(run)["incomplete"] or not any(
+            event["key"] == "native-admission" and event["data"] == expected
+            for event in reader.all_events(run)
+        ):
+            raise ValueError("native admission was not committed cleanly")
+        self.native[bot] = (admission.world, admission.begin_sequence - 1)
+
     def freeze_horizon(self, observation: Observation) -> bool:
         """Record the actual target now; later state cannot inflate its score."""
         bot = observation.bot.id
@@ -685,7 +711,9 @@ class Recorder:
             "lifecycle",
             {
                 "phase": "native_telemetry_status",
-                **status.model_dump(exclude={"version", "type", "bot_id"}),
+                **status.model_dump(
+                    exclude={"version", "type", "bot_id"}, exclude_defaults=True
+                ),
             },
         )
 

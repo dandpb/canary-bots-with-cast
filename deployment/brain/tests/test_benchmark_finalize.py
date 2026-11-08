@@ -23,6 +23,7 @@ async def test_gap_wins_over_completion_even_when_written_during_close(
         state_file=tmp_path / "state.db",
         run_seconds=10,
         benchmark_supervision=True,
+        native_source_revision="a" * 40,
         recording={"path": tmp_path / "replay.db", "namespace": "finalize"},
     )
     now = time.monotonic()

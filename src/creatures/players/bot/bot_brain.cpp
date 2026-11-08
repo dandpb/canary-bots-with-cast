@@ -6,6 +6,12 @@
 #include "creatures/players/bot/bot_engine_impl.hpp"
 #include "creatures/players/bot/bot_potions.hpp"
 #include "lua/scripts/scripts.hpp"
+#if __has_include("gitmetadata.h")
+#include "gitmetadata.h"
+#else
+#define GIT_HEAD_SHA1 "unknown"
+#define GIT_IS_DIRTY 1
+#endif
 
 namespace {
 	using Json = nlohmann::json;
@@ -524,11 +530,17 @@ void BotEngine::tickBrain() {
 	}
 	if (now - brain_->lastHello >= 1000) {
 		brain_->lastHello = now;
-		brain_->channel->send({ { "version", 1 }, { "type", "hello" }, { "world", brain_->world }, { "capabilities", { { "lifecycle_telemetry", 1 }, { "telemetry_delivery", 1 }, { "keep_awake", brain_->keepAwake } } } });
+		brain_->channel->send({ { "version", 1 }, { "type", "hello" }, { "world", brain_->world }, { "capabilities", { { "lifecycle_telemetry", 1 }, { "telemetry_delivery", 1 }, { "telemetry_admission", 1 }, { "telemetry_fence", 1 }, { "keep_awake", brain_->keepAwake } } } });
 	}
 	for (const auto guid : brain_->roster) {
 		auto bot = getBotState(guid);
 		if (!bot) {
+			auto existing = brain_->sessions.find(guid);
+			if (existing != brain_->sessions.end() && !existing->second.admission.is_null() && !existing->second.unavailableReported) {
+				auto &session = existing->second;
+				session.unavailableReported = true;
+				session.delivery.publish(*brain_->channel, botbrain::telemetry(brain_->world, guid, ++session.telemetrySequence, now, session.deaths, "unavailable"));
+			}
 			continue;
 		}
 		auto &session = brain_->sessions[guid];
@@ -606,6 +618,31 @@ void BotEngine::tickBrain() {
 				continue;
 			}
 			if (std::find(brain_->roster.begin(), brain_->roster.end(), guid) == brain_->roster.end()) {
+				continue;
+			}
+			if (type == "telemetry_fence") {
+				auto existing = brain_->sessions.find(guid);
+				if (existing == brain_->sessions.end() || existing->second.admission.is_null()) {
+					continue;
+				}
+				auto &session = existing->second;
+				auto pilot = getBotState(guid);
+				const bool available = pilot && pilot->active && !pilot->hibernated && pilot->getPlayer();
+				brain_->channel->send(session.fence(packet, *brain_->channel, brain_->world, guid, botMonoMs(), available));
+				continue;
+			}
+			if (type == "telemetry_admit") {
+				auto &session = brain_->sessions[guid];
+				// Dispatcher-serialized snapshot + counter + FIFO cut. Retry does not
+				// inspect current life state, recapture O0 or allocate a second B.
+				const auto reply = session.admit(packet, brain_->world, guid, GIT_HEAD_SHA1, GIT_IS_DIRTY != 0, [&]() {
+					auto pilot = getBotState(guid);
+					if (!pilot || !pilot->active || pilot->hibernated || !pilot->getPlayer() || pilot->getPlayer()->getHealth() <= 0) {
+						throw std::runtime_error("admission unavailable");
+					}
+					return observeBrain(*pilot);
+				});
+				brain_->channel->send(reply);
 				continue;
 			}
 			auto bot = getBotState(guid);

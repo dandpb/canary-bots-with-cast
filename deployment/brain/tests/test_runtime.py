@@ -17,7 +17,9 @@ def test_private_datagram_worker_round_trip_without_credentials(tmp_path):
     import tempfile
 
     with tempfile.TemporaryDirectory(prefix="brain-") as directory:
-        root = Path(directory)
+        scratch_descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        root = Path(f"/proc/self/fd/{scratch_descriptor}/lab")
+        root.mkdir()
         server = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         server.bind(str(root / "server.sock"))
         server.settimeout(3)
@@ -27,7 +29,7 @@ def test_private_datagram_worker_round_trip_without_credentials(tmp_path):
                 {
                     "mode": "active",
                     "provider": "fake",
-                    "socket_directory": directory,
+                    "socket_directory": str(root),
                     "state_file": str(tmp_path / "state.db"),
                     "bots": [7],
                     "recording": {
@@ -50,12 +52,17 @@ def test_private_datagram_worker_round_trip_without_credentials(tmp_path):
                 str(config),
             ],
             env=environment,
+            pass_fds=(scratch_descriptor,),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         try:
-            deadline = time.monotonic() + 3
-            while not (root / "worker.sock").exists() and time.monotonic() < deadline:
+            deadline = time.monotonic() + 10
+            while not (root / "worker.sock").exists():
+                assert process.poll() is None, "worker exited before socket readiness"
+                assert time.monotonic() < deadline, (
+                    "worker cold start exceeded readiness budget"
+                )
                 time.sleep(0.02)
             packet = observation()
             packet["mode"] = "active"
@@ -106,3 +113,5 @@ def test_private_datagram_worker_round_trip_without_credentials(tmp_path):
             for e in events
         )
         assert reader.seek("test:7:life", 10**9)["sample"]["data"]["bot"]["id"] == 7
+
+        os.close(scratch_descriptor)

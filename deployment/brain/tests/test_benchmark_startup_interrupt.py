@@ -120,6 +120,7 @@ async def test_budget_does_not_hide_critical_stop(tmp_path, monkeypatch, reason)
         state_file=tmp_path / "state.db",
         run_seconds=10,
         benchmark_supervision=True,
+        native_source_revision="a" * 40,
         recording={"path": tmp_path / "replay.db", "namespace": "priority"},
     )
     state = Store(config.state_file)

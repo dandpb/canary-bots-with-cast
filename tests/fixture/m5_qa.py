@@ -16,9 +16,113 @@ from canary_brain.benchmark import DockerFixture, Experiment, Participant, fixtu
 from canary_brain.recording import ReplayReader, digest
 
 ROOT = Path(__file__).resolve().parents[2]
-WORK = Path(os.environ.get("CANARY_M5_QA", "/tmp/m5q-20261105a"))
-WORLD = Path("/tmp/canary-lifecycle-qa-world.otbm")
-IMAGE = "canary-m5-free-qa:20261105a"
+WORK = WORLD = NATIVE_BUILD = None
+IMAGE = None
+
+
+def configure_paths():
+    """Require explicit private inputs; importing this module has no side effects."""
+    global WORK, WORLD, NATIVE_BUILD, IMAGE
+    private = os.environ.get("CANARY_M5_PRIVATE_ROOT") or os.environ.get("TMPDIR")
+    if not private or not Path(private).is_absolute():
+        raise ValueError("set an absolute TMPDIR or CANARY_M5_PRIVATE_ROOT")
+    root = Path(private).resolve(strict=True)
+    if root.stat().st_uid != os.getuid() or root.stat().st_mode & 0o077:
+        raise ValueError("private root must be owned by this user and mode 0700")
+    paths = {}
+    for name in ("CANARY_M5_QA", "CANARY_M5_WORLD", "CANARY_M5_NATIVE_BUILD"):
+        value = os.environ.get(name)
+        if not value or not Path(value).is_absolute():
+            raise ValueError("set an absolute " + name)
+        path = Path(value)
+        if path != path.resolve() or not path.is_relative_to(root) or path == root:
+            raise ValueError(name + " must be below the private root without symlinks")
+        paths[name] = path
+    WORK, WORLD, NATIVE_BUILD = (
+        paths[k] for k in ("CANARY_M5_QA", "CANARY_M5_WORLD", "CANARY_M5_NATIVE_BUILD")
+    )
+    if WORLD.is_relative_to(WORK) or NATIVE_BUILD.is_relative_to(WORK):
+        raise ValueError("immutable world/build inputs must be outside the attempt")
+    IMAGE = "canary-m5-free-qa:" + hashlib.sha256(str(WORK).encode()).hexdigest()[:16]
+
+
+def require_current_source():
+    from canary_brain import runtime
+
+    expected = ROOT / "deployment/brain/src/canary_brain/runtime.py"
+    if Path(runtime.__file__).resolve() != expected.resolve():
+        raise ValueError("QA must import runtime from the same source checkout")
+    if command("git", "-C", ROOT, "status", "--porcelain", "--untracked-files=all"):
+        raise ValueError("freeze a clean committed source before preparing QA")
+    return command("git", "-C", ROOT, "rev-parse", "HEAD")
+
+
+def require_supervised_runtime():
+    # Import the matching worker gate, before preparing or starting resources.
+    from m5_worker import require_native_admission
+
+    require_native_admission()
+
+
+def worker_environment(directory):
+    # Do not inherit provider keys, proxy configuration or trace exporters.
+    return {
+        "PATH": os.environ.get("PATH", ""),
+        "PYTHONPATH": str(ROOT / "deployment/brain/src"),
+        "TMPDIR": str(directory),
+        "CANARY_M5_PRIVATE_ROOT": str(WORK),
+    }
+
+
+def worker_configuration(directory, mode, manifest):
+    """Same config consumed by the production supervised worker, with no budget path."""
+    native_source = manifest.get("native_source_revision", "")
+    if not re.fullmatch(r"[a-f0-9]{40}", native_source):
+        raise ValueError(
+            "pin the actual native build source, separately from the harness"
+        )
+    config = {
+        "provider": mode,
+        "mode": "shadow" if mode == "native" else "active",
+        "socket_directory": str(directory / "socket"),
+        "state_file": str(directory / "worker.sqlite3"),
+        "bots": [65001],
+        "memory_mode": "frozen",
+        "policy_seed": 42,
+        "run_seconds": 1800,
+        "benchmark_supervision": True,
+        "native_source_revision": native_source,
+        "recording": {
+            "path": str(directory / "recording.sqlite3"),
+            "namespace": "m5-free-" + mode,
+            "sample_ms": 1000,
+        },
+    }
+    config["recording"]["manifests"] = [
+        {
+            "run_id": WORK.name + ":" + mode,
+            "bot_id": 65001,
+            "lineage": WORK.name,
+            "experiment": "m5-free-qualification",
+            "scenario": "thais-controlled-hunts",
+            "participant": mode,
+            "provider": mode,
+            "model": "none",
+            "memory_mode": "frozen",
+            "initial_sha256": manifest["fixture_sha256"],
+            "source_revision": native_source,
+            "configuration_sha256": digest(
+                {
+                    "image_id": manifest["image_id"],
+                    "initial": manifest["fixture_sha256"],
+                    "overrides": manifest["overrides"],
+                    "worker": manifest["harness_sha256"],
+                    "mode": mode,
+                }
+            ),
+        }
+    ]
+    return config
 
 
 def command(*args, timeout=300):
@@ -67,6 +171,14 @@ def stop_and_read_character(harness, directory):
 
 
 def prepare():
+    require_supervised_runtime()
+    configure_paths()
+    revision = require_current_source()
+    native_source = os.environ.get("CANARY_M5_NATIVE_SOURCE_REVISION", "")
+    if not re.fullmatch(r"[a-f0-9]{40}", native_source):
+        raise ValueError(
+            "set CANARY_M5_NATIVE_SOURCE_REVISION to the native build commit"
+        )
     WORK.mkdir(mode=0o700, exist_ok=False)
     fixture = WORK / "fixture"
     fixture.mkdir()
@@ -195,12 +307,12 @@ event:interval(1000);event:register()
     )
     command("docker", "build", "-t", IMAGE, build)
     manifest = {
-        "source_revision": command("git", "-C", ROOT, "rev-parse", "HEAD"),
+        "source_revision": revision,
         "fixture_sha256": fixture_hash(fixture, WORLD),
         "world_sha256": sha(WORLD),
         "world_bytes": WORLD.stat().st_size,
         "image_id": command("docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"),
-        "native_base": "33c6a57878e58ef1241d287d26bd5aa489b5cc50",
+        "native_source_revision": native_source,
         "equipment": equipment,
         "guid": 65001,
         "hp": 365,
@@ -218,12 +330,10 @@ event:interval(1000);event:register()
             if p.is_file()
         },
         "binary_sha256": {
-            n: sha(Path("/tmp/canary-party-qa") / n)
-            for n in ["canary", "libbot_engine.so"]
+            n: sha(NATIVE_BUILD / n) for n in ["canary", "libbot_engine.so"]
         },
         "harness_sha256": {
-            n: sha(ROOT / "tests/fixture" / n)
-            for n in ["m5_qa.py", "m5_worker.py", "m5_stop.py"]
+            n: sha(ROOT / "tests/fixture" / n) for n in ["m5_qa.py", "m5_worker.py"]
         },
     }
     manifest["database_image_id"] = command(
@@ -260,13 +370,24 @@ event:interval(1000);event:register()
 
 
 def run(mode):
+    require_supervised_runtime()
+    configure_paths()
     assert mode in {"native", "fake"}
+    revision = require_current_source()
     manifest = json.loads((WORK / "manifest.json").read_text())
+    if manifest["source_revision"] != revision or manifest["harness_sha256"] != {
+        name: sha(ROOT / "tests/fixture" / name)
+        for name in ("m5_qa.py", "m5_worker.py")
+    }:
+        raise ValueError("prepare fresh QA inputs for this exact source and harness")
     assert manifest.get("database_image_id"), (
         "prepare a fresh fixture with a frozen database image"
     )
     supply_only = manifest.get("purpose", "").startswith("supply-only")
-    assert not supply_only or mode == "fake"
+    if supply_only:
+        raise ValueError(
+            "supply-only probes cannot use the timed qualification harness"
+        )
     assert fixture_hash(WORK / "fixture", WORLD) == manifest["fixture_sha256"]
     directory = WORK / mode
     experiment = Experiment(
@@ -298,49 +419,8 @@ def run(mode):
     compose["networks"] = {"default": {"internal": True}}
     compose["services"]["game"]["volumes"].append(f"{directory}:/m5")
     harness.compose.write_text(json.dumps(compose))
-    config = {
-        "provider": mode,
-        "mode": value["mode"],
-        "socket_directory": str(directory / "socket"),
-        "state_file": str(directory / "worker.sqlite3"),
-        "bots": [65001],
-        "memory_mode": "frozen",
-        "policy_seed": 42,
-        "recording": {
-            "path": str(directory / "recording.sqlite3"),
-            "namespace": "m5-free-" + mode,
-            "sample_ms": 1000,
-        },
-    }
-    config["recording"]["manifests"] = [
-        {
-            "run_id": WORK.name + ":" + mode,
-            "bot_id": 65001,
-            "lineage": WORK.name,
-            "experiment": "m5-supply-proof" if supply_only else "m5-free-qualification",
-            "scenario": "supply-only" if supply_only else "thais-controlled-hunts",
-            "participant": mode,
-            "provider": mode,
-            "model": "none",
-            "memory_mode": "frozen",
-            "initial_sha256": manifest["fixture_sha256"],
-            "source_revision": manifest["source_revision"],
-            "configuration_sha256": digest(
-                {
-                    "image_id": manifest["image_id"],
-                    "initial": manifest["fixture_sha256"],
-                    "overrides": manifest["overrides"],
-                    "worker": manifest["harness_sha256"],
-                    "mode": mode,
-                }
-            ),
-        }
-    ]
+    config = worker_configuration(directory, mode, manifest)
     (directory / "worker.json").write_text(json.dumps(config))
-    if supply_only:
-        (directory / "supply-probe.json").write_text(
-            json.dumps({"minimum_supply_delta": 38, "horizon": 300})
-        )
     worker = None
     result = {
         "mode": mode,
@@ -351,21 +431,6 @@ def run(mode):
     try:
         harness.start_database()
         (directory / "result.json").write_text(json.dumps(result))
-        if supply_only:
-            from m5_read_state import query
-
-            def supplies():
-                row = (
-                    query(
-                        directory,
-                        "SELECT balance,(SELECT COALESCE(SUM(count),0) FROM player_items WHERE player_id=65001 AND itemtype IN (266,268)) FROM players WHERE id=65001;",
-                    )
-                    .strip()
-                    .split()
-                )
-                return dict(zip(["bank", "potions"], map(int, row), strict=True))
-
-            (directory / "initial-supplies.json").write_text(json.dumps(supplies()))
         result["initial_character"] = harness.character()
         assert result["initial_character"] == json.loads(
             (WORK / "fixture/character.json").read_text()
@@ -373,12 +438,12 @@ def run(mode):
         log = (directory / "worker.log").open("w")
         worker = subprocess.Popen(
             [
-                "/tmp/canary-replay-venv/bin/python",
+                sys.executable,
                 str(ROOT / "tests/fixture/m5_worker.py"),
                 str(directory),
                 mode,
             ],
-            env={**os.environ, "PYTHONPATH": str(ROOT / "deployment/brain/src")},
+            env=worker_environment(directory),
             stdout=log,
             stderr=subprocess.STDOUT,
         )
@@ -388,6 +453,8 @@ def run(mode):
             if worker.poll() is not None:
                 raise RuntimeError("offline worker startup failed")
             time.sleep(0.1)
+        else:
+            raise RuntimeError("supervised worker socket startup timed out")
         harness.start_game()
         result["phase"] = "observing"
         (directory / "result.json").write_text(json.dumps(result, indent=2))
@@ -397,8 +464,6 @@ def run(mode):
         saved, receipt = stop_and_read_character(harness, directory)
         result["saved_character"] = saved
         result["persistence"] = receipt
-        if supply_only:
-            (directory / "saved-supplies.json").write_text(json.dumps(supplies()))
         result["phase"] = "finished"
     finally:
         if worker and worker.poll() is None:
@@ -409,8 +474,7 @@ def run(mode):
         print(json.dumps(result))
     # "finished" only describes saved/closed infrastructure. Qualification is a
     # distinct fail-closed command after all writers and the game have stopped.
-    finalizer = "m5_supply_finalize.py" if supply_only else "m5_finalize.py"
-    print(command(sys.executable, ROOT / "tests/fixture" / finalizer, directory))
+    print(command(sys.executable, ROOT / "tests/fixture/m5_finalize.py", directory))
 
 
 if __name__ == "__main__":

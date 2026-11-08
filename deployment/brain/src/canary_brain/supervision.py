@@ -4,6 +4,7 @@ No game credentials, admin commands, invented rewards or movement destinations.
 Human advice is labelled advice; native outcomes remain the source of truth.
 """
 
+import asyncio
 import time
 import uuid
 from collections import deque
@@ -539,14 +540,26 @@ class Supervisor:
         return result
 
     async def chat(self, bot: int, text: str, act: bool) -> dict[str, Any]:
+        c = self.controller
+        c.require_model_admission()
+        if bot in c.operator_tasks or len(c.operator_tasks) >= 3:
+            raise ValueError("O bot já está respondendo; aguarde.")
         with attribution(bot):
-            result = await self._chat(bot, text, act)
-            self.controller.record(
-                bot, "operator", {"operation": "chat_act" if act else "chat"}
-            )
-            return result
+            task = asyncio.current_task()
+            assert task is not None
+            c.operator_tasks[bot] = task
+            try:
+                # Track the actual request task, preserving its initial snapshot
+                # before another operator command can run.
+                result = await self._chat(bot, text, act)
+                c.record(bot, "operator", {"operation": "chat_act" if act else "chat"})
+                return result
+            finally:
+                if c.operator_tasks.get(bot) is task:
+                    c.operator_tasks.pop(bot, None)
 
     async def _chat(self, bot: int, text: str, act: bool) -> dict[str, Any]:
+        self.controller.require_model_admission()
         snapshot = self.snapshot(bot)
         observed_at = self.received[bot]
         if not text.strip() or len(text) > 1024:
@@ -573,6 +586,7 @@ class Supervisor:
             + [{"speaker": "human", "text": text, "at": time.time()}]
         )[-30:]
         self.store.put("operator_chat", str(bot), conversation)
+        self.controller.require_model_admission()
         try:
             proposal = await self.controller.model.converse(
                 self.offers(snapshot),
@@ -590,6 +604,7 @@ class Supervisor:
             raise ValueError(
                 "A IA não respondeu agora; tente novamente. Nenhuma ordem foi aplicada."
             ) from None
+        self.controller.require_model_admission()
         latest = self.snapshot(bot)
         applied = None
         valid = (

@@ -233,6 +233,66 @@ namespace botbrain {
 		uint64_t sequence = 0, xp = 0;
 		uint64_t telemetrySequence = 0, deaths = 0;
 		TelemetryOutbox delivery;
+		// One admission for this session lifetime; never evicted or replaced by retries.
+		nlohmann::json admission;
+
+		template <typename Snapshot>
+		nlohmann::json admit(const nlohmann::json &request, const std::string &world, uint32_t guid, const std::string &source, bool dirty, Snapshot snapshot) {
+			if (request.size() != 5 || request.value("version", nlohmann::json()) != 1
+			    || request.value("type", nlohmann::json()) != "telemetry_admit"
+			    || request.value("world", nlohmann::json()) != world
+			    || request.value("bot_id", nlohmann::json()) != guid
+			    || !request.contains("nonce") || !request["nonce"].is_string()
+			    || request["nonce"].get<std::string>().empty() || request["nonce"].get<std::string>().size() > 80) {
+				throw std::runtime_error("invalid admission identity");
+			}
+			if (!admission.is_null()) {
+				if (admission.at("nonce") != request.at("nonce") || admission.at("world") != world || admission.at("bot_id") != guid) {
+					throw std::runtime_error("admission conflict");
+				}
+				return admission;
+			}
+			const nlohmann::json initial = snapshot();
+			if (initial.at("world") != world || initial.at("bot").at("id") != guid) {
+				throw std::runtime_error("invalid admission observation");
+			}
+			const auto captured = initial.at("captured_ms").get<int64_t>();
+			if (offers.size() >= 12) {
+				offers.pop_front();
+			}
+			offers.push_back(initial);
+			auto event = telemetry(world, guid, ++telemetrySequence, captured, deaths, "alive");
+			event["run_nonce"] = request.at("nonce");
+			const bool queued = delivery.enqueue(event);
+			std::string fault;
+			if (dirty || source.empty() || source == "unknown") {
+				fault = "source_unqualified";
+			} else if (!queued || delivery.overflowFrames() || delivery.discardedFrames()) {
+				fault = "telemetry_loss";
+			}
+			admission = { { "version", 1 }, { "type", "telemetry_admitted" }, { "world", world }, { "bot_id", guid }, { "nonce", request.at("nonce") }, { "begin_sequence", telemetrySequence }, { "captured_ms", captured }, { "deaths", deaths }, { "observation", initial }, { "source", source }, { "source_dirty", dirty }, { "fault", fault } };
+			return admission;
+		}
+
+		bool unavailableReported = false;
+
+		nlohmann::json fence(const nlohmann::json &request, Channel &channel, const std::string &world, uint32_t guid, int64_t captured, bool available) {
+			if (admission.is_null() || request.size() != 6 || request.value("version", nlohmann::json()) != 1
+			    || request.value("type", nlohmann::json()) != "telemetry_fence"
+			    || request.value("world", nlohmann::json()) != world || admission.at("world") != world
+			    || request.value("bot_id", nlohmann::json()) != guid || admission.at("bot_id") != guid
+			    || request.value("admission_nonce", nlohmann::json()) != admission.at("nonce")
+			    || !request.contains("nonce") || !request["nonce"].is_string()
+			    || request["nonce"].get<std::string>().empty() || request["nonce"].get<std::string>().size() > 80) {
+				throw std::runtime_error("invalid fence identity");
+			}
+			delivery.flush(channel);
+			auto reply = delivery.status(world, guid, captured, telemetrySequence);
+			reply["fence_nonce"] = request.at("nonce");
+			reply["fault"] = available && !unavailableReported ? "" : "bot_unavailable";
+			return reply;
+		}
+
 		int64_t lastTelemetry = 0;
 		int64_t lastDeliveryStatus = 0;
 		int64_t lastPublish = 0, started = 0, lastMessage = 0, lastMove = 0, lastShopScan = 0;

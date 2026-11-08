@@ -322,7 +322,7 @@ def experiment(tmp_path):
         budget_file=tmp_path / "shared-budget.db",
         bot_id=7,
         participants=[Participant(name="native", kind="native")],
-        source_revision="test",
+        source_revision="a" * 40,
         expected_initial_sha256=fixture_hash(fixture, world),
         repetitions=1,
         seconds=10,
