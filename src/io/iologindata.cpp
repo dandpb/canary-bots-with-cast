@@ -8,6 +8,8 @@
  */
 
 #include "io/iologindata.hpp"
+#include <chrono>
+#include <thread>
 
 #include "account/account.hpp"
 #include "config/configmanager.hpp"
@@ -206,17 +208,36 @@ PlayerSaveSnapshot IOLoginData::capturePlayerSave(const std::shared_ptr<Player>&
 }
 
 bool IOLoginData::persistPlayerSave(const PlayerSaveSnapshot& snapshot) {
-	return DBTransaction::executeWithinTransaction([&snapshot] {
-		auto& db = Database::getInstance();
-		auto row = db.storeQuery(fmt::format("SELECT `save` FROM `players` WHERE `id`={}", snapshot.guid));
-		if (!row || snapshot.statements.empty()) throw DatabaseException("Checkpoint player is unavailable");
-		const bool full = row->getNumber<uint16_t>("save") != 0;
-		for (size_t i = 0; i < snapshot.statements.size(); ++i) {
-			const auto& query = i == 0 && !full ? snapshot.loginOnly : snapshot.statements[i];
-			if (!db.executeQuery(query)) throw DatabaseException("Checkpoint statement failed");
+	constexpr unsigned int maxAttempts = 3;
+	for (unsigned int attempt = 1; attempt <= maxAttempts; ++attempt) {
+		bool rolledBackDeadlock = false;
+		const bool saved = DBTransaction::executeWithinTransaction([&] {
+			auto& db = Database::getInstance();
+			auto row = db.storeQuery(fmt::format("SELECT `save` FROM `players` WHERE `id`={}", snapshot.guid));
+			if (!row || snapshot.statements.empty()) throw DatabaseException("Checkpoint player is unavailable");
+			const bool full = row->getNumber<uint16_t>("save") != 0;
+			for (size_t i = 0; i < snapshot.statements.size(); ++i) {
+				const auto& query = i == 0 && !full ? snapshot.loginOnly : snapshot.statements[i];
+				if (!db.executeQuery(query)) {
+					// InnoDB 1213 rolls back the whole transaction. Capture this
+					// before rollback/result APIs replace the connection diagnostic.
+					rolledBackDeadlock = db.getLastExecuteError() == 1213;
+					throw DatabaseException("Checkpoint statement failed");
+				}
+			}
+			return true;
+		});
+		if (saved) {
+			if (attempt > 1) g_logger().info("[CheckpointRetry] Bot {} committed after {} attempts", snapshot.guid, attempt);
+			return true;
 		}
-		return true;
-	});
+		// Never retry an ambiguous BEGIN/COMMIT/connection failure. Failed
+		// checkpoints remain owned by SerialSaveQueue when this bound is hit.
+		if (!rolledBackDeadlock || attempt == maxAttempts) return false;
+		g_logger().warn("[CheckpointRetry] Bot {} rolled back deadlock; retry {}/{}", snapshot.guid, attempt + 1, maxAttempts);
+		std::this_thread::sleep_for(std::chrono::milliseconds(25u << (attempt - 1)));
+	}
+	return false;
 }
 
 void IOLoginData::acknowledgePlayerSave(const std::shared_ptr<Player>& player, const PlayerSaveSnapshot& snapshot) {

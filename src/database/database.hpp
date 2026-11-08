@@ -10,6 +10,7 @@
 #pragma once
 
 #include "declarations.hpp"
+#include <utility>
 #include <string>
 #include <stdexcept>
 #include <vector>
@@ -76,6 +77,9 @@ public:
 
 	bool retryQuery(std::string_view query, int retries);
 	bool executeQuery(std::string_view query);
+	// Preserve the execute/retryQuery errno before result cleanup or rollback.
+	// Read immediately after executeQuery on the same private connection.
+	unsigned int getLastExecuteError() const;
 
 	DBResult_ptr storeQuery(std::string_view query);
 
@@ -97,6 +101,8 @@ public:
 
 private:
 	std::vector<std::string>* statements_ = nullptr;
+	// Static TLS leaves Database's cross-module object layout unchanged.
+	static thread_local std::pair<const Database*, unsigned int> lastExecuteError_;
 	bool beginTransaction();
 	bool rollback();
 	bool commit();
