@@ -613,10 +613,14 @@ pelo sha256 antes de executar qualquer linha dela.
   identidades, projeção), igual ao primeiro, e o comando em até 30 s desse segundo gate.
   Falha depois do claim deixa o claim consumido com `executed: false`: HOLD.
 - Limites: cada probe tem 10 s; `docker stop -t 180` tem 200 s; `docker start` tem 60 s;
-  o health tem até 600 s (o `start_period` do game; constante única `HEALTH_DEADLINE`,
-  ainda não aprovada), consultado a cada 10 s. O smoke exige
-  17171-17173 abertas em loopback e `login.php` com `playersonline`. Um timeout é HOLD,
-  sem retry. Um claim consumido é HOLD e nunca se repete.
+  o health (o check de porta do próprio container) tem até 210 s, consultado a cada 10 s
+  (constante única `HEALTH_DEADLINE`, confirmada pelo revisor a partir dos intervalos
+  observados nos dados preservados: 10,319 s do resgate e 100,507 s do game gerenciado;
+  observados, não pior caso). Timeout do health é HOLD: sem retry do start, sem fallback
+  automático; uma pessoa decide. O smoke é outra checagem, só depois do health aprovado:
+  17171-17173 abertas em loopback e `login.php` com `playersonline`; falha do smoke é o
+  seu próprio HOLD. Um timeout de probe é HOLD, sem retry. Um claim consumido é HOLD e
+  nunca se repete.
 
 #### Pino do mapa
 

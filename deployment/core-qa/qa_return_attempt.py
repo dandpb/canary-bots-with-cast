@@ -94,9 +94,10 @@ STOP = ["docker", "stop", "-t", "180"]
 PROBE_TIMEOUT = 10.0  # seconds, every read-only docker or SQL call
 STOP_TIMEOUT = 200.0  # docker stop -t 180 plus 20 s for the CLI
 START_TIMEOUT = 60.0  # docker start returns once the process runs
-HEALTH_DEADLINE = (
-    600.0  # the game healthcheck's start_period (compose.yaml); NOT approved yet
-)
+# The health cap: the reviewer confirmed 210 s from preserved data, the intervals OBSERVED from
+# the start to the first healthy check: 10.319 s (rescue) and 100.507 s (managed game). Observed
+# values, NOT a worst case. A timeout is HOLD: no start retry, no automatic fallback; a human decides.
+HEALTH_DEADLINE = 210.0
 HEALTH_POLL = 10.0
 GATE_MAX_AGE = (
     30.0  # monotonic seconds from a gate's first read to its claim, or to the command
@@ -1054,12 +1055,14 @@ class ReturnAttempt:
         if json.dumps(self.bind(), sort_keys=True, default=str) != sealed:
             raise RuntimeError("the bindings changed since the gate")
 
-    def post_start(
-        self, ident: str, started_at: str, expected: dict[str, Any]
-    ) -> dict[str, Any]:
-        """After the start: running, a health check newer than the start, same identity, smoke."""
-        h, mod = self.h, self.mod
-        since = datetime.fromisoformat(started_at)
+    def health(self, ident: str, since: datetime) -> dict[str, Any]:
+        """The container's own health check (the port check of its healthcheck), polled every
+        HEALTH_POLL s until a healthy check newer than the start, within HEALTH_DEADLINE s.
+
+        A timeout, `unhealthy` or a stopped container is HOLD. Never a start retry, never a
+        fallback start: the return stops there and a human decides.
+        """
+        mod = self.mod
         deadline = mod.monotonic() + HEALTH_DEADLINE
         while True:
             try:
@@ -1074,15 +1077,27 @@ class ReturnAttempt:
             if probe.get("status") != "running":
                 raise RuntimeError(f"HOLD: {ident[:12]} is not running after its start")
             if status == "healthy":
-                health = h.fresh_health(ident, since)
-                break
+                return dict(self.h.fresh_health(ident, since))
             if status != "starting" or mod.monotonic() >= deadline:
                 raise RuntimeError(
                     f"HOLD: {ident[:12]} has no healthy check within {HEALTH_DEADLINE:g} s "
-                    f"of its start (health {status}); not retried"
+                    f"of its start (health {status}); no retry, no fallback: a human decides"
                 )
             self.sleep(HEALTH_POLL)
-        live = h.container(ident)
+
+    def smoke(self) -> str:
+        """The smoke check, separate from the health check and only after it passed."""
+        failed = list(self.s1.playable())
+        if failed:
+            raise RuntimeError("HOLD: the smoke check failed:\n" + "\n".join(failed))
+        return "ports 17171-17173 listen on loopback; login.php answers playersonline"
+
+    def post_start(
+        self, ident: str, started_at: str, expected: dict[str, Any]
+    ) -> dict[str, Any]:
+        """After the start: health (within HEALTH_DEADLINE), the same identity, then the smoke."""
+        health = self.health(ident, datetime.fromisoformat(started_at))
+        live = self.h.container(ident)
         changed = [
             key for key, value in expected.items() if not live or live.get(key) != value
         ]
@@ -1090,16 +1105,9 @@ class ReturnAttempt:
             raise RuntimeError(
                 f"HOLD: the started container is not the verified one ({', '.join(changed)})"
             )
-        smoke = list(self.s1.playable())
-        if smoke:
-            raise RuntimeError("HOLD: the smoke check failed:\n" + "\n".join(smoke))
+        smoke = self.smoke()
         resources = self.resources()
-        return {
-            "health": health,
-            "identity": expected,
-            "smoke": "ports 17171-17173 listen on loopback; login.php answers playersonline",
-            **resources,
-        }
+        return {"health": health, "identity": expected, "smoke": smoke, **resources}
 
     def finish(self, step: str, verify: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         """The post-start checks, recorded whatever their outcome; a failure is HOLD."""

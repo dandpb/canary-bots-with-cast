@@ -453,7 +453,7 @@ class ReturnAttemptTests(base.QuiescentTests):
         attempt = self.attempt()
         attempt.sleep = unhealthy
         with self.assertRaisesRegex(
-            RuntimeError, "HOLD: eaae6fe2171b has no healthy check"
+            RuntimeError, "HOLD: eaae6fe2171b has no healthy check within 210 s"
         ):
             attempt.start_managed()
         records = sorted(self.attempt_dir(key).glob("verify-start-managed-*.json"))
@@ -1335,6 +1335,138 @@ class ReturnAttemptTests(base.QuiescentTests):
         gate = json.loads(Path(claim["gate"]["path"]).read_text())["gate"]
         self.assertEqual({u["exit_code"] for u in gate["up_claims"]}, {1})
         self.assertEqual(self.starts(RESCUE), 1)
+
+    # -- health (port check, capped at 210 s) and smoke, kept apart -----------------------
+
+    def timed(self, ident, healthy_after=None):
+        """Time passes on the monotonic clock; the container turns healthy after N seconds."""
+        events = []
+
+        def sleep(seconds):
+            self.slept.append(seconds)
+            self.mono[0] += seconds
+            item = self.docker.find(ident)
+            elapsed = sum(self.slept)
+            if healthy_after is not None and elapsed >= healthy_after:
+                end = datetime.fromisoformat(item["started_at"]) + timedelta(
+                    seconds=healthy_after
+                )
+                item.update(
+                    health="healthy",
+                    health_log=[{"End": end.isoformat(), "ExitCode": 0}],
+                )
+            events.append(("poll", item.get("health")))
+
+        def smoke():
+            events.append(("smoke", self.docker.find(ident).get("health")))
+            return []
+
+        return sleep, smoke, events
+
+    def test_health_cap_is_210_s_from_the_observed_intervals(self):
+        self.assertEqual(ret.HEALTH_DEADLINE, 210.0)
+        self.assertGreater(ret.HEALTH_DEADLINE, 100.507)  # the managed game, observed
+        self.assertGreater(ret.HEALTH_DEADLINE, 10.319)  # the rescue, observed
+        self.assertEqual(ret.HEALTH_POLL, 10.0)
+
+    def test_managed_health_under_210_s_passes_then_the_smoke_runs(self):
+        self.stopped_attempt()
+        sleep, smoke, events = self.timed(MANAGED, healthy_after=100.507)
+        attempt = self.attempt()
+        attempt.sleep = sleep
+        with patch("stage1_baseline.playable", side_effect=smoke):
+            done = attempt.start_managed()
+        self.assertEqual(done["health"]["health"], "healthy")
+        self.assertLess(sum(self.slept), ret.HEALTH_DEADLINE)
+        self.assertEqual(
+            events[-1], ("smoke", "healthy")
+        )  # once, after the health passed
+        self.assertEqual(sum(e[0] == "smoke" for e in events), 1)
+        self.assertEqual(self.starts(MANAGED), 1)
+
+    def test_rescue_health_under_210_s_passes_then_the_smoke_runs(self):
+        self.partial_up()
+        sleep, smoke, events = self.timed(RESCUE, healthy_after=10.319)
+        attempt = self.attempt()
+        attempt.sleep = sleep
+        with patch("stage1_baseline.playable", side_effect=smoke):
+            done = attempt.rescue()
+        self.assertEqual(done["health"]["health"], "healthy")
+        self.assertEqual(events[-1], ("smoke", "healthy"))
+        self.assertEqual(sum(e[0] == "smoke" for e in events), 1)
+        self.assertEqual(self.starts(RESCUE), 1)
+
+    def test_a_health_timeout_at_210_s_is_hold_with_no_retry_and_no_fallback(self):
+        key = self.stopped_attempt()
+        sleep, smoke, events = self.timed(MANAGED)  # never healthy: "starting" for good
+        attempt = self.attempt()
+        attempt.sleep = sleep
+        with (
+            patch("stage1_baseline.playable", side_effect=smoke),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "HOLD: eaae6fe2171b has no healthy check within 210 s .*health starting"
+                ".*no retry, no fallback: a human decides",
+            ),
+        ):
+            attempt.start_managed()
+        self.assertGreaterEqual(sum(self.slept), ret.HEALTH_DEADLINE - ret.HEALTH_POLL)
+        self.assertLessEqual(sum(self.slept), ret.HEALTH_DEADLINE + ret.HEALTH_POLL)
+        self.assertFalse(
+            any(e[0] == "smoke" for e in events)
+        )  # no smoke without health
+        self.assertEqual([m[0] for m in self.mutations], [["docker", "start", MANAGED]])
+        self.assertEqual((self.starts(MANAGED), self.starts(RESCUE)), (1, 0))
+        records = sorted(self.attempt_dir(key).glob("verify-start-managed-*.json"))
+        verify = json.loads(records[0].read_text())
+        self.assertEqual(verify["result"], "hold")
+        self.assertIn("within 210 s", verify["problem"])
+        with self.assertRaisesRegex(RuntimeError, "start-managed.claim is consumed"):
+            self.attempt().start_managed()  # no retry
+        with self.assertRaisesRegex(RuntimeError, "Branch A ran"):
+            self.attempt().rescue()  # no automatic fallback to the rescue
+        self.assertEqual((self.starts(MANAGED), self.starts(RESCUE)), (1, 0))
+
+    def test_a_rescue_health_timeout_is_hold_with_no_retry(self):
+        self.partial_up()
+        sleep, smoke, events = self.timed(RESCUE)
+        attempt = self.attempt()
+        attempt.sleep = sleep
+        with (
+            patch("stage1_baseline.playable", side_effect=smoke),
+            self.assertRaisesRegex(
+                RuntimeError, "64385641c847 has no healthy check within 210 s"
+            ),
+        ):
+            attempt.rescue()
+        self.assertFalse(any(e[0] == "smoke" for e in events))
+        with self.assertRaisesRegex(RuntimeError, "start-rescue.claim is consumed"):
+            self.attempt().rescue()
+        self.assertEqual((self.starts(RESCUE), self.starts(MANAGED)), (1, 0))
+
+    def test_a_smoke_failure_after_a_passing_health_is_its_own_hold(self):
+        key = self.stopped_attempt()
+        sleep, _smoke, events = self.timed(MANAGED, healthy_after=100.507)
+
+        def failing():
+            events.append(("smoke", self.docker.find(MANAGED).get("health")))
+            return ["game: 127.0.0.1:17171 is not listening"]
+
+        attempt = self.attempt()
+        attempt.sleep = sleep
+        with (
+            patch("stage1_baseline.playable", side_effect=failing),
+            self.assertRaisesRegex(RuntimeError, "HOLD: the smoke check failed"),
+        ):
+            attempt.start_managed()
+        self.assertEqual(events[-1], ("smoke", "healthy"))  # health passed first
+        records = sorted(self.attempt_dir(key).glob("verify-start-managed-*.json"))
+        problem = json.loads(records[0].read_text())["problem"]
+        self.assertIn("smoke check failed", problem)
+        self.assertNotIn("healthy check", problem)
+        with self.assertRaisesRegex(RuntimeError, "start-managed.claim is consumed"):
+            self.attempt().start_managed()
+        self.assertEqual((self.starts(MANAGED), self.starts(RESCUE)), (1, 0))
 
 
 for _name in [*vars(base.HandoffTests), *vars(base.QuiescentTests)]:
