@@ -31,13 +31,25 @@ the exact container the pre-stop sealed, exited 0 with the same StartedAt and Re
 other games are stopped; no new game/brain container; fresh session, integrity and resource
 gates. ONE `docker start <managed full ID>` per attempt, then a fresh health check and a smoke check.
 
-Branch B, `rescue`: after an attempted or partial up of this attempt. The managed original is not
-presumed to exist. New game/brain containers are identified by full ID through the Compose project,
-service, image and ownership labels (working dir, config files, env file) and only those verified
+Branch B, `rescue`: after an up of this attempt that ENDED: every up claim needs the adapter's
+terminal result correlated with it (the sealed quiescent-up exec receipt of this attempt's chain
+that ran the sealed argv, cites that claim and has that exit code). A claim without one, a
+malformed or uncorrelated result, `executed: false`, any self-declared field or a free lock is
+HOLD with no mutation; reconciling an uncertain up is out of scope here. The managed original is
+not presumed to exist. New game/brain containers are identified by full ID through the Compose
+project, service, image and ownership labels (working dir, config files, env file), and each
+must equal the reviewed render (pinned by its private and sanitized sha256) for its service:
+env values (private per-key sha256, the image's env under the render's), every mount, restart,
+network, ports, entrypoint/command, image and Compose's config-hash label. Only those verified
 IDs are stopped, once. Then every game is stopped with restart=no and no session or transaction
 is open, and only then the rescue starts ONCE, with its image, config (adapter_config_sha256
 626ceb49...) and mounts verified, then a fresh health check and a smoke check. This revises the
 managed-only restriction for this case only; the adapter's own fallback stays closed.
+
+Every mutation: the step's complete gate (at most GATE_MAX_AGE old at the claim), the claim, then
+the bindings and the SAME complete gate again (DB sessions and transactions, integrity,
+resources, identities, projection), equal to the first, and the command within GATE_MAX_AGE of
+that second gate. A failure after the claim leaves it consumed with `executed: false`: HOLD.
 """
 
 import argparse
@@ -82,8 +94,13 @@ STOP = ["docker", "stop", "-t", "180"]
 PROBE_TIMEOUT = 10.0  # seconds, every read-only docker or SQL call
 STOP_TIMEOUT = 200.0  # docker stop -t 180 plus 20 s for the CLI
 START_TIMEOUT = 60.0  # docker start returns once the process runs
-HEALTH_DEADLINE = 600.0  # the game healthcheck's start_period (compose.yaml)
+HEALTH_DEADLINE = (
+    600.0  # the game healthcheck's start_period (compose.yaml); NOT approved yet
+)
 HEALTH_POLL = 10.0
+GATE_MAX_AGE = (
+    30.0  # monotonic seconds from a gate's first read to its claim, or to the command
+)
 SETTLED = {
     "created",
     "running",
@@ -93,10 +110,37 @@ STOPPED = {"created", "exited"}
 NEW_INSPECT = (
     '{"id":{{json .Id}},"name":{{json .Name}},"created_at":{{json .Created}},'
     '"image_id":{{json .Image}},"status":{{json .State.Status}},'
-    '"restart":{{json .HostConfig.RestartPolicy.Name}},"labels":{{json .Config.Labels}}}'
+    '"restart":{{json .HostConfig.RestartPolicy.Name}},"labels":{{json .Config.Labels}},'
+    '"mounts":{{json .Mounts}},"config":{{json .Config}},"host_config":{{json .HostConfig}}}'
 )
+IMAGE_ENV = (
+    "{{json .Config.Env}}"  # the image's own env, under the service's effective env
+)
+COMPOSE_HASH = [
+    "config",
+    "--hash",
+    "game,brain",
+]  # read-only: the config-hash label Compose writes
 BRANCH_A = ("start-managed",)
 BRANCH_B = ("stop-new", "start-rescue")
+TIMEOUTS = {
+    "start-managed": START_TIMEOUT,
+    "stop-new": STOP_TIMEOUT,
+    "start-rescue": START_TIMEOUT,
+}
+IDENTITIES = (  # gate entries that must be equal before and after a claim
+    "managed",
+    "managed_start",
+    "others",
+    "up_claims",
+    "new",
+    "new_containers",
+    "rescue",
+    "candidate",
+    "rescue_receipt",
+    "containers",
+    "network_and_volumes",
+)
 
 
 class ProbeTimeout(Exception):
@@ -340,24 +384,103 @@ class ReturnAttempt:
         names = ("*.quiescent-up.claim", "*.activate.claim")
         for path in sorted(p for name in names for p in self.h.claims.glob(name)):
             try:
-                at = datetime.fromisoformat(
-                    json.loads(path.read_bytes())["claimed_at_utc"]
-                )
+                body = json.loads(path.read_bytes())
+                at = datetime.fromisoformat(body["claimed_at_utc"])
             except (OSError, ValueError, KeyError, TypeError):
                 raise RuntimeError(
                     f"{path.name} is unreadable: uncertain; HOLD"
                 ) from None
             if at >= since:
-                result = path.with_suffix(".result")
-                found.append(
-                    {
-                        "claim": path.name,
-                        "result": json.loads(result.read_bytes())
-                        if result.is_file()
-                        else None,
-                    }
-                )
+                found.append({"claim": path.name, "claimed_at_utc": at.isoformat()})
         return found
+
+    def up_terminated(self, ups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Each up claim has a terminal result correlated with it, or the answer is HOLD.
+
+        Terminal: the adapter's own result {receipt, sha256, exit_code} naming a sealed
+        quiescent-up exec receipt of THIS attempt's chain, which ran the sealed argv, cites this
+        claim and finished with that exit code. A missing, malformed or uncorrelated result,
+        `executed: false`, any other self-declared field, or a free lock is no proof that the up
+        ended: no mutation. Reconciling an uncertain up is out of scope here.
+        """
+        if not ups:
+            raise RuntimeError(
+                "no up of this attempt was attempted: use start-managed; refused"
+            )
+        h = self.h
+        saved = (h.chain, h.mode, h.previous, h.stopped)
+        proven = []
+        try:
+            for up in ups:
+                claim = h.claims / up["claim"]
+                try:
+                    proven.append(self.correlated(claim))
+                except Exception as error:  # noqa: BLE001 - no proof is HOLD
+                    raise RuntimeError(
+                        f"HOLD: {claim.name} has no correlated terminal result ({error}); "
+                        "the up may still run or its outcome is unknown; no mutation "
+                        "(reconciling it is out of scope)"
+                    ) from None
+        finally:
+            h.chain, h.mode, h.previous, h.stopped = saved
+        return proven
+
+    def correlated(self, claim: Path) -> dict[str, Any]:
+        h, mod = self.h, self.mod
+        body = json.loads(claim.read_bytes())
+        result_path = claim.with_suffix(".result")
+        if not result_path.is_file():
+            raise RuntimeError("no result")
+        raw = result_path.read_bytes()
+        result = json.loads(raw)
+        if (
+            not isinstance(result, dict)
+            or set(result) != {"receipt", "sha256", "exit_code"}
+            or not isinstance(result["exit_code"], int)
+            or isinstance(result["exit_code"], bool)
+            or not isinstance(result["receipt"], str)
+            or not mod.HEX64.fullmatch(str(result["sha256"]))
+        ):
+            raise RuntimeError(
+                "the result is not the adapter's {receipt, sha256, exit_code}"
+            )
+        run = h.follow(
+            Path(result["receipt"]),
+            ("exec-step",),
+            expected=result["sha256"],
+            results=("pass", "hold"),
+            mode=mod.QUIESCENT,
+        )
+        if run["step"]["name"] != "quiescent-up":
+            raise RuntimeError("the result names another step's exec receipt")
+        h.executed("quiescent-up")
+        bundle = h.chain[1]
+        names = {
+            h.claims / f"{run['previous']['sha256']}.quiescent-up.claim",
+            h.claims / f"{bundle['quiescent_receipt']['sha256']}.activate.claim",
+        }
+        if (
+            h.attempt_key() != self.key
+            or body.get("step") != "quiescent-up"
+            or body.get("receipt_sha256") != run["previous"]["sha256"]
+            or body.get("argv_sha256") != run["step"]["argv_sha256"]
+            or claim not in names
+            or Path(run["claim"]) not in names
+            or run["exit_code"] != result["exit_code"]
+            or not run.get("finished_at_utc")
+            or datetime.fromisoformat(run["started_at_utc"])
+            < datetime.fromisoformat(body["claimed_at_utc"])
+        ):
+            raise RuntimeError(
+                "the exec receipt is not this claim's run of this attempt"
+            )
+        return {
+            "claim": claim.name,
+            "result_sha256": sha256(raw),
+            "exec_step_sha256": result["sha256"],
+            "exit_code": result["exit_code"],
+            "finished_at_utc": run["finished_at_utc"],
+        }
 
     def resources(self) -> dict[str, Any]:
         """DB and web exactly as pinned and running/healthy; the network and the 4 volumes."""
@@ -475,14 +598,126 @@ class ReturnAttempt:
             found.append(item)
         return found
 
+    def compose_hashes(self) -> dict[str, str]:
+        """`docker compose config --hash game,brain` with the pinned render argv (read-only)."""
+        render = self.h.plan["render"]
+        if render[-3:] != ["config", "--format", "json"]:
+            raise RuntimeError(
+                "the pinned render argv is not `config --format json`; refused"
+            )
+        found = {}
+        for line in self.qa.command(*render[:-3], *COMPOSE_HASH).splitlines():
+            service, _sep, value = line.strip().partition(" ")
+            if service:
+                found[service] = value.strip()
+        if set(found) != {"game", "brain"} or not all(
+            self.mod.HEX64.fullmatch(value) for value in found.values()
+        ):
+            raise RuntimeError("the Compose config hashes are unreadable; HOLD")
+        return found
+
+    def projection(
+        self,
+        item: dict[str, Any],
+        render: dict[str, Any],
+        service: str,
+        config_hash: str,
+    ) -> list[str]:
+        """The container's effective config against the reviewed render's service, or problems.
+
+        The adapter's proofs, per container: env VALUES as private sha256(KEY=VALUE) (the image's
+        env under the render's, nothing else), every mount (a bind names the render's host path
+        by desktop_form, a volume is the render's named volume, same mode), restart, network,
+        ports, entrypoint/command, image, and Compose's config-hash label.
+        """
+        mod, qa = self.mod, self.qa
+        wanted = render["services"][service]
+        config = item.get("config") or {}
+        host = item.get("host_config") or {}
+        labels = item.get("labels") or {}
+        problems = []
+        image_env = json.loads(
+            qa.command(
+                "docker", "image", "inspect", item["image_id"], "--format", IMAGE_ENV
+            )
+        )
+        expected = {**mod.env_pairs(image_env), **(wanted.get("environment") or {})}
+        if mod.env_hashes(mod.env_pairs(config.get("Env"))) != mod.env_hashes(expected):
+            problems.append("env values")
+        want = {str(m.get("target")): m for m in wanted.get("volumes") or []}
+        live_mounts = item.get("mounts") or []
+        have = {str(m.get("Destination")): m for m in live_mounts}
+        if set(have) != set(want) or len(have) != len(live_mounts):
+            problems.append("mounts")
+        else:
+            for target, mount in sorted(want.items()):
+                live, rw = have[target], not mount.get("read_only", False)
+                if mount.get("type") == "volume":
+                    volume = render["volumes"].get(str(mount.get("source"))) or {}
+                    same = live.get("Type") == "volume" and live.get(
+                        "Name"
+                    ) == volume.get("name")
+                elif mount.get("type") == "bind":
+                    same = live.get("Type") == "bind" and bool(
+                        mod.desktop_form(
+                            str(live.get("Source")), str(mount.get("source"))
+                        )
+                    )
+                else:
+                    same = False
+                if not same or live.get("RW") is not rw:
+                    problems.append(f"mount {target}")
+        if ((host.get("RestartPolicy") or {}).get("Name") or "no") != (
+            wanted.get("restart") or "no"
+        ):
+            problems.append("restart")
+        networks = wanted.get("networks") or {"default": None}
+        network = wanted.get("network_mode") or (
+            ((render.get("networks") or {}).get("default") or {}).get("name")
+            if list(networks) == ["default"]
+            else None
+        )
+        if not network or host.get("NetworkMode") != network:
+            problems.append("network")
+        ports: dict[str, list[tuple[str, str]]] = {}
+        for port in wanted.get("ports") or []:
+            key = f"{port.get('target')}/{port.get('protocol') or 'tcp'}"
+            ports.setdefault(key, []).append(
+                (str(port.get("host_ip") or ""), str(port.get("published") or ""))
+            )
+        bound = {
+            key: sorted(
+                (str(b.get("HostIp", "")), str(b.get("HostPort", ""))) for b in value
+            )
+            for key, value in (host.get("PortBindings") or {}).items()
+        }
+        if bound != {key: sorted(value) for key, value in ports.items()}:
+            problems.append("ports")
+        for key, field in (("entrypoint", "Entrypoint"), ("command", "Cmd")):
+            if wanted.get(key) is not None and config.get(field) != wanted[key]:
+                problems.append(key)
+        if config.get("Image") != wanted.get("image"):
+            problems.append("config image")
+        if labels.get("com.docker.compose.config-hash") != config_hash:
+            problems.append("config hash")
+        return problems
+
     def new_containers(self) -> list[dict[str, Any]]:
-        """New game/brain containers of THIS up, each verified by full ID, or refused."""
-        plan = self.h.plan
+        """New game/brain containers of THIS up, each verified by full ID and effective config.
+
+        Verified before any of them is adopted or stopped, and again after each claim. The env
+        stays private: only a sanitized hash of the per-key hashes and booleans are recorded.
+        """
+        plan, mod = self.h.plan, self.mod
         files = ",".join(
-            plan["files"][name]["absolute_path"] for name in self.mod.COMPOSE_FILES
+            plan["files"][name]["absolute_path"] for name in mod.COMPOSE_FILES
         )
         images = {"game": MANAGED_IMAGE, "brain": plan["brain"]["id"]}
-        since = self.stop_claimed_at() - self.mod.CLOCK_SKEW
+        since = self.stop_claimed_at() - mod.CLOCK_SKEW
+        render, render_hashes = (
+            self.h.fresh_render()
+        )  # validated, pinned (private, sanitized)
+        compose = self.compose_hashes()
         verified = []
         for item in self.project_containers():
             if item["id"] == MANAGED:
@@ -496,7 +731,7 @@ class ReturnAttempt:
             problems = [
                 problem
                 for problem, failed in (
-                    ("full ID", not self.mod.HEX64.fullmatch(str(item.get("id")))),
+                    ("full ID", not mod.HEX64.fullmatch(str(item.get("id")))),
                     (
                         "project",
                         labels.get("com.docker.compose.project") != self.qa.PROJECT,
@@ -523,11 +758,16 @@ class ReturnAttempt:
                 )
                 if failed
             ]
+            if not problems:
+                problems = self.projection(
+                    item, render, str(service), compose[str(service)]
+                )
             if problems:
                 raise RuntimeError(
                     f"unverified container {str(item.get('id'))[:12]} in the QA project "
-                    f"({', '.join(problems)}); nothing is stopped; HOLD"
+                    f"({', '.join(problems)}); nothing is stopped or adopted; HOLD"
                 )
+            env = mod.env_hashes(mod.env_pairs((item.get("config") or {}).get("Env")))
             verified.append(
                 {
                     key: item[key]
@@ -540,7 +780,23 @@ class ReturnAttempt:
                         "restart",
                     )
                 }
-                | {"service": service}
+                | {
+                    "service": service,
+                    "mounts": mod.mounts(item.get("mounts")),
+                    "config_sha256": mod.config_digest(
+                        {"config": item["config"], "host_config": item["host_config"]}
+                    ),
+                    "compose_config_hash": compose[str(service)],
+                    "env": {
+                        "keys": len(env),
+                        "sha256_of_key_hashes": sha256(
+                            json.dumps(env, sort_keys=True).encode()
+                        ),
+                        "equal_to_render": True,
+                    },
+                    "render": render_hashes,
+                    "projection": "equal to the reviewed render",
+                }
             )
         return sorted(verified, key=lambda row: row["id"])
 
@@ -627,11 +883,7 @@ class ReturnAttempt:
 
     def state_rescue(self) -> dict[str, Any]:
         """The docker state Branch B needs before the start; checked again after the claim."""
-        ups = self.up_claims()
-        if not ups:
-            raise RuntimeError(
-                "no up of this attempt was attempted: use start-managed; refused"
-            )
+        ups = self.up_terminated(self.up_claims())
         self.h.s1.qa_objects(
             stage2=True
         )  # the brain container/volumes may exist; nothing foreign
@@ -645,6 +897,15 @@ class ReturnAttempt:
             **self.resources(),
             **self.database(),
         }
+
+    def gate_stop(self) -> dict[str, Any]:
+        """Before stop-new: every up ended (proven), then the new IDs, verified by projection."""
+        ups = self.up_terminated(self.up_claims())
+        new = self.new_containers()
+        managed = self.h.container(MANAGED)
+        if managed and managed["status"] in self.mod.RUNNING:
+            raise RuntimeError("the managed original runs again: uncertain; HOLD")
+        return {"up_claims": ups, "new_containers": new}
 
     # -- claims and the mutation ---------------------------------------------------------------
 
@@ -673,13 +934,23 @@ class ReturnAttempt:
         self,
         step: str,
         argv: list[str],
-        timeout: float,
-        gate: dict[str, Any],
-        revalidate: Callable[[], Any],
+        gate: Callable[[], dict[str, Any]],
+        first: tuple[float, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
+        """The step's complete gate, its claim, the SAME complete gate again, then the command.
+
+        Before the claim: the gate is at most GATE_MAX_AGE old, or nothing is claimed. After
+        the claim: the bindings and the complete gate again (DB sessions and transactions,
+        integrity, resources, identities, projection), equal to the first, and the command
+        within GATE_MAX_AGE of that second gate's first read. Any failure there leaves the claim
+        consumed with `executed: false`: HOLD, no mutation.
+        """
+        mod = self.mod
         claim = self.dir / f"{step}.claim"
         if claim.exists():
             raise self.consumed(claim)
+        timeout = TIMEOUTS[step]
+        began, found = first if first else (mod.monotonic(), gate())
         gate_path, gate_sha = self.record(
             f"gate-{step}",
             {
@@ -687,9 +958,13 @@ class ReturnAttempt:
                 "step": step,
                 "argv": argv,
                 **self.binding,
-                "gate": gate,
+                "gate": found,
             },
         )
+        if mod.monotonic() - began > GATE_MAX_AGE:
+            raise RuntimeError(
+                f"the {step} gate is older than {GATE_MAX_AGE:g} s; refused, nothing claimed"
+            )
         body = {
             "schema": SCHEMA + "-claim",
             "attempt": self.key,
@@ -699,17 +974,41 @@ class ReturnAttempt:
             "timeout_seconds": timeout,
             "executor_sha256": self.binding["executor_sha256"],
             "pid": os.getpid(),
-            "claimed_at_utc": self.mod.utcnow().isoformat(),
+            "claimed_at_utc": mod.utcnow().isoformat(),
         }
-        if not self.mod.create_exclusive(
+        if not mod.create_exclusive(
             claim, (json.dumps(body, sort_keys=True) + "\n").encode()
         ):
             raise self.consumed(claim)
         # From here every failure leaves the claim consumed. Nothing below retries a mutation.
         try:
-            revalidate()
-        except (RuntimeError, ProbeTimeout) as error:
-            self.mod.create_exclusive(
+            again = mod.monotonic()
+            self.rebind()
+            after = gate()
+            changed = [
+                key
+                for key in IDENTITIES
+                if key in found
+                and json.dumps(found[key], sort_keys=True, default=str)
+                != json.dumps(after.get(key), sort_keys=True, default=str)
+            ]
+            if changed:
+                raise RuntimeError(f"{', '.join(changed)} changed since the gate")
+            self.record(
+                f"gate-{step}-after-claim",
+                {
+                    "schema": SCHEMA + "-gate",
+                    "step": step,
+                    "claim": body,
+                    "gate": after,
+                },
+            )
+            if mod.monotonic() - again > GATE_MAX_AGE:
+                raise RuntimeError(
+                    f"the gate after the claim is older than {GATE_MAX_AGE:g} s"
+                )
+        except Exception as error:  # noqa: BLE001 - certainly not executed: HOLD
+            mod.create_exclusive(
                 claim.with_suffix(".result"),
                 (
                     json.dumps(
@@ -719,9 +1018,9 @@ class ReturnAttempt:
                 ).encode(),
             )
             raise RuntimeError(
-                f"HOLD: the state changed after the claim ({error}); claim consumed, no mutation"
+                f"HOLD: the gate failed after the claim ({error}); claim consumed, no mutation"
             ) from None
-        started = self.mod.utcnow()
+        started = mod.utcnow()
         keep = () if self.lock_fd is None else (self.lock_fd,)
         try:
             code, out, err = run_mutation(argv, timeout, keep)
@@ -731,12 +1030,12 @@ class ReturnAttempt:
                 "claim_sha256": sha256(claim.read_bytes()),
                 "exit_code": code,
                 "started_at_utc": started.isoformat(),
-                "finished_at_utc": self.mod.utcnow().isoformat(),
+                "finished_at_utc": mod.utcnow().isoformat(),
                 "stdout_sha256": sha256(out),
                 "stderr_sha256": sha256(err),
                 "stderr_tail": err[-2000:].decode(errors="replace"),
             }
-            self.mod.create_exclusive(
+            mod.create_exclusive(
                 claim.with_suffix(".result"),
                 (json.dumps(result, sort_keys=True) + "\n").encode(),
             )
@@ -748,6 +1047,12 @@ class ReturnAttempt:
         if code:
             raise RuntimeError(f"HOLD: {step} exited {code}; claim consumed")
         return result
+
+    def rebind(self) -> None:
+        """The bindings again (adapter, manifest, stop claim and result, window, executor)."""
+        sealed = json.dumps(self.binding, sort_keys=True, default=str)
+        if json.dumps(self.bind(), sort_keys=True, default=str) != sealed:
+            raise RuntimeError("the bindings changed since the gate")
 
     def post_start(
         self, ident: str, started_at: str, expected: dict[str, Any]
@@ -820,10 +1125,7 @@ class ReturnAttempt:
                         f"the rescue branch already claimed {other}; refused"
                     )
             argv = ["docker", "start", MANAGED]
-            gate = self.gate_managed()
-            result = self.mutate(
-                "start-managed", argv, START_TIMEOUT, gate, self.state_managed
-            )
+            result = self.mutate("start-managed", argv, self.gate_managed)
             sealed = self.binding["managed"]
             expected = {k: sealed[k] for k in ("id", "name", "created_at", "image_id")}
             expected |= {"config_sha256": sealed["config_sha256"], "restart": "no"}
@@ -849,10 +1151,7 @@ class ReturnAttempt:
                     )
             stopped = self.stop_new()
             argv = ["docker", "start", RESCUE]
-            gate = self.gate_rescue()
-            result = self.mutate(
-                "start-rescue", argv, START_TIMEOUT, gate, self.state_rescue
-            )
+            result = self.mutate("start-rescue", argv, self.gate_rescue)
             name, pinned = self.h.plan["rescue"]
             expected = {
                 "id": RESCUE,
@@ -886,25 +1185,11 @@ class ReturnAttempt:
             return {
                 "already": done
             }  # it ran once with exit 0; the gate below re-checks the state
-        ups = self.up_claims()
-        if not ups:
-            raise RuntimeError(
-                "no up of this attempt was attempted: use start-managed; refused"
-            )
-        new = self.new_containers()
-        if not new:
+        began, gate = self.mod.monotonic(), self.gate_stop()
+        ids = [row["id"] for row in gate["new_containers"]]
+        if not ids:
             return None
-        ids = [row["id"] for row in new]
-        managed = self.h.container(MANAGED)
-        if managed and managed["status"] in self.mod.RUNNING:
-            raise RuntimeError("the managed original runs again: uncertain; HOLD")
-        gate = {"up_claims": ups, "new_containers": new}
-
-        def same() -> None:
-            if [row["id"] for row in self.new_containers()] != ids:
-                raise RuntimeError("the new containers changed since the gate")
-
-        return self.mutate("stop-new", [*STOP, *ids], STOP_TIMEOUT, gate, same)
+        return self.mutate("stop-new", [*STOP, *ids], self.gate_stop, (began, gate))
 
 
 def main() -> None:

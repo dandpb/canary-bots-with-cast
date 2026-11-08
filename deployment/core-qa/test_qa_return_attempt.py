@@ -18,6 +18,11 @@ GAME, BRAIN = base.GAME, base.BRAIN
 RESCUE, CANDIDATE = base.RESCUE, base.CANDIDATE
 MANAGED = ret.MANAGED
 sha = base.sha
+IMAGE_ENV = {  # the images' own env in the fake host
+    ret.MANAGED_IMAGE: ["PATH=/usr/local/bin:/usr/bin", "LANG=C.UTF-8"],
+    handoff.BRAIN_IMAGE_ID: ["PATH=/usr/bin"],
+}
+COMPOSE_HASHES = {"game": "1" * 64, "brain": "2" * 64}  # `config --hash` of the fake
 
 
 def forbidden(*args, **kwargs):
@@ -35,6 +40,7 @@ class ReturnAttemptTests(base.QuiescentTests):
         handoff.execute.side_effect = self.run_up
         self.mutations = []
         self.slept = []
+        self.compose_hashes = dict(COMPOSE_HASHES)
         rescue_config = self.manifest["rescue_container_config"]["config_sha256"]
         for mock in (
             patch.object(ret, "MANIFEST_SHA256", sha(self.manifest_path.read_bytes())),
@@ -112,17 +118,78 @@ class ReturnAttemptTests(base.QuiescentTests):
                     "restart": item.get("restart", "no"),
                     "name": "/" + item["name"],
                     "labels": item["labels"],
+                    "mounts": item.get("mounts", []),
+                    "config": {
+                        "Image": item.get("config_image", item["image_id"]),
+                        "Env": item.get("env", []),
+                        "Labels": item["labels"],
+                        "Entrypoint": item.get("entrypoint"),
+                        "Cmd": item.get("cmd"),
+                    },
+                    "host_config": {
+                        "RestartPolicy": {"Name": item.get("restart", "no")},
+                        "NetworkMode": item.get("network_mode"),
+                        "PortBindings": item.get("port_bindings"),
+                    },
                 }
             )
+        if args[1:3] == ("image", "inspect") and args[-1] == ret.IMAGE_ENV:
+            return json.dumps(IMAGE_ENV[args[3]])
+        if args[0] == "env" and args[-3:] == tuple(ret.COMPOSE_HASH):
+            assert list(args[:-3]) == self.manifest["render_argv"][:-3], args
+            return "".join(f"{k} {v}\n" for k, v in self.compose_hashes.items())
         return self.docker(*args, env=env)
 
+    def projected(self, service):
+        """What a real up of the reviewed render creates for one service, as docker inspects it."""
+        render = self.render_dict
+        wanted = render["services"][service]
+        mounts = []
+        for m in wanted["volumes"]:
+            mount = {"Type": m["type"], "Destination": m["target"]}
+            mount["RW"] = not m.get("read_only", False)
+            if m["type"] == "volume":
+                name = render["volumes"][m["source"]]["name"]
+                mount |= {
+                    "Name": name,
+                    "Source": f"/var/lib/docker/volumes/{name}/_data",
+                }
+            else:
+                desktop = f"{handoff.DESKTOP_ROOT}/{handoff.WSL_DISTRO}{m['source']}"
+                mount["Source"] = desktop
+            mounts.append(mount)
+        env = {
+            **handoff.env_pairs(IMAGE_ENV[wanted["image"]]),
+            **(wanted.get("environment") or {}),
+        }
+        ports = {}
+        for port in wanted.get("ports", []):
+            ports.setdefault(f"{port['target']}/{port['protocol']}", []).append(
+                {"HostIp": port["host_ip"], "HostPort": port["published"]}
+            )
+        return {
+            "env": [f"{k}={v}" for k, v in env.items()],
+            "mounts": mounts,
+            "restart": wanted.get("restart", "no"),
+            "network_mode": wanted.get("network_mode")
+            or render["networks"]["default"]["name"],
+            "port_bindings": ports,
+            "entrypoint": wanted.get("entrypoint"),
+            "cmd": wanted.get("command"),
+        }
+
     def run_up(self, argv):
-        """The adapter's mocked up, with the Compose ownership labels a real up writes."""
+        """The adapter's mocked up: the reviewed render's config and the labels a real up writes."""
         out = self.docker.run(argv)
         if "up" in argv:
-            for name in (GAME, BRAIN):
+            for name, service in ((GAME, "game"), (BRAIN, "brain")):
                 item = self.docker.containers[name]
-                item["labels"] = {**item["labels"], **self.ownership()}
+                item.update(self.projected(service))
+                item["labels"] = {
+                    **item["labels"],
+                    **self.ownership(),
+                    "com.docker.compose.config-hash": self.compose_hashes[service],
+                }
         return out
 
     def mutation(self, argv, timeout, keep):
@@ -363,7 +430,7 @@ class ReturnAttemptTests(base.QuiescentTests):
         with (
             patch.object(ret.ReturnAttempt, "gate_managed", gate_then_drift),
             self.assertRaisesRegex(
-                RuntimeError, "HOLD: the state changed after the claim"
+                RuntimeError, "HOLD: the gate failed after the claim"
             ),
         ):
             self.attempt().start_managed()
@@ -526,7 +593,7 @@ class ReturnAttemptTests(base.QuiescentTests):
             (
                 "new game restart",
                 self.setting(game, restart="unless-stopped"),
-                "not all stopped with restart=no",
+                "unverified container aaaaaaaaaaaa .*restart.*nothing is stopped",
             ),
             ("writer", (writer, no_writer), "other connection"),
             (
@@ -560,7 +627,7 @@ class ReturnAttemptTests(base.QuiescentTests):
         stops = [m for m in self.mutations if m[0][:2] == ["docker", "stop"]]
         self.assertEqual(
             len(stops), 1
-        )  # the verified stop ran once, before the first refusal
+        )  # the projection refused the restart before any stop; the stop ran once later
         self.attempt().rescue()  # a certain stop (exit 0) is not replayed; the start runs once
         stops = [m for m in self.mutations if m[0][:2] == ["docker", "stop"]]
         self.assertEqual(len(stops), 1)
@@ -841,6 +908,433 @@ class ReturnAttemptTests(base.QuiescentTests):
             "sha256:78327d1a07a743683b0dc8f83c62edc4b4571098aa2b83e51e8bc6fdb0dfff72",
         )
         self.assertEqual(ret.CLAIM_ROOT, "runtime/evidence/qa-return-claims")
+
+    # -- P2 #1: after the claim, the complete gate of the start again ----------------------
+
+    def on_claim(self, name, change):
+        """Something happens right after the claim `name` is written, before the command."""
+        original = handoff.create_exclusive
+
+        def create(path, content):
+            created = original(path, content)
+            if Path(path).name == name and created:
+                change()
+            return created
+
+        return patch.object(handoff, "create_exclusive", side_effect=create)
+
+    def assert_not_executed(self, key, step):
+        result = json.loads((self.attempt_dir(key) / f"{step}.result").read_text())
+        self.assertEqual(set(result), {"executed", "reason"})
+        self.assertFalse(result["executed"])
+        return result
+
+    def test_p2_1_a_connection_after_the_start_managed_claim_holds(self):
+        key = self.stopped_attempt()
+
+        def connect():
+            self.docker.writers = 1
+
+        with (
+            self.on_claim("start-managed.claim", connect),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "HOLD: the gate failed after the claim .*other connection.*no mutation",
+            ),
+        ):
+            self.attempt().start_managed()
+        self.assert_not_executed(key, "start-managed")
+        self.assertEqual(self.starts(MANAGED), 0)
+        self.assertEqual(self.mutations, [])
+        self.docker.writers = 0
+        with self.assertRaisesRegex(RuntimeError, "consumed .*executed False"):
+            self.attempt().start_managed()  # never replayed, even with the gate green
+        self.assertEqual(self.starts(MANAGED), 0)
+
+    def test_p2_1_a_connection_after_the_start_rescue_claim_holds(self):
+        key = self.partial_up()
+
+        def connect():
+            self.docker.writers = 1
+
+        with (
+            self.on_claim("start-rescue.claim", connect),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "HOLD: the gate failed after the claim .*other connection.*no mutation",
+            ),
+        ):
+            self.attempt().rescue()
+        self.assert_not_executed(key, "start-rescue")
+        self.assertEqual(self.starts(RESCUE), 0)
+        self.assertEqual(
+            [m[0][:2] for m in self.mutations], [["docker", "stop"]]
+        )  # only the verified stop ran
+        self.docker.writers = 0
+        with self.assertRaisesRegex(RuntimeError, "start-rescue.claim is consumed"):
+            self.attempt().rescue()
+        self.assertEqual(self.starts(RESCUE), 0)
+
+    def test_p2_1_a_transaction_after_the_start_managed_claim_holds(self):
+        def transaction():
+            self.docker.probe["trx"] = [["24116", "RUNNING", "0"]]
+
+        key = self.stopped_attempt()
+        with (
+            self.on_claim("start-managed.claim", transaction),
+            self.assertRaisesRegex(RuntimeError, "after the claim .*1 transaction"),
+        ):
+            self.attempt().start_managed()
+        self.assert_not_executed(key, "start-managed")
+        self.assertEqual(self.starts(MANAGED), 0)
+
+    def test_p2_1_integrity_after_the_start_rescue_claim_holds(self):
+        def integrity():
+            self.docker.integrity["check"]["players"] = "corrupt"
+
+        key = self.partial_up()
+        with (
+            self.on_claim("start-rescue.claim", integrity),
+            self.assertRaisesRegex(
+                RuntimeError, "(?s)after the claim .*CHECK TABLE is not OK"
+            ),
+        ):
+            self.attempt().rescue()
+        self.assert_not_executed(key, "start-rescue")
+        self.assertEqual(self.starts(RESCUE), 0)
+
+    def test_p2_1_stale_gates_refuse_or_hold(self):
+        key = self.stopped_attempt()
+        original = ret.ReturnAttempt.database
+        calls = []
+
+        def slow(attempt, at):
+            calls.append(1)
+            if len(calls) == at:
+                self.mono[0] += ret.GATE_MAX_AGE + 1
+            return original(attempt)
+
+        with (
+            patch.object(ret.ReturnAttempt, "database", lambda a: slow(a, 1)),
+            self.assertRaisesRegex(
+                RuntimeError, "older than 30 s; refused, nothing claimed"
+            ),
+        ):
+            self.attempt().start_managed()
+        self.assertFalse((self.attempt_dir(key) / "start-managed.claim").exists())
+        calls.clear()
+        with (
+            patch.object(ret.ReturnAttempt, "database", lambda a: slow(a, 2)),
+            self.assertRaisesRegex(
+                RuntimeError, "HOLD: .*gate after the claim is older than 30 s"
+            ),
+        ):
+            self.attempt().start_managed()
+        self.assert_not_executed(key, "start-managed")
+        self.assertEqual(self.starts(MANAGED), 0)
+
+    def test_p2_1_changed_bindings_after_the_claim_hold(self):
+        key = self.stopped_attempt()
+        saved = self.notice.read_bytes()
+
+        def replace_notice():
+            self.notice.write_bytes(saved + b"changed\n")
+
+        with (
+            self.on_claim("start-managed.claim", replace_notice),
+            self.assertRaisesRegex(
+                RuntimeError, "HOLD: the gate failed after the claim"
+            ),
+        ):
+            self.attempt().start_managed()
+        self.assert_not_executed(key, "start-managed")
+        self.assertEqual(self.starts(MANAGED), 0)
+
+    # -- P2 #2: Branch B adopts or stops only containers equal to the reviewed render ------
+
+    def test_p2_2_a_foreign_mount_env_or_config_hash_is_refused_and_not_stopped(self):
+        key = self.partial_up()
+        game = lambda: self.docker.containers[GAME]
+        brain = lambda: self.docker.containers[BRAIN]
+
+        def mount(find, target, **values):
+            def change():
+                for m in find()["mounts"]:
+                    if m["Destination"] == target:
+                        held[target] = dict(m)
+                        m.update(values)
+
+            def undo():
+                for m in find()["mounts"]:
+                    if m["Destination"] == target:
+                        m.clear()
+                        m.update(held[target])
+
+            return change, undo
+
+        def listed(find, field, value):
+            def change():
+                find()[field] = [*find()[field], value]
+
+            def undo():
+                find()[field] = find()[field][:-1]
+
+            return change, undo
+
+        def env_value(find, key, value):
+            def change():
+                held["env"] = list(find()["env"])
+                find()["env"] = [
+                    f"{key}={value}" if e.startswith(f"{key}=") else e
+                    for e in find()["env"]
+                ]
+
+            def undo():
+                find()["env"] = held["env"]
+
+            return change, undo
+
+        def label(find, value):
+            name = "com.docker.compose.config-hash"
+            return (
+                lambda: find()["labels"].update({name: value}),
+                lambda: find()["labels"].update(
+                    {
+                        name: COMPOSE_HASHES[
+                            find()["labels"]["com.docker.compose.service"]
+                        ]
+                    }
+                ),
+            )
+
+        def render_hash():
+            self.compose_hashes["game"] = "4" * 64
+
+        def render_hash_back():
+            self.compose_hashes["game"] = COMPOSE_HASHES["game"]
+
+        held = {}
+        worker = "/etc/canary-core-qa/brain/worker.json"
+        cases = (
+            (
+                "foreign bind",
+                mount(brain, worker, Source="/home/someone/other/worker.json"),
+                f"mount {worker}",
+            ),
+            (
+                "bind made writable",
+                mount(brain, worker, RW=True),
+                f"mount {worker}",
+            ),
+            (
+                "another project's volume",
+                mount(game, "/canary/logs", Name="other-project_game-logs"),
+                "mount /canary/logs",
+            ),
+            (
+                "an extra mount",
+                listed(
+                    game,
+                    "mounts",
+                    {"Type": "bind", "Source": "/", "Destination": "/host", "RW": True},
+                ),
+                "mounts",
+            ),
+            (
+                "divergent env value",
+                env_value(game, "GAME_PUBLIC_IP", "0.0.0.0"),
+                "env values",
+            ),
+            (
+                "injected env key",
+                listed(brain, "env", "LD_PRELOAD=/tmp/x.so"),
+                "env values",
+            ),
+            ("config-hash label", label(brain, "3" * 64), "config hash"),
+            ("render config hash", (render_hash, render_hash_back), "config hash"),
+            (
+                "port",
+                self.setting(
+                    game,
+                    port_bindings={
+                        "17171/tcp": [{"HostIp": "0.0.0.0", "HostPort": "17171"}]
+                    },
+                ),
+                "ports",
+            ),
+            ("network", self.setting(brain, network_mode="bridge"), "network"),
+            ("entrypoint", self.setting(brain, entrypoint=["sh"]), "entrypoint"),
+        )
+        for name, (change, undo), problem in cases:
+            with self.subTest(name):
+                change()
+                try:
+                    with self.assertRaisesRegex(
+                        RuntimeError,
+                        f"unverified container .*{problem}.*nothing is stopped or adopted; HOLD",
+                    ):
+                        self.attempt().rescue()
+                finally:
+                    undo()
+        self.assertEqual(self.mutations, [])  # nothing stopped, nothing started
+        self.assertFalse((self.attempt_dir(key) / "stop-new.claim").exists())
+        done = self.attempt().rescue()  # equal to the render again: B runs
+        self.assertEqual(done["branch"], "B")
+        directory = self.attempt_dir(key)
+        for path in directory.glob("gate-*.json"):
+            text = path.read_text()
+            self.assertNotIn(base.SECRET, text)  # env values never recorded
+            self.assertNotIn("0.0.0.0", text)
+        gate = json.loads(
+            Path(
+                json.loads((directory / "stop-new.claim").read_text())["gate"]["path"]
+            ).read_text()
+        )
+        for row in gate["gate"]["new_containers"]:
+            self.assertTrue(row["env"]["equal_to_render"])
+            self.assertEqual(row["compose_config_hash"], COMPOSE_HASHES[row["service"]])
+            self.assertRegex(row["config_sha256"], "^[0-9a-f]{64}$")
+
+    def test_p2_2_a_divergence_after_the_stop_claim_holds_and_stops_nothing(self):
+        key = self.partial_up()
+
+        def drift():
+            env = self.docker.containers[GAME]["env"]
+            env[env.index("GAME_PUBLIC_IP=127.0.0.1")] = "GAME_PUBLIC_IP=0.0.0.0"
+
+        with (
+            self.on_claim("stop-new.claim", drift),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "HOLD: the gate failed after the claim .*unverified container aaaaaaaaaaaa "
+                "in the QA project \\(env values\\)",
+            ),
+        ):
+            self.attempt().rescue()
+        self.assert_not_executed(key, "stop-new")
+        self.assertEqual(self.mutations, [])
+        self.assertEqual(self.docker.containers[GAME]["status"], "running")
+
+    def test_p2_2_a_divergence_after_the_start_rescue_claim_holds(self):
+        key = self.partial_up()
+
+        def drift():
+            for m in self.docker.containers[BRAIN]["mounts"]:
+                if m["Type"] == "bind":
+                    m["Source"] = "/home/someone/other/worker.json"
+
+        with (
+            self.on_claim("start-rescue.claim", drift),
+            self.assertRaisesRegex(
+                RuntimeError, "HOLD: the gate failed after the claim .*mount"
+            ),
+        ):
+            self.attempt().rescue()
+        self.assert_not_executed(key, "start-rescue")
+        self.assertEqual(self.starts(RESCUE), 0)
+
+    # -- P2 #3: an up claim authorizes Branch B only with a correlated terminal result -----
+
+    def crashed_up(self):
+        """The up runs, then the adapter dies before any result: claims without results."""
+        bundle, digest = self.q_bundled()[0]
+
+        def crash(argv):
+            self.run_up(argv)
+            raise KeyboardInterrupt("power loss during the up")
+
+        handoff.execute.side_effect = crash
+        with self.assertRaises(KeyboardInterrupt):
+            self.new().exec_step(bundle, digest)
+        handoff.execute.side_effect = self.run_up
+        claims = self.project / handoff.CLAIMS
+        self.key = next(claims.glob("*.quiescent-stop-game.claim")).name.split(".")[0]
+        return self.key, sorted(
+            [*claims.glob("*.quiescent-up.claim"), *claims.glob("*.activate.claim")]
+        )
+
+    def test_p2_3_an_up_claim_without_a_result_holds_with_no_mutation(self):
+        key, ups = self.crashed_up()
+        self.assertEqual(len(ups), 2)
+        self.assertFalse(any(u.with_suffix(".result").exists() for u in ups))
+        self.assertFalse(
+            self.lock_is_busy(self.attempt_dir(key) / ret.LOCK)
+        )  # free lock
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "HOLD: .*no correlated terminal result \\(no result\\).*out of scope",
+        ):
+            self.attempt().rescue()
+        with self.assertRaisesRegex(RuntimeError, "start-managed is closed"):
+            self.attempt().start_managed()
+        self.assertEqual(self.mutations, [])
+        self.assertEqual(
+            sorted(p.name for p in self.attempt_dir(key).iterdir()),
+            [ret.ABANDONED, ret.LOCK],
+        )
+
+    def test_p2_3_uncorrelated_or_malformed_results_hold_and_a_correlated_one_passes(
+        self,
+    ):
+        key = self.partial_up()  # the up ended: exit 1, its exec receipt written
+        claims = self.project / handoff.CLAIMS
+        results = sorted(
+            p.with_suffix(".result")
+            for name in ("*.quiescent-up.claim", "*.activate.claim")
+            for p in claims.glob(name)
+        )
+        saved = {path: path.read_bytes() for path in results}
+        real = json.loads(saved[results[0]])
+        stop = json.loads((claims / f"{key}.quiescent-stop-game.result").read_text())
+        cases = (
+            ("empty", b"{}\n", "not the adapter's"),
+            ("not json", b"done\n", "Expecting value|no correlated"),
+            (
+                "executed false",
+                b'{"executed": false, "reason": "x"}\n',
+                "not the adapter's",
+            ),
+            (
+                "self-declared",
+                json.dumps({**real, "terminated": True}).encode(),
+                "not the adapter's",
+            ),
+            (
+                "boolean exit",
+                json.dumps({**real, "exit_code": False}).encode(),
+                "not the adapter's",
+            ),
+            ("another step", json.dumps(stop).encode(), "another step"),
+            (
+                "wrong sha",
+                json.dumps({**real, "sha256": "0" * 64}).encode(),
+                "absent, tampered",
+            ),
+            (
+                "wrong exit",
+                json.dumps({**real, "exit_code": 0}).encode(),
+                "not this claim's run",
+            ),
+        )
+        for name, body, problem in cases:
+            with self.subTest(name):
+                for path in results:
+                    path.write_bytes(body)
+                with self.assertRaisesRegex(
+                    RuntimeError, f"HOLD: .*no correlated terminal result .*({problem})"
+                ):
+                    self.attempt().rescue()
+        self.assertEqual(self.mutations, [])
+        for path, raw in saved.items():
+            path.write_bytes(raw)
+        done = (
+            self.attempt().rescue()
+        )  # the correlated terminal result: B, with its gates
+        self.assertEqual(done["branch"], "B")
+        claim = json.loads((self.attempt_dir(key) / "start-rescue.claim").read_text())
+        gate = json.loads(Path(claim["gate"]["path"]).read_text())["gate"]
+        self.assertEqual({u["exit_code"] for u in gate["up_claims"]}, {1})
+        self.assertEqual(self.starts(RESCUE), 1)
 
 
 for _name in [*vars(base.HandoffTests), *vars(base.QuiescentTests)]:

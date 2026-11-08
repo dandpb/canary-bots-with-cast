@@ -591,14 +591,30 @@ pelo sha256 antes de executar qualquer linha dela.
   imagem, config, `StartedAt`, `RestartCount`), exited 0 e restart=no; resgate e candidato
   parados; nenhum container novo; sessões, transações, integridade, DB, web, rede e
   volumes. Um único `docker start <ID completo>` por tentativa.
-- Ramo B, `rescue`, depois de um up tentado ou parcial: não presume que `eaae6fe2…`
-  exista. Os containers novos são identificados pelo ID completo, pelo projeto, serviço,
-  imagem e labels de dono do Compose (working dir, arquivos de config, env file, one-off) e
-  criados depois do stop. Só esses IDs param, uma vez. Depois, todos os games parados com
-  restart=no, sem sessões nem transações, e só então um único start do resgate
-  `64385641…`, com imagem, config (`626ceb49…`) e mounts conferidos.
+- Ramo B, `rescue`, só depois de um up que TERMINOU: cada claim de up precisa do
+  resultado terminal do adaptador correlacionado a ele (`{receipt, sha256, exit_code}`
+  apontando para o recibo `exec-step` selado do `quiescent-up` desta tentativa, que rodou o
+  argv selado, cita esse claim e tem esse exit code). Claim sem resultado, resultado
+  malformado ou de outro passo, `executed: false`, campo autodeclarado ou lock livre não
+  provam término: HOLD, sem mutação. Reconciliar um up incerto fica fora deste escopo.
+- O Ramo B não presume que `eaae6fe2…` exista. Os containers novos são identificados pelo
+  ID completo, pelo projeto, serviço, imagem e labels de dono do Compose (working dir,
+  arquivos de config, env file, one-off) e criados depois do stop. Antes de adotar ou parar
+  qualquer ID, cada um tem de ser igual ao render revisado do seu serviço (o render fixado
+  pelo sha privado e pelo sanitizado): valores de env (sha256 por chave, privado: o env da
+  imagem sob o do render, nada além), todos os mounts (bind no caminho do host pelo
+  `desktop_form`, volume nomeado do render, mesmo modo), restart, rede, portas,
+  entrypoint/comando, imagem e o label `config-hash` igual ao `config --hash` do Compose,
+  com o argv do render fixado (só leitura). Só esses IDs param, uma vez. Depois, todos os games parados com restart=no,
+  sem sessões nem transações, e só então um único start do resgate `64385641…`, com
+  imagem, config (`626ceb49…`) e mounts conferidos. Do env só ficam hashes e booleanos.
+- Toda mutação: o gate completo do passo (no máximo 30 s até o claim), o claim, e de novo
+  as ligações e o MESMO gate completo (sessões e transações do DB, integridade, recursos,
+  identidades, projeção), igual ao primeiro, e o comando em até 30 s desse segundo gate.
+  Falha depois do claim deixa o claim consumido com `executed: false`: HOLD.
 - Limites: cada probe tem 10 s; `docker stop -t 180` tem 200 s; `docker start` tem 60 s;
-  o health tem até 600 s (o `start_period` do game), consultado a cada 10 s. O smoke exige
+  o health tem até 600 s (o `start_period` do game; constante única `HEALTH_DEADLINE`,
+  ainda não aprovada), consultado a cada 10 s. O smoke exige
   17171-17173 abertas em loopback e `login.php` com `playersonline`. Um timeout é HOLD,
   sem retry. Um claim consumido é HOLD e nunca se repete.
 
