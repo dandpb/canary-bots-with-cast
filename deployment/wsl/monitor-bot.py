@@ -74,6 +74,18 @@ def assess(rows):
               and r["timestamp"] >= current["timestamp"] - 360]
     if len(window) < 2 or current["timestamp"] - window[0]["timestamp"] < 300:
         return "observing"
+    retreat_rows = [row for row in window if row.get("running") and row.get("objective") == "retreat"]
+    if (current.get("running") and current.get("objective") == "retreat"
+            and len(retreat_rows) >= len(window) * 0.75
+            and all(row.get("worker_alive") and row.get("observation_age_seconds") is not None
+                    and row["observation_age_seconds"] <= 10 for row in window)
+            and all(b["timestamp"] - a["timestamp"] <= 90 for a, b in zip(window, window[1:]))
+            and all(b["timestamp"] - a["timestamp"] <= 90 for a, b in zip(retreat_rows, retreat_rows[1:]))):
+        positions = [row.get("position") for row in window]
+        if all(isinstance(pos, (list, tuple)) and len(pos) == 3 for pos in positions):
+            origin = positions[0]
+            if all(pos[2] == origin[2] and max(abs(pos[0] - origin[0]), abs(pos[1] - origin[1])) <= 3 for pos in positions):
+                return "suspected_retreat_navigation_stall_5_minutes"
     progress = ("position", "objective", "script", "waypoint", "objective_defeats", "native_kills", "xp", "level")
     if any(any(row.get(k) != current.get(k) for k in progress) for row in window):
         return "progress_observed"

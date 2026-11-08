@@ -48,6 +48,37 @@ A limpeza por inatividade e a cobrança automática de aluguel ficam desativadas
 neste ambiente local. Os seeds têm datas antigas; os padrões de produção
 retomariam as casas e transfeririam a decoração antes da ativação dos bots.
 
+## Identidade do build nativo
+
+O build de release usa `Dockerfile.release`; o Dockerfile legado e o Compose
+fixado de core-qa permanecem inalterados para preservar seus recibos.
+O build de release exige um clone independente nativo do Linux, completo, limpo e
+com commit: não use um checkout Windows com conversão CRLF, linked worktree ou
+clone com `objects/info/alternates`. Execute o build nesse clone, com
+`SOURCE_REVISION` igual ao HEAD e
+`BUILD_GIT_DIRECTORY` apontando para seu diretório Git absoluto:
+
+```bash
+export SOURCE_REVISION="$(git rev-parse HEAD)"
+export BUILD_GIT_DIRECTORY="$(git rev-parse --absolute-git-dir)"
+python3 verify-build-source.py --source "$(git rev-parse --show-toplevel)" --revision "$SOURCE_REVISION"
+docker compose build game
+```
+
+No comando Docker direto, use `-f deployment/wsl/Dockerfile.release` e
+`--build-context gitmeta="$BUILD_GIT_DIRECTORY"`. O contexto normal continua
+excluindo `.git`; o contexto nomeado fornece os metadados somente durante o
+`RUN` de compilação, em montagem somente leitura. Nenhum `.git` é copiado para
+as imagens. O CMake identifica o mesmo commit e estado limpo para executável e
+biblioteca. Os bytes de cada arquivo são conferidos contra os objetos do commit,
+mesmo quando flags do índice escondem uma alteração. Revisão divergente, árvore alterada ou metadados ausentes interrompem
+o build em vez de gerar um binário com identidade `unknown`.
+
+Uma cópia de implantação sem `.git` não é fonte de build: construa as imagens
+num checkout limpo separado e atualize o runtime existente com as imagens
+verificadas, preservando seus arquivos privados e volumes. A label OCI continua
+sendo metadado da imagem e não substitui a identidade nativa verificada.
+
 ## Gateway LiteLLM no mesmo projeto
 
 Os serviços opcionais `litellm`, `litellm-db` e `litellm-redis` pertencem ao projeto

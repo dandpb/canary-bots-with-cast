@@ -430,6 +430,7 @@ compile_commands.json
 !/tools/bot_brain/test_navigation_objective.py
 !/tools/bot_brain/test_telemetry_delivery.py
 !/tools/bot_brain/README.route-direct.md
+!/tools/bot_brain/test_floor_guard.py
 !/tools/bot_brain/test_online_time.cpp
 !/tools/bot_population_generator/
 /tools/bot_population_generator/__pycache__/

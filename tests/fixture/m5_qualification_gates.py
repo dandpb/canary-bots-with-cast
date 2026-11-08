@@ -216,6 +216,30 @@ def in_horizon(value, seconds):
     )
 
 
+def terminal_stop(stops):
+    """Accept one legacy terminal or the current matching finalize/seal pair."""
+    if (
+        len(stops) == 1
+        and stops[0].get("reason") != "native_finalizing"
+        and ("after_flush" not in stops[0] or stops[0]["after_flush"] is True)
+    ):
+        return stops[0]
+    if len(stops) == 2:
+        preparing, sealed = stops
+        if (
+            preparing.get("reason") == "native_finalizing"
+            and preparing.get("after_flush") is not True
+            and sealed.get("after_flush") is True
+            and sealed.get("reason") != "native_finalizing"
+            and all(
+                preparing.get(field) == sealed.get(field)
+                for field in ("elapsed_seconds", "observed_seconds")
+            )
+        ):
+            return sealed
+    return {}
+
+
 def qualify_run(
     *,
     mode,
@@ -244,7 +268,7 @@ def qualify_run(
     first = samples[0] if samples else None
     last = samples[-1] if samples else None
     span = (last["t_ms"] - first["t_ms"]) / 1000 if len(samples) >= 2 else None
-    terminal = stops[0] if len(stops) == 1 else {}
+    terminal = terminal_stop(stops)
     final_xp = last["data"]["bot"].get("xp") if last else None
     first_xp = first["data"]["bot"].get("xp") if first else None
     observed_xp_delta = (
@@ -255,7 +279,7 @@ def qualify_run(
     checks = {
         "completed": run.get("status") == "completed"
         and run.get("incomplete") is False,
-        "supervisor_completed": len(stops) == 1
+        "supervisor_completed": bool(terminal)
         and terminal.get("reason") == "completed",
         "recorded_horizon": in_horizon(span, seconds),
         "observed_horizon": in_horizon(terminal.get("observed_seconds"), seconds),
