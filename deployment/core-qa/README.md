@@ -385,9 +385,10 @@ e sha256):
    container ou volume `brain`; tags `game`/`web` exatas; identidades, mounts e
    recorte exato; resgate e candidato parados; binds equivalentes aos caminhos do host.
 2. `pre-stop`: gate vivo de novo (running/healthy e recorte exato), resgate e
-   candidato, e a exclusão humana com evidência: o roster nativo do jogo
-   (`players_online`, só a conta de bots 65000), personagens humanos de QA offline,
-   zero sessões TCP estabelecidas nas portas 17171/17172 (lidas em `/proc/net/tcp*`
+   candidato, e a exclusão humana com evidência: cada GUID online em `players_online`
+   precisa estar num roster nativo novo (GUID → bot/humano) do container atual do
+   `game` (`--native-roster` e `--native-roster-sha256`; a conta 65000 não prova que
+   é bot), personagens humanos de QA offline, zero sessões TCP estabelecidas nas portas 17171/17172 (lidas em `/proc/net/tcp*`
    dentro do `game`) e o aviso de janela do coordenador (`--window-notice` e
    `--window-notice-sha256`), além da atestação (`--attested-by`, `--attested-at`).
    Sela `docker stop -t 180 <ID do game>`.
@@ -409,8 +410,21 @@ e sha256):
 Fallbacks fora do Compose: `qa-game-candidate-3431b404` (`4188037d…b605`) e
 `qa-old-rescue-20261107` (`64385641…d608`). Os dois estão `exited`, código 0,
 `restart=no`, com um Health "unhealthy" velho. Parados, esse Health é ignorado e
-vale exited + 0 + `restart=no` + ID, config e dono fixados. Qualquer start futuro só
-conta depois de um health check novo.
+vale exited + 0 + `restart=no` + ID e dono fixados. Só o resgate tem hash de config
+no manifesto (`rescue_container_config`) e é conferido por ele; o candidato **não
+tem** hash de config no manifesto e é ligado por ID, nome, imagem, `CreatedAt`,
+mounts, `restart` e dono. Qualquer start futuro só conta depois de um health check
+novo.
+
+Roster nativo (`--native-roster`): um JSON coletado de forma independente, sem
+instrumentação nem hook no servidor de QA, fixado pelo sha256. Campos:
+`game_container_id` (ID completo do `game` vivo), `collected_at_utc`, `source` (texto
+livre: qual fonte nativa), `online` (lista de `{guid, type: "bot"|"human"}`) e
+`empty_explanation` (obrigatório quando `online` é vazio). O adaptador recusa:
+hash diferente, outro container, evidência com mais de 15 min ou com data no
+futuro, GUID online no SQL fora do conjunto nativo, qualquer `human`, evidência
+ausente e `players_online` vazio sem um conjunto nativo vazio com
+`empty_explanation`. O `exec-step` refaz essa checagem no instante do stop.
 
 Binds no Docker Desktop (WSL): o inspect mostra a origem traduzida. O adaptador
 aceita, para o caminho do host `H`, só `H`, `/run/desktop/mnt/host/wsl/Ubuntu` + `H`

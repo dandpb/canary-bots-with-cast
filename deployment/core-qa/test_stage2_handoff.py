@@ -256,6 +256,7 @@ class HandoffTests(unittest.TestCase):
         self.clock = Clock()
         self.docker = None
         self.manifest_path = self.write_manifest()
+        self.write_native()
         self.stack = contextlib.ExitStack()
         self.addCleanup(self.stack.close)
         for mock in (
@@ -380,13 +381,34 @@ class HandoffTests(unittest.TestCase):
         receipts = {key: self.receipts[key] for key in handoff.RECEIPT_KEYS}
         return self.new().post_build(receipts, self.render_path)
 
-    def attest(self, h, path, notice_sha=None):
+    def write_native(self, online=None, **fields):
+        """The native GUID -> bot/human roster a collector would write (contract of the adapter)."""
+        roster = {
+            "game_container_id": self.docker.containers[GAME]["id"],
+            "collected_at_utc": self.clock.now.isoformat(),
+            "source": "fake native roster for the offline tests",
+            "online": [
+                {"guid": 100, "type": "bot"},
+                {"guid": 101, "type": "bot"},
+            ]
+            if online is None
+            else online,
+            **fields,
+        }
+        self.native = self.root / "native-roster.json"
+        self.native.write_text(json.dumps(roster))
+        return self.native
+
+    def attest(self, h, path, notice_sha=None, native=None, native_sha=None):
+        native = native or self.native
         return h.pre_stop(
             path,
             "Daniel",
             self.clock.now.isoformat(),
             self.notice,
             notice_sha or sha(self.notice.read_bytes()),
+            native,
+            native_sha or (sha(native.read_bytes()) if native.is_file() else None),
         )
 
     def pre_stop(self):
@@ -919,6 +941,138 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "window notice"):
             self.attest(self.new(), path, "0" * 64)
         self.assertEqual(list((self.root / "evidence").glob("pre-stop-*.json")), [])
+
+    def test_native_roster_backs_every_online_guid(self):
+        """Account 65000 is no proof of a bot: each players_online GUID needs fresh native evidence."""
+        path, _ = self.post_build()
+        stop, _ = self.attest(self.new(), path)
+        people = self.receipt(stop)["human_exclusion"]
+        native = people["native_roster"]
+        self.assertEqual(native["sha256"], sha(self.native.read_bytes()))
+        self.assertEqual(
+            native["game_container_id"], self.docker.containers[GAME]["id"]
+        )
+        self.assertEqual(native["bots"], [100, 101])
+        self.assertTrue(people["roster"]["bot_only"])
+        # an empty players_online passes only with a native empty set and its explanation
+        self.docker.roster = []
+        self.write_native([], empty_explanation="no bots loaded; no player online")
+        empty, _ = self.attest(self.new(), path)
+        self.assertEqual(self.receipt(empty)["human_exclusion"]["roster"]["online"], 0)
+
+    def test_native_roster_refusals(self):
+        path, _ = self.post_build()
+        game = self.docker.containers[GAME]["id"]
+        now = self.clock.now
+
+        def hash_mismatch():
+            native = self.write_native()
+            return {"native": native, "native_sha": "0" * 64}
+
+        def missing():
+            self.native.unlink()
+            return {}
+
+        def other_container():
+            self.write_native(game_container_id=CANDIDATE)
+            return {}
+
+        def short_container_id():
+            self.write_native(game_container_id=game[:12])
+            return {}
+
+        def stale():
+            self.write_native(
+                collected_at_utc=(now - timedelta(minutes=16)).isoformat()
+            )
+            return {}
+
+        def future():
+            self.write_native(collected_at_utc=(now + timedelta(minutes=5)).isoformat())
+            return {}
+
+        def unknown_guid():
+            self.docker.roster.append("online\t42\t65000")
+            return {}
+
+        def native_human():
+            self.write_native(
+                [{"guid": 100, "type": "bot"}, {"guid": 7, "type": "human"}]
+            )
+            return {}
+
+        def empty_sql_native_not_empty():
+            self.docker.roster = []
+            return {}
+
+        def empty_sql_without_explanation():
+            self.docker.roster = []
+            self.write_native([])
+            return {}
+
+        def not_the_contract():
+            self.write_native([{"guid": "100", "type": "bot"}])
+            return {}
+
+        cases = {
+            hash_mismatch: "native roster is not the given sha256",
+            missing: "needs native roster evidence",
+            other_container: "not collected from the current game container",
+            short_container_id: "not collected from the current game container",
+            stale: "stale or dated in the future",
+            future: "stale or dated in the future",
+            unknown_guid: "not in the native roster",
+            native_human: "human\\(s\\) online; bot_only is required",
+            empty_sql_native_not_empty: "players_online is empty without a native empty roster",
+            empty_sql_without_explanation: "players_online is empty without a native empty roster",
+            not_the_contract: "does not follow the contract",
+        }
+        for change, message in cases.items():
+            with self.subTest(change.__name__):
+                saved = list(self.docker.roster)
+                self.write_native()
+                self.clock.now = now
+                given = change()
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.attest(self.new(), path, **given)
+                self.docker.roster = saved
+        self.assertEqual(list((self.root / "evidence").glob("pre-stop-*.json")), [])
+        with self.assertRaisesRegex(RuntimeError, "needs native roster evidence"):
+            self.new().pre_stop(
+                path,
+                "Daniel",
+                now.isoformat(),
+                self.notice,
+                sha(self.notice.read_bytes()),
+            )
+
+    def test_native_roster_is_refreshed_at_the_stop(self):
+        def stale():
+            self.clock.now += timedelta(minutes=16)
+
+        def unknown_guid():
+            self.docker.roster.append("online\t42\t65000")
+
+        def file_changed():
+            self.write_native([{"guid": 100, "type": "bot"}])
+
+        def emptied():
+            self.docker.roster = []
+
+        cases = {
+            stale: "stale",
+            unknown_guid: "not in the native roster",
+            file_changed: "native roster is not the given sha256",
+            emptied: "players_online is empty",
+        }
+        for change, message in cases.items():
+            with self.subTest(change.__name__):
+                self.setUp()
+                path, digest = self.pre_stop()
+                change()
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.new().exec_step(path, digest)
+                self.assertEqual(self.docker.runs, [])
 
     def test_p2_4_human_exclusion_is_refreshed_at_the_stop(self):
         def qa_human():

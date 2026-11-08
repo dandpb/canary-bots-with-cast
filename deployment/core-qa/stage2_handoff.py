@@ -42,7 +42,8 @@ Who executes what:
 
 The two fallbacks outside Compose (`qa-game-candidate-3431b404`, `qa-old-rescue-20261107`) are
 exited with a stale "unhealthy" Health. While stopped that Health is ignored; they must be exited
-with code 0, restart=no and match the pinned ID, config and ownership. A started container never
+with code 0, restart=no and match the pinned ID and ownership; the rescue also its pinned config
+hash (the candidate has NO config hash in the manifest). A started container never
 counts on its old Health.
 
 Phases (`<phase> --help` for the inputs):
@@ -50,8 +51,9 @@ Phases (`<phase> --help` for the inputs):
                    (manifest and live); .env raw bytes; no brain container or volume; identities and
                    the exact DB slice; rescue and candidate stopped; binds equal to the host paths
   pre-stop         fresh live gate (running/healthy + exact slice), rescue and candidate, human
-                   exclusion (game roster, QA humans offline, no TCP sessions on the game ports, the
-                   coordinator's window notice by sha256); seals `docker stop -t 180 <game ID>`
+                   exclusion (players_online against a fresh native GUID->bot/human roster of the
+                   current game container, QA humans offline, no TCP sessions on the game ports,
+                   the coordinator's window notice by sha256); seals `docker stop -t 180 <game ID>`
   post-stop        no running/healthy gate for the game only: same ID, CreatedAt, image and config,
                    exited with code 0. DB and web stay running/healthy EXACTLY; network, volumes and
                    the SAME exact slice. Drift is HOLD
@@ -131,7 +133,14 @@ WSL_DISTRO = "Ubuntu"
 # Human exclusion. players_online is the game's own roster table: bots (account 65000) are kept
 # there by bot_manager.lua, real players by a 10-minute sweep (Game::updatePlayersOnline), so the
 # live TCP sessions on the login and game ports are checked too, inside the game container.
-BOT_ACCOUNT = 65000
+BOT_ACCOUNT = 65000  # where bots live; NOT proof that a GUID is a bot
+# Native roster: GUID -> bot/human from the game's own state, collected independently (no hook
+# in the QA server) and pinned by sha256. Contract of the JSON file:
+#   {"game_container_id": <full ID of the live game>, "collected_at_utc": <ISO 8601, UTC>,
+#    "source": <free text: which native source>, "online": [{"guid": <int>, "type": "bot"|"human"}],
+#    "empty_explanation": <text, required when "online" is empty>}
+NATIVE_ROSTER_MAX_AGE = STEP_MAX_AGE
+NATIVE_TYPES = {"bot", "human"}
 SESSION_PORTS = (17171, 17172)  # GAME_LOGIN_PORT, GAME_PROTOCOL_PORT
 ROSTER_SQL = (
     "SELECT 'online', o.player_id, COALESCE(p.account_id, -1) FROM players_online o "
@@ -782,7 +791,7 @@ class Handoff:
     def stopped_outside_compose(
         self, pinned: tuple[str, dict], config_sha256: str | None = None
     ) -> dict[str, Any]:
-        """A fallback outside Compose while stopped: exited 0, restart=no, pinned ID, config and owner.
+        """A fallback outside Compose while stopped: exited 0, restart=no, pinned ID, owner (and config if pinned).
 
         Its Health field is stale while it is exited ("unhealthy" in the manifest) and is ignored
         here; a start only counts after `fresh_health`.
@@ -906,8 +915,76 @@ class Handoff:
             )
         return count
 
-    def human_exclusion(self, notice: Path, notice_sha256: str) -> dict[str, Any]:
-        """Evidence that no human plays: roster, QA humans offline, no sessions, the window notice."""
+    def native_roster(
+        self, path: Path | None, expected: str | None, game_id: str
+    ) -> dict[str, Any]:
+        """The native GUID -> bot/human evidence: pinned by sha256, of this game container, fresh."""
+        raw = read(Path(path)) if path is not None else b""
+        if path is None or not raw or not expected:
+            raise RuntimeError(
+                "the stop needs native roster evidence (--native-roster and its sha256); refused"
+            )
+        if not HEX64.fullmatch(expected) or sha256(raw) != expected:
+            raise RuntimeError("the native roster is not the given sha256; refused")
+        self.outside_source(Path(path))
+        try:
+            roster = json.loads(raw)
+            when = datetime.fromisoformat(roster["collected_at_utc"])
+            online = roster["online"]
+        except (ValueError, KeyError, TypeError):
+            raise RuntimeError(
+                "the native roster does not follow the contract; refused"
+            ) from None
+        if (
+            not isinstance(online, list)
+            or not isinstance(roster.get("source"), str)
+            or not roster["source"].strip()
+            or when.utcoffset() != timedelta(0)
+            or any(
+                not isinstance(item, dict)
+                or set(item) != {"guid", "type"}
+                or type(item["guid"]) is not int
+                or item["type"] not in NATIVE_TYPES
+                for item in online
+            )
+            or len({item["guid"] for item in online}) != len(online)
+        ):
+            raise RuntimeError(
+                "the native roster does not follow the contract; refused"
+            )
+        if roster.get("game_container_id") != game_id:
+            raise RuntimeError(
+                "the native roster was not collected from the current game container; refused"
+            )
+        age = utcnow() - when
+        if age < timedelta(0) or age > NATIVE_ROSTER_MAX_AGE:
+            raise RuntimeError(
+                "the native roster is stale or dated in the future; refused"
+            )
+        humans = [item["guid"] for item in online if item["type"] == "human"]
+        if humans:
+            raise RuntimeError(
+                f"the native roster shows {len(humans)} human(s) online; bot_only is required; refused"
+            )
+        return {
+            "path": str(Path(path).resolve()),
+            "sha256": expected,
+            "game_container_id": game_id,
+            "collected_at_utc": roster["collected_at_utc"],
+            "source": roster["source"],
+            "bots": sorted(item["guid"] for item in online),
+            "empty_explanation": roster.get("empty_explanation"),
+        }
+
+    def human_exclusion(
+        self,
+        notice: Path,
+        notice_sha256: str,
+        native: Path | None = None,
+        native_sha256: str | None = None,
+        game_id: str = "",
+    ) -> dict[str, Any]:
+        """Evidence that no human plays: roster vs native roster, QA humans offline, no sessions, notice."""
         raw = read(Path(notice))
         if (
             not raw
@@ -941,6 +1018,23 @@ class Handoff:
                 f"{len(humans)} non-bot character(s) are online in the game roster "
                 "(players_online); every QA human must be offline; refused"
             )
+        evidence = self.native_roster(native, native_sha256, game_id)
+        bots = set(evidence["bots"])
+        unknown = [player for player, _account in online if player not in bots]
+        if unknown:
+            raise RuntimeError(
+                f"{len(unknown)} online GUID(s) in players_online are not in the native roster "
+                "(account 65000 is no proof of a bot); refused"
+            )
+        if not online and (
+            bots
+            or not isinstance(evidence["empty_explanation"], str)
+            or not evidence["empty_explanation"].strip()
+        ):
+            raise RuntimeError(
+                "players_online is empty without a native empty roster and its "
+                "empty_explanation; refused"
+            )
         sessions = self.game_connections()
         if sessions:
             raise RuntimeError(
@@ -958,6 +1052,7 @@ class Handoff:
                 "bot_only": True,
                 "rows_sha256": sha256(json.dumps(online).encode()),
             },
+            "native_roster": evidence,
             "qa_humans_online": 0,
             "game_port_sessions": 0,
         }
@@ -1076,7 +1171,13 @@ class Handoff:
             raise RuntimeError("the sanitized render changed since post-build; refused")
         return dict(json.loads(raw))
 
-    def stop_gate(self, notice: Path, notice_sha256: str) -> dict[str, Any]:
+    def stop_gate(
+        self,
+        notice: Path,
+        notice_sha256: str,
+        native: Path | None = None,
+        native_sha256: str | None = None,
+    ) -> dict[str, Any]:
         """Everything the stop needs, refreshed: live gate, game, fallbacks, binds, human exclusion."""
         stage1 = self.live_gate()
         game = self.container(self.game["id"])
@@ -1091,7 +1192,9 @@ class Handoff:
         self.assert_stage1_pins()
         fallbacks = self.fallbacks()
         binds = self.bind_equivalence(self.pinned_render())
-        people = self.human_exclusion(notice, notice_sha256)
+        people = self.human_exclusion(
+            notice, notice_sha256, native, native_sha256, game["id"]
+        )
         return {
             "stage1": stage1,
             "game": game,
@@ -1331,6 +1434,8 @@ class Handoff:
         attested_at: str,
         notice: Path,
         notice_sha256: str,
+        native: Path | None = None,
+        native_sha256: str | None = None,
     ) -> tuple[Path, str]:
         self.follow(previous, ("post-build",))
         try:
@@ -1350,7 +1455,7 @@ class Handoff:
             raise RuntimeError(
                 "the stop needs a fresh human attestation: --attested-by and a UTC --attested-at; refused"
             )
-        gate = self.stop_gate(notice, notice_sha256)
+        gate = self.stop_gate(notice, notice_sha256, native, native_sha256)
         return self.write(
             "pre-stop",
             {
@@ -1603,8 +1708,14 @@ class Handoff:
                 raise RuntimeError(
                     "the stop must target the verified game container ID; refused"
                 )
-            notice = receipt["human_exclusion"]["window_notice"]
-            gate = self.stop_gate(Path(notice["path"]), notice["sha256"])
+            people = receipt["human_exclusion"]
+            notice, native = people["window_notice"], people["native_roster"]
+            gate = self.stop_gate(
+                Path(notice["path"]),
+                notice["sha256"],
+                Path(native["path"]),
+                native["sha256"],
+            )
             if gate["game"] != game:
                 raise RuntimeError(
                     "the game container changed since the pre-stop gate; refused"
@@ -1793,6 +1904,15 @@ def main() -> None:
     pre_stop.add_argument(
         "--window-notice-sha256", required=True, help="sha256 of that file"
     )
+    pre_stop.add_argument(
+        "--native-roster",
+        type=Path,
+        required=True,
+        help="native GUID -> bot/human roster of the live game (JSON, see NATIVE_ROSTER_MAX_AGE)",
+    )
+    pre_stop.add_argument(
+        "--native-roster-sha256", required=True, help="sha256 of that file"
+    )
     for name in (
         "pre-stop",
         "post-stop",
@@ -1833,6 +1953,8 @@ def main() -> None:
             args.attested_at,
             args.window_notice,
             args.window_notice_sha256,
+            args.native_roster,
+            args.native_roster_sha256,
         )
     elif args.phase == "post-stop":
         path, sha = handoff.post_stop(args.previous)
