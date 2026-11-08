@@ -61,6 +61,36 @@ class BuildSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "clean"):
             MODULE.verify(self.source, self.revision)
 
+    def test_assume_unchanged_cannot_hide_modified_source(self):
+        self.git("update-index", "--assume-unchanged", "input.txt")
+        (self.source / "input.txt").write_text("modified\n")
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        with self.assertRaisesRegex(RuntimeError, "byte-exact"):
+            MODULE.verify(self.source, self.revision)
+
+    def test_host_line_normalization_does_not_fake_byte_identity(self):
+        self.git("config", "core.autocrlf", "true")
+        (self.source / "input.txt").write_bytes(b"original\r\n")
+        self.assertEqual(
+            self.git("hash-object", "--path=input.txt", "input.txt").strip(),
+            self.git("rev-parse", "HEAD:input.txt").strip(),
+        )
+        with self.assertRaisesRegex(RuntimeError, "byte-exact|clean"):
+            MODULE.verify(self.source, self.revision)
+
+    def test_linked_worktree_is_rejected_with_standalone_guidance(self):
+        linked = self.root / "linked"
+        self.git("worktree", "add", "--detach", str(linked), "HEAD")
+        with self.assertRaisesRegex(RuntimeError, "standalone"):
+            MODULE.verify(linked, self.revision)
+
+    def test_alternates_are_rejected_even_if_current_objects_are_local(self):
+        alternate = self.root / "alternate"
+        alternate.mkdir()
+        (self.source / ".git/objects/info/alternates").write_text(str(alternate) + "\n")
+        with self.assertRaisesRegex(RuntimeError, "standalone"):
+            MODULE.verify(self.source, self.revision)
+
     def test_unknown_label_rejected(self):
         with self.assertRaisesRegex(RuntimeError, "40"):
             MODULE.verify(self.source, "unknown")
