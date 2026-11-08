@@ -30,6 +30,7 @@ CPP = r"""
 #include <string_view>
 #include <thread>
 #include <vector>
+#include <mysql/errmsg.h>
 #include "game/scheduling/serial_save_queue.hpp"
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>
@@ -39,14 +40,33 @@ struct Logger {
  template<class... T> void info(T&&...) {}
 };
 Logger& g_logger() { static Logger logger; return logger; }
+namespace test_clock { template<class R,class P> void sleep_for(std::chrono::duration<R,P>) {} }
 struct DatabaseException:std::runtime_error { using runtime_error::runtime_error; };
 struct Model {
  int committed=0, staged=0, attempts=0, firstWrites=0;
  unsigned error=0;
- enum Fault { Once, Always, Syntax, Connection, Begin, LostCommit, None, Missing } fault=Once;
+ unsigned transports=0,deadlocks=0; unsigned long connection=1;
+ enum Fault { Once, Always, Syntax, Connection, Begin, LostCommit, None, Missing,
+              MixedStatement, PriorRecovery, TransparentRecovery } fault=Once;
 } state;
 int mysql_query(Model*, const char* query) {
  if (std::string(query)=="increment") { ++state.staged; ++state.firstWrites; }
+ if(std::string(query)=="recover") {
+  if(state.fault==Model::PriorRecovery && state.transports++==0) {
+   state.committed=state.staged;state.error=2013;return 1;
+  }
+  if(state.fault==Model::TransparentRecovery && state.transports++==0) {
+   state.committed=state.staged;++state.connection;
+  }
+ }
+ if(std::string(query)=="failure" && state.fault==Model::MixedStatement && state.transports++==0) {
+  state.committed=state.staged;state.error=2013;return 1;
+ }
+ if(std::string(query)=="failure" &&
+    (state.fault==Model::MixedStatement || state.fault==Model::PriorRecovery || state.fault==Model::TransparentRecovery)
+    && state.deadlocks++==0) {
+  state.error=1213;state.staged=state.committed;return 1;
+ }
  if (std::string(query)=="failure" &&
      (state.fault==Model::Always || state.fault==Model::Syntax || state.fault==Model::Connection ||
       (state.fault==Model::Once && state.attempts==1))) {
@@ -57,6 +77,7 @@ int mysql_query(Model*, const char* query) {
  state.error=0; return 0;
 }
 unsigned mysql_errno(Model*) { return state.error; }
+unsigned long mysql_thread_id(Model*) { return state.connection; }
 const char* mysql_error(Model*) { return "injected database error"; }
 struct Row { template<class T> T getNumber(const char*) { return 1; } };
 class Database {
@@ -71,13 +92,18 @@ public:
  std::shared_ptr<Row> storeQuery(std::string_view) {
    return state.fault==Model::Missing?nullptr:std::make_shared<Row>();
  }
+ struct TransactionContext { const Database* owner; uint64_t connectionId; uint64_t recoveryEpoch; };
+ TransactionContext transactionContext() const;
+ bool canRetryDeadlock(const TransactionContext&) const;
  unsigned getLastExecuteError() const;
 private:
- static bool isRecoverableError(unsigned) { return false; }
+ static bool isRecoverableError(unsigned);
  Model* handle=&state;
  static thread_local std::pair<const Database*,unsigned> lastExecuteError_;
+ static thread_local uint64_t recoveryEpoch_;
 };
 thread_local std::pair<const Database*,unsigned> Database::lastExecuteError_{nullptr,0};
+thread_local uint64_t Database::recoveryEpoch_=0;
 struct DBTransaction {
  template<class F> static bool executeWithinTransaction(const F& callback) {
    ++state.attempts; state.staged=state.committed;
@@ -129,17 +155,36 @@ int main() {
  state={};state.fault=Model::Missing;
  assert(!IOLoginData::persistPlayerSave(snapshot));
  assert(state.attempts==1 && state.committed==0);
+ for(auto mode:{Model::MixedStatement,Model::PriorRecovery,Model::TransparentRecovery}) {
+  state={};state.fault=mode;
+  auto mixed=snapshot;
+  if(mode!=Model::MixedStatement) mixed.statements={"increment","recover","failure","finish"};
+  assert(!IOLoginData::persistPlayerSave(mixed));
+  assert(state.attempts==1 && state.committed==1);
+ }
+ state={};state.fault=Model::Once;
+ assert(IOLoginData::persistPlayerSave(snapshot));
+ assert(state.attempts==2 && state.committed==1);
 }
 """
 
 
 def main():
-    source = CPP + function("src/database/database.cpp", "bool Database::retryQuery(")
+    source = CPP + function(
+        "src/database/database.cpp", "bool Database::isRecoverableError("
+    )
+    source += function("src/database/database.cpp", "bool Database::retryQuery(")
     source += function(
         "src/database/database.cpp", "unsigned int Database::getLastExecuteError("
     )
+    source += function(
+        "src/database/database.cpp",
+        "Database::TransactionContext Database::transactionContext(",
+    )
+    source += function("src/database/database.cpp", "bool Database::canRetryDeadlock(")
     source += function("src/io/iologindata.cpp", "bool IOLoginData::persistPlayerSave(")
     source += MAIN
+    source = source.replace("std::this_thread::sleep_for", "test_clock::sleep_for")
     with tempfile.TemporaryDirectory(prefix="checkpoint-retry-") as directory:
         path = Path(directory)
         (path / "test.cpp").write_text(source)

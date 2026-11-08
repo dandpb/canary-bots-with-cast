@@ -308,6 +308,12 @@ reconexão da camada `Database` mantém sua política existente. Se o limite for
 atingido, o save continua pendente; isso não garante durabilidade em uma
 parada com banco indisponível.
 
+O contexto inclui a identidade da conexão e um contador de recuperações da
+thread. Se houver falha de transporte ou troca de conexão durante a tentativa,
+um 1213 posterior não autoriza reiniciar o snapshot. As regressões usam o
+classificador real de erros e cobrem falha mista na mesma instrução, em uma
+instrução anterior e reconexão transparente.
+
 O CTest `checkpoint_deadlock_retry` cobre rollback parcial, limite de tentativas
 e retenção da pendência. O ensaio com quatro conexões reais exige Docker e uma
 imagem local com compilador e dependências de build:

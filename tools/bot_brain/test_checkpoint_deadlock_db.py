@@ -24,6 +24,7 @@ CPP = r"""
 #include <thread>
 #include <vector>
 #include <mysql/mysql.h>
+#include <mysql/errmsg.h>
 #define FMT_HEADER_ONLY
 #include <fmt/format.h>
 struct Logger {
@@ -65,13 +66,18 @@ public:
  bool beginTransaction() { return executeQuery("BEGIN"); }
  bool rollback() { return mysql_rollback(handle)==0; }
  bool commit() { return mysql_commit(handle)==0; }
+ struct TransactionContext { const Database* owner; uint64_t connectionId; uint64_t recoveryEpoch; };
+ TransactionContext transactionContext() const;
+ bool canRetryDeadlock(const TransactionContext&) const;
  unsigned getLastExecuteError() const;
 private:
- static bool isRecoverableError(unsigned) { return false; }
+ static bool isRecoverableError(unsigned);
  MYSQL* handle;
  static thread_local std::pair<const Database*,unsigned> lastExecuteError_;
+ static thread_local uint64_t recoveryEpoch_;
 };
 thread_local std::pair<const Database*,unsigned> Database::lastExecuteError_{nullptr,0};
+thread_local uint64_t Database::recoveryEpoch_=0;
 struct PlayerSaveSnapshot {
  unsigned guid;
  std::vector<std::string> statements;
@@ -123,10 +129,18 @@ def client():
         + ";\n"
     )
     source += function("src/database/database.hpp", "class DBTransaction {") + ";\n"
+    source += function(
+        "src/database/database.cpp", "bool Database::isRecoverableError("
+    )
     source += function("src/database/database.cpp", "bool Database::retryQuery(")
     source += function(
         "src/database/database.cpp", "unsigned int Database::getLastExecuteError("
     )
+    source += function(
+        "src/database/database.cpp",
+        "Database::TransactionContext Database::transactionContext(",
+    )
+    source += function("src/database/database.cpp", "bool Database::canRetryDeadlock(")
     source += function("src/io/iologindata.cpp", "bool IOLoginData::persistPlayerSave(")
     source += MAIN
     includes = Path(os.environ["BOT_TEST_INCLUDES"])

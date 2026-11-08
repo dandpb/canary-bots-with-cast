@@ -210,9 +210,10 @@ PlayerSaveSnapshot IOLoginData::capturePlayerSave(const std::shared_ptr<Player>&
 bool IOLoginData::persistPlayerSave(const PlayerSaveSnapshot& snapshot) {
 	constexpr unsigned int maxAttempts = 5;
 	for (unsigned int attempt = 1; attempt <= maxAttempts; ++attempt) {
+		auto& db = Database::getInstance();
+		const auto connection = db.transactionContext();
 		bool rolledBackDeadlock = false;
 		const bool saved = DBTransaction::executeWithinTransaction([&] {
-			auto& db = Database::getInstance();
 			auto row = db.storeQuery(fmt::format("SELECT `save` FROM `players` WHERE `id`={}", snapshot.guid));
 			if (!row || snapshot.statements.empty()) throw DatabaseException("Checkpoint player is unavailable");
 			const bool full = row->getNumber<uint16_t>("save") != 0;
@@ -221,7 +222,7 @@ bool IOLoginData::persistPlayerSave(const PlayerSaveSnapshot& snapshot) {
 				if (!db.executeQuery(query)) {
 					// InnoDB 1213 rolls back the whole transaction. Capture this
 					// before rollback/result APIs replace the connection diagnostic.
-					rolledBackDeadlock = db.getLastExecuteError() == 1213;
+					rolledBackDeadlock = db.canRetryDeadlock(connection);
 					throw DatabaseException("Checkpoint statement failed");
 				}
 			}

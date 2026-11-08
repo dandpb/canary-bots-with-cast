@@ -21,6 +21,7 @@
 #include <chrono> // dbMonoMs (JITTER FIX 2026-06-10) — explicit, don't rely on PCH
 
 thread_local std::pair<const Database*, unsigned int> Database::lastExecuteError_ {nullptr, 0};
+thread_local uint64_t Database::recoveryEpoch_ = 0;
 
 // PERF_INVESTIGATION_2026-05-24 pre-flight telemetry — log the first N sync
 // DB queries that fire on the dispatcher thread. Goal: identify which Lua /
@@ -290,6 +291,16 @@ unsigned int Database::getLastExecuteError() const {
 	return lastExecuteError_.first == this ? lastExecuteError_.second : 0;
 }
 
+Database::TransactionContext Database::transactionContext() const {
+	return {this, handle ? static_cast<uint64_t>(mysql_thread_id(handle)) : 0, recoveryEpoch_};
+}
+
+bool Database::canRetryDeadlock(const TransactionContext& context) const {
+	return context.owner == this && context.connectionId != 0 && handle
+		&& context.connectionId == static_cast<uint64_t>(mysql_thread_id(handle))
+		&& context.recoveryEpoch == recoveryEpoch_ && getLastExecuteError() == 1213;
+}
+
 bool Database::retryQuery(std::string_view query, int retries) {
 	lastExecuteError_ = {this, 0};
 	while (retries > 0 && mysql_query(handle, query.data()) != 0) {
@@ -300,6 +311,7 @@ bool Database::retryQuery(std::string_view query, int retries) {
 		if (!isRecoverableError(error)) {
 			return false;
 		}
+		++recoveryEpoch_;
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 		retries--;
 	}
@@ -376,6 +388,7 @@ retry:
 		if (!isRecoverableError(mysql_errno(handle))) {
 			return nullptr;
 		}
+		++recoveryEpoch_;
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 		goto retry;
 	}
