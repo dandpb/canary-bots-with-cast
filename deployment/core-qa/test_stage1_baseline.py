@@ -22,6 +22,9 @@ GAME, WEB, DATABASE, BRAIN = gate.GAME, gate.WEB, gate.DATABASE, gate.BRAIN
 GATE_AT = datetime(2026, 11, 7, 8, 0, tzinfo=UTC)  # pre-build gate; the fake rollout recreates game at 09:00Z
 RECORD_AT = datetime(2026, 11, 7, 9, 30, tzinfo=UTC)
 STAGE1_IMAGES = ("canary-core-qa-game:local", "canary-core-qa-web:local", "mariadb:11.4")
+# A filled game_base pin; image-lock.json keeps a placeholder until the host receipt gives the real one.
+FAKE_GAME_BASE = {"ref": "ubuntu:24.04", "repo_digest": "ubuntu@sha256:" + "a" * 64, "platform": "linux/amd64",
+                  "id": "sha256:" + "b" * 64}
 DB_ROWS = ["player\t66100\t65001\tQa Knight\t8\t4\t4200", "player\t66101\t65002\tQa Druid\t8\t2\t4200",
            *(f"item\t{66100 + n % 2}\t{n}\t{100 + n}\t3031\t1" for n in range(10))]
 
@@ -90,6 +93,7 @@ class FakeDocker:
         self.extra = []  # (listing, id, name, project, key)
         self.log = []
         self.fail = None  # a mutating command prefix that fails
+        self.game_base = FAKE_GAME_BASE  # the locked Ubuntu base present locally; None when absent
         if stage2:
             self.stage2()
 
@@ -172,6 +176,11 @@ class FakeDocker:
             return "".join(line + "\n" for line in self.config_ports)
         if args[1:3] == ("image", "ls"):
             return "".join(f"{ref}\n" for ref in self.tags)
+        if args[1:3] == ("image", "inspect") and args[3] == FAKE_GAME_BASE["repo_digest"]:
+            if not self.game_base:
+                raise RuntimeError("read-only command failed: docker image")
+            base = self.game_base
+            return f"{base['id']}\t{base['platform']}\t{json.dumps([base['repo_digest']])}\n"
         if args[1:3] == ("image", "inspect"):
             if fmt == "{{.Id}}":
                 ident = self.tags.get(args[3], args[3])
@@ -407,6 +416,7 @@ class Stage1RecaptureTests(unittest.TestCase):
         self.historical.write_text(json.dumps({"checked_at_utc": "2026-11-06T21:50:27Z", "containers": [
             {"name": item["name"], "id": item["id"][:12], "image": item["image_id"], "created": item["created_at"]}
             for item in self.baseline["containers"]], "network": f"{QA}_default"}))
+        self.enterContext(patch.dict(preflight.IMAGE_LOCK["game_base"], FAKE_GAME_BASE))
         self.played = FakeDocker(self.baseline)  # the QA character played after the first capture
         self.played.rows[0] = self.played.rows[0].replace("\t4200", "\t9100")
 
@@ -597,8 +607,13 @@ class Stage1RecaptureTests(unittest.TestCase):
         changed = FakeDocker(self.baseline)
         changed.containers[WEB].update(id="6" * 64)
         recreated = FakeDocker(self.baseline).game_rollout()
+        absent, mismatched = FakeDocker(self.baseline), FakeDocker(self.baseline)
+        absent.game_base = None  # the build would otherwise pull ubuntu:24.04 implicitly
+        mismatched.game_base = {**FAKE_GAME_BASE, "id": "sha256:" + "c" * 64}
         for name, docker_case, message in (("web", changed, "differs from web-rollout-after.json"),
-                                           ("game", recreated, "before the build")):
+                                           ("game", recreated, "before the build"),
+                                           ("base absent", absent, "game base image is absent"),
+                                           ("base mismatch", mismatched, "game base image differs")):
             with self.subTest(name), self.assertRaisesRegex(RuntimeError, message):
                 self.run_gate(docker_case)
             self.assertEqual(docker_case.log, [])

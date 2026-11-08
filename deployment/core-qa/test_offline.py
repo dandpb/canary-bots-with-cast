@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import runpy
 import shutil
 import subprocess
@@ -17,6 +18,8 @@ from preflight import (
     SHUTDOWN_KEY,
     assert_compose,
     assert_fake_brain,
+    assert_game_base,
+    assert_game_build,
     assert_game_config,
     assert_image_lock,
     assert_no_resources,
@@ -27,10 +30,14 @@ from preflight import (
     render_game_config,
     run_preflight,
 )
+from test_stage1_baseline import FAKE_GAME_BASE
 from verify_myaac import verify as verify_myaac
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent.parent
+FAKE_PIN = "ubuntu:24.04@" + FAKE_GAME_BASE["repo_digest"].split("@")[1]
+PLACEHOLDER = {"repo_digest": "ubuntu@sha256:PLACEHOLDER_FROM_HOST_RECEIPT",
+               "id": "sha256:PLACEHOLDER_FROM_HOST_RECEIPT"}
 needs_docker = unittest.skipUnless(shutil.which("docker"), "docker CLI absent: Compose renders only on a Docker host")
 
 
@@ -94,6 +101,10 @@ class CoreQaOfflineTests(unittest.TestCase):
         self.assertIsNot(compose["services"]["web"]["build"].get("pull"), True)
         self.assertEqual(compose["services"]["game"]["build"]["args"]["SOURCE_REVISION"],
                          "0" * 40)
+        lock = IMAGE_LOCK["game_base"]
+        self.assertEqual(compose["services"]["game"]["build"]["args"]["BASE_IMAGE"],
+                         lock["ref"] + "@" + lock["repo_digest"].split("@")[1])
+        self.assertIsNot(compose["services"]["game"]["build"].get("pull"), True)
 
     def test_preflight_rejects_existing_qa_resource_by_label_or_name(self):
         for match in ("name", "label"):
@@ -314,7 +325,8 @@ class DailyShutdownContractTests(unittest.TestCase):
 
     def test_preflight_compose_gate_refuses_a_qa_game_without_the_contract(self):
         def rendered(game_env):
-            build = {"args": {"SOURCE_REVISION": "0" * 40}}
+            build = {"dockerfile": "deployment/wsl/Dockerfile",
+                     "args": {"SOURCE_REVISION": "0" * 40, "BASE_IMAGE": FAKE_PIN}}
             return json.dumps({"name": "canary-core-qa", "volumes": {
                 name: {"name": f"canary-core-qa_{name}"} for name in ("database", "game-logs", "authored-data",
                                                                      "website-cache")}, "services": {
@@ -323,7 +335,8 @@ class DailyShutdownContractTests(unittest.TestCase):
                 "web": {"image": "canary-core-qa-web:local",
                         "build": {"dockerfile": "deployment/wsl/Web.Dockerfile"}}}})
 
-        with patch.dict(os.environ, {"SOURCE_REVISION": "0" * 40}):
+        with patch.dict(os.environ, {"SOURCE_REVISION": "0" * 40}), \
+             patch.dict(IMAGE_LOCK["game_base"], FAKE_GAME_BASE):
             with patch("preflight.command", return_value=rendered(QA_GAME_ENV)):
                 self.assertRegex(assert_compose(), r"^[0-9a-f]{64}$")
             without = {key: value for key, value in QA_GAME_ENV.items() if key != SHUTDOWN_FLAG}
@@ -481,8 +494,10 @@ class BrainImageProvenanceTests(unittest.TestCase):
         ids = {"database": IMAGE_LOCK["database"]["id"], "web_base": IMAGE_LOCK["web_base"]["id"]}
 
         def inspect(digest):
-            return lambda *a, **_k: f"sha256:base\t[{json.dumps(digest)}]" if "RepoDigests" in a[-1] else (
-                ids["database"] if a[3] == "mariadb:11.4" else ids["web_base"])
+            return lambda *a, **_k: base_shim(FAKE_GAME_BASE)(*a) if a[3].startswith("ubuntu@") else (
+                f"sha256:base\t[{json.dumps(digest)}]" if "RepoDigests" in a[-1] else (
+                    ids["database"] if a[3] == "mariadb:11.4" else ids["web_base"]))
+        self.enterContext(patch.dict(IMAGE_LOCK["game_base"], FAKE_GAME_BASE))
         with patch("preflight.command", side_effect=inspect(locked)):
             self.assertEqual(assert_image_lock(brain=True)["brain_base"], "sha256:base")
         with patch("preflight.command", side_effect=inspect("python@sha256:" + "0" * 64)), \
@@ -504,6 +519,88 @@ class BrainImageProvenanceTests(unittest.TestCase):
                     else:
                         with self.assertRaisesRegex(RuntimeError, "approved HEAD"):
                             record_brain_image(sha, receipt)
+
+
+def base_shim(local):
+    """Fake read-only `docker image inspect` for the Ubuntu base; local=None means the image is absent."""
+    def command(*args, **_kwargs):
+        assert args[:3] == ("docker", "image", "inspect") and "pull" not in args
+        if local is None or args[3] != local["repo_digest"]:
+            raise RuntimeError("read-only command failed: docker image")
+        return f"{local['id']}\t{local['platform']}\t{json.dumps([local['repo_digest']])}\n"
+    return command
+
+
+class GameBaseImageTests(unittest.TestCase):
+    """QA builds the game FROM ubuntu:24.04 pinned by digest and platform; production keeps the tag default."""
+
+    DOCKERFILE = SOURCE / "deployment/wsl/Dockerfile"
+
+    def stages(self, build_args):
+        """The FROM of each stage of the shared Dockerfile, resolved like BuildKit with these build args."""
+        lines = self.DOCKERFILE.read_text().splitlines()
+        first = next(index for index, line in enumerate(lines) if line.startswith("FROM "))
+        defaults = dict(line.split()[1].split("=", 1) for line in lines[:first] if line.startswith("ARG "))
+        values = {**defaults, **build_args}
+        return {line.split()[-1]: re.sub(r"\$\{(\w+)\}", lambda m: values[m[1]], line.split()[1])
+                for line in lines if line.startswith("FROM ")}
+
+    def test_qa_render_uses_the_digest_pinned_base(self):
+        lock = IMAGE_LOCK["game_base"]
+        pinned = lock["ref"] + "@" + lock["repo_digest"].split("@")[1]
+        compose = (HERE / "compose.yaml").read_text()
+        game = compose[compose.index("\n  game:"):compose.index("\n  web:")]
+        self.assertIn("\n      pull: false\n", game)
+        self.assertEqual(re.findall(r"\n        BASE_IMAGE: (\S+)", game), [pinned])
+        self.assertEqual(lock["ref"], "ubuntu:24.04")
+        self.assertEqual(lock["platform"], "linux/amd64")  # the Dockerfile builds the x64-linux vcpkg triplet
+        self.assertEqual(self.stages({"BASE_IMAGE": pinned}),
+                         {"build": pinned, "game": pinned, "brain": "python:3.12-slim"})
+        with patch.dict(IMAGE_LOCK["game_base"], FAKE_GAME_BASE):
+            assert_game_build({"dockerfile": "deployment/wsl/Dockerfile", "args": {"BASE_IMAGE": FAKE_PIN}})
+            for build in ({"dockerfile": "deployment/wsl/Dockerfile", "args": {"BASE_IMAGE": "ubuntu:24.04"}},
+                          {"dockerfile": "deployment/wsl/Dockerfile", "args": {}},
+                          {"dockerfile": "deployment/wsl/Dockerfile", "pull": True, "args": {"BASE_IMAGE": FAKE_PIN}},
+                          {"dockerfile": "docker/Dockerfile.x86", "args": {"BASE_IMAGE": FAKE_PIN}}):
+                with self.subTest(build=build), self.assertRaisesRegex(RuntimeError, "digest-pinned base"):
+                    assert_game_build(build)
+
+    def test_production_default_is_unchanged(self):
+        self.assertEqual(self.stages({}),
+                         {"build": "ubuntu:24.04", "game": "ubuntu:24.04", "brain": "python:3.12-slim"})
+        production = (SOURCE / "deployment/wsl/compose.yaml").read_text()
+        self.assertNotIn("BASE_IMAGE", production)
+        self.assertNotIn("PLACEHOLDER", production + self.DOCKERFILE.read_text())
+
+    def test_preflight_refuses_an_absent_or_mismatched_base(self):
+        self.enterContext(patch.dict(IMAGE_LOCK["game_base"], FAKE_GAME_BASE))
+        with patch("preflight.command", side_effect=base_shim(FAKE_GAME_BASE)):
+            self.assertEqual(assert_game_base(), FAKE_GAME_BASE["id"])
+        cases = (("absent", None, "absent locally"),
+                 ("other digest", {**FAKE_GAME_BASE, "repo_digest": "ubuntu@sha256:" + "d" * 64}, "absent locally"),
+                 ("other ID", {**FAKE_GAME_BASE, "id": "sha256:" + "c" * 64}, "differs from image-lock"),
+                 ("other platform", {**FAKE_GAME_BASE, "platform": "linux/arm64"}, "differs from image-lock"))
+        for name, local, message in cases:
+            with self.subTest(name), patch("preflight.command", side_effect=base_shim(local)), \
+                 self.assertRaisesRegex(RuntimeError, message):
+                assert_game_base()
+        ids = {"mariadb:11.4": IMAGE_LOCK["database"]["id"], "otbr-myaac:latest": IMAGE_LOCK["web_base"]["id"]}
+        with patch("preflight.command", side_effect=lambda *a, **k: ids.get(a[3]) or base_shim(None)(*a)), \
+             self.assertRaisesRegex(RuntimeError, "game base image is absent"):
+            assert_image_lock()  # the full preflight (and its receipt) stops here
+
+    def test_placeholder_digest_fails_closed_without_docker(self):
+        for name, pin in (("placeholder", PLACEHOLDER), ("short", {"repo_digest": "ubuntu@sha256:abc"}),
+                          ("other repo", {"repo_digest": "debian@" + FAKE_GAME_BASE["repo_digest"].split("@")[1]}),
+                          ("no platform", {"platform": ""})):
+            with self.subTest(name), patch.dict(IMAGE_LOCK["game_base"], {**FAKE_GAME_BASE, **pin}), \
+                 patch("preflight.command") as docker:
+                with self.assertRaisesRegex(RuntimeError, "not a reviewed digest pin"):
+                    assert_game_base()
+                compose_pin = "ubuntu:24.04@" + pin.get("repo_digest", "@").split("@")[1]
+                with self.assertRaisesRegex(RuntimeError, "not a reviewed digest pin"):
+                    assert_game_build({"dockerfile": "deployment/wsl/Dockerfile", "args": {"BASE_IMAGE": compose_pin}})
+                docker.assert_not_called()
 
 
 if __name__ == "__main__":

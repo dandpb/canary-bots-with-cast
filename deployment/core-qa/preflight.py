@@ -30,6 +30,9 @@ CONFIG_DIST = HERE.parent.parent / "config.lua.dist"
 SHUTDOWN_FLAG = "GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN"
 SHUTDOWN_KEY = "globalServerSaveShutdown"
 CLOSE_KEY = "globalServerSaveClose"  # with both false the daily event calls saveServer() itself
+GAME_DOCKERFILE = HERE.parent / "wsl/Dockerfile"
+GAME_BASE_STAGES = {"FROM ${BASE_IMAGE} AS build", "FROM ${BASE_IMAGE} AS game"}
+SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}")
 
 
 def command(*args, env=None):
@@ -93,6 +96,41 @@ def assert_fake_brain(service, revision):
         raise RuntimeError("QA worker may only use the fake provider and the disposable ledger")
 
 
+def game_base_spec():
+    """The Ubuntu base locked for the QA game build; a placeholder or malformed pin fails closed."""
+    spec = IMAGE_LOCK["game_base"]
+    name, _, digest = spec["repo_digest"].partition("@")
+    if (name != spec["ref"].split(":", 1)[0] or not SHA256_ID.fullmatch(digest)
+            or not SHA256_ID.fullmatch(spec["id"]) or not re.fullmatch(r"linux/[a-z0-9]+", spec["platform"])):
+        raise RuntimeError("game_base in image-lock.json is not a reviewed digest pin; fill it from the host receipt")
+    return spec, f"{spec['ref']}@{digest}"
+
+
+def assert_game_build(build):
+    """QA builds the game FROM the digest-pinned base, without pull; production keeps the Dockerfile default."""
+    _spec, pinned = game_base_spec()
+    if (build.get("pull") is True or build.get("dockerfile") != "deployment/wsl/Dockerfile"
+            or build.get("args", {}).get("BASE_IMAGE") != pinned):
+        raise RuntimeError("QA game build must use the digest-pinned base from image-lock.json without pull")
+    if not GAME_BASE_STAGES <= set(GAME_DOCKERFILE.read_text().splitlines()):
+        raise RuntimeError("QA game Dockerfile stages do not build FROM ${BASE_IMAGE}")
+
+
+def assert_game_base():
+    """Read-only: the locked base is already local with the locked ID, platform and digest. Never pulls."""
+    spec, _pinned = game_base_spec()
+    try:
+        found = command("docker", "image", "inspect", spec["repo_digest"], "--format",
+                        "{{.Id}}\t{{.Os}}/{{.Architecture}}\t{{json .RepoDigests}}")
+    except RuntimeError:
+        raise RuntimeError("game base image is absent locally at the locked digest; review and load it "
+                           "explicitly, the build never pulls it") from None
+    actual, platform, digests = (found.strip().split("\t", 2) + ["", "[]"])[:3]
+    if actual != spec["id"] or platform != spec["platform"] or spec["repo_digest"] not in json.loads(digests):
+        raise RuntimeError("game base image differs from image-lock.json (ID, platform or digest)")
+    return actual
+
+
 def lua_setting(config, name):
     """The value Lua ends up with: the last top-level `name = value` assignment, or None when absent."""
     values = re.findall(rf"(?m)^[ \t]*{name}[ \t]*=[ \t]*([^\s-]+)", config)
@@ -154,6 +192,7 @@ def assert_compose(brain_fake=False):
         raise RuntimeError("QA database must use the locked local image")
     if services["game"].get("build", {}).get("args", {}).get("SOURCE_REVISION") != revision:
         raise RuntimeError("QA game build revision differs from the reviewed source")
+    assert_game_build(services["game"].get("build", {}))
     web_build = services["web"].get("build", {})
     if web_build.get("pull") is True or web_build.get("dockerfile") != "deployment/wsl/Web.Dockerfile":
         raise RuntimeError("QA web build differs from the reviewed stack")
@@ -198,6 +237,7 @@ def assert_image_lock(brain=False):
         if actual != spec["id"]:
             raise RuntimeError(f"{kind} local image ID differs from image-lock.json")
         observed[kind] = actual
+    observed["game_base"] = assert_game_base()
     return observed
 
 
