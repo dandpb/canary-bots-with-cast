@@ -142,6 +142,12 @@ docker image inspect canary-game:arm64-"$SOURCE_REVISION" \
 # esperado: arm64 <SOURCE_REVISION>
 ```
 
+*A imagem ARM64 preserva o banco de compilação em
+`/canary/compile_commands.json` (exportado com
+`CMAKE_EXPORT_COMPILE_COMMANDS=ON`), permitindo conferir offline os flags
+efetivos — incluindo `-march=armv8-a` e os include paths do vcpkg — do par
+canary/`libbot_engine.so` efetivamente construído.*
+
 *Limites do modo emulado:* dependências do vcpkg dominam o tempo e podem
 levar horas; mantenha `BUILD_JOBS` contido (o padrão do perfil é 3; 2 é um
 ponto de partida seguro sob QEMU), execute apenas o build — nenhum serviço,

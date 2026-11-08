@@ -5,6 +5,8 @@
 #   - base image pinned by explicit linux/arm64 manifest digest;
 #   - vcpkg target/host triplets and the matching CMake toolchain variables set
 #     to arm64-linux;
+#   - CMAKE_EXPORT_COMPILE_COMMANDS=ON exports /build/compile_commands.json,
+#     preserved in the final image at /canary/compile_commands.json.
 #   - CANARY_TARGET_ARCH=armv8-a replaces -march=native so the core binary and
 #     libbot_engine both target the portable ARMv8-A baseline instead of the
 #     build host's micro-architecture.
@@ -39,7 +41,7 @@ RUN --mount=type=bind,target=/source \
     export GIT_DIR=/source-git GIT_WORK_TREE=/source && \
     git config --global --add safe.directory /source && \
     python3 deployment/wsl/verify-build-source.py --source /source --revision "$SOURCE_REVISION" && \
-    cmake -S . -B /build -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLED_DIR=/opt/installed -DVCPKG_MANIFEST_INSTALL=OFF -DVCPKG_TARGET_TRIPLET=arm64-linux -DVCPKG_HOST_TRIPLET=arm64-linux -DCANARY_TARGET_ARCH=armv8-a -DCMAKE_BUILD_TYPE=Release -DTOGGLE_BIN_FOLDER=ON -DCANARY_BUILD_TESTS=OFF -DOPTIONS_ENABLE_IPO=OFF -DOPTIONS_ENABLE_CCACHE=OFF -DOPTIONS_ENABLE_SCCACHE=OFF -DSPEED_UP_BUILD_UNITY=OFF && \
+    cmake -S . -B /build -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLED_DIR=/opt/installed -DVCPKG_MANIFEST_INSTALL=OFF -DVCPKG_TARGET_TRIPLET=arm64-linux -DVCPKG_HOST_TRIPLET=arm64-linux -DCANARY_TARGET_ARCH=armv8-a -DCMAKE_BUILD_TYPE=Release -DTOGGLE_BIN_FOLDER=ON -DCANARY_BUILD_TESTS=OFF -DOPTIONS_ENABLE_IPO=OFF -DOPTIONS_ENABLE_CCACHE=OFF -DOPTIONS_ENABLE_SCCACHE=OFF -DSPEED_UP_BUILD_UNITY=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && \
     cmake --build /build --target canary bot_engine -j ${BUILD_JOBS}
 
 FROM ${BASE_IMAGE} AS game
@@ -48,6 +50,7 @@ LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libmariadb3 libluajit-5.1-2 libssl3t64 zlib1g libcurl4t64 libgomp1 curl python3 && rm -rf /var/lib/apt/lists/*
 WORKDIR /canary
 COPY --from=build /build/bin/canary /build/bin/libbot_engine.so ./
+COPY --from=build /build/compile_commands.json ./compile_commands.json
 COPY data ./data
 COPY data-canary ./data-canary
 COPY data-otservbr-global ./data-otservbr-global
