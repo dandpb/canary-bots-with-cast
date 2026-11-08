@@ -79,6 +79,23 @@ num checkout limpo separado e atualize o runtime existente com as imagens
 verificadas, preservando seus arquivos privados e volumes. A label OCI continua
 sendo metadado da imagem e não substitui a identidade nativa verificada.
 
+### Perfil ARM64 (aarch64 nativo)
+
+Hosts AArch64 nativos usam `Dockerfile.release.arm64`: base `ubuntu:24.04`
+fixada pelo digest do manifesto `linux/arm64`, triplets vcpkg target/host
+`arm64-linux` (o build roda na própria máquina ARM) e
+`CANARY_TARGET_ARCH=armv8-a` no lugar de `-march=native`, para que binário e
+`libbot_engine.so` usem a mesma linha de base ARMv8-A portável em vez da
+microarquitetura do host de build. Verificador de fonte, `SOURCE_REVISION`,
+targets e estágio de runtime são idênticos ao `Dockerfile.release`, que
+continua sendo o perfil padrão para WSL/x86-64:
+
+```bash
+docker build -f deployment/wsl/Dockerfile.release.arm64 \
+  --build-context gitmeta="$BUILD_GIT_DIRECTORY" \
+  --build-arg SOURCE_REVISION="$SOURCE_REVISION" .
+```
+
 ## Gateway LiteLLM no mesmo projeto
 
 Os serviços opcionais `litellm`, `litellm-db` e `litellm-redis` pertencem ao projeto
