@@ -95,6 +95,8 @@ services:
       context: ../..
       dockerfile: deployment/wsl/Dockerfile
       target: game
+      additional_contexts:
+        gitmeta: ${BUILD_GIT_DIRECTORY:-../../.git}
       args:
         SOURCE_REVISION: ${SOURCE_REVISION:-unknown}
     restart: unless-stopped

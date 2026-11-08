@@ -48,6 +48,31 @@ A limpeza por inatividade e a cobrança automática de aluguel ficam desativadas
 neste ambiente local. Os seeds têm datas antigas; os padrões de produção
 retomariam as casas e transfeririam a decoração antes da ativação dos bots.
 
+## Identidade do build nativo
+
+O build do jogo exige um checkout completo, limpo e com commit. Execute o build
+a partir desse checkout, com `SOURCE_REVISION` igual ao HEAD e
+`BUILD_GIT_DIRECTORY` apontando para seu diretório Git absoluto:
+
+```bash
+export SOURCE_REVISION="$(git rev-parse HEAD)"
+export BUILD_GIT_DIRECTORY="$(git rev-parse --absolute-git-dir)"
+docker compose build game
+```
+
+No comando Docker direto, forneça também
+`--build-context gitmeta="$BUILD_GIT_DIRECTORY"`. O contexto normal continua
+excluindo `.git`; o contexto nomeado fornece os metadados somente durante o
+`RUN` de compilação, em montagem somente leitura. Nenhum `.git` é copiado para
+as imagens. O CMake identifica o mesmo commit e estado limpo para executável e
+biblioteca. Revisão divergente, árvore alterada ou metadados ausentes interrompem
+o build em vez de gerar um binário com identidade `unknown`.
+
+Uma cópia de implantação sem `.git` não é fonte de build: construa as imagens
+num checkout limpo separado e atualize o runtime existente com as imagens
+verificadas, preservando seus arquivos privados e volumes. A label OCI continua
+sendo metadado da imagem e não substitui a identidade nativa verificada.
+
 ## Gateway LiteLLM no mesmo projeto
 
 Os serviços opcionais `litellm`, `litellm-db` e `litellm-redis` pertencem ao projeto

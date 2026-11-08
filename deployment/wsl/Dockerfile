@@ -10,11 +10,16 @@ COPY vcpkg.json /manifest/vcpkg.json
 RUN git init /opt/vcpkg && cd /opt/vcpkg && git remote add origin https://github.com/microsoft/vcpkg.git && git fetch --depth=1 origin 66c0373dc7fca549e5803087b9487edfe3aca0a1 && git checkout FETCH_HEAD && ./bootstrap-vcpkg.sh -disableMetrics
 RUN --mount=type=cache,target=/opt/vcpkg/downloads --mount=type=cache,target=/root/.cache/vcpkg /opt/vcpkg/vcpkg install --x-manifest-root=/manifest --x-install-root=/opt/installed --triplet=x64-linux
 WORKDIR /source
-COPY CMakeLists.txt CMakePresets.json vcpkg.json ./
-COPY cmake ./cmake
-COPY src ./src
-COPY tests ./tests
-RUN cmake -S . -B /build -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLED_DIR=/opt/installed -DVCPKG_MANIFEST_INSTALL=OFF -DCMAKE_BUILD_TYPE=Release -DTOGGLE_BIN_FOLDER=ON -DCANARY_BUILD_TESTS=OFF -DOPTIONS_ENABLE_IPO=OFF -DOPTIONS_ENABLE_CCACHE=OFF -DOPTIONS_ENABLE_SCCACHE=OFF -DSPEED_UP_BUILD_UNITY=OFF && cmake --build /build --target canary bot_engine -j ${BUILD_JOBS}
+ARG SOURCE_REVISION=unknown
+# Keep Git metadata out of image layers, while both native targets see the same
+# complete, read-only source tree and independently supplied local Git context.
+RUN --mount=type=bind,target=/source \
+    --mount=type=bind,from=gitmeta,target=/source-git \
+    export GIT_DIR=/source-git GIT_WORK_TREE=/source && \
+    git config --global --add safe.directory /source && \
+    python3 deployment/wsl/verify-build-source.py --source /source --revision "$SOURCE_REVISION" && \
+    cmake -S . -B /build -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLED_DIR=/opt/installed -DVCPKG_MANIFEST_INSTALL=OFF -DCMAKE_BUILD_TYPE=Release -DTOGGLE_BIN_FOLDER=ON -DCANARY_BUILD_TESTS=OFF -DOPTIONS_ENABLE_IPO=OFF -DOPTIONS_ENABLE_CCACHE=OFF -DOPTIONS_ENABLE_SCCACHE=OFF -DSPEED_UP_BUILD_UNITY=OFF && \
+    cmake --build /build --target canary bot_engine -j ${BUILD_JOBS}
 
 FROM ${BASE_IMAGE} AS game
 ARG SOURCE_REVISION=unknown
