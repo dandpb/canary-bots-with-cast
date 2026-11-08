@@ -1,15 +1,26 @@
 # syntax=docker/dockerfile:1.7
-# ARM64 (aarch64) production release profile for natively-ARM hosts.
+# ARM64 (aarch64) production release profile.
 # Derived from Dockerfile.release; the x86-64 release path and the legacy QA
-# Dockerfile remain unchanged. Differences are deliberate and minimal:
+# Dockerfile remain unchanged. Build-line differences are deliberate and minimal:
 #   - base image pinned by explicit linux/arm64 manifest digest;
 #   - vcpkg target/host triplets and the matching CMake toolchain variables set
-#     to arm64-linux (the build is expected to run on a native AArch64 host);
+#     to arm64-linux;
 #   - CANARY_TARGET_ARCH=armv8-a replaces -march=native so the core binary and
 #     libbot_engine both target the portable ARMv8-A baseline instead of the
 #     build host's micro-architecture.
 # The Git source verifier, SOURCE_REVISION identity, build targets and runtime
 # stage are identical to Dockerfile.release.
+#
+# Execution modes (choose at build time with docker buildx):
+#   1. Native AArch64 host: no emulation; triplets are natively coherent.
+#   2. Isolated cross-build from an amd64 executor (e.g. WSL): requires
+#      `--platform linux/arm64` AND a builder already capable of executing ARM
+#      stages (binfmt/QEMU emulation or an external ARM node). Under emulation
+#      every stage -- apt, vcpkg bootstrap and host tools, compiler -- runs as
+#      arm64, so --host-triplet=arm64-linux stays coherent; expect a much slower
+#      build. This file does NOT install binfmt, provision a builder, or run any
+#      service: the operator prepares and verifies the builder beforehand
+#      (see deployment/wsl/README.md, ARM64 section).
 ARG BASE_IMAGE=ubuntu:24.04@sha256:19cad59657037cffa0ac9a48107019b768900ff1071140965827513ac866bd5e
 FROM ${BASE_IMAGE} AS build
 ARG DEBIAN_FRONTEND=noninteractive
