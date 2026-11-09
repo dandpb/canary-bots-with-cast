@@ -112,6 +112,82 @@ num checkout limpo separado e atualize o runtime existente com as imagens
 verificadas, preservando seus arquivos privados e volumes. A label OCI continua
 sendo metadado da imagem e não substitui a identidade nativa verificada.
 
+### Perfil ARM64 (aarch64)
+
+`Dockerfile.release.arm64`: base `ubuntu:24.04` fixada pelo digest do manifesto
+`linux/arm64`, triplets vcpkg target/host `arm64-linux` e
+`CANARY_TARGET_ARCH=armv8-a` no lugar de `-march=native`, para que binário e
+`libbot_engine.so` usem a mesma linha de base ARMv8-A portável em vez da
+microarquitetura do host de build. Verificador de fonte, `SOURCE_REVISION`,
+targets e estágio de runtime são idênticos ao `Dockerfile.release`, que
+continua sendo o perfil padrão para WSL/x86-64. Há dois modos de execução:
+
+**Modo 1 — host AArch64 nativo.** Sem emulação; os triplets são coerentes
+por construção. Build direto no clone limpo, como no perfil x86-64:
+
+```bash
+docker build -f deployment/wsl/Dockerfile.release.arm64 \
+  --build-context gitmeta="$BUILD_GIT_DIRECTORY" \
+  --build-arg SOURCE_REVISION="$SOURCE_REVISION" .
+```
+
+**Modo 2 — executor isolado amd64 (WSL) por cross-build.** O executor
+designado (Pitagoras) roda WSL amd64: o build é feito por emulação (ou nó
+ARM externo) com `--platform linux/arm64`. Sob emulação, todas as etapas —
+apt, bootstrap e ferramentas de host do vcpkg, compilador — executam como
+arm64, mantendo `--host-triplet=arm64-linux` coerente.
+
+*Inventário do builder (readonly, autorizado no estágio atual; este*
+*repositório não instala binfmt nem provisiona builder):* o build é
+vinculado a um builder **nomeado** — escolha um, registre a identidade e
+use o mesmo nome no comando de build:
+
+```bash
+docker buildx ls                          # lista builders; 'platforms' = capacidade ANUNCIADA, não prova
+docker buildx inspect <BUILDER> --bootstrap=false
+# registre no handoff: driver, nó(s) e endpoint(s) deste builder
+```
+
+*Aviso de identidade da sonda:* `docker run` executa pelo daemon Docker
+corrente, que pode ser **diferente** do builder selecionado pelo
+`buildx build` — sucesso local (QEMU) não atesta builder remoto, e um nó
+ARM externo pode executar etapas ARM mesmo com o daemon local incapaz.
+Uma sonda de execução só vale se rodar **pelo mesmo builder nomeado**
+(por exemplo, um build mínimo `docker buildx build --builder <BUILDER>
+--platform linux/arm64`); como execução de container é ação distinta do
+inventário readonly autorizado, a capacidade de execução do builder fica
+**explicitamente não comprovada** até o build autorizado estabelecê-la.
+
+*Build (somente quando autorizado), com builder nomeado, plataforma*
+*explícita, recursos limitados e saída identificada:*
+
+```bash
+docker buildx build --builder <BUILDER> \
+  -f deployment/wsl/Dockerfile.release.arm64 \
+  --platform linux/arm64 \
+  --build-context gitmeta="$BUILD_GIT_DIRECTORY" \
+  --build-arg SOURCE_REVISION="$SOURCE_REVISION" \
+  --build-arg BUILD_JOBS=2 \
+  -t canary-game:arm64-"$SOURCE_REVISION" \
+  --output type=docker .
+docker image inspect canary-game:arm64-"$SOURCE_REVISION" \
+  --format '{{.Architecture}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
+# esperado: arm64 <SOURCE_REVISION>
+```
+
+*A imagem ARM64 preserva o banco de compilação em
+`/canary/compile_commands.json` (exportado com
+`CMAKE_EXPORT_COMPILE_COMMANDS=ON`), permitindo conferir offline os flags
+efetivos — incluindo `-march=armv8-a` e os include paths do vcpkg — do par
+canary/`libbot_engine.so` efetivamente construído.*
+
+*Limites do modo emulado:* dependências do vcpkg dominam o tempo e podem
+levar horas; mantenha `BUILD_JOBS` contido (o padrão do perfil é 3; 2 é um
+ponto de partida seguro sob QEMU), execute apenas o build — nenhum serviço,
+restart ou uso da máquina de produção nesta etapa — e exporte a imagem com
+tag, label e identidade do builder (driver/nó/endpoint) registradas no
+handoff antes de qualquer uso.
+
 ## Gateway LiteLLM no mesmo projeto
 
 Os serviços opcionais `litellm`, `litellm-db` e `litellm-redis` pertencem ao projeto

@@ -112,7 +112,7 @@ if(UNIX)
     target_compile_options(bot_engine
         PRIVATE -fno-lto
                 $<$<CXX_COMPILER_ID:GNU>:-fno-gnu-unique>
-                $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>:-O3 -march=native>
+                $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>:-O3 -march=${CANARY_TARGET_ARCH}>
     )
     target_link_options(bot_engine PRIVATE -fno-lto)
     target_compile_definitions(bot_engine PRIVATE BOT_ENGINE_ABI_TAG="${BOT_ABI_TAG}")
