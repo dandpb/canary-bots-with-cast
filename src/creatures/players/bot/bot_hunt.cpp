@@ -17,6 +17,10 @@
 
 #include "creatures/players/bot/bot_engine_impl.hpp"
 
+#include <charconv>
+#include <cstdlib>
+#include <cstring>
+
 bool BotEngine::tryStartHunt(BotState& bot) {
 	auto player = bot.getPlayer();
 	if (!player) return false;
@@ -181,8 +185,23 @@ bool BotEngine::tryStartCityWalk(BotState& bot) {
 }
 
 void BotEngine::beginHuntPhase(BotState& bot, HuntPhase phase, size_t preChosenPatrolIdx) {
+	const auto previousPhase = bot.huntPhase;
 	bot.state = BotAIState::HUNTING;
 	bot.huntPhase = phase;
+	// QA-only passive trace for one bot. Disabled by default, including production.
+	// This records a transition; it is not a synthetic response to the status command.
+	static const uint32_t tracedGuid = [] {
+		const char* value = std::getenv("CANARY_QA_HUNT_PHASE_TRACE_GUID");
+		if (!value || !*value) return uint32_t { 0 };
+		uint32_t parsedGuid = 0;
+		const char* end = value + std::strlen(value);
+		const auto result = std::from_chars(value, end, parsedGuid);
+		return result.ec == std::errc {} && result.ptr == end ? parsedGuid : uint32_t { 0 };
+	}();
+	if (tracedGuid != 0 && bot.guid == tracedGuid && previousPhase != phase) {
+		g_logger().info("[HUNT:PHASE] mono_ms={} bot_guid={} script_id={} from={} to={}",
+			botMonoMs(), bot.guid, bot.huntScriptId, huntPhaseName(previousPhase), huntPhaseName(phase));
+	}
 	bot.huntWaypointIdx = 0;
 	// One safeTeleportLanding rewind per route entry. Deliberately NOT reset when this is the
 	// nested PATROLLING self-call from the TRAVEL_TO case, so one logical route entry cannot
@@ -3067,4 +3086,3 @@ bool BotEngine::tickCorpseWalk(BotState& bot) {
 	run.deadlineMs = now + lootCfg_.maxWalkMs;
 	return true;
 }
-
