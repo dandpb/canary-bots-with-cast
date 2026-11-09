@@ -15,18 +15,46 @@ from prepare import MAP_SHA256
 from verify_myaac import verify as verify_myaac
 
 HERE = Path(__file__).resolve().parent
-PROJECT = "canary-core-qa"
+# The Compose projects this directory drives, picked by CORE_QA_PROFILE. stage1 is the live canary-core-qa and
+# the default: unset, everything renders and runs exactly as before. Any other profile is its own project from
+# its own overlays (name, image tags, host ports, CPU/memory limits) with its own evidence directory; the
+# stage-1 baseline, handoff and return tools refuse it, and its gates never see stage-1 objects as its own.
+PROFILES = {
+    "stage1": {"project": "canary-core-qa", "overlays": (), "brain_overlays": (), "evidence": "runtime/evidence",
+               "ports": {"login": 17171, "game": 17172, "status": 17173, "web": 18080}, "limits": False},
+    "b1": {"project": "canary-qa-b1", "overlays": ("compose.b1.yaml",), "brain_overlays": ("compose.b1-brain.yaml",),
+           "evidence": "runtime/b1/evidence", "ports": {"login": 27171, "game": 27172, "status": 27173, "web": 28080},
+           "limits": True},
+}
+
+
+def load_profile(name):
+    """The named profile; another profile than stage1 must not share its name prefix, ports or evidence."""
+    if name not in PROFILES:
+        raise RuntimeError(f"unknown CORE_QA_PROFILE {name!r} (known: {', '.join(PROFILES)}); refused")
+    profile, stage1 = PROFILES[name], PROFILES["stage1"]
+    if name != "stage1" and (
+            profile["project"].startswith(stage1["project"]) or stage1["project"].startswith(profile["project"])
+            or set(profile["ports"].values()) & set(stage1["ports"].values())
+            or profile["evidence"] == stage1["evidence"] or not profile["overlays"]):
+        raise RuntimeError(f"profile {name} is not isolated from stage 1 (project prefix, ports, evidence or "
+                           "overlay); refused")
+    return {"name": name, **profile}
+
+
+PROFILE = load_profile(os.environ.get("CORE_QA_PROFILE", "stage1"))
+PROJECT = PROFILE["project"]
 SERVICES = {"database", "game", "web"}
 VOLUMES = {"database", "game-logs", "authored-data", "website-cache"}
-GAME_TAG = "canary-core-qa-game:local"
-WEB_TAG = "canary-core-qa-web:local"
+GAME_TAG = f"{PROJECT}-game:local"
+WEB_TAG = f"{PROJECT}-web:local"
 IMAGES = {GAME_TAG, WEB_TAG}
-BRAIN_IMAGE = "canary-core-qa-brain:local"
+BRAIN_IMAGE = f"{PROJECT}-brain:local"
 BRAIN_VOLUMES = {"brain-socket", "brain-ledger"}
 BRAIN_ROOT = Path("/var/lib/canary-human-qa-stage2")
 IMAGE_LOCK = json.loads((HERE / "image-lock.json").read_text())
-RECEIPT = HERE / "runtime/evidence/preflight-receipt.json"
-UPGRADE_RECEIPT = HERE / "runtime/evidence/stage2-upgrade-receipt.json"
+RECEIPT = HERE / PROFILE["evidence"] / "preflight-receipt.json"
+UPGRADE_RECEIPT = HERE / PROFILE["evidence"] / "stage2-upgrade-receipt.json"
 # Stage-2 upgrade only: runs the game of the pinned stage-1 baseline by its exact image ID, never a rebuild.
 GAME_PIN = HERE / "compose.game-pin.yaml"
 GAME_ENTRYPOINT = HERE.parent / "wsl/game-entrypoint.py"
@@ -177,13 +205,16 @@ def assert_compose(brain_fake=False, game_pin=None):
     data = json.loads(command(
         "docker", "compose", "-p", PROJECT, "-f", "compose.yaml",
         *(["-f", "compose.brain-fake.yaml"] if brain_fake else []),
-        *(["-f", GAME_PIN.name] if game_pin is not None else []), "--env-file", ".env",
+        *(["-f", GAME_PIN.name] if game_pin is not None else []),
+        *[part for name in PROFILE["overlays"] + (PROFILE["brain_overlays"] if brain_fake else ())
+          for part in ("-f", name)], "--env-file", ".env",
         "config", "--format", "json", env=env,
     ))
     expected_volumes = VOLUMES | BRAIN_VOLUMES if brain_fake else VOLUMES
     expected_services = SERVICES | {"brain"} if brain_fake else SERVICES
     if data.get("name") != PROJECT or set(data.get("services", {})) != expected_services:
         raise RuntimeError("Compose project/services differ from the reviewed QA stack")
+    assert_profile_render(data)
     volumes = data.get("volumes", {})
     if set(volumes) != expected_volumes or any(
         item.get("external") or item.get("name") != f"{PROJECT}_{name}"
@@ -235,6 +266,36 @@ def assert_compose(brain_fake=False, game_pin=None):
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def assert_profile_render(data, profile=None):
+    """The render belongs to this profile: its project, host ports only from its own set (the game listens on
+    the port it publishes and MyAAC advertises), and CPU/memory limits where the profile requires them.
+    A stage-1 render under another profile, or another profile's render under stage 1, is refused."""
+    profile = profile or PROFILE
+    ports, services = profile["ports"], data.get("services", {})
+    if data.get("name") != profile["project"]:
+        raise RuntimeError(f"Compose project {data.get('name')!r} is not the {profile['name']} project "
+                           f"{profile['project']}; refused")
+    published = {"game": {ports["login"], ports["game"], ports["status"]}, "web": {ports["web"]}}
+    expected = {
+        "game": {"GAME_LOGIN_PORT": ports["login"], "GAME_PROTOCOL_PORT": ports["game"],
+                 "GAME_STATUS_PORT": ports["status"]},
+        "web": {"CANARY_LOGIN_PORT": ports["login"], "CANARY_GAME_PORT": ports["game"],
+                "CANARY_STATUS_PORT": ports["status"], "MYAAC_SITE_URL": f"http://127.0.0.1:{ports['web']}"},
+    }
+    for name, service in services.items():
+        for port in service.get("ports", []):
+            host = int(port.get("published") or 0)
+            if host not in published.get(name, set()) or (name == "game" and host != int(port.get("target") or 0)):
+                raise RuntimeError(f"{name} publishes {host}, not a {profile['name']} port; refused")
+        environment = service.get("environment") or {}
+        wrong = sorted(key for key, value in expected.get(name, {}).items()
+                       if key in environment and str(environment[key]) != str(value))
+        if wrong:
+            raise RuntimeError(f"{name} {', '.join(wrong)} differ from profile {profile['name']}; refused")
+        if profile["limits"] and not (service.get("cpus") and service.get("mem_limit")):
+            raise RuntimeError(f"profile {profile['name']} needs CPU and memory limits on {name}; refused")
+
+
 def assert_image_lock(brain=False):
     observed = {}
     if brain:  # the brain build uses pull: false; only the locked local base is accepted
@@ -280,6 +341,7 @@ def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha, 
         "schema_version": 1,
         "checked_at_utc": datetime.now(timezone.utc).isoformat(),
         "project": PROJECT,
+        **({"profile": PROFILE["name"]} if PROFILE["name"] != "stage1" else {}),
         "approved_source_revision": approved_revision,
         "observed_image_ids": images,
         "entrypoint_sha256": myaac["entrypoint_sha256"],
@@ -317,6 +379,8 @@ def record_brain_image(approved_revision, receipt_path=None):
     source = assert_source(approved_revision)
     receipt_path = receipt_path or UPGRADE_RECEIPT
     receipt = json.loads(receipt_path.read_text())
+    if receipt.get("project", PROFILES["stage1"]["project"]) != PROJECT:  # a receipt without one is stage 1's
+        raise RuntimeError(f"receipt {receipt_path.name} is not of project {PROJECT}; refused")
     label = '{{index .Config.Labels "org.opencontainers.image.revision"}}'
     image_id, revision = (command("docker", "image", "inspect", BRAIN_IMAGE, "--format",
                                   "{{.Id}}\t" + label).strip().split("\t") + [""])[:2]

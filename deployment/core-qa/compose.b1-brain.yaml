@@ -1,0 +1,7 @@
+# B1 only (CORE_QA_PROFILE=b1), after compose.brain-fake.yaml and compose.b1.yaml: the fake brain
+# under its own image tag and limits, so it never touches canary-core-qa-brain:local.
+services:
+  brain:
+    image: canary-qa-b1-brain:local
+    cpus: 0.5
+    mem_limit: 512m

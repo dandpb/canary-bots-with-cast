@@ -26,6 +26,7 @@ protocolo `1500`. Nenhuma dessas portas aponta ao stack `canary-bots-wsl`.
 - `[stage2_handoff.py:main]` / `[stage2_handoff.py:Handoff]` — Stage-2 handoff adapter CLI (`post-build`, `quiescent-post-build`, `pre-stop`, `quiescent-pre-stop`, `post-stop`, `quiescent-slice`, `quiescent-bundle`, `bundle`, `fallback-plan`, `fallback-verify`, `rescue-verify`, `exec-step`) enforcing chained sealed receipts, human-absence diagnostics (`[stage2_handoff.py:Handoff.human_absence]`), strict zero-writer DB probes (`[stage2_handoff.py:Handoff.writers]`), and single-use atomic claims (`[stage2_handoff.py:Handoff.claim_and_run]`).
 - `[qa_return_attempt.py:main]` / `[qa_return_attempt.py:ReturnAttempt]` — Managed quiescent return executor CLI (`start-managed` | `rescue`) coordinating `attempt.lock`, `ABANDONED` markers (`[qa_return_attempt.py:ReturnAttempt.abandon]`), and bounded health/smoke verification (`[qa_return_attempt.py:ReturnAttempt.post_start]`).
 - `[compose.yaml:name]` / `[compose.brain-fake.yaml:services]` / `[compose.game-pin.yaml:services.game]` — Compose stack definitions for project `canary-core-qa`.
+- `[preflight.py:PROFILES]` / `[preflight.py:load_profile]` / `[preflight.py:assert_profile_render]` / `[compose.b1.yaml]` / `[compose.b1-brain.yaml]` — `CORE_QA_PROFILE` (unset = `stage1`, unchanged): the separate B1 project `canary-qa-b1` with its own overlays, ports `27171`-`27173`/`28080`, tags, limits and `runtime/b1/evidence`.
 
 ## Invariants
 
@@ -302,6 +303,61 @@ byte a byte (SHA-256 em `db_audit.sha256` da baseline).
 
 O `rollback` da etapa 2 volta a imagem `game` desta baseline
 (`sha256:358ee666…0181`, revisão de origem `3431b404…`, sem shutdown diário).
+
+## Segundo projeto isolado: B1 (`CORE_QA_PROFILE=b1`)
+
+O B1 (playtest de companheiros) roda ao lado da etapa 1 no mesmo Docker, sem tocar nela.
+Sem `CORE_QA_PROFILE`, nada muda: `compose.yaml`, `compose.brain-fake.yaml` e
+`compose.game-pin.yaml` são os mesmos bytes fixados pelo manifesto a1d9, e os scripts
+derivam os mesmos nomes, argv e recibos (`test_b1_profile.py` confere).
+
+`-p` sozinho não basta. Ele renomeia containers, volumes e rede, mas:
+- as portas do host (`17171`-`17173`, `18080`) são fixas e colidiriam com a etapa 1; o
+  `game` escuta na porta que publica e o MyAAC anuncia `CANARY_GAME_PORT`, então a porta
+  muda também no ambiente do `game` e do `web` e no healthcheck;
+- as tags `canary-core-qa-*:local` são globais no daemon: um build do B1 trocaria a imagem
+  que os gates da etapa 1 conferem pela tag;
+- os scripts fixam o projeto, as tags e os recibos em `runtime/evidence/`;
+- um nome que comece com `canary-core-qa` seria visto como objeto estranho pelos gates da
+  etapa 1 (busca por prefixo), que passariam a recusar.
+
+Por isso o B1 tem perfil próprio em `preflight.py` (`PROFILES`): projeto `canary-qa-b1`,
+portas `27171`-`27173` e `28080`, tags `canary-qa-b1-*:local`, limites de CPU e memória e
+recibos em `runtime/b1/evidence/`. Os valores ficam em `compose.b1.yaml` (e
+`compose.b1-brain.yaml` com o brain fake), aplicados depois dos arquivos da etapa 1. As
+listas de portas usam `!override` (Compose 2.24.4 ou mais novo); se o Compose somar as
+portas, o preflight recusa. `.env`, `runtime/initdb` e o mapa podem ser os mesmos.
+
+Separação, falhando fechado:
+- o preflight confere que o render é do perfil: projeto, portas publicadas, portas no
+  ambiente e, no B1, limites em todo serviço. Um render da etapa 1 sob o B1, ou do B1 sob
+  a etapa 1, é recusado;
+- sob o B1, `stage1_baseline.py` (todas as ações), `--upgrade-from-stage1`,
+  `--capture-stage1-baseline`, `stage2_handoff.py` e `qa_return_attempt.py` recusam antes de
+  qualquer Docker: a baseline e o manifesto a1d9 são do projeto `canary-core-qa`;
+- `--record-brain-image` recusa recibo de outro projeto (recibo sem projeto é da etapa 1);
+- os gates de cada um não veem os objetos do outro: um B1 de pé não bloqueia os gates da
+  etapa 1, e a etapa 1 de pé não conta como recurso existente do B1;
+- um perfil desconhecido, ou um perfil que divida prefixo, porta ou evidência com a etapa 1,
+  é recusado ao importar `preflight.py`.
+
+Só a preparação está aqui; nada foi buildado ou iniciado. Para o B1, use o mesmo fluxo da
+etapa 2 em host limpo, com `CORE_QA_PROFILE=b1` exportado e os arquivos do B1:
+
+```bash
+export CORE_QA_PROFILE=b1 SOURCE_REVISION='COLE_O_SHA_COMPLETO_APROVADO_AQUI'
+B1="env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-qa-b1 -f compose.yaml -f compose.brain-fake.yaml -f compose.b1.yaml -f compose.b1-brain.yaml --env-file .env"
+python3 preflight.py --brain-fake --approved-revision "$SOURCE_REVISION"
+# só depois do GO do responsável:
+# $B1 build game web brain
+# $B1 up -d --no-build --pull never --wait database game web brain
+```
+
+Com uma source checkout anterior (a1d9), `stage2_handoff.py` e `qa_return_attempt.py`
+ignoram `CORE_QA_PROFILE` e continuam só da etapa 1.
+
+Os limites de `compose.b1.yaml` (game 2 CPUs/6 GB, banco 1/2 GB, web 1/1 GB, brain
+0,5/512 MB) são um ponto de partida para revisão, não uma medida.
 
 ## Etapa 2: worker fake (somente QA, nunca produção)
 
@@ -738,7 +794,7 @@ passar. Os conflitos:
    `health` de cada container (`stage1_baseline.py:110`, `stage1_baseline.py:270`).
    `assert_stage1_upgrade` compara os dois com a baseline
    (`stage1_baseline.py:337-340`), e o preflight do upgrade o chama
-   (`preflight.py:342`). A baseline fixada tem os três containers
+   (`preflight.py:406`). A baseline fixada tem os três containers
    `running`/`healthy`. Com o `game` parado, o gate vê `exited` e recusa. Com o
    `game` religado, os bots voltam a gravar e o recorte se move de novo.
 3. **Uma baseline capturada com o `game` parado quebraria o rollback.**
