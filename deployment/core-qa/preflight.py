@@ -21,10 +21,11 @@ HERE = Path(__file__).resolve().parent
 # stage-1 baseline, handoff and return tools refuse it, and its gates never see stage-1 objects as its own.
 PROFILES = {
     "stage1": {"project": "canary-core-qa", "overlays": (), "brain_overlays": (), "evidence": "runtime/evidence",
-               "ports": {"login": 17171, "game": 17172, "status": 17173, "web": 18080}, "limits": False},
+               "ports": {"login": 17171, "game": 17172, "status": 17173, "web": 18080}, "limits": False,
+               "server_name": "Canary core QA"},
     "b1": {"project": "canary-qa-b1", "overlays": ("compose.b1.yaml",), "brain_overlays": ("compose.b1-brain.yaml",),
            "evidence": "runtime/b1/evidence", "ports": {"login": 27171, "game": 27172, "status": 27173, "web": 28080},
-           "limits": True},
+           "limits": True, "server_name": "Canary QA B1"},
 }
 
 
@@ -279,7 +280,8 @@ def assert_profile_render(data, profile=None):
     expected = {
         "game": {"GAME_LOGIN_PORT": ports["login"], "GAME_PROTOCOL_PORT": ports["game"],
                  "GAME_STATUS_PORT": ports["status"]},
-        "web": {"CANARY_LOGIN_PORT": ports["login"], "CANARY_GAME_PORT": ports["game"],
+        "web": {"CANARY_SERVER_NAME": profile["server_name"], "CANARY_LOGIN_PORT": ports["login"],
+                "CANARY_GAME_PORT": ports["game"],
                 "CANARY_STATUS_PORT": ports["status"], "MYAAC_SITE_URL": f"http://127.0.0.1:{ports['web']}"},
     }
     for name, service in services.items():
@@ -354,6 +356,8 @@ def write_receipt(path, approved_revision, compose_sha, images, myaac, map_sha, 
         # The tooling revision is approved_source_revision (HEAD); the game image keeps its own source
         # revision, recorded in stage1_upgrade.observed and never relabelled as HEAD.
         **({"game_image_pin": game_pin} if game_pin else {}),
+        # Another profile: what its MyAAC config was attested from (stage-1 receipts keep their keys).
+        **({"myaac_attestation": myaac["attestation"]} if "attestation" in myaac else {}),
     }
     return save_receipt(path, receipt)
 
@@ -409,7 +413,7 @@ def run_preflight(resources_only=False, approved_revision=None, receipt_path=Non
         stage1 = None
         assert_no_resources(brain_fake)
     images = assert_image_lock(brain_fake or upgrade)
-    myaac = verify_myaac()
+    myaac = verify_myaac(PROFILE)
     if resources_only:
         return None
     source_sha = assert_source(approved_revision)
