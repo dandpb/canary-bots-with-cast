@@ -49,6 +49,7 @@ void PlayerStorage::ingest(const std::vector<PlayerStorageRow> &rows) {
 	m_storageMap.clear();
 	m_modifiedKeys.clear();
 	m_removedKeys.clear();
+	m_dirtyRevisions.clear();
 	for (const auto &row : rows) {
 		add(row.key, row.value, true, false);
 	}
@@ -81,6 +82,7 @@ void PlayerStorage::add(const uint32_t key, const int32_t value, const bool shou
 
 		if (shouldTrackModification) {
 			m_modifiedKeys.insert(key);
+			m_dirtyRevisions[key] = ++m_nextRevision;
 		}
 		if (!shouldStorageUpdate) {
 			auto currentFrameTime = g_dispatcher().getDispatcherCycle();
@@ -92,6 +94,7 @@ void PlayerStorage::add(const uint32_t key, const int32_t value, const bool shou
 		m_storageMap.erase(key);
 		m_modifiedKeys.erase(key);
 		m_removedKeys.insert(key);
+		m_dirtyRevisions[key] = ++m_nextRevision;
 	}
 }
 
@@ -121,6 +124,7 @@ bool PlayerStorage::remove(const uint32_t key) {
 	m_storageMap.erase(key);
 	m_modifiedKeys.erase(key);
 	m_removedKeys.insert(key);
+	m_dirtyRevisions[key] = ++m_nextRevision;
 	return true;
 }
 
@@ -136,6 +140,7 @@ PlayerStorage::PlayerStorageDelta PlayerStorage::delta() const {
 		data.upserts.emplace(key, m_storageMap.at(key));
 	}
 	data.deletions.assign(m_removedKeys.begin(), m_removedKeys.end());
+	data.revisions = m_dirtyRevisions;
 	return data;
 }
 
@@ -143,16 +148,29 @@ void PlayerStorage::clearDirty() {
 	std::lock_guard lock(mutex_);
 	m_modifiedKeys.clear();
 	m_removedKeys.clear();
+	m_dirtyRevisions.clear();
 }
 
 void PlayerStorage::acknowledge(const PlayerStorageDelta& persisted) {
 	std::lock_guard lock(mutex_);
 	for (const auto& [key, value] : persisted.upserts) {
 		auto current = m_storageMap.find(key);
-		if (current != m_storageMap.end() && current->second == value) m_modifiedKeys.erase(key);
+		const auto captured = persisted.revisions.find(key);
+		const auto dirty = m_dirtyRevisions.find(key);
+		if (captured != persisted.revisions.end() && dirty != m_dirtyRevisions.end()
+			&& captured->second == dirty->second && current != m_storageMap.end() && current->second == value) {
+			m_modifiedKeys.erase(key);
+			m_dirtyRevisions.erase(dirty);
+		}
 	}
 	for (const auto key : persisted.deletions) {
-		if (!m_storageMap.contains(key)) m_removedKeys.erase(key);
+		const auto captured = persisted.revisions.find(key);
+		const auto dirty = m_dirtyRevisions.find(key);
+		if (captured != persisted.revisions.end() && dirty != m_dirtyRevisions.end()
+			&& captured->second == dirty->second && !m_storageMap.contains(key)) {
+			m_removedKeys.erase(key);
+			m_dirtyRevisions.erase(dirty);
+		}
 	}
 }
 
@@ -176,6 +194,8 @@ void PlayerStorage::upsertKey(uint32_t key, int32_t value) {
 	auto it = m_storageMap.find(key);
 	if (it == m_storageMap.end() || it->second != value) {
 		m_storageMap[key] = value;
+		m_removedKeys.erase(key);
 		m_modifiedKeys.insert(key);
+		m_dirtyRevisions[key] = ++m_nextRevision;
 	}
 }
