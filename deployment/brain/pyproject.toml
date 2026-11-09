@@ -9,6 +9,9 @@ description = "Bounded GPT-6 Luna party companions for Canary"
 requires-python = ">=3.11"
 dependencies = ["openai==3.42.1", "pydantic==2.14.2"]
 
+[project.optional-dependencies]
+tracing = ["opentelemetry-sdk==1.45.2", "opentelemetry-exporter-otlp-proto-http==1.45.2"]
+
 [project.scripts]
 canary-brain = "canary_brain.cli:main"
 
@@ -27,4 +30,14 @@ testpaths = ["tests"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
+
+[tool.ruff.lint.per-file-ignores]
+# These historical verifiers and producer snapshots are bound by published
+# checksums. Preserve their original bytes while linting maintained code normally.
+"evidence/2026-11-06/m5-current-free-attempts/verify_bundle.py" = ["I001"]
+"evidence/2026-11-06/m5-navigation-diagnostics/verify_bundle.py" = ["I001"]
+"evidence/2026-11-06/m5-final-free-qualified/native/producer-driver.py" = ["I001"]
+"evidence/2026-11-06/m5-final-free-qualified/fake/producer-driver.py" = ["I001"]
+"evidence/2026-11-06/m5-final-interrupted-attempts/native/producer-driver.py" = ["I001"]
+"evidence/2026-11-06/m5-final-interrupted-attempts/fake/producer-driver.py" = ["I001"]
 

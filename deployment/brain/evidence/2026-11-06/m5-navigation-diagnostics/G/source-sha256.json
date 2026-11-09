@@ -1,0 +1,17 @@
+{
+  "attestation.json": "7eac4975834ae71e159065db1382e2640424f65e9456770f70945250ed8eb80c",
+  "experiment.json": "38deaed641546219ba4d17e86b3f304c6cb7c57b5cb9a3a9df5e3711eebe0670",
+  "diagnostic-interpretation.json": "85582efd169e4b018f331331be2208385705d7c9a761e467437d8a1befdf0f79",
+  "qualification.json": "d71e134acfe945b9c4c6ea7243658fb6e53c8aa1a70fb0b61d1454e90b2dbbfc",
+  "diagnostic-scope.json": "476273ef5fa95148e3ca41e4948220c3d4f669b76ee0dbb722f1c586588cebd3",
+  "driver.py": "9232422178808e34d0d63b3cce9db7a412d3bcd650167c33552b391e64e4cc62",
+  "operator-injections.jsonl": "0c81fabec7540be3ec761adfea3702ce22747f3b1de2873ca13819699dad3bfa",
+  "runs/fake-0/diagnostic-commands.jsonl": "76f882a5e88c295c724ce5b999aabfd01f4866eae4a313860062e51cc0655608",
+  "runs/recording.sqlite3": "b84e9085ef486da8c5fb52256bec080f1f6e61f28eb1a7610af09a8e321c5d05",
+  "runs/recording.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "runs/fake-0/services.full.log": "4617b822323cfcb46bed7f3318d3a422a422c378294bed19a394567b62ffdb24",
+  "portal-live-checkpoint.log": "ae2c10b9a114075fae432347da62df323cf2a987e730560e32a40524a5647272",
+  "runs/fake-0/saved-character.json": "500db35c456c94c49345ffe356b44a65ff8a4478dd9a9419cae2790868ef6484",
+  "runs/fake-0/resources-cleaned.json": "e9d5da71d25a8827ced7680930571162ec22c66db4cdf5fd1d8da4e7dd711434",
+  "runs/fake-0/runtime-image-attestation.json": "3d2e3f2e6fb7ce4d897379e990e115b1c5ffcd3070bcde1f9f9007084045317e"
+}

@@ -1,0 +1,23 @@
+{
+  ".gitattributes": "f36bb168bc2ef00001aba7eb4351d274eaf4b9594bf722f23bdebe6c4ed78f30",
+  "closed-executor-ledger-projection.json": "7a022aaee68674414cddc995089b637f98b144cde7877ef77763c5d653fe25a7",
+  "closure-projection.json": "81cad6efc1498ce14cf5364946f9245b0c043a1bc47ec613b791fc88eb596369",
+  "code-validation-projection.json": "5b3799a3ed765b035147bf953d34842f5260ebeb96e0e139c368d1189341b1af",
+  "diagnostic-provenance.json": "b0b519e3d49ba7a24761d36f08b4c8cc56ac9610cd7d6f9ea1a13240c77fcc8c",
+  "execution-result-projection.json": "b29e52e5d02e05dbdf40cfe26d6518f817bc62f37a77a36514e4e08eb49e0265",
+  "finance-1821/checksums.json": "69f7c8e9d139494fba94d9d486f74b7186f3216b8709cb3e8cab90a2ba47401c",
+  "finance-1821/r2-postclosure-financial.public.json": "8750cf48751b7958a68078e6cd3179cc097d3115e2ed74b68c75bd7b58a08be8",
+  "finance-1821/README.md": "c0a3beeca6e7b00a7a10acd0f597300b0f86a1f2e98d9f97180f1558730c3b9b",
+  "historical-root-GO-projection.json": "13788a002f7f68d7de6df9701623338adaeb440b2de958a6c4568a4aa92407d1",
+  "input-and-source-provenance.json": "ef9f4f0ac1b64ec0f84e220aa6ee9cf50c18c22c65f921fd6c0e5387c33931e3",
+  "openai-probe-result.json": "db5a5ee81d6c212d5d174387784c7f97a97fd0310438f5c48eacf56d532ed409",
+  "openai-r2-decisions.replay.zip": "52e11b3208286f713a40bd2cd51373d0f98b97c73e9afe243b137948b935f3d9",
+  "private-copy-preservation.json": "6f2faa0a965da0b36566e86430a05a1bcdad354039abbca2a2da115ed15cf6c9",
+  "private-gateway-cleanup-projection.json": "f71eba11e2a4a36eab169014b98670ec908c3be89973af73c46650ea116c21e2",
+  "probe-recording-observations.json": "5c210e7e44e0e4a9c110a017de0eca62c529eb37910f8d7f9990c2a017ea4614",
+  "README.md": "d9aa3b2d61f4320d26de87574bccc86e51bfe0ae6311e881ced24d659c12f47f",
+  "safe-event-projection.public.json": "6f25e0c171f47be2ee34d06db4fbf6e2d606dc12099d5725c81f11dff17f7418",
+  "summary.json": "bd041f56418f755b4bdbe41c773bb070e58e32210a3ba18d0238947f9338d15d",
+  "supplied-custody-projection.json": "955e7f9fed875c750a990df2507f220b10333c97d6598c610808c5b5fcd5ab92",
+  "verify_bundle.py": "49c353d7f3d2d92d3e198c2fec80c707808e669f98977561549a6fd60039e4bc"
+}

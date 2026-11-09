@@ -1,0 +1,68 @@
+{
+  "ready_for_review": false,
+  "financial_totals_complete": true,
+  "financial_final": false,
+  "findings": [
+    {
+      "code": "recording_incomplete",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "detail": "Critical gaps/incomplete recording cannot pass qualification"
+    },
+    {
+      "code": "stop_status_mismatch",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "detail": "Unexpected/missing stop classification; retain interrupted/infrastructure attempts"
+    },
+    {
+      "code": "stop_evidence_mismatch",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "detail": "Need exactly one matching durable supervisor stop"
+    },
+    {
+      "code": "character_evidence_missing",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:0",
+      "detail": "Need restored initial and final saved character evidence plus samples"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:0",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:0",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:1",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:1",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:1",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:native:2",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:openai:2",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    },
+    {
+      "code": "missing_attempt_evidence",
+      "run_id": "m5-none-v3-20261106-c2c3972c:gemini:2",
+      "detail": "Every predeclared attempt needs a recording and trial record"
+    }
+  ],
+  "verdict": "descriptive_pilot_no_winner"
+}

@@ -1,0 +1,4877 @@
+{
+  "captured_utc": "2026-11-06T11:25:25.282792+00:00",
+  "scope": "consistent SQLite read transaction; no game commands or mutations",
+  "recording": "<SOURCE_FAKE>/runs/recording.sqlite3",
+  "source_revision": "c9e447c500d1c245e7ea3736934eacfda0b5d445",
+  "window_ms": [
+    1220000,
+    1280000
+  ],
+  "events": [
+    {
+      "event_id": 3752,
+      "t_ms": 1220384,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146454374,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3753,
+      "t_ms": 1220484,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "hunt",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146454475,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 4,
+        "party": null,
+        "sequence": 3984,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3754,
+      "t_ms": 1221387,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146455378,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3755,
+      "t_ms": 1221688,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "hunt",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146455679,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 4,
+        "party": null,
+        "sequence": 3988,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3756,
+      "t_ms": 1222388,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146456379,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3757,
+      "t_ms": 1222909,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "hunt",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146456880,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 4,
+        "party": null,
+        "sequence": 3992,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3758,
+      "t_ms": 1223390,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146457381,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3759,
+      "t_ms": 1224094,
+      "kind": "outcome",
+      "data": {
+        "action_id": "4d838d960020439ba9b75cdd96657df8",
+        "bot_id": 65001,
+        "metrics": {
+          "danger": 0.0,
+          "deaths": 0.0,
+          "defeats_delta": 0.0,
+          "elapsed_seconds": 300.052,
+          "level": 20.0,
+          "party_distance": 0.0,
+          "party_size": 1.0,
+          "progress": 0.0,
+          "supply_delta": 0.0,
+          "xp_delta": 0.0
+        },
+        "reason": "no_confirmed_combat_progress",
+        "status": "failed",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3760,
+      "t_ms": 1224094,
+      "kind": "operator",
+      "data": {
+        "candidate": "hunt:399",
+        "kind": "avoid",
+        "text": "hunt:399 ser\u00e1 evitada por 30 minutos."
+      }
+    },
+    {
+      "event_id": 3761,
+      "t_ms": 1224119,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "follow",
+          "objective_defeats": 0,
+          "objective_running": false,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146458085,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 4,
+        "party": null,
+        "sequence": 3996,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3762,
+      "t_ms": 1224145,
+      "kind": "decision",
+      "data": {
+        "decision_id": "7cf9d899ab5d48f8a3b42716380f56a6",
+        "memory": {
+          "actions": {},
+          "operator_advice": [],
+          "strategy_hypothesis": null
+        },
+        "observation": {
+          "actions": [
+            {
+              "action": "hunt",
+              "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+              "id": "hunt:77",
+              "ttl_ms": 5000
+            }
+          ],
+          "autonomous": true,
+          "bot": {
+            "alive": true,
+            "health": 100,
+            "id": 65001,
+            "level": 20,
+            "mana": 100,
+            "name": "Grizzle Alyronia",
+            "objective": "follow",
+            "objective_defeats": 0,
+            "objective_running": false,
+            "position": [
+              32372,
+              32103,
+              7
+            ],
+            "potions": 40,
+            "state": "IDLE",
+            "vocation": 4,
+            "xp": 100793
+          },
+          "captured_ms": 146458085,
+          "mode": "active",
+          "nearby": [],
+          "objective_generation": 4,
+          "party": null,
+          "sequence": 3996,
+          "type": "observation",
+          "version": 1,
+          "world": "1-145256480819828"
+        },
+        "phase": "requested"
+      }
+    },
+    {
+      "event_id": 3763,
+      "t_ms": 1224145,
+      "kind": "decision",
+      "data": {
+        "candidate": "hunt:77",
+        "decision_id": "7cf9d899ab5d48f8a3b42716380f56a6",
+        "phase": "model_proposed",
+        "source": "single_candidate_rule"
+      }
+    },
+    {
+      "event_id": 3764,
+      "t_ms": 1224145,
+      "kind": "decision",
+      "data": {
+        "decision_id": "7cf9d899ab5d48f8a3b42716380f56a6",
+        "phase": "selected",
+        "proposed": "hunt:77",
+        "selected": "hunt:77",
+        "selection": null,
+        "source": "single_candidate_rule"
+      }
+    },
+    {
+      "event_id": 3765,
+      "t_ms": 1224145,
+      "kind": "proposal",
+      "data": {
+        "candidate": "hunt:77",
+        "decision_id": "7cf9d899ab5d48f8a3b42716380f56a6",
+        "observation_sequence": 3996,
+        "selection": null,
+        "source": "controller",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3766,
+      "t_ms": 1224146,
+      "kind": "intent",
+      "data": {
+        "action_id": "9a9d076bdca24ca483383282dcc9b224",
+        "bot_id": 65001,
+        "candidate_id": "hunt:77",
+        "decision_id": "7cf9d899ab5d48f8a3b42716380f56a6",
+        "expires_ms": 146463085,
+        "mode": "active",
+        "objective_generation": 4,
+        "observation_sequence": 3996,
+        "operator": false,
+        "type": "intent",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3767,
+      "t_ms": 1224294,
+      "kind": "outcome",
+      "data": {
+        "action_id": "9a9d076bdca24ca483383282dcc9b224",
+        "bot_id": 65001,
+        "metrics": {},
+        "reason": "objective_started",
+        "status": "accepted",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3768,
+      "t_ms": 1224396,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146458387,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3769,
+      "t_ms": 1224397,
+      "kind": "lifecycle",
+      "data": {
+        "jump": 1,
+        "note": "Native validation also advances this counter; this is not proof of packet loss.",
+        "phase": "observation_sequence_jump"
+      }
+    },
+    {
+      "event_id": 3770,
+      "t_ms": 1224397,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "hunt",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146458387,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 5,
+        "party": null,
+        "sequence": 3998,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3771,
+      "t_ms": 1225396,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146459387,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3772,
+      "t_ms": 1225598,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "hunt",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146459589,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 5,
+        "party": null,
+        "sequence": 4002,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3773,
+      "t_ms": 1226399,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146460390,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3774,
+      "t_ms": 1226801,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "hunt",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146460792,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 5,
+        "party": null,
+        "sequence": 4006,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3775,
+      "t_ms": 1227403,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146461394,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3776,
+      "t_ms": 1228005,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "hunt",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146461996,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 5,
+        "party": null,
+        "sequence": 4010,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3777,
+      "t_ms": 1228405,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146462396,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3778,
+      "t_ms": 1229209,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "hunt",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146463200,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 5,
+        "party": null,
+        "sequence": 4014,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3779,
+      "t_ms": 1229410,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146463401,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3780,
+      "t_ms": 1230137,
+      "kind": "operator",
+      "data": {
+        "kind": "stall",
+        "text": "Cinco minutos sem movimento, XP ou novos abates; verificar a tarefa."
+      }
+    },
+    {
+      "event_id": 3781,
+      "t_ms": 1230181,
+      "kind": "operator",
+      "data": {
+        "candidate": "hunt:77",
+        "kind": "avoid",
+        "text": "hunt:77 ser\u00e1 evitada por 30 minutos."
+      }
+    },
+    {
+      "event_id": 3782,
+      "t_ms": 1230204,
+      "kind": "operator",
+      "data": {
+        "kind": "recovery",
+        "text": "Recupera\u00e7\u00e3o iniciada: pausa, nova observa\u00e7\u00e3o e outra a\u00e7\u00e3o eleg\u00edvel."
+      }
+    },
+    {
+      "event_id": 3783,
+      "t_ms": 1230234,
+      "kind": "proposal",
+      "data": {
+        "candidate": "hold",
+        "decision_id": "",
+        "observation_sequence": 4017,
+        "selection": {
+          "source": "operator"
+        },
+        "source": "operator",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3784,
+      "t_ms": 1230235,
+      "kind": "intent",
+      "data": {
+        "action_id": "8fda6299b2f24e2583a718a54a523ffd",
+        "bot_id": 65001,
+        "candidate_id": "hold",
+        "decision_id": "",
+        "expires_ms": 146469103,
+        "mode": "active",
+        "objective_generation": 5,
+        "observation_sequence": 4017,
+        "operator": true,
+        "type": "intent",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3785,
+      "t_ms": 1230304,
+      "kind": "operator",
+      "data": {
+        "action_id": "8fda6299b2f24e2583a718a54a523ffd",
+        "candidate": "hold",
+        "kind": "proposed",
+        "text": "A\u00e7\u00e3o enviada: hold; aguardando confirma\u00e7\u00e3o."
+      }
+    },
+    {
+      "event_id": 3786,
+      "t_ms": 1230329,
+      "kind": "operator",
+      "data": {
+        "automatic": true,
+        "operation": "recover"
+      }
+    },
+    {
+      "event_id": 3787,
+      "t_ms": 1230330,
+      "kind": "outcome",
+      "data": {
+        "action_id": "9a9d076bdca24ca483383282dcc9b224",
+        "bot_id": 65001,
+        "metrics": {
+          "danger": 0.0,
+          "deaths": 0.0,
+          "defeats_delta": 0.0,
+          "elapsed_seconds": 6.017,
+          "level": 20.0,
+          "party_distance": 0.0,
+          "party_size": 1.0,
+          "progress": 0.0,
+          "supply_delta": 0.0,
+          "xp_delta": 0.0
+        },
+        "reason": "new_objective",
+        "status": "cancelled",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3788,
+      "t_ms": 1230427,
+      "kind": "outcome",
+      "data": {
+        "action_id": "8fda6299b2f24e2583a718a54a523ffd",
+        "bot_id": 65001,
+        "metrics": {},
+        "reason": "objective_started",
+        "status": "accepted",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3789,
+      "t_ms": 1230428,
+      "kind": "operator",
+      "data": {
+        "action_id": "8fda6299b2f24e2583a718a54a523ffd",
+        "candidate": "hold",
+        "kind": "outcome",
+        "text": "Servidor: accepted (objective_started)."
+      }
+    },
+    {
+      "event_id": 3790,
+      "t_ms": 1230451,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146464404,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3791,
+      "t_ms": 1230452,
+      "kind": "lifecycle",
+      "data": {
+        "jump": 1,
+        "note": "Native validation also advances this counter; this is not proof of packet loss.",
+        "phase": "observation_sequence_jump"
+      }
+    },
+    {
+      "event_id": 3792,
+      "t_ms": 1230452,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "hold",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146464404,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 6,
+        "party": null,
+        "sequence": 4019,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3793,
+      "t_ms": 1230477,
+      "kind": "proposal",
+      "data": {
+        "candidate": "retreat",
+        "decision_id": "",
+        "observation_sequence": 4019,
+        "selection": {
+          "source": "operator"
+        },
+        "source": "operator",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3794,
+      "t_ms": 1230478,
+      "kind": "intent",
+      "data": {
+        "action_id": "1de4ba4c91c54a57813bb5d06d8e3eb3",
+        "bot_id": 65001,
+        "candidate_id": "retreat",
+        "decision_id": "",
+        "expires_ms": 146465904,
+        "mode": "active",
+        "objective_generation": 6,
+        "observation_sequence": 4019,
+        "operator": true,
+        "type": "intent",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3795,
+      "t_ms": 1230564,
+      "kind": "operator",
+      "data": {
+        "action_id": "1de4ba4c91c54a57813bb5d06d8e3eb3",
+        "candidate": "retreat",
+        "kind": "proposed",
+        "text": "A\u00e7\u00e3o enviada: retreat; aguardando confirma\u00e7\u00e3o."
+      }
+    },
+    {
+      "event_id": 3796,
+      "t_ms": 1230614,
+      "kind": "outcome",
+      "data": {
+        "action_id": "8fda6299b2f24e2583a718a54a523ffd",
+        "bot_id": 65001,
+        "metrics": {
+          "danger": 0.0,
+          "deaths": 0.0,
+          "defeats_delta": 0.0,
+          "elapsed_seconds": 0.302,
+          "level": 20.0,
+          "party_distance": 0.0,
+          "party_size": 1.0,
+          "progress": 0.0,
+          "supply_delta": 0.0,
+          "xp_delta": 0.0
+        },
+        "reason": "new_objective",
+        "status": "cancelled",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3797,
+      "t_ms": 1230614,
+      "kind": "operator",
+      "data": {
+        "action_id": "8fda6299b2f24e2583a718a54a523ffd",
+        "candidate": "hold",
+        "kind": "outcome",
+        "text": "Servidor: cancelled (new_objective)."
+      }
+    },
+    {
+      "event_id": 3798,
+      "t_ms": 1230633,
+      "kind": "outcome",
+      "data": {
+        "action_id": "1de4ba4c91c54a57813bb5d06d8e3eb3",
+        "bot_id": 65001,
+        "metrics": {},
+        "reason": "objective_started",
+        "status": "accepted",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3799,
+      "t_ms": 1230633,
+      "kind": "operator",
+      "data": {
+        "action_id": "1de4ba4c91c54a57813bb5d06d8e3eb3",
+        "candidate": "retreat",
+        "kind": "outcome",
+        "text": "Servidor: accepted (objective_started)."
+      }
+    },
+    {
+      "event_id": 3800,
+      "t_ms": 1230714,
+      "kind": "lifecycle",
+      "data": {
+        "jump": 1,
+        "note": "Native validation also advances this counter; this is not proof of packet loss.",
+        "phase": "observation_sequence_jump"
+      }
+    },
+    {
+      "event_id": 3801,
+      "t_ms": 1230714,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146464706,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4021,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3802,
+      "t_ms": 1231415,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146465406,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3803,
+      "t_ms": 1231916,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146465907,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4025,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3804,
+      "t_ms": 1232418,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146466408,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3805,
+      "t_ms": 1233120,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146467111,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4029,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3806,
+      "t_ms": 1233421,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146467412,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3807,
+      "t_ms": 1234327,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146468318,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4033,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3808,
+      "t_ms": 1234428,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146468418,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3809,
+      "t_ms": 1235432,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146469423,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3810,
+      "t_ms": 1235532,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146469523,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4037,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3812,
+      "t_ms": 1236433,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146470424,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3813,
+      "t_ms": 1236734,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146470725,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4041,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3814,
+      "t_ms": 1237436,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146471426,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3815,
+      "t_ms": 1237937,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146471927,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4045,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3816,
+      "t_ms": 1238437,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146472428,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3817,
+      "t_ms": 1239139,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146473130,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4049,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3818,
+      "t_ms": 1239439,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146473430,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3819,
+      "t_ms": 1240341,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146474331,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4053,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3820,
+      "t_ms": 1240441,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146474432,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3822,
+      "t_ms": 1241442,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146475432,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3823,
+      "t_ms": 1241539,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146475530,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4057,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3824,
+      "t_ms": 1242442,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146476433,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3825,
+      "t_ms": 1242743,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146476734,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4061,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3826,
+      "t_ms": 1243446,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146477438,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3827,
+      "t_ms": 1243987,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146477941,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4065,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3828,
+      "t_ms": 1244452,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146478442,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3829,
+      "t_ms": 1245153,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146479143,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4069,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3830,
+      "t_ms": 1245452,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146479443,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3832,
+      "t_ms": 1246356,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146480347,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4073,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3833,
+      "t_ms": 1246456,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146480447,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3834,
+      "t_ms": 1247460,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146481450,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3835,
+      "t_ms": 1247561,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146481551,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4077,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3836,
+      "t_ms": 1248464,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146482455,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3837,
+      "t_ms": 1248765,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146482756,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4081,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3838,
+      "t_ms": 1249468,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146483459,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3839,
+      "t_ms": 1249968,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146483958,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4085,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3840,
+      "t_ms": 1250469,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146484459,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3841,
+      "t_ms": 1251169,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146485159,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4089,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3843,
+      "t_ms": 1251470,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146485461,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3844,
+      "t_ms": 1252373,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146486364,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4093,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3845,
+      "t_ms": 1252473,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146486464,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3846,
+      "t_ms": 1253475,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146487466,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3847,
+      "t_ms": 1253576,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146487567,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4097,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3848,
+      "t_ms": 1254479,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146488470,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3849,
+      "t_ms": 1254781,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146488772,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4101,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3850,
+      "t_ms": 1255483,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146489475,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3851,
+      "t_ms": 1255986,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146489977,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4105,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3852,
+      "t_ms": 1256529,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146490477,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3854,
+      "t_ms": 1257188,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146491179,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4109,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3855,
+      "t_ms": 1257488,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146491479,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3856,
+      "t_ms": 1258393,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146492384,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4113,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3857,
+      "t_ms": 1258494,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146492485,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3858,
+      "t_ms": 1259497,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146493488,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3859,
+      "t_ms": 1259597,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146493588,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4117,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3860,
+      "t_ms": 1260497,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146494488,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3861,
+      "t_ms": 1260797,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146494788,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4121,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3862,
+      "t_ms": 1261499,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146495490,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3864,
+      "t_ms": 1262001,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146495992,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4125,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3865,
+      "t_ms": 1262516,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146496494,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3866,
+      "t_ms": 1263206,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146497197,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4129,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3867,
+      "t_ms": 1263506,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146497497,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3868,
+      "t_ms": 1264410,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146498400,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4133,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3869,
+      "t_ms": 1264510,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146498500,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3870,
+      "t_ms": 1265513,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146499503,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3871,
+      "t_ms": 1265612,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146499603,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4137,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3872,
+      "t_ms": 1266514,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146500505,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3873,
+      "t_ms": 1266733,
+      "kind": "outcome",
+      "data": {
+        "action_id": "1de4ba4c91c54a57813bb5d06d8e3eb3",
+        "bot_id": 65001,
+        "metrics": {
+          "danger": 0.0,
+          "deaths": 0.0,
+          "defeats_delta": 0.0,
+          "elapsed_seconds": 36.119,
+          "level": 20.0,
+          "party_distance": 0.0,
+          "party_size": 1.0,
+          "progress": 0.0,
+          "supply_delta": 0.0,
+          "xp_delta": 0.0
+        },
+        "reason": "return_route_unavailable",
+        "status": "failed",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3874,
+      "t_ms": 1266734,
+      "kind": "operator",
+      "data": {
+        "action_id": "1de4ba4c91c54a57813bb5d06d8e3eb3",
+        "candidate": "retreat",
+        "kind": "outcome",
+        "text": "Servidor: failed (return_route_unavailable)."
+      }
+    },
+    {
+      "event_id": 3875,
+      "t_ms": 1266815,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "follow",
+          "objective_defeats": 0,
+          "objective_running": false,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146500806,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 7,
+        "party": null,
+        "sequence": 4141,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3876,
+      "t_ms": 1266842,
+      "kind": "decision",
+      "data": {
+        "decision_id": "6bb82ac729014e9098661a61ef22fc3b",
+        "memory": {
+          "actions": {},
+          "operator_advice": [],
+          "strategy_hypothesis": null
+        },
+        "observation": {
+          "actions": [
+            {
+              "action": "retreat",
+              "description": "Disengage and return to the leader or town temple for the next activity",
+              "id": "retreat",
+              "ttl_ms": 1500
+            }
+          ],
+          "autonomous": true,
+          "bot": {
+            "alive": true,
+            "health": 100,
+            "id": 65001,
+            "level": 20,
+            "mana": 89,
+            "name": "Grizzle Alyronia",
+            "objective": "follow",
+            "objective_defeats": 0,
+            "objective_running": false,
+            "position": [
+              32372,
+              32103,
+              7
+            ],
+            "potions": 40,
+            "state": "IDLE",
+            "vocation": 4,
+            "xp": 100793
+          },
+          "captured_ms": 146500806,
+          "mode": "active",
+          "nearby": [],
+          "objective_generation": 7,
+          "party": null,
+          "sequence": 4141,
+          "type": "observation",
+          "version": 1,
+          "world": "1-145256480819828"
+        },
+        "phase": "requested"
+      }
+    },
+    {
+      "event_id": 3877,
+      "t_ms": 1266842,
+      "kind": "decision",
+      "data": {
+        "candidate": "retreat",
+        "decision_id": "6bb82ac729014e9098661a61ef22fc3b",
+        "phase": "model_proposed",
+        "source": "single_candidate_rule"
+      }
+    },
+    {
+      "event_id": 3878,
+      "t_ms": 1266842,
+      "kind": "decision",
+      "data": {
+        "decision_id": "6bb82ac729014e9098661a61ef22fc3b",
+        "phase": "selected",
+        "proposed": "retreat",
+        "selected": "retreat",
+        "selection": null,
+        "source": "single_candidate_rule"
+      }
+    },
+    {
+      "event_id": 3879,
+      "t_ms": 1266842,
+      "kind": "proposal",
+      "data": {
+        "candidate": "retreat",
+        "decision_id": "6bb82ac729014e9098661a61ef22fc3b",
+        "observation_sequence": 4141,
+        "selection": null,
+        "source": "controller",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3880,
+      "t_ms": 1266843,
+      "kind": "intent",
+      "data": {
+        "action_id": "9c55e0fa292d468dbff7f375a25ef03a",
+        "bot_id": 65001,
+        "candidate_id": "retreat",
+        "decision_id": "6bb82ac729014e9098661a61ef22fc3b",
+        "expires_ms": 146502306,
+        "mode": "active",
+        "objective_generation": 7,
+        "observation_sequence": 4141,
+        "operator": false,
+        "type": "intent",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3881,
+      "t_ms": 1266917,
+      "kind": "outcome",
+      "data": {
+        "action_id": "9c55e0fa292d468dbff7f375a25ef03a",
+        "bot_id": 65001,
+        "metrics": {},
+        "reason": "objective_started",
+        "status": "accepted",
+        "type": "outcome",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3882,
+      "t_ms": 1267115,
+      "kind": "lifecycle",
+      "data": {
+        "jump": 1,
+        "note": "Native validation also advances this counter; this is not proof of packet loss.",
+        "phase": "observation_sequence_jump"
+      }
+    },
+    {
+      "event_id": 3883,
+      "t_ms": 1267115,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146501105,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4143,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3884,
+      "t_ms": 1267515,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146501506,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3885,
+      "t_ms": 1268319,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146502309,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4147,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3886,
+      "t_ms": 1268519,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146502510,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3887,
+      "t_ms": 1269519,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146503510,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3888,
+      "t_ms": 1269520,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146503510,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4151,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3889,
+      "t_ms": 1270522,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146504513,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3890,
+      "t_ms": 1270722,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 89,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146504713,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4155,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3891,
+      "t_ms": 1271524,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146505515,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3892,
+      "t_ms": 1271954,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 78,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146505945,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4159,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3894,
+      "t_ms": 1272556,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146506547,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3895,
+      "t_ms": 1273161,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 78,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146507151,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4163,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3896,
+      "t_ms": 1273561,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146507552,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3897,
+      "t_ms": 1274365,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 78,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146508355,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4167,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3898,
+      "t_ms": 1274565,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146508556,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3899,
+      "t_ms": 1275570,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146509562,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3900,
+      "t_ms": 1275571,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 78,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146509562,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4171,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3901,
+      "t_ms": 1276585,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146510566,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3902,
+      "t_ms": 1276776,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 78,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146510767,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4175,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3904,
+      "t_ms": 1277578,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146511569,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3905,
+      "t_ms": 1277979,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 78,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146511970,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4179,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3906,
+      "t_ms": 1278581,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146512572,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3907,
+      "t_ms": 1279183,
+      "kind": "sample",
+      "data": {
+        "actions": [
+          {
+            "action": "continue",
+            "description": "Continue the current useful objective",
+            "id": "continue",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hold",
+            "description": "Hold position briefly while retaining combat and healing",
+            "id": "hold",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "retreat",
+            "description": "Disengage and return to the leader or town temple for the next activity",
+            "id": "retreat",
+            "ttl_ms": 1500
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Wasp Cave Thais Spear",
+            "id": "hunt:77",
+            "ttl_ms": 5000
+          },
+          {
+            "action": "hunt",
+            "description": "Guide a prudent party hunt: Thais Paw Collector",
+            "id": "hunt:399",
+            "ttl_ms": 5000
+          }
+        ],
+        "autonomous": true,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 78,
+          "name": "Grizzle Alyronia",
+          "objective": "retreat",
+          "objective_defeats": 0,
+          "objective_running": true,
+          "position": [
+            32372,
+            32103,
+            7
+          ],
+          "potions": 40,
+          "state": "IDLE",
+          "vocation": 4,
+          "xp": 100793
+        },
+        "captured_ms": 146513174,
+        "mode": "active",
+        "nearby": [],
+        "objective_generation": 8,
+        "party": null,
+        "sequence": 4183,
+        "type": "observation",
+        "version": 1,
+        "world": "1-145256480819828"
+      }
+    },
+    {
+      "event_id": 3908,
+      "t_ms": 1279584,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 146513575,
+        "deaths": 0,
+        "model_owned": true,
+        "phase": "alive",
+        "world": "1-145256480819828"
+      }
+    }
+  ]
+}

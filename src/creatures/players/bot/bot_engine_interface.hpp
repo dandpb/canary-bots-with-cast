@@ -501,10 +501,16 @@ struct BotReloadEntry {
 	uint8_t vocation = 0;
 	uint16_t personality = 0;
 	uint32_t huntId = 0, kills = 0, travelTown = 0;
+	bool pendingHuntAfterTravel = false;
 	HuntPhase huntPhase = HuntPhase::PREPARING;
 	size_t waypoint = 0;
 	int64_t deathPause = 0, lastVirtualSave = 0;
 	int64_t huntStarted = 0, huntEnds = 0;
+	int64_t dwellUntil = 0;
+	int64_t prepareStarted = 0, prepareWaitUntil = 0, resupplyStarted = 0;
+	uint8_t prepareStep = 0, resupplyPhase = 0;
+	bool prepareHasTarget = false, resupplyRerolled = false;
+	Position prepareTarget;
 	std::string travelPhase;
 	Position travelBoat, travelSource;
 };

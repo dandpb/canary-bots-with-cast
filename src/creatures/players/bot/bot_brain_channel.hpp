@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 #include <fcntl.h>
@@ -85,6 +86,10 @@ namespace botbrain {
 
 		bool send(const nlohmann::json &packet) const {
 			const auto encoded = packet.dump();
+			return sendEncoded(encoded);
+		}
+
+		bool sendEncoded(std::string_view encoded) const {
 			if (encoded.size() > 32768) {
 				return false;
 			}
@@ -120,6 +125,101 @@ namespace botbrain {
 		std::string path_, worker_;
 	};
 
+	class TelemetryOutbox {
+	public:
+		explicit TelemetryOutbox(size_t maxFrames = 64, size_t maxBytes = 64 * 1024) :
+			maxFrames_(maxFrames), maxBytes_(maxBytes) { }
+
+		void beginTick() {
+			attemptsRemaining_ = 2;
+			blockedThisTick_ = false;
+		}
+
+		bool enqueue(const nlohmann::json &packet) {
+			if (!isTelemetry(packet)) {
+				return false;
+			}
+			const auto encoded = packet.dump();
+			if (encoded.size() > 32768 || pending_.size() >= maxFrames_ || encoded.size() > maxBytes_ - pendingBytes_) {
+				++overflowFrames_;
+				return false;
+			}
+			pending_.push_back({ packet.at("sequence").get<uint64_t>(), encoded });
+			pendingBytes_ += encoded.size();
+			return true;
+		}
+
+		// A successful admission is distinct from a successful kernel send.
+		bool publish(Channel &channel, const nlohmann::json &packet) {
+			if (!isTelemetry(packet)) {
+				return false;
+			}
+			flush(channel);
+			const bool admitted = enqueue(packet);
+			if (admitted) {
+				flush(channel);
+			}
+			return admitted;
+		}
+
+		size_t flush(Channel &channel) {
+			size_t attempts = 0;
+			while (!pending_.empty() && attemptsRemaining_ > 0 && !blockedThisTick_) {
+				--attemptsRemaining_;
+				++attempts;
+				const auto &frame = pending_.front();
+				if (!channel.sendEncoded(frame.encoded)) {
+					blockedThisTick_ = true;
+					break;
+				}
+				acceptedSequence_ = frame.sequence;
+				pendingBytes_ -= frame.encoded.size();
+				pending_.pop_front();
+			}
+			return attempts;
+		}
+
+		void discard() {
+			discardedFrames_ += pending_.size();
+			pending_.clear();
+			pendingBytes_ = 0;
+		}
+
+		size_t pendingFrames() const {
+			return pending_.size();
+		}
+		size_t pendingBytes() const {
+			return pendingBytes_;
+		}
+		uint64_t acceptedSequence() const {
+			return acceptedSequence_;
+		}
+		uint64_t overflowFrames() const {
+			return overflowFrames_;
+		}
+		uint64_t discardedFrames() const {
+			return discardedFrames_;
+		}
+
+		nlohmann::json status(const std::string &world, uint32_t guid, int64_t captured, uint64_t issued) const {
+			return telemetryStatus(world, guid, captured, issued, acceptedSequence_, pending_.size(), pendingBytes_, overflowFrames_, discardedFrames_);
+		}
+
+	private:
+		struct Frame {
+			uint64_t sequence;
+			std::string encoded;
+		};
+		static bool isTelemetry(const nlohmann::json &packet) {
+			return packet.is_object() && packet.contains("type") && packet["type"] == "telemetry";
+		}
+		std::deque<Frame> pending_;
+		size_t maxFrames_, maxBytes_, pendingBytes_ = 0;
+		uint64_t acceptedSequence_ = 0, overflowFrames_ = 0, discardedFrames_ = 0;
+		size_t attemptsRemaining_ = 2;
+		bool blockedThisTick_ = false;
+	};
+
 	struct Session {
 		std::deque<nlohmann::json> offers;
 		nlohmann::json messages = nlohmann::json::array();
@@ -132,7 +232,69 @@ namespace botbrain {
 		uint8_t supplyStep = 0;
 		uint64_t sequence = 0, xp = 0;
 		uint64_t telemetrySequence = 0, deaths = 0;
+		TelemetryOutbox delivery;
+		// One admission for this session lifetime; never evicted or replaced by retries.
+		nlohmann::json admission;
+
+		template <typename Snapshot>
+		nlohmann::json admit(const nlohmann::json &request, const std::string &world, uint32_t guid, const std::string &source, bool dirty, Snapshot snapshot) {
+			if (request.size() != 5 || request.value("version", nlohmann::json()) != 1
+			    || request.value("type", nlohmann::json()) != "telemetry_admit"
+			    || request.value("world", nlohmann::json()) != world
+			    || request.value("bot_id", nlohmann::json()) != guid
+			    || !request.contains("nonce") || !request["nonce"].is_string()
+			    || request["nonce"].get<std::string>().empty() || request["nonce"].get<std::string>().size() > 80) {
+				throw std::runtime_error("invalid admission identity");
+			}
+			if (!admission.is_null()) {
+				if (admission.at("nonce") != request.at("nonce") || admission.at("world") != world || admission.at("bot_id") != guid) {
+					throw std::runtime_error("admission conflict");
+				}
+				return admission;
+			}
+			const nlohmann::json initial = snapshot();
+			if (initial.at("world") != world || initial.at("bot").at("id") != guid) {
+				throw std::runtime_error("invalid admission observation");
+			}
+			const auto captured = initial.at("captured_ms").get<int64_t>();
+			if (offers.size() >= 12) {
+				offers.pop_front();
+			}
+			offers.push_back(initial);
+			auto event = telemetry(world, guid, ++telemetrySequence, captured, deaths, "alive");
+			event["run_nonce"] = request.at("nonce");
+			const bool queued = delivery.enqueue(event);
+			std::string fault;
+			if (dirty || source.empty() || source == "unknown") {
+				fault = "source_unqualified";
+			} else if (!queued || delivery.overflowFrames() || delivery.discardedFrames()) {
+				fault = "telemetry_loss";
+			}
+			admission = { { "version", 1 }, { "type", "telemetry_admitted" }, { "world", world }, { "bot_id", guid }, { "nonce", request.at("nonce") }, { "begin_sequence", telemetrySequence }, { "captured_ms", captured }, { "deaths", deaths }, { "observation", initial }, { "source", source }, { "source_dirty", dirty }, { "fault", fault } };
+			return admission;
+		}
+
+		bool unavailableReported = false;
+
+		nlohmann::json fence(const nlohmann::json &request, Channel &channel, const std::string &world, uint32_t guid, int64_t captured, bool available) {
+			if (admission.is_null() || request.size() != 6 || request.value("version", nlohmann::json()) != 1
+			    || request.value("type", nlohmann::json()) != "telemetry_fence"
+			    || request.value("world", nlohmann::json()) != world || admission.at("world") != world
+			    || request.value("bot_id", nlohmann::json()) != guid || admission.at("bot_id") != guid
+			    || request.value("admission_nonce", nlohmann::json()) != admission.at("nonce")
+			    || !request.contains("nonce") || !request["nonce"].is_string()
+			    || request["nonce"].get<std::string>().empty() || request["nonce"].get<std::string>().size() > 80) {
+				throw std::runtime_error("invalid fence identity");
+			}
+			delivery.flush(channel);
+			auto reply = delivery.status(world, guid, captured, telemetrySequence);
+			reply["fence_nonce"] = request.at("nonce");
+			reply["fault"] = available && !unavailableReported ? "" : "bot_unavailable";
+			return reply;
+		}
+
 		int64_t lastTelemetry = 0;
+		int64_t lastDeliveryStatus = 0;
 		int64_t lastPublish = 0, started = 0, lastMessage = 0, lastMove = 0, lastShopScan = 0;
 		size_t waypoint = 0;
 		uint32_t skipped = 0;
@@ -149,6 +311,49 @@ namespace botbrain {
 		int64_t heartbeat = 0;
 		int64_t lastHello = 0;
 		uint64_t messageSequence = 0;
+
+		void beginTelemetryTick() {
+			for (const auto guid : roster) {
+				sessions[guid].delivery.beginTick();
+			}
+		}
+
+		void flushTelemetry() {
+			if (!channel) {
+				return;
+			}
+			for (const auto guid : roster) {
+				if (auto session = sessions.find(guid); session != sessions.end()) {
+					session->second.delivery.flush(*channel);
+				}
+			}
+		}
+
+		void sendDeliveryStatus(bool force = false) {
+			if (!channel) {
+				return;
+			}
+			for (auto &[guid, session] : sessions) {
+				const auto captured = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+				if (!force && captured - session.lastDeliveryStatus < 1000) {
+					continue;
+				}
+				session.lastDeliveryStatus = captured;
+				channel->send(session.delivery.status(world, guid, captured, session.telemetrySequence));
+			}
+		}
+
+		~Runtime() {
+			for (auto &entry : sessions) {
+				entry.second.delivery.discard();
+			}
+			try {
+				sendDeliveryStatus(true);
+			} catch (...) {
+				// Teardown cannot wait or throw into an unloading engine. Missing status
+				// remains unqualified by the worker's delivery gate.
+			}
+		}
 
 		Runtime() {
 			const char* environment = std::getenv("CANARY_BRAIN_CONFIG");

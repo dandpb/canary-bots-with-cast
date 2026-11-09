@@ -1,0 +1,10 @@
+{
+  "proof-plan.json": "8f4a0ba29c340f697e7035dab774c63cdf28b52fd1caddea5d3e063ae0524df2",
+  "goal-proof.json": "eafd9640d39f47b69f0b301b94fc9c2e67f6322542a4f984fca819d5d45e92bd",
+  "purchase.json": "d02aaaa6e506d30f884dea4615e5f54be1cd51612990c273c225742fb0f73d00",
+  "return.json": "76309dff9952283090fe444ecad7e628d727a224c97a1a7bf22a9019c130d59c",
+  "runtime-images.json": "2226ffaf83bdbd6ebdf85bacb46e9f3a88942f651b3c63374317a68d7c8f9ad5",
+  "resources-cleaned.json": "5999db5e4d1763278f37972d7f36ed6dd7ec089fc840739dcaf191fd8c561a51",
+  "recording.sqlite3": "0a260f927d8475abd001e7bd825d9dd37bee37f2ce3cea54205a40fad0374b34",
+  "private-cost-receipt.json": "c729ed1ff985eb70f8016923cd7095f91a0cca451886dd0236834ce7100244fc"
+}

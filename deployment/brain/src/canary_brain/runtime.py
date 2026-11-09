@@ -4,8 +4,10 @@ import asyncio
 import fcntl
 import json
 import os
+import re
 import signal
 import socket
+import sqlite3
 import stat
 import time
 from pathlib import Path
@@ -14,11 +16,20 @@ from typing import Any, Literal
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from . import tracing
+from .benchmark_stops import Stops, TelemetryTail
 from .controller import Controller
 from .gateway import GatewayConfiguration, GatewayProvider
 from .operator_http import OperatorServer
 from .provider import Provider
-from .recording import Manifest, Recorder, RecordingConfiguration, ReplayReader, digest
+from .recording import (
+    Manifest,
+    Recorder,
+    RecordingConfiguration,
+    RecordingStore,
+    ReplayReader,
+    digest,
+)
 from .store import USD, Store
 from .testing import FakeProvider
 
@@ -44,9 +55,35 @@ class Configuration(BaseModel):
     policy_seed: int = 0
     run_cap_nanousd: int | None = Field(default=None, gt=0)
     run_seconds: int | None = Field(default=None, ge=10, le=86400)
+    benchmark_supervision: bool = False
+    native_source_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{40}$")
 
     @model_validator(mode="after")
     def isolated_recording(self) -> "Configuration":
+        if self.benchmark_supervision and (
+            self.run_seconds is None or self.recording is None or len(self.bots) != 1
+        ):
+            raise ValueError(
+                "benchmark supervision requires a timed, recorded single-bot run"
+            )
+        if self.benchmark_supervision:
+            if (
+                self.native_source_revision is None
+                and self.recording
+                and self.recording.manifests
+            ):
+                source = self.recording.manifests[0].source_revision
+                if re.fullmatch(r"[a-f0-9]{40}", source):
+                    self.native_source_revision = source
+            if self.native_source_revision is None:
+                raise ValueError(
+                    "supervised admission requires a pinned native source commit"
+                )
+            if self.recording and any(
+                m.source_revision != self.native_source_revision
+                for m in self.recording.manifests
+            ):
+                raise ValueError("manifest and native source pins must agree")
         if self.provider != "litellm" and self.decision_timeout > 3:
             raise ValueError("legacy decision timeout must not exceed three seconds")
         if self.provider == "litellm" and self.gateway is None:
@@ -99,7 +136,14 @@ class DatagramProtocol(asyncio.DatagramProtocol):
         self.tasks: set[asyncio.Task[None]] = set()
 
     def datagram_received(self, data: bytes, address: Any) -> None:
-        if address != self.server or len(data) > 32768 or len(self.tasks) >= 32:
+        if address != self.server:
+            return
+        native = self.controller.native_run
+        if native and not native.check_peer(self.server):
+            return
+        if len(data) > 32768 or len(self.tasks) >= 32:
+            if native:
+                native.abort("worker_ingress_overflow")
             return
 
         async def consume() -> None:
@@ -107,12 +151,33 @@ class DatagramProtocol(asyncio.DatagramProtocol):
                 packet = json.loads(data)
                 if isinstance(packet, dict):
                     await self.controller.handle(packet)
+                elif native:
+                    native.abort("native_packet_invalid")
             except (ValueError, KeyError, TypeError):
-                pass
+                if native:
+                    native.abort("native_packet_invalid")
 
         task = asyncio.create_task(consume())
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
+
+    def error_received(self, exc: Exception) -> None:
+        if self.controller.native_run:
+            self.controller.native_run.abort("native_peer_lost")
+
+
+def recording_failure(recorder: Recorder) -> str | None:
+    if recorder.errors or recorder.dropped:
+        return "recorder_error"
+    try:
+        if any(
+            ReplayReader(recorder.config.path).run(m.run_id)["incomplete"]
+            for m in recorder.manifests.values()
+        ):
+            return "recording_gap"
+    except (sqlite3.Error, OSError, ValueError):
+        return "recorder_error"
+    return None
 
 
 async def run(configuration: Configuration, stop: asyncio.Event | None = None) -> None:
@@ -130,8 +195,13 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
     client: AsyncOpenAI | None = None
     operator: OperatorServer | None = None
     recorder: Recorder | None = None
+    benchmark_stops: Stops | None = None
+    tail: TelemetryTail | None = None
+    tail_observed: float | None = None
+    previous_signals: dict[signal.Signals, Any] = {}
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        tracing.configure()
         if endpoint.is_symlink() or (
             endpoint.exists() and not stat.S_ISSOCK(endpoint.stat().st_mode)
         ):
@@ -160,6 +230,7 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                         else "gpt-6-luna"
                     ),
                     memory_mode=configuration.memory_mode,
+                    source_revision=configuration.native_source_revision or "unknown",
                 )
                 for bot in configuration.bots
             ]
@@ -228,6 +299,14 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             if transport is not None and len(encoded) <= 32768:
                 transport.sendto(encoded, server)
 
+        benchmark_stops = (
+            Stops(
+                horizon=configuration.run_seconds or 1800,
+                model=configuration.provider != "native",
+            )
+            if configuration.benchmark_supervision
+            else None
+        )
         active_controller = Controller(
             store,
             provider,
@@ -243,6 +322,11 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 configuration.recording
                 and any(m.experiment for m in configuration.recording.manifests)
             ),
+            benchmark_stops=benchmark_stops,
+            require_telemetry_delivery=configuration.benchmark_supervision,
+            native_source_revision=configuration.native_source_revision
+            if configuration.benchmark_supervision
+            else None,
         )
         if configuration.memory_mode != "existing":
             import random
@@ -266,11 +350,143 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             await operator.start(configuration.operator_host)
         stopped = stop or asyncio.Event()
         last_maintenance = time.monotonic()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, stopped.set)
+        launched = last_maintenance
+        if stop is None:
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                previous_signals[sig] = signal.getsignal(sig)
+                loop.add_signal_handler(sig, stopped.set)
         while not stopped.is_set():
             remaining = 1.0
-            if configuration.run_seconds is not None:
+            if benchmark_stops:
+                now = time.monotonic()
+                reason = benchmark_stops.check(now)
+                if tail and controller.world != tail.observation.world:
+                    reason = "world_changed"
+                if benchmark_stops.start is None and now - launched > 240:
+                    reason = "startup_timeout"
+                if reason in {
+                    None,
+                    "completed",
+                    "deaths_limit",
+                    "stalled",
+                    "proposal_timeout",
+                } and store.get("budget_stop", str(configuration.bots[0])):
+                    reason = "budget_stop"
+                if recorder:
+                    failure = recording_failure(recorder)
+                    if failure and not (
+                        failure == "recording_gap" and reason == "world_changed"
+                    ):
+                        reason = failure
+                if reason == "completed" and recorder:
+                    if tail is None:
+                        snapshot = (
+                            active_controller.native_run.horizon
+                            if active_controller.native_run
+                            else None
+                        )
+                        if snapshot is None:
+                            reason = "native_transport_unconfirmed"
+                        else:
+                            # Freeze the actual observed horizon and deadline before
+                            # cancellation can await SQL or an in-flight provider.
+                            native = active_controller.native_run
+                            assert (
+                                native is not None
+                                and native.admission is not None
+                                and native.deadline is not None
+                            )
+                            tail = TelemetryTail(snapshot, deadline=native.deadline)
+                            tail_observed = (
+                                snapshot.captured_ms - native.admission.captured_ms
+                            ) / 1000
+                            if not recorder.freeze_horizon(snapshot):
+                                reason = "recorder_error"
+                            else:
+                                recorder.emit(
+                                    snapshot.bot.id,
+                                    "lifecycle",
+                                    {
+                                        "phase": "native_telemetry_tail_wait",
+                                        "world": snapshot.world,
+                                        "target_captured_ms": snapshot.captured_ms,
+                                        "observed_seconds": tail_observed,
+                                    },
+                                )
+                                active_controller.observe_only = True
+                                await active_controller.close()
+                                # Re-evaluate all stop priorities and elapsed time;
+                                # an operator stop during cancellation must win.
+                                continue
+                    elif now >= tail.deadline:
+                        reason = "native_transport_unconfirmed"
+                    elif (
+                        active_controller.native_run
+                        and active_controller.native_run.confirmed
+                        and tail.confirm(
+                            active_controller.native_run.terminal,
+                            recorder.native.get(tail.observation.bot.id),
+                            invalid=tail.observation.bot.id
+                            in recorder.delivery_invalid,
+                        )
+                    ):
+                        recorder.emit(
+                            tail.observation.bot.id,
+                            "lifecycle",
+                            {
+                                "phase": "native_telemetry_tail_confirmed",
+                                "world": tail.observation.world,
+                                "target_captured_ms": tail.observation.captured_ms,
+                                "required_sequence": tail.required_sequence,
+                                "status": tail.cutoff.model_dump()
+                                if tail.cutoff
+                                else None,
+                            },
+                        )
+                    else:
+                        reason = None
+                        remaining = min(0.05, tail.deadline - now)
+                if reason:
+                    details = {
+                        "reason": reason,
+                        "elapsed_seconds": now - benchmark_stops.start
+                        if benchmark_stops.start is not None
+                        else None,
+                        "observed_seconds": tail_observed
+                        if tail
+                        else (
+                            benchmark_stops.last - benchmark_stops.start
+                            if benchmark_stops.last is not None
+                            and benchmark_stops.start is not None
+                            else None
+                        ),
+                    }
+                    store.put(
+                        "run_stop",
+                        "end",
+                        {
+                            **details,
+                            "reason": "native_finalizing"
+                            if reason == "completed"
+                            else reason,
+                        },
+                    )
+                    if recorder:
+                        recorder.emit(
+                            configuration.bots[0],
+                            "lifecycle",
+                            {
+                                "phase": "run_supervisor_stop",
+                                **details,
+                                "reason": "native_finalizing"
+                                if reason == "completed"
+                                else reason,
+                            },
+                        )
+                    if reason != "completed":
+                        stopped.set()
+                    break
+            if configuration.run_seconds is not None and benchmark_stops is None:
                 clock = store.get("run_clock", "start")
                 if clock is not None:
                     remaining = configuration.run_seconds - (
@@ -279,20 +495,38 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                     if remaining <= 0:
                         stopped.set()
                         break
-            if time.monotonic() - last_maintenance >= 60:
+            if tail is None and time.monotonic() - last_maintenance >= 60:
                 store.prune()
                 if ledger.path != store.path:
                     ledger.prune()
                 last_maintenance = time.monotonic()
+            if controller.native_run:
+                controller.native_run.request()
             if controller.world:
                 send({"version": 1, "type": "heartbeat", "world": controller.world})
-                controller.reconcile()
+                if tail is None:
+                    controller.reconcile()
             try:
                 await asyncio.wait_for(stopped.wait(), timeout=min(1, remaining))
             except TimeoutError:
                 pass
-        await asyncio.gather(*protocol.tasks, return_exceptions=True)
+        if benchmark_stops and store.get("run_stop", "end") is None:
+            reason = (
+                "budget_stop"
+                if store.get("budget_stop", str(configuration.bots[0]))
+                else "operator_stop"
+            )
+            store.put("run_stop", "end", {"reason": reason})
+        if protocol.tasks:
+            _, waiting = await asyncio.wait(protocol.tasks, timeout=1.0)
+            if waiting and controller.native_run:
+                controller.native_run.abort("native_ingress_shutdown_timeout")
+            for task in waiting:
+                task.cancel()
     finally:
+        for sig, previous in previous_signals.items():
+            asyncio.get_running_loop().remove_signal_handler(sig)
+            signal.signal(sig, previous)
         if operator is not None:
             await operator.close()
         if controller is not None:
@@ -302,6 +536,124 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             endpoint.unlink(missing_ok=True)
         if client is not None:
             await client.close()
+        await asyncio.to_thread(tracing.shutdown_bounded)
         if recorder is not None:
-            await asyncio.to_thread(recorder.close)
+            close_failed = await asyncio.to_thread(recorder.close) is False
+            if benchmark_stops:
+                ending = store.get("run_stop", "end") or {}
+                failure = recording_failure(recorder)
+                if close_failed and failure is None:
+                    failure = "recorder_error"
+                if ending.get("reason") in {"completed", "native_finalizing"}:
+                    if (
+                        benchmark_stops.reason == "world_changed"
+                        or (
+                            tail
+                            and controller
+                            and controller.world != tail.observation.world
+                        )
+                    ) and failure in {None, "recording_gap"}:
+                        failure = "world_changed"
+                    if failure is None and store.get(
+                        "budget_stop", str(configuration.bots[0])
+                    ):
+                        failure = "budget_stop"
+                    if failure is None and stopped.is_set():
+                        failure = "operator_stop"
+                    if failure is None and (
+                        tail is None
+                        or not tail.confirm(
+                            controller.native_run.terminal
+                            if controller and controller.native_run
+                            else None,
+                            recorder.native.get(configuration.bots[0]),
+                            invalid=configuration.bots[0] in recorder.delivery_invalid,
+                        )
+                    ):
+                        failure = "native_transport_unconfirmed"
+                if (
+                    ending.get("reason") in {"completed", "native_finalizing"}
+                    and failure is None
+                ):
+                    native = controller.native_run if controller else None
+                    try:
+                        valid = (
+                            native is not None
+                            and not native.failure
+                            and native.check_peer(server)
+                            and await asyncio.wait_for(
+                                asyncio.to_thread(native.durable_complete), timeout=1.0
+                            )
+                        )
+                    except (TimeoutError, sqlite3.Error, OSError, ValueError):
+                        valid = False
+                    if valid and native:
+                        # Awaited durable proof is not the final decision point:
+                        # stops or peer faults can arrive while its thread reads.
+                        failure = native.failure
+                        if failure is None and not native.check_peer(server):
+                            failure = native.failure
+                        if failure is None and store.get(
+                            "budget_stop", str(configuration.bots[0])
+                        ):
+                            failure = "budget_stop"
+                        if failure is None and stopped.is_set():
+                            failure = "operator_stop"
+                        valid = failure is None
+                    if not valid:
+                        failure = failure or (
+                            native.failure
+                            if native and native.failure
+                            else "native_transport_unconfirmed"
+                        )
+                    else:
+                        manifest = next(iter(recorder.manifests.values()))
+                        end = ReplayReader(recorder.config.path).run(manifest.run_id)[
+                            "duration_ms"
+                        ]
+                        RecordingStore(recorder.config.path).append(
+                            {
+                                "run": manifest.run_id,
+                                "key": "supervisor-native-qualified",
+                                "segment": "supervisor",
+                                "t_ms": end + 1,
+                                "wall": time.time(),
+                                "kind": "lifecycle",
+                                "data": {
+                                    "phase": "run_supervisor_stop",
+                                    **ending,
+                                    "reason": "completed",
+                                    "after_flush": True,
+                                },
+                            }
+                        )
+                        store.put("run_stop", "end", {**ending, "reason": "completed"})
+                if failure:
+                    if (
+                        failure == "recording_gap"
+                        and ending.get("reason") == "world_changed"
+                    ):
+                        failure = "world_changed"
+                    store.put("run_stop", "end", {**ending, "reason": failure})
+                    for manifest in recorder.manifests.values():
+                        end = ReplayReader(recorder.config.path).run(manifest.run_id)[
+                            "duration_ms"
+                        ]
+                        RecordingStore(recorder.config.path).append(
+                            {
+                                "run": manifest.run_id,
+                                "key": "supervisor-final-validation",
+                                "segment": "supervisor",
+                                "t_ms": end + 1,
+                                "wall": time.time(),
+                                "kind": "gap"
+                                if close_failed or recorder.shutdown_timed_out
+                                else "lifecycle",
+                                "data": {
+                                    "phase": "run_supervisor_stop",
+                                    "reason": failure,
+                                    "after_flush": True,
+                                },
+                            }
+                        )
         os.close(descriptor)

@@ -1,3 +1,27 @@
+# Startup
+
+## Overview
+Provides 1 direct files (`startup.lua`..`startup.lua`) and 2 subdirectories under `startup`.
+
+## Interface
+- `dofile(DATA_DIRECTORY .. "/startup/tables/load.lua")` module loader [startup.lua:dofile]
+- `dofile(DATA_DIRECTORY .. "/startup/others/load.lua")` module loader [startup.lua:dofile]
+- [others](./others/README.md) - Component package under `startup/others` containing 2 files (`functions.lua`..`load.lua`).
+- [tables](./tables/README.md) - Component package under `startup/tables` containing 17 files (`chest.lua`..`writeable.lua`).
+
+## Invariants
+- None
+
+## Side Effects
+- Loads and executes `DATA_DIRECTORY .. "/startup/tables/load.lua"` via `dofile` [startup.lua:dofile]
+- Loads and executes `DATA_DIRECTORY .. "/startup/others/load.lua"` via `dofile` [startup.lua:dofile]
+
+## Verification
+- Run: `ctest --test-dir build --output-on-failure`
+
+### Reserved Action and Unique ID Ranges
+
+```text
 Reserved action/unique for tables:
 
 Door level:
@@ -113,3 +137,4 @@ and the same action number gives access to a door, for example.
     [5010] = key 5010
     [5050] = key 5050
     [6010] = key 6010
+```

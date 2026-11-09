@@ -2,6 +2,11 @@
 
 The worker can record a selected bot's observed life and replay it without a running game or model access. The local player compares up to four runs by elapsed time or first observed level gain. It shows sampled floor-aware coordinates, XP, health, decisions, native results, interventions, settled cost and unresolved reservations. The default map is a coordinate grid; no proprietary map/client artwork is bundled.
 
+For the initial setup sequence, credential locations, OpenAI/Gemini named routes,
+WSL worker migration, canonical ledger selection and troubleshooting, start with
+the [Portuguese setup guide](SETUP.pt-BR.md). The sections below are the CLI and
+runtime reference.
+
 ## Start with an offline demonstration
 
 Use the existing brain Python environment in Linux/WSL, with the updated package installed. Choose a fresh recording filename; demo refuses to overwrite a completed run.
@@ -35,11 +40,62 @@ Movement is sampled at the configured cadence, with additional samples on floor,
 
 The updated native library emits cumulative per-world death counters and lifecycle/ownership telemetry. Older servers can supply observation replays, but death/ownership metrics are unavailable. Controlled live experiments require the new bridge capabilities and `keep_awake: true`; the native baseline uses shadow mode with the same awake policy.
 
+### Native telemetry delivery and benchmark completion
+
+Build and deploy the matching server/library and worker before a supervised
+benchmark. `benchmark_supervision:true` automatically requires the native hello
+capability `telemetry_delivery:1`; there is no JSON switch to bypass its tail
+check. Non-supervised legacy workers retain their previous recording contract.
+A healthy process or an OpenAI/Gemini probe does not qualify this game transport.
+
+The server retains only lifecycle/death telemetry in an immutable FIFO per bot:
+64 frames and 64 KiB. Observations, intents and their leases keep their existing
+routes and deadlines. A failed nonblocking send retains the same sequence/frame;
+a newer frame cannot pass it. Flush attempts are bounded to two per bot per
+tick and stop at the first failure. Overflow drops the new frame explicitly;
+overflow and discard counters remain sticky for that native world. Shutdown
+never waits indefinitely for a dead worker and attempts to report discarded
+pending frames before destroying the channel.
+
+Inspect the replay's `native_telemetry_status` lifecycle events. They contain
+the world/bot identity, native capture time, issued and kernel-accepted
+sequences, queued frames/bytes and overflow/discard counters. Transient send
+errors are not counted as lost frames while retained in the FIFO. The status
+does not report individual send errno, retry totals or a queue high-water mark.
+**Kernel acceptance is not a durable SQLite acknowledgement.** The recorder
+must also receive the required sequence and successfully close/flush without
+gaps, errors or local queue loss.
+
+At the observed horizon, the worker freezes the first genuine observation that
+covers it and records `horizon-final-sample` immediately. It pauses new model
+work and cancels/drains requests already in flight; unresolved charges retain
+their reservations. A delivery status captured at or after that observation
+must show an empty queue, no overflow/discard and equal issued/accepted
+sequences of at least one. The first such status freezes the required sequence;
+later publications do not move the target. Confirmation waits at most three
+seconds, with gaps, world changes, budget stops and external stops taking
+precedence. Missing, invalid or unconfirmed tail evidence prevents `completed`.
+It produces `native_transport_unconfirmed` when its bounded wait expires.
+
+Transport confirmation is a lifecycle event, separate from the frozen sample.
+Post-horizon observations and outcomes remain nested diagnostics and cannot
+inflate XP or objective results; a late outcome has unknown causal timing.
+Telemetry captured before or at the target still counts even when received
+late, so a queued pre-horizon death is preserved. Telemetry captured after the
+target remains diagnostic. Existing active-time metrics use receipt time and
+retain that limitation; the outbox does not reconstruct missing history or
+change old recordings. Requalify the corrected transport with a free isolated
+native run before admitting another paid comparison.
+
 The supervision console exposes `/replay` when recording is enabled. The separate `replay serve` command binds only to loopback and remains read-only. Its APIs paginate events; time seeks use indexed sample checkpoints. The primary endpoints are `/api/replays`, `/api/replay`, `/api/replay/seek`, `/api/replay/events`, `/api/replay/track`, `/api/replay/timeline` and `/api/replay/summary`.
 
 ## Configure LiteLLM
 
-The private proxy uses LiteLLM **1.108.0**, with the tested dependency set in `gateway/requirements.lock`. Build and run the dedicated optional deployment:
+The private proxy uses LiteLLM **1.108.0**. For the WSL installation, use the
+`gateway` profile of `canary-bots-wsl`, its UI image and dedicated PostgreSQL,
+as documented in the [setup guide](SETUP.pt-BR.md#2-preparar-servidor-e-gateway).
+The separate API-only recipe below uses `gateway/requirements.lock` and is for
+other isolated deployments; it does not provide the database-backed dashboard:
 
 ```sh
 cd deployment/brain/gateway
@@ -56,11 +112,51 @@ sha256sum runtime/gateway.yaml
 
 The custom worker authentication permits only inference for declared aliases, checks the gateway version, exact configuration SHA-256 and expected upstream mapping, and rejects administration and per-request routing overrides. Configure one explicit deployment per alias, zero retries at both gateway layers, no fallback/order failover, no response cache and `drop_params: false`. The gateway also refuses a configuration changed after startup. Its host publication is loopback-only. The application remains the authoritative ledger for the shared USD 50 monthly limit; gateway estimates do not settle or replace application reservations.
 
+Scored M5 runs use a separate inference-only process built from
+`gateway/Dockerfile.benchmark`, not the administrative UI process. Its startup
+pins `CANARY_BENCHMARK_GATEWAY_ONLY=1` and `STORE_MODEL_IN_DB=True`; admin keys
+cannot fall through to UI authentication. Keep provider credentials inside the
+gateway, freeze routes before measuring and use the private `gateway:4000` alias
+declared by the M5 harness. See the [setup sequence](SETUP.pt-BR.md#4-cadastrar-credenciais-e-associar-modelos).
+
 Use `worker-replay.example.json` as the migration template, supplying the actual configuration hash, private gateway credential path, exact effective/upstream model and reviewed versioned prices. The loopback gateway address works for a worker running on the host. A containerized worker needs the gateway on its private Docker network and `http://litellm:4000/v1`; its container's loopback is not the host.
+
+The budget path is an operator-selected authority, not a new account per
+example. In the reference WSL deployment, existing charges are in
+`canary-bots-wsl_brain-state` at `/var/lib/canary-brain/state.sqlite3`.
+Preserve that ledger when enabling `budget_file`; copying an example path can
+otherwise create a second USD50 allowance. Resolve/mount the existing ledger
+before preflight, which initializes Store if the configured file is absent.
 
 All providers use the same LiteLLM-facing application adapter. Additional models require an explicit `model_list` entry and participant configuration, not another provider SDK adapter. The common decision path uses a constrained Responses function call with a reserved output-token limit. `decision_api: "decisions"` is rejected when output tokens have a nonzero price: that endpoint has no enforced output-token bound in this adapter. Input-only/free-output configurations remain opt-in and must pass conformance for the pinned gateway/model. Unsupported tools, reasoning parameters or endpoints fail rather than silently changing the task.
 
 The experiment's common decision timeout defaults to ten seconds for macro objectives and is capped further by the shortest offered server deadline. Native combat/healing continues independently; slow planning has a separate concurrency lane. Frozen runs disable policy updates, policy overrides and autonomous reflection/strategy-memory updates. Independent runs start from the same seed records and learn separately. The timed horizon begins with the worker's first valid observation, not database/container provisioning.
+
+The benchmark runner enables single-bot supervision in the worker. Its monotonic
+clock is authoritative: a delayed roster activation after service readiness must
+not shorten the observed window. The orchestrator waits for a supervised result
+and verifies elapsed time before accepting `completed`; a second deadline based
+on service startup cannot declare a short run complete. Direct workers retain
+their existing behavior unless `benchmark_supervision` is explicitly enabled,
+which requires one bot, recording, and `run_seconds`.
+
+Supervision stops after three new observed deaths, five seconds without valid
+observations, ten minutes without observed position/XP/supply/defeat progress,
+a world-generation change, recorder errors/critical recorded gaps, or more than
+thirty seconds without a locally validated selection in an open model-choice
+window. The latter begins at an actual decision request with multiple filtered
+options; repeated requests do not restart it. A `selected` decision closes it,
+while a mere proposal does not. Native work in progress, death, loss of choices,
+or a single-candidate decision closes the opportunity. Native baseline has no
+model-proposal timeout. Local selection validity remains distinct from later
+native acceptance; record rejections and deadline misses separately.
+
+The worker stores the stop reason and emits a lifecycle marker. Per-run gameplay
+stops are retained as failed outcomes. Operator stop interrupts the campaign;
+world/observation/recording/startup failures abort it before the next trial. They
+do not silently become successful runs or initiate new provider requests.
+Reservations already transmitted remain subject to ordinary reconciliation.
+Observed movement here is a liveness signal, not proof that circling is useful.
 
 LiteLLM may return the configured alias in the response's model field. The recorder distinguishes that observation from an upstream model name and resolves the configured upstream through the exact policy hash and deployment ID. A mutable upstream alias is not proof of an immutable provider model revision.
 
@@ -71,6 +167,22 @@ python deployment/brain/tools/gateway_smoke.py
 ```
 
 This checks a successful accounted request and an upstream failure: exactly one upstream call per attempt, no fallback, and retained unresolved liability after failure. No real model credential is used.
+
+Usage qualification also exercises both native Responses and the pinned
+Responses-to-chat bridge. A missing upstream usage object must never become a
+settled free request:
+
+```sh
+python deployment/brain/tools/gateway_smoke.py --bridge-usage
+python deployment/brain/tools/gateway_usage_smoke.py
+```
+
+The first command sends local HTTP requests through the actual proxy to a fake
+chat upstream. The second isolates the pinned usage conversion and the real
+worker ledger. Both run with Docker networking disabled. For the nonempty prompts
+this worker transmits, zero input tokens are untrustworthy: reject the result and
+retain the reservation for reconciliation, including after restart. Valid positive
+usage still settles normally. These checks do not qualify a real provider account.
 
 ## Prepare an isolated experiment
 
@@ -85,6 +197,13 @@ Prepare a local fixture directory containing:
 
 The map is referenced separately, read-only, and included in the initial hash. A restored database is not a deterministic whole-world simulator: live RNG, scheduling and later encounters can diverge. No production character is reset by these commands.
 
+`database_image` selects the database image for every participant. Before any
+provider credential is read, campaigns with a LiteLLM participant require both
+`game_image` and `database_image` to be immutable content IDs (`sha256:...` or
+`repository@sha256:...`). Mutable tags are rejected. The selected references are
+part of the campaign configuration fingerprint and generated Compose file. This
+does not retroactively attest an image missing from an older recording.
+
 ```sh
 canary-brain benchmark hash --fixture /home/daniel/benchmark-fixture \
   --world-map /home/daniel/maps/otservbr.otbm
@@ -93,6 +212,13 @@ canary-brain benchmark run --config /home/daniel/benchmark.json --live
 ```
 
 Use `experiment.example.json` as the template. Replace all fixture/configuration hashes and model mappings, select reviewed prices and use the existing shared budget path. Keep output paths short enough for Unix sockets. Build the game image with this implementation before running: an older bridge is rejected before model decisions are applied. The optional `--live` flag is required for game/provider execution. The shipped configuration is a template, not an authorization to spend or evidence of a completed trial.
+
+For the declared M5, use the [admission wrapper](tools/M5_PILOT.md) rather than
+launching the generic paid command above. It requires reviewed free/gateway gates,
+frozen source and configuration hashes, a new output identity and the exact
+existing `canary-bots-wsl_brain-state:/var/lib/canary-brain/state.sqlite3` authority.
+Its read-only `--preflight` does not initialize Store or call providers; explicit
+`--execute` can charge probes before starting the nine rotated game trials.
 
 All declared run caps must fit the campaign cap. On resume, only attempts without a recorded identity add future liability against the remaining shared monthly allowance; settled and unknown charges already remain in that ledger. Every inference attempt reserves against both run and monthly limits in the same transaction. Unknown charges survive failure, restart and month rollover. Zero-cost baselines do not get an infinite XP-per-dollar score.
 
@@ -110,6 +236,11 @@ calendar difference as the denominator; regenerate their analysis with the same
 metric version before comparing results. Original recordings are not rewritten.
 
 ## Export and verify
+
+The [M5 offline report](tools/M5_PILOT.md#review-the-pilot-offline) joins the
+recordings with supervisor/final-character evidence and a scoped canonical-ledger
+export. Use it for campaign consistency and costs; the HTML player below is the
+visual replay. Preserve failed attempts and unknown liabilities in both views.
 
 Recorded decision fixtures can also be evaluated without executing any game action:
 
@@ -161,12 +292,48 @@ and MP4 hash. The encoded artifact is checked with ffprobe before publication.
 `source_events_sha256` covers the chronological event prefix through `end_ms`;
 `source_snapshot_sha256` covers that digest, its ending time and the captured
 `source_metadata`, including the manifest, status and incomplete flag. It is an
-export-evidence hash, not a checksum of unused events or SQLite file bytes.
+audit hash of the captured export, not a cache/deduplication key. The raw audit
+fields remain available in sidecar version 2; historical sidecars are not changed.
+
+Version 2 adds two explicit identity contracts:
+
+- `source_evidence_sha256 = digest(source_evidence)` covers the displayed manifest
+  labels, synthetic flag, sampling interval, captured status, `end_ms` and the
+  chronological event prefix used by the renderer. Only renderer-consumed event
+  values enter this digest. Row IDs, wall timestamps, event keys, storage segment
+  envelopes, metadata update times and events after `end_ms` do not enter it.
+  Pre-window events remain inputs because they establish trail, state and cost.
+  Actual `kind="segment"` events still enter the hash and mark observation gaps.
+- `render_input_sha256 = digest(render_input)` additionally covers renderer version,
+  source-evidence identity, start/end, FPS, normalized requested speed, frame count,
+  dimensions, font choice and fixed codec settings. It fingerprints these logical
+  render inputs; it is not a claim of identical encoder/font installations.
+  `video_sha256` identifies the actual encoded bytes. Advance `RENDERER_VERSION`
+  when changing projection, frame layout or other rendering behavior.
+
 Output and sidecar paths must be new; existing artifacts are not overwritten.
 Both files are written and flushed in a private staging directory on the output
 filesystem before publication. Each final name is linked exclusively to a complete
 file; a caught write/publication error or interrupt removes only names created by
 that export, allowing a retry. A concurrently created destination is preserved.
+Publication and recovery hold a per-output kernel lock. A durable transaction
+journal identifies staging owned by this publisher. After process death, the next
+export at that path removes incomplete final names only when their inodes match
+the orphan's staged files, then retries. A foreign replacement is preserved; a
+completed pair is retained. A durable committed marker also protects a completed
+pair if the process dies while deleting staging. An active publisher cannot be
+mistaken for an orphan. Lock files are intentionally retained to avoid inode races;
+unrecognised/legacy staging without the journal is left for manual inspection.
+Recovery also records and syncs the committed decision before cleaning a
+complete pair whose publisher died before writing its marker. Publisher cleanup,
+rollback and recovery all use the same journal-last cleanup: payload entries are
+removed and the directory synced before the journal is unlinked. If a process dies
+after that final unlink, the next recovery removes only the empty transaction
+directory. Directory iteration order therefore cannot erase half a complete pair
+or strand a recognised cleanup transaction without its journal.
+On POSIX, staging and destination directories are fsynced before/after publication;
+the Windows API does not expose the same directory-fsync guarantee. Signal-death
+tests exercise recovery, not physical power-loss/storage-hardware guarantees.
 The output filesystem must support same-filesystem hard links. The two names are
 published sequentially; consume the export only when both MP4 and JSON are present.
 The renderer streams history and bounds its displayed trail to recent samples.

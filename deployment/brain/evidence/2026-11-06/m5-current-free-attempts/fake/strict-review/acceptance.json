@@ -1,0 +1,12 @@
+{
+  "ready_for_review": false,
+  "financial_totals_complete": true,
+  "findings": [
+    {
+      "code": "qualification_not_completed",
+      "run_id": "m5-current-fake-d6226a4777:fake:0",
+      "detail": "Free qualification requires reason=completed"
+    }
+  ],
+  "verdict": "descriptive_pilot_no_winner"
+}

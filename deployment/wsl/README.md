@@ -1,9 +1,47 @@
 # Canary com bots e cast no WSL
 
-Implantação local em `/home/daniel/canary-bots-wsl`, criada a partir do commit
-`7a61f9540` da `main`. O código executado fica no disco Linux; os ajustes locais são preservados.
+## Overview
+
+Para instalar do início, configurar LiteLLM com OpenAI/Gemini e preparar replay
+e benchmark, use o [guia de configuração inicial](../brain/SETUP.pt-BR.md).
+
+Implantação local em `/home/daniel/canary-bots-wsl`. O código executado fica no
+disco Linux; os ajustes locais são preservados. As validações históricas abaixo
+registram suas revisões; confira imagem/binário/configuração antes de atribuir
+uma revisão da `main` ao runtime atual.
 O projeto Compose é `canary-bots-wsl` e usa volumes próprios. O banco não publica
 porta no host. Jogo e site publicam somente em `127.0.0.1`.
+
+## Interface
+
+- `[setup.py:here]` — Inicializa `.env`, scripts SQL em `initdb/` e arquivos de configuração `runtime/config/{server,worker}.json` sem sobrescrever arquivos existentes.
+- `[setup-gateway.py:prepare]` / `[setup-gateway.py:prepare_coordination]` / `[setup-gateway.py:add_coordination]` — CLI (`--directory`, `--coordination`) que prepara `runtime/config/litellm.yaml`, `runtime/config/litellm-coordination.yaml` e `runtime/secrets/litellm-{provider,worker,db,ui,redis}.env` com modo `0600`.
+- `[game-entrypoint.py:main]` / `[game-entrypoint.py:render]` / `[game-entrypoint.py:port]` — Entrypoint do container `game` que renderiza `config.lua` com overrides de ambiente (`MARIADB_PASSWORD`, `GAME_PUBLIC_IP`, `GAME_LOGIN_PORT`, `GAME_PROTOCOL_PORT`, `GAME_STATUS_PORT`, `GAME_DISABLE_MAP_DOWNLOAD`, `GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN`, `BOT_POPULATION_REFERENCE_BOTS`, `BOT_PLAYERS_ONLINE`), instala `/etc/canary-brain/server.json` em `data/bot/brain.json` e executa `/canary/canary`.
+- `[verify-build-source.py:main]` / `[verify-build-source.py:verify]` — CLI (`--source`, `--revision`) que valida checkout Git standalone, limpo, sem `alternates` ou submódulos, conferindo o SHA-1 de cada blob rastreado.
+- `[monitor-bot.py:main]` / `[monitor-bot.py:sample]` / `[monitor-bot.py:assess]` / `[monitor-bot.py:command]` — CLI (`--seconds`, `--interval`, `--history`, `--require-floor`, `--require-xp-increase`, `--require-level-increase`) que amostra o progresso do piloto 65001 (`Grizzle Alyronia`) via `bot_commands` e SQLite do worker.
+- `[ops-digest.py:main]` / `[ops-digest.py:build_digest]` / `[ops-digest.py:evaluate]` / `[ops-digest.py:render]` — CLI (`--json`, `--out`, `--window`, `--history`, `--status-port`) que agrega saúde de containers, protocolo nativo (`7173`), estado de Grizzle e logs em um veredito (`GREEN`, `AMBER`, `RED`).
+- `[smoke.py:base]` — Smoke test de conectividade HTTP (`http://127.0.0.1:8080/`, `/index.php/worldmap`, `/login.php` com `@cast`) e portas TCP `7171`/`7172`/`7173`.
+- `[runtime-schema.sql:bot_state_persistence]` / `[runtime-schema.sql:bot_startup_config]` / `[runtime-schema.sql:bot_nav_events]` / `[runtime-schema.sql:bot_test_commands]` / `[runtime-schema.sql:player_charms]` / `[runtime-schema.sql:players]` — Tabelas de persistência/telemetria de bots e migrações `INT UNSIGNED` / `BIGINT UNSIGNED`.
+- `[web-entrypoint.sh:myaac-entrypoint]` / `[worldmap-menu.php:$db]` / `[patch-myaac-status.php:$path]` — Scripts de inicialização e patch do container MyAAC (`Web.Dockerfile`).
+- `[compose.yaml:services]` / `[Dockerfile:build]` / `[Dockerfile.release:build]` / `[Web.Dockerfile:ENTRYPOINT]` — Definições de build e serviços Docker Compose do projeto `canary-bots-wsl`.
+
+## Invariants
+
+- `[game-entrypoint.py:render]` — `MARIADB_PASSWORD` deve estar definido; `GAME_LOGIN_PORT`, `GAME_PROTOCOL_PORT` e `GAME_STATUS_PORT` devem ser 3 portas distintas em `1..65535`; `GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN` deve ser `''` ou `'1'`.
+- `[setup.py:env]` / `[setup-gateway.py:prepare]` — Arquivos `.env`, `runtime/config/*` e `runtime/secrets/*` existentes nunca são sobrescritos (`O_CREAT | O_EXCL`, modo `0600`, `umask 0077`); `add_coordination` mantém `cache=False` e `cache_responses=False`.
+- `[verify-build-source.py:verify]` — `SOURCE_REVISION` deve ter 40 caracteres hexadecimais minúsculos idênticos ao `HEAD`, sem worktrees linkadas, `objects/info/alternates` ou alterações na árvore.
+- `[ops-digest.py:evaluate]` — Escala o veredito para `RED` se qualquer serviço não estiver saudável, porta `7173` falhar, `players_online == 0`, observação do Grizzle tiver `> 60s`, XP/nível vivo for menor que o persistido, `> 50` linhas de erro ou `last_save_count == 0`.
+
+## Side Effects
+
+- `[setup.py:here]` / `[setup-gateway.py:prepare]` — Cria diretórios `initdb/` e `runtime/{world,config,secrets}` e grava arquivos `.env`, `.sql`, `.json` e `.yaml` locais.
+- `[game-entrypoint.py:main]` — Escreve `/canary/config.lua`, copia `data/bot/brain.json` e substitui o processo atual por `/canary/canary` via `os.execv`.
+- `[monitor-bot.py:command]` / `[monitor-bot.py:main]` — Executa `docker exec` para inserir comandos em `bot_commands` no MariaDB, lê `state.sqlite3` no container `brain` e acrescenta amostras a `runtime/monitor-grizzle.jsonl`.
+- `[web-entrypoint.sh:myaac-entrypoint]` / `[worldmap-menu.php:$db]` / `[patch-myaac-status.php:file_put_contents]` — Atualiza `myaac_menu` e `myaac_settings` no banco, aplica patch em `/var/www/html/system/status.php` e limpa o cache do MyAAC.
+
+## Verification
+
+- Run: `pytest`
 
 ## Operação
 
@@ -43,17 +81,180 @@ A limpeza por inatividade e a cobrança automática de aluguel ficam desativadas
 neste ambiente local. Os seeds têm datas antigas; os padrões de produção
 retomariam as casas e transfeririam a decoração antes da ativação dos bots.
 
-## Worker de IA
+## Identidade do build nativo
 
-A imagem `canary-bots-wsl-brain:local` contém a implementação desta branch.
-O perfil `ai` está ativo. A credencial autorizada fica em
-`runtime/secrets/openai.env` com permissão `0600`, fora do Git e do contexto de
-build. O arquivo é montado apenas no worker. Não envie chaves pelo chat.
+O build de release usa `Dockerfile.release`; o Dockerfile legado e o Compose
+fixado de core-qa permanecem inalterados para preservar seus recibos.
+O build de release exige um clone independente nativo do Linux, completo, limpo e
+com commit: não use um checkout Windows com conversão CRLF, linked worktree ou
+clone com `objects/info/alternates`. Execute o build nesse clone, com
+`SOURCE_REVISION` igual ao HEAD e
+`BUILD_GIT_DIRECTORY` apontando para seu diretório Git absoluto:
 
 ```bash
-docker compose --profile ai up -d brain
-docker compose --profile ai logs --tail=50 brain
+export SOURCE_REVISION="$(git rev-parse HEAD)"
+export BUILD_GIT_DIRECTORY="$(git rev-parse --absolute-git-dir)"
+python3 verify-build-source.py --source "$(git rev-parse --show-toplevel)" --revision "$SOURCE_REVISION"
+docker compose build game
 ```
+
+No comando Docker direto, use `-f deployment/wsl/Dockerfile.release` e
+`--build-context gitmeta="$BUILD_GIT_DIRECTORY"`. O contexto normal continua
+excluindo `.git`; o contexto nomeado fornece os metadados somente durante o
+`RUN` de compilação, em montagem somente leitura. Nenhum `.git` é copiado para
+as imagens. O CMake identifica o mesmo commit e estado limpo para executável e
+biblioteca. Os bytes de cada arquivo são conferidos contra os objetos do commit,
+mesmo quando flags do índice escondem uma alteração. Revisão divergente, árvore alterada ou metadados ausentes interrompem
+o build em vez de gerar um binário com identidade `unknown`.
+
+Uma cópia de implantação sem `.git` não é fonte de build: construa as imagens
+num checkout limpo separado e atualize o runtime existente com as imagens
+verificadas, preservando seus arquivos privados e volumes. A label OCI continua
+sendo metadado da imagem e não substitui a identidade nativa verificada.
+
+### Perfil ARM64 (aarch64)
+
+`Dockerfile.release.arm64`: base `ubuntu:24.04` fixada pelo digest do manifesto
+`linux/arm64`, triplets vcpkg target/host `arm64-linux` e
+`CANARY_TARGET_ARCH=armv8-a` no lugar de `-march=native`, para que binário e
+`libbot_engine.so` usem a mesma linha de base ARMv8-A portável em vez da
+microarquitetura do host de build. Verificador de fonte, `SOURCE_REVISION`,
+targets e estágio de runtime são idênticos ao `Dockerfile.release`, que
+continua sendo o perfil padrão para WSL/x86-64. Há dois modos de execução:
+
+**Modo 1 — host AArch64 nativo.** Sem emulação; os triplets são coerentes
+por construção. Build direto no clone limpo, como no perfil x86-64:
+
+```bash
+docker build -f deployment/wsl/Dockerfile.release.arm64 \
+  --build-context gitmeta="$BUILD_GIT_DIRECTORY" \
+  --build-arg SOURCE_REVISION="$SOURCE_REVISION" .
+```
+
+**Modo 2 — executor isolado amd64 (WSL) por cross-build.** O executor
+designado (Pitagoras) roda WSL amd64: o build é feito por emulação (ou nó
+ARM externo) com `--platform linux/arm64`. Sob emulação, todas as etapas —
+apt, bootstrap e ferramentas de host do vcpkg, compilador — executam como
+arm64, mantendo `--host-triplet=arm64-linux` coerente.
+
+*Inventário do builder (readonly, autorizado no estágio atual; este*
+*repositório não instala binfmt nem provisiona builder):* o build é
+vinculado a um builder **nomeado** — escolha um, registre a identidade e
+use o mesmo nome no comando de build:
+
+```bash
+docker buildx ls                          # lista builders; 'platforms' = capacidade ANUNCIADA, não prova
+docker buildx inspect <BUILDER> --bootstrap=false
+# registre no handoff: driver, nó(s) e endpoint(s) deste builder
+```
+
+*Aviso de identidade da sonda:* `docker run` executa pelo daemon Docker
+corrente, que pode ser **diferente** do builder selecionado pelo
+`buildx build` — sucesso local (QEMU) não atesta builder remoto, e um nó
+ARM externo pode executar etapas ARM mesmo com o daemon local incapaz.
+Uma sonda de execução só vale se rodar **pelo mesmo builder nomeado**
+(por exemplo, um build mínimo `docker buildx build --builder <BUILDER>
+--platform linux/arm64`); como execução de container é ação distinta do
+inventário readonly autorizado, a capacidade de execução do builder fica
+**explicitamente não comprovada** até o build autorizado estabelecê-la.
+
+*Build (somente quando autorizado), com builder nomeado, plataforma*
+*explícita, recursos limitados e saída identificada:*
+
+```bash
+docker buildx build --builder <BUILDER> \
+  -f deployment/wsl/Dockerfile.release.arm64 \
+  --platform linux/arm64 \
+  --build-context gitmeta="$BUILD_GIT_DIRECTORY" \
+  --build-arg SOURCE_REVISION="$SOURCE_REVISION" \
+  --build-arg BUILD_JOBS=2 \
+  -t canary-game:arm64-"$SOURCE_REVISION" \
+  --output type=docker .
+docker image inspect canary-game:arm64-"$SOURCE_REVISION" \
+  --format '{{.Architecture}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
+# esperado: arm64 <SOURCE_REVISION>
+```
+
+*A imagem ARM64 preserva o banco de compilação em
+`/canary/compile_commands.json` (exportado com
+`CMAKE_EXPORT_COMPILE_COMMANDS=ON`), permitindo conferir offline os flags
+efetivos — incluindo `-march=armv8-a` e os include paths do vcpkg — do par
+canary/`libbot_engine.so` efetivamente construído.*
+
+*Limites do modo emulado:* dependências do vcpkg dominam o tempo e podem
+levar horas; mantenha `BUILD_JOBS` contido (o padrão do perfil é 3; 2 é um
+ponto de partida seguro sob QEMU), execute apenas o build — nenhum serviço,
+restart ou uso da máquina de produção nesta etapa — e exporte a imagem com
+tag, label e identidade do builder (driver/nó/endpoint) registradas no
+handoff antes de qualquer uso.
+
+## Gateway LiteLLM no mesmo projeto
+
+Os serviços opcionais `litellm`, `litellm-db` e `litellm-redis` pertencem ao projeto
+`canary-bots-wsl`, junto de database/game/brain/web. O PostgreSQL exclusivo
+persiste usuários, sessões e configurações do painel. O Redis permanente tem
+volume próprio para coordenação/autenticação; ambos ficam sem portas no host.
+Redis não substitui o ledger SQLite nem habilita cache de respostas: preserve
+`litellm_settings.cache: false` e `router_settings.cache_responses: false`.
+Na instalação nova, prepare os arquivos e inicie o gateway como abaixo.
+Em uma atualização, os arquivos existentes são preservados: siga primeiro a
+[migração de coordenação Redis](../brain/SETUP.pt-BR.md#redis-de-coordenação-e-número-de-workers)
+para derivar a política e incluir o override ativo antes de recriar `litellm`.
+O helper `--coordination` aceita JSON; o guia também cobre políticas YAML.
+
+```bash
+cd /home/daniel/canary-bots-wsl/deployment/wsl
+python3 setup-gateway.py
+docker compose --profile gateway up -d --build --wait litellm
+docker compose --profile gateway ps litellm litellm-db litellm-redis
+```
+
+O endpoint local é `http://127.0.0.1:4000/v1`; outros serviços deste Compose podem
+usar `http://litellm:4000/v1`. A preparação inicial deixa a lista de modelos vazia:
+o container pode ficar saudável, mas as chamadas de inferência permanecem
+bloqueadas até configurar modelos e credenciais autorizados. Isso não muda o
+provider do worker existente nem inicia testes pagos.
+
+O painel fica em `http://127.0.0.1:4000/ui`: usuário padrão `admin`; a senha é
+`UI_PASSWORD` se definida em `runtime/secrets/litellm-ui.env`, senão
+`LITELLM_MASTER_KEY` do arquivo protegido `runtime/secrets/litellm-worker.env`.
+Não compartilhe essa chave. A imagem oficial inclui Prisma e executa as
+migrações na inicialização. O erro `Not connected to DB!` indica ausência
+da conexão PostgreSQL, mesmo quando as credenciais de login estão corretas.
+
+Os arquivos locais são `runtime/config/litellm.yaml` e os arquivos protegidos
+`runtime/secrets/litellm-{provider,worker,db,ui,redis}.env`. A preparação preserva
+senhas e `LITELLM_SALT_KEY` existentes; mantenha essa salt junto do backup do
+banco para conservar o acesso aos dados criptografados.
+Para uma configuração preexistente, acrescente explicitamente
+`general_settings.custom_auth_settings: {mode: auto}` e recrie o gateway:
+isso permite que sessões administrativas sejam validadas pelo LiteLLM.
+A credencial do worker continua restrita às rotas e à identidade do benchmark;
+suas falhas de política nunca passam para a autenticação administrativa.
+Reutilize as credenciais nomeadas `openai` e `gemini` cadastradas na UI e configure
+os aliases `canary-openai`/`canary-gemini` pelo
+[exemplo com credenciais nomeadas](../brain/gateway/gateway.named-credentials.example.json),
+seguindo a [etapa de associação de modelos](../brain/SETUP.pt-BR.md#4-cadastrar-credenciais-e-associar-modelos).
+Copie somente `model_list`, mantendo a política do gateway e a coordenação Redis.
+Após alterar a configuração, recrie somente `litellm` e revalide sua identidade.
+Use o serviço deste Compose para a implantação WSL; o Compose independente em
+`deployment/brain/gateway/` fica disponível para outros ambientes isolados.
+
+## Worker de IA
+
+O perfil `ai` usa a imagem `canary-bots-wsl-brain:local`; um merge não recompila
+essa imagem. Para a configuração inicial, siga a
+[etapa do worker LiteLLM](../brain/SETUP.pt-BR.md#6-configurar-o-worker-com-uma-rota-litellm),
+que inclui os comandos de build e inicialização: configure `provider: litellm`,
+prepare `runtime/secrets/litellm-client.env` com permissão `0600` e apenas
+`LITELLM_API_KEY`, e preserve o ledger canônico existente em `brain-state`.
+As credenciais OpenAI/Gemini permanecem no gateway.
+
+O template de `setup.py` e a montagem `openai.env` do Compose base pertencem ao
+acesso direto OpenAI legado; `setup.py` não cria esse arquivo. No fluxo LiteLLM,
+substitua essa montagem pela de `litellm-client.env` e ajuste `credential_file`
+conforme o guia antes de iniciar `brain`. Preserve as configurações locais
+existentes. Iniciar o provider real pode gerar consumo. Não envie chaves pelo chat.
 
 As configurações em `runtime/config/` selecionam os bots 65001, 65004 e 65003,
 modo ativo, com o bot 65001 como explorador autônomo. O worker mantém o limite
@@ -89,8 +290,11 @@ não são utilizados. O volume `canary-bots-wsl_database` da primeira tentativa
 incompleta foi preservado; o banco operacional usa
 `canary-bots-wsl_database-seeded`.
 
-Para parar sem excluir dados, execute `docker compose stop -t 180`. Os logs de build
-ficam neste diretório. Não use `down -v` para uma parada normal.
+Para parar sem excluir dados, use os mesmos arquivos Compose/overrides ativos
+e `docker compose --profile ai --profile gateway stop -t 180`; os perfis incluem
+os serviços opcionais. Encerre antes os harnesses/gateways temporários por seus
+launchers, preservando logs e verificando a remoção dos CIDs próprios. Os logs
+de build ficam neste diretório. Não use `down -v` para uma parada normal.
 
 As edições de rotas feitas dentro do jogo são preservadas no volume
 `authored-data`. Uma atualização dos CSVs da imagem não substitui automaticamente
@@ -201,3 +405,34 @@ python3 tools/bot_brain/test_movement.py
 g++ -std=c++20 -Isrc tools/bot_brain/test_online_time.cpp -o /tmp/test_online_time
 /tmp/test_online_time
 ```
+
+### Checkpoints concorrentes e deadlocks
+
+Uma disputa entre os intervalos de chaves de `player_items` pode fazer o
+InnoDB reverter uma transação inteira com erro 1213. O checkpoint repete a
+transação desde o início, usando o mesmo snapshot imutável, em até cinco
+tentativas com espera curta no worker SQL. A transação não é reiniciada em
+erros de conexão, SQL inválido ou COMMIT sem confirmação; o tratamento de
+reconexão da camada `Database` mantém sua política existente. Se o limite for
+atingido, o save continua pendente; isso não garante durabilidade em uma
+parada com banco indisponível.
+
+O contexto inclui a identidade da conexão e um contador de recuperações da
+thread. Se houver falha de transporte ou troca de conexão durante a tentativa,
+um 1213 posterior não autoriza reiniciar o snapshot. As regressões usam o
+classificador real de erros e cobrem falha mista na mesma instrução, em uma
+instrução anterior e reconexão transparente.
+
+O CTest `checkpoint_deadlock_retry` cobre rollback parcial, limite de tentativas
+e retenção da pendência. O ensaio com quatro conexões reais exige Docker e uma
+imagem local com compilador e dependências de build:
+
+```bash
+BOT_TEST_BUILD_IMAGE=<imagem-local-de-build> \
+  python3 tools/bot_brain/test_checkpoint_deadlock_db.py
+```
+
+Esse ensaio usa o MariaDB 11.4 já presente localmente, fixado pelo ID, com rede
+interna e banco em tmpfs próprios. Verifica vinte checkpoints e deadlocks
+provocados, incluindo XP e inventário; remove seus containers e rede no fim.
+`BOT_TEST_EVIDENCE=<diretorio>` preserva os logs do banco descartável.

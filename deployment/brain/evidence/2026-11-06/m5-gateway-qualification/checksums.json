@@ -1,0 +1,7 @@
+{
+  "algorithm": "sha256",
+  "files": {
+    "README.md": "a60aab45d5995272ff5d20f6718b02dc48a517ae297b1dbaf832be8509b8a0d4",
+    "gateway-qualification.public.json": "07e5e960659d93ff4ee8cb3b365a7c92abbb9125a4d697d01c50cc5fe29b7500"
+  }
+}

@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "scope": "Final postclosure financial reconciliation of a partial campaign; no comparative nine-run acceptance.",
+  "snapshot_utc": "2026-11-06T20:00:07.949234+00:00",
+  "month": "2026-11",
+  "source_revision": "7f2904e5827edc67997d309d453fa1d7371523cc",
+  "campaign": "m5-none-v3-20261106-c2c3972c",
+  "policy": "openai_none_performance_v3",
+  "controller_profile": "openai_none_gemini_default_v1",
+  "authority": "canary-bots-wsl_brain-state:/var/lib/canary-brain/state.sqlite3",
+  "canonical_budget_nanousd": {
+    "cap": 50000000000,
+    "spent": 598254025,
+    "reserved": 81558050,
+    "available": 49320187925
+  },
+  "monthly_header_scope": "Fresh shared-account amounts include continuing production; the closed wrapper header is preserved at its own earlier cutoff.",
+  "closed_wrapper_ledger_cutoff_utc": "2026-11-06T19:54:19.625985+00:00",
+  "closed_wrapper_budget_nanousd": {
+    "cap": 50000000000,
+    "spent": 596536225,
+    "reserved": 81558050,
+    "available": 49321905725
+  },
+  "closed_wrapper_ledger_sha256": "6730aa916addcff25d43da43e1a4f2aa4c7ddab9c3932d9088f3d86f3047184e",
+  "closed_preservation_receipt_sha256": "fac42f7a9b711ac9b258ea16cee81db0c8f8ef8cbb55eb5d979b3d93603f13f3",
+  "previous_postqualification_cutoff_utc": "2026-11-06T19:54:41.674745+00:00",
+  "previous_financial_receipt_sha256": "cbf9fdf9323a752834b952c37520588217563dd641548950f9ecd5c1463a5a36",
+  "prior_ten_totals": {
+    "application_attempts": 10,
+    "known_spent_nanousd": 863500,
+    "unknown_reserved_nanousd": 4299300,
+    "complete_liability_nanousd": 5162800,
+    "unknown_attempts": 3
+  },
+  "closed_new_probe_runs": {
+    "openai": {
+      "run_id": "decisions:b635391628be4592971f9506b98b132f:65001",
+      "application_attempts": 3,
+      "known_spent_nanousd": 106800,
+      "unknown_reserved_nanousd": 946375,
+      "complete_liability_nanousd": 1053175,
+      "unknown_attempts": 1
+    },
+    "gemini": {
+      "run_id": "decisions:835e1f9a68cc47faabef1292a237f26c:65001",
+      "application_attempts": 5,
+      "known_spent_nanousd": 1011400,
+      "unknown_reserved_nanousd": 0,
+      "complete_liability_nanousd": 1011400,
+      "unknown_attempts": 0
+    }
+  },
+  "prior_plus_closed_probe_totals": {
+    "application_attempts": 18,
+    "known_spent_nanousd": 1981700,
+    "unknown_reserved_nanousd": 5245675,
+    "complete_liability_nanousd": 7227375,
+    "unknown_attempts": 4
+  },
+  "current_scored_prefix_totals": {
+    "application_attempts": 0,
+    "known_spent_nanousd": 0,
+    "unknown_reserved_nanousd": 0,
+    "complete_liability_nanousd": 0,
+    "unknown_attempts": 0
+  },
+  "complete_selected_current_totals": {
+    "application_attempts": 18,
+    "known_spent_nanousd": 1981700,
+    "unknown_reserved_nanousd": 5245675,
+    "complete_liability_nanousd": 7227375,
+    "unknown_attempts": 4
+  },
+  "selected_requests": [
+    {
+      "request_id": "0127734202e044e9aa93cc3261a82647",
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "reserved_nanousd": 825375,
+      "spent_nanousd": 133900,
+      "state": "settled"
+    },
+    {
+      "request_id": "2ad399344ae54433b080c600156eefd6",
+      "run_id": "decisions:bdf836b5a98e4247a47cce1352fae837:65001",
+      "reserved_nanousd": 825375,
+      "spent_nanousd": 170900,
+      "state": "settled"
+    },
+    {
+      "request_id": "315971df466d44c081107882ed03ad3c",
+      "run_id": "decisions:835e1f9a68cc47faabef1292a237f26c:65001",
+      "reserved_nanousd": 2414800,
+      "spent_nanousd": 176100,
+      "state": "settled"
+    },
+    {
+      "request_id": "3f67f6f84893455893a9fd4dcd487131",
+      "run_id": "decisions:b635391628be4592971f9506b98b132f:65001",
+      "reserved_nanousd": 946375,
+      "spent_nanousd": null,
+      "state": "unknown"
+    },
+    {
+      "request_id": "57f0becd17ab47a2ad3638987ca2f6ef",
+      "run_id": "credential-smoke-out-gemini",
+      "reserved_nanousd": 2337700,
+      "spent_nanousd": 161800,
+      "state": "settled"
+    },
+    {
+      "request_id": "742774dec9f94c4eb5c903b69bffe0aa",
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "reserved_nanousd": 825500,
+      "spent_nanousd": 53400,
+      "state": "settled"
+    },
+    {
+      "request_id": "78402a7528f746eca7438a21164aac3f",
+      "run_id": "decisions:835e1f9a68cc47faabef1292a237f26c:65001",
+      "reserved_nanousd": 2720200,
+      "spent_nanousd": 289200,
+      "state": "settled"
+    },
+    {
+      "request_id": "78f4b4db0c064222af013d08f4f76001",
+      "run_id": "decisions:835e1f9a68cc47faabef1292a237f26c:65001",
+      "reserved_nanousd": 2421400,
+      "spent_nanousd": 162900,
+      "state": "settled"
+    },
+    {
+      "request_id": "81c26627802f4161a43d40a0d0b1f26f",
+      "run_id": "decisions:bdf836b5a98e4247a47cce1352fae837:65001",
+      "reserved_nanousd": 825500,
+      "spent_nanousd": 114900,
+      "state": "settled"
+    },
+    {
+      "request_id": "847b421069fc4e19aeab9a1a3385c8d8",
+      "run_id": "decisions:bdf836b5a98e4247a47cce1352fae837:65001",
+      "reserved_nanousd": 942250,
+      "spent_nanousd": null,
+      "state": "unknown"
+    },
+    {
+      "request_id": "855414d4a1464259bd8365980324eeba",
+      "run_id": "decisions:835e1f9a68cc47faabef1292a237f26c:65001",
+      "reserved_nanousd": 2495800,
+      "spent_nanousd": 207400,
+      "state": "settled"
+    },
+    {
+      "request_id": "861e66cd47044361b97ed7842f45f4f9",
+      "run_id": "decisions:b635391628be4592971f9506b98b132f:65001",
+      "reserved_nanousd": 829625,
+      "spent_nanousd": 53400,
+      "state": "settled"
+    },
+    {
+      "request_id": "8e32e915ca5e4407a3ec55ab501bd99a",
+      "run_id": "credential-smoke-out-openai",
+      "reserved_nanousd": 835375,
+      "spent_nanousd": 52800,
+      "state": "settled"
+    },
+    {
+      "request_id": "90aa1f6eaf644f7ba1552ffc8cbc6d3d",
+      "run_id": "decisions:835e1f9a68cc47faabef1292a237f26c:65001",
+      "reserved_nanousd": 2414500,
+      "spent_nanousd": 175800,
+      "state": "settled"
+    },
+    {
+      "request_id": "952c7a462a36461485d7fe37f3ee8444",
+      "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+      "reserved_nanousd": 2414800,
+      "spent_nanousd": null,
+      "state": "unknown"
+    },
+    {
+      "request_id": "b91f101ecf4a4d7ea2315922365e4193",
+      "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+      "reserved_nanousd": 2414500,
+      "spent_nanousd": 175800,
+      "state": "settled"
+    },
+    {
+      "request_id": "c8f2779f524c49be9da807f71eeffd58",
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "reserved_nanousd": 942250,
+      "spent_nanousd": null,
+      "state": "unknown"
+    },
+    {
+      "request_id": "cb5094f388574bc0934af52f7dac5a9b",
+      "run_id": "decisions:b635391628be4592971f9506b98b132f:65001",
+      "reserved_nanousd": 829500,
+      "spent_nanousd": 53400,
+      "state": "settled"
+    }
+  ],
+  "scored_prefix_requests": [],
+  "claims": {
+    "m5_recovery_v2": {
+      "record_key": "single_use",
+      "count": 1,
+      "data_field_read": false,
+      "changed_by_audit": false,
+      "not_a_billable_request": true
+    },
+    "m5_openai_none_v3": {
+      "record_key": "single_use",
+      "count": 1,
+      "data_field_read": false,
+      "changed_by_audit": false,
+      "not_a_billable_request": true
+    }
+  },
+  "financial_final": false,
+  "claims_remain_consumed_no_reexecution_permission": true,
+  "campaign_outcome_reported_by_root": {
+    "both_probes_passed": true,
+    "native_trials_started": 1,
+    "native_trial_failed_and_incomplete": true,
+    "native_observed_seconds": 220.803,
+    "stop_reason": "recording_gap",
+    "gap_reason": "native_telemetry_loss",
+    "gap_missing": 1,
+    "remaining_trials_not_attempted": 8,
+    "wrapper_error_type": "RuntimeError",
+    "wrapper_stage": "m5.campaign",
+    "wrapper_closed_utc": "2026-11-06T19:54:20Z",
+    "comparison_completed": false,
+    "scope": "Operator closure evidence; this financial audit does not independently observe gameplay or infer XP/death/survival metrics from absent costs."
+  },
+  "application_attempt_semantics": "Eighteen reserved application records do not prove eighteen upstream transmissions or completions. Four unknown liabilities remain held in full.",
+  "checks": {
+    "quick_check_ok": true,
+    "one_readonly_query_only_transaction": true,
+    "prior_ten_unchanged": true,
+    "all_eighteen_unchanged_since_postqualification_cut": true,
+    "all_eighteen_match_closed_wrapper_ledger": true,
+    "four_unknowns_held_at_same_full_reservations": true,
+    "actual_known_unknown_liability_match_expected": true,
+    "closed_openai_probe_partition": true,
+    "closed_gemini_probe_partition": true,
+    "no_scored_prefix_request": true,
+    "v2_claim_retained_once": true,
+    "none_v3_claim_retained_once": true,
+    "authority_identity_and_effective_volume_unchanged": true,
+    "closed_public_financial_files_preserved": true
+  },
+  "all_financial_reconciliation_checks_pass": true,
+  "source_connection_readonly": true,
+  "source_mount_readonly": false,
+  "query_only": true,
+  "explicit_transaction": true,
+  "explicit_connection_close": true,
+  "sqlite_check": {
+    "kind": "quick_check",
+    "ok": true
+  },
+  "canonical_selected_snapshot_sha256": "96a6d00c5928632aff5ef7482c38a6938de905a5c7dff3aa5dd28b1abbe58811",
+  "read_only_sql_sha256": "f535bc2a0500373ef0c9bb8b494325cb2dac95c0d2f738a38e20478aee7ddabd",
+  "canonical_ledger_writes": 0,
+  "reservations_settled_released_or_rewritten_by_audit": 0,
+  "claim_writes_or_data_reads": 0,
+  "provider_calls_by_audit": 0,
+  "gateway_api_calls_by_audit": 0,
+  "real_credential_reads": 0,
+  "gameplay_actions_or_queries_by_audit": 0,
+  "interpretation": "The closed partial attempt and all unknown reservations remain intact. No claim is reset and no retry/new namespace is authorized. Monthly production activity continues independently."
+}

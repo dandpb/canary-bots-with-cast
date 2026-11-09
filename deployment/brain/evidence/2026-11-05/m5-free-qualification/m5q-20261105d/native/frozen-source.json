@@ -1,0 +1,8 @@
+{
+  "revision": "c03a32257a66d7bf9fb5e779b22dd7c498b0d6c4",
+  "verified_git_blobs": {
+    "m5_qa.py": "39b6400319259206e7520a4f62587b011230208c08cf050882f5fdc840f2e1cc",
+    "m5_worker.py": "193437bbad5757070e5e881667bdbac9c304b0959cebd41934baf2c7fdd2a787",
+    "m5_stop.py": "ff890d3f78d154a6fad7318ece4e06e7229209d3a02ea08d36058f5f8500ad1d"
+  }
+}

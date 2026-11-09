@@ -10,9 +10,12 @@ dofile(arg[1] or "data/scripts/lib/bot_system.lua")
 
 local prepared, committed, cancelled, restored, commands, ticks
 local mode, touched
+local schedulerOn, fixtureRoster
 local function fixture()
 	prepared, committed, cancelled, restored, commands, ticks = 0, 0, 0, 0, 0, 0
 	touched = false
+	schedulerOn = mode == "debug-selection"
+	fixtureRoster = mode == "debug-selection" and {{guid=51,name="Known",active=true,hibernated=false}} or {}
 	Game = {
 		botPrepareReload = function()
 			prepared = prepared + 1
@@ -30,13 +33,18 @@ local function fixture()
 		botCommand = function(_, command)
 			assert(not (mode == "commit-fail" and committed > 0), "command after failed commit")
 			commands = commands + 1
-			return command == "schedule status" and "Scheduler: OFF" or "OK"
+			if command == "schedule status" then return schedulerOn and "Scheduler: ON" or "Scheduler: OFF" end
+			if command == "schedule off" then schedulerOn = false end
+			if command == "schedule on" then schedulerOn = true end
+			return "OK"
 		end,
+		botForceDeactivate = function() touched = true end,
+		botIsActive = function() return true end,
 		botForceDeactivateForReload = function() touched = true end,
 		botReload = function(ticket)
 			assert(ticket == 41)
 			committed = committed + 1
-			return { ok = mode ~= "commit-fail", state_restored = mode ~= "commit-fail", message = "fixture commit result", bots = {} }
+			return { ok = mode ~= "commit-fail", state_restored = mode ~= "commit-fail", message = "fixture commit result", bots = fixtureRoster }
 		end,
 		botStartTickLoop = function() ticks = ticks + 1; return true end,
 		botReregisterAll = function() restored = restored + 1; return 0 end,
@@ -59,3 +67,19 @@ mode = "success"; fixture()
 BotSystem.executeReload({ source = "retry" })
 assert(committed == 1 and restored == 0 and ticks == 1 and not BotSystem._reloadInProgress)
 print("PASS: preparation/commit failures stop safely, release reload state and permit retry")
+
+for _, names in ipairs({{"Unknown"}, {"Known", "Unknown"}}) do
+	mode = "debug-selection"; fixture()
+	local rejected = BotSystem.executeReload({source="invalid debug selection",debugCount=2,debugBotNames=names})
+	assert(not rejected.ok, "unknown explicit debug names must be rejected")
+	assert(not touched and fixtureRoster[1].active, "invalid selection deactivated a registered bot")
+	assert(schedulerOn and ticks == 0 and commands == 0, "invalid selection changed scheduler/tick/commands")
+	assert(not BotSystem._reloadInProgress, "invalid selection must permit retry")
+end
+mode = "debug-selection"; fixture()
+local invalidCount = BotSystem.executeReload({debugCount=1.5,debugBotNames={"Known"}})
+assert(not invalidCount.ok and schedulerOn and commands == 0 and not touched)
+mode = "debug-selection"; fixture()
+local selected = BotSystem.executeReload({debugCount=1,debugBotNames={"kNoWn"}})
+assert(selected.ok and not schedulerOn and not touched and ticks == 1, selected.message)
+print("PASS: debug selection is validated before scheduler/tick/population mutations")

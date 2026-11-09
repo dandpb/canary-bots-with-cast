@@ -1,0 +1,66 @@
+[
+  {
+    "id": 3873,
+    "t_ms": 1266733,
+    "kind": "outcome",
+    "action_id": "1de4ba4c91c54a57813bb5d06d8e3eb3",
+    "reason": "return_route_unavailable",
+    "status": "failed"
+  },
+  {
+    "id": 3874,
+    "t_ms": 1266734,
+    "kind": "operator",
+    "action_id": "1de4ba4c91c54a57813bb5d06d8e3eb3",
+    "reason": null,
+    "status": null
+  },
+  {
+    "id": 3969,
+    "t_ms": 1309365,
+    "kind": "outcome",
+    "action_id": "9c55e0fa292d468dbff7f375a25ef03a",
+    "reason": "return_route_unavailable",
+    "status": "failed"
+  },
+  {
+    "id": 4063,
+    "t_ms": 1351824,
+    "kind": "outcome",
+    "action_id": "1c8aaf59dccc4615a77ac59d6b677b63",
+    "reason": "return_route_unavailable",
+    "status": "failed"
+  },
+  {
+    "id": 4158,
+    "t_ms": 1394386,
+    "kind": "outcome",
+    "action_id": "21327f50f44c4e75abd19c6279a90c39",
+    "reason": "return_route_unavailable",
+    "status": "failed"
+  },
+  {
+    "id": 4252,
+    "t_ms": 1436906,
+    "kind": "outcome",
+    "action_id": "d46c009e5291432e9c6c18ea5a742d26",
+    "reason": "return_route_unavailable",
+    "status": "failed"
+  },
+  {
+    "id": 4346,
+    "t_ms": 1479535,
+    "kind": "outcome",
+    "action_id": "93db0a9326094f5badb39853a6b2ae21",
+    "reason": "return_route_unavailable",
+    "status": "failed"
+  },
+  {
+    "id": 4440,
+    "t_ms": 1521899,
+    "kind": "outcome",
+    "action_id": "2ac099da5fde410cb18c7fa62372cae8",
+    "reason": "return_route_unavailable",
+    "status": "failed"
+  }
+]

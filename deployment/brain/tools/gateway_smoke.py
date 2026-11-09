@@ -15,11 +15,12 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from openai import APIStatusError, AsyncOpenAI
+
 from canary_brain.gateway import GatewayConfiguration, GatewayProvider
 from canary_brain.provider import Prices
 from canary_brain.recording import digest
 from canary_brain.store import Store
-from openai import APIStatusError, AsyncOpenAI
 
 
 def free_port():
@@ -47,11 +48,14 @@ def main():
                 "canary-litellm:1.108.0",
                 "/source/deployment/brain/tools/gateway_smoke.py",
                 "--inside",
+                *(["--bridge-usage"] if "--bridge-usage" in sys.argv else []),
             ],
             check=True,
         )
         return
     counts = []
+    bridge_usage = "--bridge-usage" in sys.argv
+    upstream_model = "custom_openai/model-a" if bridge_usage else "openai/model-a"
 
     class Upstream(BaseHTTPRequestHandler):
         def log_message(self, *_args):
@@ -61,6 +65,7 @@ def main():
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             counts.append(body["model"])
             fail = "FAIL_UPSTREAM" in json.dumps(body)
+            missing_usage = "MISSING_USAGE" in json.dumps(body)
             result = (
                 {"error": {"message": "fixture failure", "type": "server_error"}}
                 if fail
@@ -78,6 +83,27 @@ def main():
                     },
                 }
             )
+            if not fail and self.path.endswith("/chat/completions"):
+                result = {
+                    "id": "chatcmpl-fixture",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": body["model"],
+                    "choices": [
+                        {
+                            "index": 0,
+                            "finish_reason": "stop",
+                            "message": {"role": "assistant", "content": "ok"},
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 10,
+                        "completion_tokens": 2,
+                        "total_tokens": 12,
+                    },
+                }
+            if missing_usage:
+                result.pop("usage", None)
             encoded = json.dumps(result).encode()
             self.send_response(500 if fail else 200)
             self.send_header("Content-Type", "application/json")
@@ -96,14 +122,16 @@ def main():
                 {
                     "model_name": "test-a",
                     "litellm_params": {
-                        "model": "openai/model-a",
+                        "model": upstream_model,
                         "api_base": f"http://127.0.0.1:{upstream.server_port}/v1",
                         "api_key": "local-fixture",
                         "num_retries": 0,
                     },
                     "model_info": {
                         "id": "deployment-a",
-                        "supported_endpoints": ["/v1/responses"],
+                        "supported_endpoints": ["/v1/chat/completions"]
+                        if bridge_usage
+                        else ["/v1/responses"],
                     },
                 }
             ],
@@ -121,7 +149,7 @@ def main():
                 "turn_off_message_logging": True,
             },
             "general_settings": {
-                "custom_auth": "gateway_policy.authenticate",
+                "custom_auth": "canary_brain.gateway_policy.authenticate",
                 "master_key": "os.environ/LITELLM_MASTER_KEY",
             },
         }
@@ -171,7 +199,7 @@ def main():
                     effective_model="model-a",
                     deployment_id="deployment-a",
                     provider="fake-upstream",
-                    upstream_model="openai/model-a",
+                    upstream_model=upstream_model,
                     version="1.108.0",
                     configuration_sha256=digest(config),
                     prices=Prices(
@@ -207,7 +235,28 @@ def main():
                         "responses", {"input": "hello", "max_output_tokens": 4}, 20
                     )
                     assert result["effective_model"] == "model-a"
+                    assert result["usage"]["input_tokens"] == 10, result["usage"]
+                    assert result["usage"]["output_tokens"] == 2, result["usage"]
                     assert counts == ["model-a"], counts
+                    known_spend = provider.store.budget()["spent"]
+                    # Fixed fixture: 10 input * 1 + 2 output * 2 nanodollars.
+                    assert known_spend == 14, provider.store.budget()
+                    try:
+                        await provider._request(
+                            "responses",
+                            {"input": "MISSING_USAGE", "max_output_tokens": 4},
+                            20,
+                        )
+                    except TypeError:
+                        pass
+                    else:
+                        raise AssertionError(
+                            "missing upstream usage must retain liability"
+                        )
+                    assert provider.store.budget()["spent"] == known_spend
+                    assert provider.store.budget()["reserved"] > 0
+                    assert counts == ["model-a", "model-a"], counts
+                    provider.backoff.clear()  # Independent fault scenario, no retry.
                     try:
                         await provider._request(
                             "responses",
@@ -220,10 +269,12 @@ def main():
                         raise AssertionError(
                             "failing upstream must not be replaced with success"
                         )
-                    assert counts == ["model-a", "model-a"], counts
+                    assert counts == ["model-a", "model-a", "model-a"], counts
+                    assert provider.store.budget()["spent"] == 14
                     assert provider.store.budget()["reserved"] > 0
                 return {
                     "upstream_calls": len(counts),
+                    "responses_bridge": bridge_usage,
                     "settled_nanousd": provider.store.budget()["spent"],
                     "unknown_liability_retained": True,
                 }

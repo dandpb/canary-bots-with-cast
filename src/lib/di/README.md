@@ -1,4 +1,40 @@
-## Dependency Injection
+# Dependency Injection (`src/lib/di`)
+
+## Overview
+
+The `src/lib/di` component provides the Dependency Injection (DI) infrastructure for Canary, built on top of `boost::di`. It manages object instantiation, singleton/shared lifetimes, runtime provider bindings for testing (`di::extension::runtime_injector`), and soft-singleton instance tracking (`SoftSingleton` / `SoftSingletonGuard`) to bridge legacy global accessors (`g_*()`) with constructor/field injection and testability.
+
+## Interface
+
+- `[container.hpp:DI]` — Static facade managing `defaultContainer` (binding `AccountRepository` to `AccountRepositoryDB`, `KVStore` to `KVSQL`, and `Logger` to `LogWithSpdLog` in `di::singleton` scope) and an optional `testContainer` (`setTestContainer`, `getTestContainer`, `create<T>()`, `get<T>()`).
+- `[container.hpp:inject]` — Global helper `inject<Type>()` delegating to `DI::get<Type>()` for contextual/field injection.
+- `[injector.hpp:boost::di::extension::injector]` — Variadic injector template specializing `injector<>` as `runtime_injector`.
+- `[runtime_provider.hpp:boost::di::extension::runtime_provider]` — Dynamic type-indexed binding provider (`bindings()`, `data<T>()`, `provider(...)`) with `assert_error_policy`.
+- `[runtime_provider.hpp:boost::di::extension::runtime_injector]` — Alias for `detail::injector<assert_error_policy, di::extension::shared_config>` supporting `install(...)` of bindings at runtime.
+- `[shared.hpp:boost::di::extension::shared]` / `[shared.hpp:boost::di::extension::shared_config]` — Thread-safe (unless `BOOST_DI_NOT_THREAD_SAFE` is defined) shared scope configuration mapping `T&`, `std::shared_ptr<T>`, `boost::shared_ptr<T>`, and `std::weak_ptr<T>` to shared instances.
+- `[soft_singleton.hpp:SoftSingleton]` — Tracks active instance counts (`increment()`, `decrement()`) for soft-singleton types and logs a warning if multiple instances coexist.
+- `[soft_singleton.hpp:SoftSingletonGuard]` — RAII guard that increments a `SoftSingleton` on construction and decrements it on destruction.
+
+## Invariants
+
+- `[container.hpp:DI::get]` — Always resolves `T&` (`create<T&>()`), returning a shared singleton instance managed by the active container (`testContainer` if non-null, otherwise `defaultContainer`).
+- `[runtime_provider.hpp:boost::di::extension::assert_error_policy::error]` — Requesting an unbound abstract or non-constructible type from `runtime_provider` triggers `assert(false && "Type not bound!")`.
+- `[soft_singleton.cpp:SoftSingleton::increment]` — Emits a warning via `g_logger().warn(...)` whenever `instance_count > 1`.
+- `[soft_singleton.hpp:SoftSingleton]` / `[soft_singleton.hpp:SoftSingletonGuard]` — Both classes are non-copyable (`= delete` copy constructor and copy assignment).
+
+## Side Effects
+
+- `[container.hpp:DI::setTestContainer]` — Mutates the process-wide static pointer `DI::testContainer`, redirecting all subsequent `DI::create`, `DI::get`, and `inject` calls.
+- `[shared.hpp:boost::di::extension::detail::shared::scope::create]` — Acquires a `std::mutex` lock (when `BOOST_DI_NOT_THREAD_SAFE` is not defined) and lazily allocates `std::shared_ptr<T>` in the scope or provider `data_` map.
+- `[soft_singleton.cpp:SoftSingleton::increment]` — Mutates `instance_count` and logs warnings through `Logger` (`g_logger()`).
+
+## Verification
+
+- Run: `ctest --test-dir build --output-on-failure`
+
+---
+
+## Dependency Injection Guide
 
 Dependency injection is a technique for achieving loose coupling between objects and their collaborators, or dependencies. It is a form of inversion of control, where the control being inverted is the setting of object's dependencies.
 

@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1.7
-FROM ubuntu:24.04 AS build
+# Production builds use the default tag; core-qa passes a digest-pinned BASE_IMAGE (image-lock.json game_base).
+ARG BASE_IMAGE=ubuntu:24.04
+FROM ${BASE_IMAGE} AS build
 ARG DEBIAN_FRONTEND=noninteractive
 ARG BUILD_JOBS=3
 ENV VCPKG_ROOT=/opt/vcpkg VCPKG_MAX_CONCURRENCY=3 VCPKG_BINARY_SOURCES=clear
@@ -14,7 +16,7 @@ COPY src ./src
 COPY tests ./tests
 RUN cmake -S . -B /build -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLED_DIR=/opt/installed -DVCPKG_MANIFEST_INSTALL=OFF -DCMAKE_BUILD_TYPE=Release -DTOGGLE_BIN_FOLDER=ON -DCANARY_BUILD_TESTS=OFF -DOPTIONS_ENABLE_IPO=OFF -DOPTIONS_ENABLE_CCACHE=OFF -DOPTIONS_ENABLE_SCCACHE=OFF -DSPEED_UP_BUILD_UNITY=OFF && cmake --build /build --target canary bot_engine -j ${BUILD_JOBS}
 
-FROM ubuntu:24.04 AS game
+FROM ${BASE_IMAGE} AS game
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libmariadb3 libluajit-5.1-2 libssl3t64 zlib1g libcurl4t64 libgomp1 curl python3 && rm -rf /var/lib/apt/lists/*

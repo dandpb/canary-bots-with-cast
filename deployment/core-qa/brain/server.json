@@ -1,0 +1,6 @@
+{
+  "mode": "active",
+  "bots": [65001, 65004, 65003],
+  "socket_directory": "/var/lib/canary-human-qa-stage2/socket",
+  "autonomous_bot": 65001
+}

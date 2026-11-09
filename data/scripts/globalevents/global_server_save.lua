@@ -8,6 +8,9 @@ local function ServerSave()
 	end
 	if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_SHUTDOWN) then
 		Game.setGameState(GAME_STATE_SHUTDOWN)
+	elseif not configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLOSE) then
+		-- Neither close nor shutdown (e.g. canary-core-qa): those states saved the world, so save it here.
+		saveServer()
 	end
 
 	-- Update daily reward next server save timestamp

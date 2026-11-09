@@ -1,0 +1,15 @@
+{
+  "at_utc": "2026-11-06T12:51:14.932856+00:00",
+  "images": {
+    "game": "sha256:16b69a22965756ccca1328aa4ae50e955776b59702dc4d13ac5430432543efef",
+    "database": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7"
+  },
+  "application_source_revision": "dbf724731f0cf4cc7b2d17aed29f9900ec809c32",
+  "source_artifact": "runs/fake-0/runtime-image-attestation.json",
+  "source_sha256": "95b810a66504d825b27dfdcd958ad604e06c40f38fc83c7ddf7223938ea17bfd",
+  "native_source_revision": "2986713328ab68ade2ce3927a2f0b1de564815e8",
+  "binary_sha256": {
+    "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+    "libbot_engine.so": "d98e3c920ebec87b8ecf5499cac21631a083fb0011d7421d364a7c02467057aa"
+  }
+}

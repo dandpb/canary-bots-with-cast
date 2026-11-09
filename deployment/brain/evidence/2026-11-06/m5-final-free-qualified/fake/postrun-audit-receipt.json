@@ -1,0 +1,90 @@
+{
+  "mode": "fake",
+  "run_id": "m5-current-fake-649252d200:fake:0",
+  "accepted": true,
+  "checks": {
+    "completed": true,
+    "supervisor_completed": true,
+    "recorded_horizon": true,
+    "observed_horizon": true,
+    "elapsed_horizon": true,
+    "no_gaps": true,
+    "zero_observed_deaths": true,
+    "no_operator_interventions": true,
+    "zero_inference": true,
+    "saved_xp_matches": true,
+    "positive_xp_persisted": true,
+    "native_offers_multiple_hunts": true,
+    "hunt_cycle": true,
+    "status_observer_healthy": true,
+    "resources_cleaned": true,
+    "runtime_images_verified": true
+  },
+  "evidence": {
+    "mode": "fake",
+    "span_seconds": 1801.0,
+    "supervisor": [
+      {
+        "elapsed_seconds": 1801.0097088890034,
+        "observed_seconds": 1800.946146088012,
+        "phase": "run_supervisor_stop",
+        "reason": "completed"
+      }
+    ],
+    "initial_db_xp": 98800,
+    "saved_db_xp": 102942,
+    "last_sample_xp": 102942,
+    "alternatives": {
+      "offered": true,
+      "t_ms": 15861,
+      "candidate_ids": [
+        "hunt:399",
+        "hunt:77"
+      ],
+      "meaning": "simultaneous native offers; does not assert every offer reached a model"
+    },
+    "hunt_cycle": {
+      "complete": true,
+      "completed_hunt": {
+        "identity": [
+          "2ad4e74373fb44eb8b3ac4c981ed503f",
+          65001,
+          "1-155639667811705"
+        ],
+        "candidate_id": "hunt:399",
+        "intent_t_ms": 15885,
+        "accepted_t_ms": 15962,
+        "completed_t_ms": 315995,
+        "xp_delta": 617.0,
+        "defeats_delta": 20.0
+      },
+      "restart": {
+        "identity": [
+          "09e2146c878a487ba9c6e4b243e50e4e",
+          65001,
+          "1-155639667811705"
+        ],
+        "candidate_id": "hunt:399",
+        "intent_t_ms": 316049,
+        "accepted_t_ms": 316140
+      },
+      "meaning": "completed hunt macro followed by a new accepted hunt; not return or NPC purchase"
+    },
+    "automatic_recoveries_requested": 0
+  },
+  "requests": 0,
+  "event_counts": {
+    "configuration": 1,
+    "decision": 1818,
+    "intent": 6,
+    "lifecycle": 1799,
+    "outcome": 11,
+    "proposal": 606,
+    "sample": 1507,
+    "segment": 2
+  },
+  "failed_outcomes": [],
+  "audit_at_utc": "2026-11-06T14:26:55.706789+00:00",
+  "source_audit_sha256": "7a8a03d6c6c98fd0ab0579b710bee150eac6e15a18b0aae26d434d88171523a5",
+  "independent_scoped_absence_verified": true
+}

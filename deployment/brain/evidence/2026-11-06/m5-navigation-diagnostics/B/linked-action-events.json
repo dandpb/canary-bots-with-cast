@@ -1,0 +1,71 @@
+[
+  {
+    "id": 26,
+    "key": "intent:b2e41b84cf4d4950b4a215c7063e2e93",
+    "segment": "cb8dd893718644ec93ececca197491e0",
+    "t_ms": 23453,
+    "wall": 1793965016.9541264,
+    "kind": "intent",
+    "data": {
+      "action_id": "b2e41b84cf4d4950b4a215c7063e2e93",
+      "bot_id": 65001,
+      "candidate_id": "retreat",
+      "decision_id": "",
+      "expires_ms": 147358886,
+      "mode": "active",
+      "objective_generation": 1,
+      "observation_sequence": 23,
+      "operator": true,
+      "type": "intent",
+      "version": 1,
+      "world": "1-147351018347389"
+    }
+  },
+  {
+    "id": 31,
+    "key": "outcome:1-147351018347389:b2e41b84cf4d4950b4a215c7063e2e93:accepted",
+    "segment": "cb8dd893718644ec93ececca197491e0",
+    "t_ms": 23630,
+    "wall": 1793965017.1314766,
+    "kind": "outcome",
+    "data": {
+      "action_id": "b2e41b84cf4d4950b4a215c7063e2e93",
+      "bot_id": 65001,
+      "metrics": {},
+      "reason": "objective_started",
+      "status": "accepted",
+      "type": "outcome",
+      "version": 1,
+      "world": "1-147351018347389"
+    }
+  },
+  {
+    "id": 91,
+    "key": "outcome:1-147351018347389:b2e41b84cf4d4950b4a215c7063e2e93:failed",
+    "segment": "cb8dd893718644ec93ececca197491e0",
+    "t_ms": 51814,
+    "wall": 1793965045.4500961,
+    "kind": "outcome",
+    "data": {
+      "action_id": "b2e41b84cf4d4950b4a215c7063e2e93",
+      "bot_id": 65001,
+      "metrics": {
+        "danger": 0.0,
+        "deaths": 0.0,
+        "defeats_delta": 0.0,
+        "elapsed_seconds": 28.213,
+        "level": 20.0,
+        "party_distance": 0.0,
+        "party_size": 1.0,
+        "progress": 0.0,
+        "supply_delta": 0.0,
+        "xp_delta": 0.0
+      },
+      "reason": "return_route_unavailable",
+      "status": "failed",
+      "type": "outcome",
+      "version": 1,
+      "world": "1-147351018347389"
+    }
+  }
+]

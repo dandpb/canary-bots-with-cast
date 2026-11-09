@@ -1,0 +1,376 @@
+{
+  "schema_version": 1,
+  "scope": "current-runner free qualification, native plus explicitly scripted fake",
+  "accepted": false,
+  "paid_pilot_admitted": false,
+  "reason": "Fake attempt stopped stalled before the requested 1800-second horizon; NPC purchase/return proof is also not established by native phases alone.",
+  "no_new_paid_calls": true,
+  "no_containers_started": true,
+  "original_raws_unchanged": true,
+  "trials": [
+    {
+      "mode": "native",
+      "run_id": "m5-current-native-17b62eabb7:native:0",
+      "recording_status": "completed",
+      "stop_reason": "completed",
+      "requested_seconds": 1800,
+      "sampled_span_seconds": 1800.493,
+      "supervisor_elapsed_seconds": 1800.5135425690096,
+      "supervisor_observed_seconds": 1800.4528320480022,
+      "recording_envelope_duration_ms": 1821232,
+      "initial_xp": 98800,
+      "last_sample_xp": 107149,
+      "saved_xp": 107149,
+      "xp_delta": 8349,
+      "metrics_v2": {
+        "version": 2,
+        "xp_delta": 8349,
+        "xp_per_wall_hour": 16693.427855592883,
+        "xp_per_active_hour": 16711.025315843406,
+        "active_ms": 1798597,
+        "wall_ms": 1800493,
+        "calendar_elapsed_ms": 1807554,
+        "duration_ms": 1821232,
+        "deaths": 0,
+        "initial_native_deaths_excluded": 0,
+        "deaths_observed": true,
+        "interventions": 0,
+        "intervention_free_ms": 1821232,
+        "intervention_free_censored": true,
+        "automatic_recoveries_requested": 0,
+        "model_decisions": 0,
+        "valid_proposals": 0,
+        "policy_overrides": 0,
+        "accepted_actions": 0,
+        "completed_actions": 0,
+        "failed_actions": 0,
+        "provider_failures": 0,
+        "spent_nanousd": 0,
+        "reserved_nanousd": 0,
+        "xp_per_dollar": null,
+        "latency_p50_ms": null,
+        "latency_p95_ms": null,
+        "gaps": 0,
+        "gap_times": [],
+        "levels": [],
+        "milestones": [],
+        "native_control_ms": 1798597,
+        "native_fallback_ms": 0,
+        "stalled_ms": null,
+        "confirmed_objective_defeats": 0,
+        "limitations": [
+          "Sampled observations; hidden events are not reconstructed.",
+          "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+          "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+        ]
+      },
+      "images_verified_from_running_inspection": true,
+      "resources_cleaned_from_scoped_inspection": true,
+      "author_accepted": true,
+      "author_checks": {
+        "completed": true,
+        "supervisor_completed": true,
+        "exact_horizon_recorded": true,
+        "bounded_recorded_duration": true,
+        "observed_horizon": true,
+        "no_gaps": true,
+        "zero_inference": true,
+        "saved_xp_matches": true,
+        "positive_xp": true,
+        "zero_observed_deaths": true,
+        "multiple_hunts_offered": true
+      },
+      "strict_consistency_review_passed": true,
+      "strict_findings": [],
+      "native_phase_cycle": {
+        "parser": "hunt=[script=... phase=PHASE], not the outer state field",
+        "phase_counts": {
+          "PATROLLING": 54,
+          "LEAVING": 18,
+          "RESUPPLYING": 8,
+          "PREPARING": 25,
+          "TRAVEL_TO": 14
+        },
+        "ordered_hunt_phase_cycle_observed": true,
+        "ordered_evidence": [
+          {
+            "elapsed_seconds": 541.0190247330174,
+            "command_id": 1,
+            "script_id": 77,
+            "hunt_phase": "PATROLLING"
+          },
+          {
+            "elapsed_seconds": 647.6117359570053,
+            "command_id": 11,
+            "script_id": 77,
+            "hunt_phase": "LEAVING"
+          },
+          {
+            "elapsed_seconds": 743.0139192299976,
+            "command_id": 20,
+            "script_id": 77,
+            "hunt_phase": "RESUPPLYING"
+          },
+          {
+            "elapsed_seconds": 1020.2140265070193,
+            "command_id": 46,
+            "script_id": 77,
+            "hunt_phase": "PATROLLING"
+          }
+        ],
+        "purchase_confirmed": false,
+        "limitation": "Native hunt phases do not prove NPC purchase; model-managed hunts may not populate native hunt state.",
+        "clock": "Observer elapsed field from phase-status.jsonl; not aligned to replay t_ms"
+      },
+      "return_route_failure_events": [],
+      "archive": "native/native.replay.zip",
+      "archive_sha256": "522839e01e7cb11954f00e8065ea64e1790e4486770b513f7187fa93eb5ec58c",
+      "event_count": 3301,
+      "source_attestation": {
+        "source_revision": "c9e447c500d1c245e7ea3736934eacfda0b5d445",
+        "fixture_parent": "<FIXTURE_G>",
+        "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+        "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+        "game_image": "sha256:a0cebf352f4750e7d20a13df82beaca79fa21025b8a335b5bc8b4fc39c2aa96c",
+        "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+        "binary_sha256": {
+          "canary": "c2a0ababa5f69d074703c60b488ed88d852f3f3c437a756364ddb804c223c150",
+          "libbot_engine.so": "9088c8142cab7b554c30f4f0c2dad971f773b9fd8609d997fee9efe64909bdb4"
+        },
+        "mode": "native",
+        "seconds": 1800,
+        "driver_sha256": "b3039ab8ce70d6fb2ea06aadcde10be37969a9f3daca1f983cf22d1434dab060",
+        "scope": "Controlled fixture G; real game with native or explicitly scripted fake choices. No provider inference."
+      },
+      "original_sources": {
+        "<SOURCE_NATIVE>/qualification.json": "3fa70f38bdb1b5bdab894c60a45e2c76978650c9ea20889759fe815940157899",
+        "<SOURCE_NATIVE>/attestation.json": "94e768de0b529ee56af819a6a48a5af9dde7b0b03f71d87357c513b1aefb09f5",
+        "<SOURCE_NATIVE>/runtime-image-attestation.json": "a893d0f1e12cd1ce7cc8324c7bbfd012f9b335460f460455a5c99b20a329ea34",
+        "<SOURCE_NATIVE>/resources-cleaned.json": "170633c4f09beaa031a8be4c6c2d325fb9943dc13ae23acc525e76c569b0fb6b",
+        "<SOURCE_NATIVE>/driver.py": "b3039ab8ce70d6fb2ea06aadcde10be37969a9f3daca1f983cf22d1434dab060",
+        "<SOURCE_NATIVE>/offline-ledger.sqlite3": "97bd8edbb49b043bd8fce3d403ad5ed0beda5ed8e1c1b7169e2a0c1a6bde1ca1",
+        "<SOURCE_NATIVE>/runs/experiment.json": "f97e92170e2e160aba02411a888e6c7e276522dc4a59d46464b5a36127e41821",
+        "<SOURCE_NATIVE>/runs/recording.sqlite3": "d673c3034a591ea0789f8551bef77483e769c2194390fb4828a10a93c961fca1",
+        "<SOURCE_NATIVE>/runs/recording.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "<SOURCE_NATIVE>/runs/native-0/saved-character.json": "06388721789eb95a653b7a0f37455007bd628086962d69c9d1df4c441a023c8e",
+        "<SOURCE_NATIVE>/runs/native-0/worker.sqlite3": "17ef621f567a21bcd1601cfafaf120a1804c91a584642cc3e79147af3b4cf16b",
+        "<SOURCE_NATIVE>/runs/native-0/worker.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "<SOURCE_NATIVE>/runs/native-0/phase-status.jsonl": "0321f955b4f2298663dd3d385a4f8bda9aebcab43a07025e14fea5bf16b832fd"
+      }
+    },
+    {
+      "mode": "fake",
+      "run_id": "m5-current-fake-d6226a4777:fake:0",
+      "recording_status": "failed",
+      "stop_reason": "stalled",
+      "requested_seconds": 1800,
+      "sampled_span_seconds": 1508.244,
+      "supervisor_elapsed_seconds": 1508.7158154829813,
+      "supervisor_observed_seconds": 1508.565187714994,
+      "recording_envelope_duration_ms": 1531291,
+      "initial_xp": 98800,
+      "last_sample_xp": 100793,
+      "saved_xp": 100793,
+      "xp_delta": 1993,
+      "metrics_v2": {
+        "version": 2,
+        "xp_delta": 1993,
+        "xp_per_wall_hour": 4757.055224486224,
+        "xp_per_active_hour": 4760.15450532157,
+        "active_ms": 1507262,
+        "wall_ms": 1508244,
+        "calendar_elapsed_ms": 1514470,
+        "duration_ms": 1531291,
+        "deaths": 0,
+        "initial_native_deaths_excluded": 0,
+        "deaths_observed": true,
+        "interventions": 0,
+        "intervention_free_ms": 1531291,
+        "intervention_free_censored": true,
+        "automatic_recoveries_requested": 1,
+        "model_decisions": 337,
+        "valid_proposals": 329,
+        "policy_overrides": 0,
+        "accepted_actions": 14,
+        "completed_actions": 3,
+        "failed_actions": 8,
+        "provider_failures": 0,
+        "spent_nanousd": 0,
+        "reserved_nanousd": 0,
+        "xp_per_dollar": null,
+        "latency_p50_ms": null,
+        "latency_p95_ms": null,
+        "gaps": 0,
+        "gap_times": [],
+        "levels": [],
+        "milestones": [
+          {
+            "t_ms": 322803,
+            "kind": "completed",
+            "text": "hunt_progress"
+          },
+          {
+            "t_ms": 623041,
+            "kind": "completed",
+            "text": "hunt_progress"
+          },
+          {
+            "t_ms": 923440,
+            "kind": "completed",
+            "text": "hunt_progress"
+          }
+        ],
+        "native_control_ms": 0,
+        "native_fallback_ms": 0,
+        "stalled_ms": 0,
+        "confirmed_objective_defeats": 65,
+        "limitations": [
+          "Sampled observations; hidden events are not reconstructed.",
+          "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+          "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+        ]
+      },
+      "images_verified_from_running_inspection": true,
+      "resources_cleaned_from_scoped_inspection": true,
+      "author_accepted": false,
+      "author_checks": {
+        "completed": false,
+        "supervisor_completed": false,
+        "exact_horizon_recorded": false,
+        "bounded_recorded_duration": true,
+        "observed_horizon": false,
+        "no_gaps": true,
+        "zero_inference": true,
+        "saved_xp_matches": true,
+        "positive_xp": true,
+        "zero_observed_deaths": true,
+        "multiple_hunts_offered": true
+      },
+      "strict_consistency_review_passed": false,
+      "strict_findings": [
+        {
+          "code": "qualification_not_completed",
+          "run_id": "m5-current-fake-d6226a4777:fake:0",
+          "detail": "Free qualification requires reason=completed"
+        }
+      ],
+      "native_phase_cycle": {
+        "parser": "hunt=[script=... phase=PHASE], not the outer state field",
+        "phase_counts": {},
+        "ordered_hunt_phase_cycle_observed": false,
+        "ordered_evidence": [],
+        "purchase_confirmed": false,
+        "limitation": "Native hunt phases do not prove NPC purchase; model-managed hunts may not populate native hunt state.",
+        "clock": "Observer elapsed field from phase-status.jsonl; not aligned to replay t_ms"
+      },
+      "return_route_failure_events": [
+        {
+          "id": 3873,
+          "t_ms": 1266733,
+          "kind": "outcome",
+          "action_id": "1de4ba4c91c54a57813bb5d06d8e3eb3",
+          "reason": "return_route_unavailable",
+          "status": "failed"
+        },
+        {
+          "id": 3874,
+          "t_ms": 1266734,
+          "kind": "operator",
+          "action_id": "1de4ba4c91c54a57813bb5d06d8e3eb3",
+          "reason": null,
+          "status": null
+        },
+        {
+          "id": 3969,
+          "t_ms": 1309365,
+          "kind": "outcome",
+          "action_id": "9c55e0fa292d468dbff7f375a25ef03a",
+          "reason": "return_route_unavailable",
+          "status": "failed"
+        },
+        {
+          "id": 4063,
+          "t_ms": 1351824,
+          "kind": "outcome",
+          "action_id": "1c8aaf59dccc4615a77ac59d6b677b63",
+          "reason": "return_route_unavailable",
+          "status": "failed"
+        },
+        {
+          "id": 4158,
+          "t_ms": 1394386,
+          "kind": "outcome",
+          "action_id": "21327f50f44c4e75abd19c6279a90c39",
+          "reason": "return_route_unavailable",
+          "status": "failed"
+        },
+        {
+          "id": 4252,
+          "t_ms": 1436906,
+          "kind": "outcome",
+          "action_id": "d46c009e5291432e9c6c18ea5a742d26",
+          "reason": "return_route_unavailable",
+          "status": "failed"
+        },
+        {
+          "id": 4346,
+          "t_ms": 1479535,
+          "kind": "outcome",
+          "action_id": "93db0a9326094f5badb39853a6b2ae21",
+          "reason": "return_route_unavailable",
+          "status": "failed"
+        },
+        {
+          "id": 4440,
+          "t_ms": 1521899,
+          "kind": "outcome",
+          "action_id": "2ac099da5fde410cb18c7fa62372cae8",
+          "reason": "return_route_unavailable",
+          "status": "failed"
+        }
+      ],
+      "archive": "fake/fake.replay.zip",
+      "archive_sha256": "1b11eba6fa0e6eeeb130b0f154376303662e827737d1d8b54ac11321f3567706",
+      "event_count": 4189,
+      "source_attestation": {
+        "source_revision": "c9e447c500d1c245e7ea3736934eacfda0b5d445",
+        "fixture_parent": "<FIXTURE_G>",
+        "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+        "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+        "game_image": "sha256:a0cebf352f4750e7d20a13df82beaca79fa21025b8a335b5bc8b4fc39c2aa96c",
+        "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+        "binary_sha256": {
+          "canary": "c2a0ababa5f69d074703c60b488ed88d852f3f3c437a756364ddb804c223c150",
+          "libbot_engine.so": "9088c8142cab7b554c30f4f0c2dad971f773b9fd8609d997fee9efe64909bdb4"
+        },
+        "mode": "fake",
+        "seconds": 1800,
+        "driver_sha256": "b3039ab8ce70d6fb2ea06aadcde10be37969a9f3daca1f983cf22d1434dab060",
+        "scope": "Controlled fixture G; real game with native or explicitly scripted fake choices. No provider inference."
+      },
+      "original_sources": {
+        "<SOURCE_FAKE>/qualification.json": "dfcd1421f2a2e56fc7b42a4b8556ec326ffb3194daf9642dd58a04a007126d18",
+        "<SOURCE_FAKE>/attestation.json": "8bba9f48cac57ce4a6bd8bcd73172c738380560536a8a3c68bb1acb41c31736f",
+        "<SOURCE_FAKE>/runtime-image-attestation.json": "b4fc129ddccd3d4fb39ccbc63daf2cacd46cb22eae4403635812505b21bf693f",
+        "<SOURCE_FAKE>/resources-cleaned.json": "0b1516244f516a2f0c7e7e14e42434c2bbc1574516aa7aadbc63f179b9e9c3d2",
+        "<SOURCE_FAKE>/driver.py": "b3039ab8ce70d6fb2ea06aadcde10be37969a9f3daca1f983cf22d1434dab060",
+        "<SOURCE_FAKE>/offline-ledger.sqlite3": "97bd8edbb49b043bd8fce3d403ad5ed0beda5ed8e1c1b7169e2a0c1a6bde1ca1",
+        "<SOURCE_FAKE>/runs/experiment.json": "96cd8605aa62be019178969b9764b9bdbb9925ce375bfbbac73c3d668caf7b03",
+        "<SOURCE_FAKE>/runs/recording.sqlite3": "54c1c513819a89ee4f30ebe7951b36b5e317c10bb27e97a3cc4383370e278f13",
+        "<SOURCE_FAKE>/runs/recording.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "<SOURCE_FAKE>/runs/fake-0/saved-character.json": "2d7541377c99fd9f72739969f1108130768125b25fe558c7afce728363b4865c",
+        "<SOURCE_FAKE>/runs/fake-0/worker.sqlite3": "8613f5bce87f3f7eb950a254974ee418181b1899f5838e427efcf3712b0a00a3",
+        "<SOURCE_FAKE>/runs/fake-0/worker.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "<SOURCE_FAKE>/runs/fake-0/phase-status.jsonl": "4298ded2f904c16a8d67ed562d6902bf95ef1bd9f9b5413812b6d6cf695f4431",
+        "<SOURCE_FAKE>/return-failure-checkpoint.json": "a40d9c39fc5fc1a693d35137210bdded5814ce26cc42fbc05b8cad5ba439ccf7"
+      }
+    }
+  ],
+  "limitations": [
+    "The fake is scripted, not OpenAI/Gemini; no model ranking can be inferred.",
+    "Supervisor stalled is retained even though the generic metrics_v2.stalled_ms field is 0; the latter has narrower observability conditions.",
+    "Each run has its original configuration fingerprint; they are not relabeled into a fabricated shared campaign.",
+    "The original author phase boolean remains unchanged; the native hunt phase cycle is a separate external parse.",
+    "Diagnostic runs A/B and earlier qualification records are separate evidence, not replacements for the failed attempt."
+  ]
+}

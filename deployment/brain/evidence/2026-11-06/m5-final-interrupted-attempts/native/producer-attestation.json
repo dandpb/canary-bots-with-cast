@@ -1,0 +1,37 @@
+{
+  "source_revision": "1e25dc174b6a50af276983697df2ca4a5764f255",
+  "application_source_revision": "1e25dc174b6a50af276983697df2ca4a5764f255",
+  "native_source_revision": "d43050147bc13d8024bdc66b641b127c31253b7c",
+  "native_build": {
+    "source_revision": "d43050147bc13d8024bdc66b641b127c31253b7c",
+    "archive_sha256": "b11994f7783e2bfb70b9517fea54e2739b0bca306163ea96493364964fdc8f3f",
+    "source_sync": {
+      "changed_files": 3,
+      "unchanged_files": 644,
+      "removed_stale_files": 0
+    },
+    "binary_sha256": {
+      "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+      "libbot_engine.so": "92017c8a83a34dea06a8441947a68ae03e56c512f2015603e24ea5a80d282b0d"
+    },
+    "gnu_unique_symbols": 0,
+    "native_unit_tests": "passed; raw log retained",
+    "compiler": "c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "cmake_home_directory": "/source",
+    "build_directory": "/build",
+    "parallelism": 4
+  },
+  "fixture_parent": "<FROZEN_FIXTURE>",
+  "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+  "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+  "game_image": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+  "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "binary_sha256": {
+    "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+    "libbot_engine.so": "92017c8a83a34dea06a8441947a68ae03e56c512f2015603e24ea5a80d282b0d"
+  },
+  "mode": "native",
+  "seconds": 1800,
+  "driver_sha256": "9232422178808e34d0d63b3cce9db7a412d3bcd650167c33552b391e64e4cc62",
+  "scope": "Controlled fixture G; real game with native or explicitly scripted fake choices. No provider inference."
+}

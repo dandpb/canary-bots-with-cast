@@ -10,6 +10,7 @@
 #pragma once
 
 #include "declarations.hpp"
+#include <utility>
 #include <string>
 #include <stdexcept>
 #include <vector>
@@ -76,6 +77,16 @@ public:
 
 	bool retryQuery(std::string_view query, int retries);
 	bool executeQuery(std::string_view query);
+	struct TransactionContext {
+		const Database* owner;
+		uint64_t connectionId;
+		uint64_t recoveryEpoch;
+	};
+	// Capture on the worker's private connection before BEGIN.
+	TransactionContext transactionContext() const;
+	// Only a body deadlock on the original connection, without intervening
+	// transport recovery, proves that the complete transaction was rolled back.
+	bool canRetryDeadlock(const TransactionContext& context) const;
 
 	DBResult_ptr storeQuery(std::string_view query);
 
@@ -97,6 +108,10 @@ public:
 
 private:
 	std::vector<std::string>* statements_ = nullptr;
+	// Static TLS leaves Database's cross-module object layout unchanged.
+	static thread_local std::pair<const Database*, unsigned int> lastExecuteError_;
+	static thread_local uint64_t recoveryEpoch_;
+	unsigned int getLastExecuteError() const;
 	bool beginTransaction();
 	bool rollback();
 	bool commit();

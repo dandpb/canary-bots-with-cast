@@ -1,0 +1,27 @@
+{
+  "name": "m5-current-fake-33215d2b04",
+  "output": "<FAKE_ATTEMPT>/runs",
+  "fixture": "<FROZEN_FIXTURE>/fixture",
+  "world_map": "/tmp/canary-lifecycle-qa-world.otbm",
+  "budget_file": "<FAKE_ATTEMPT>/offline-ledger.sqlite3",
+  "gateway_credential": null,
+  "game_image": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+  "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "bot_id": 65001,
+  "participants": [
+    {
+      "name": "fake",
+      "kind": "fake",
+      "gateway": null
+    }
+  ],
+  "seconds": 1800,
+  "repetitions": 1,
+  "memory_mode": "frozen",
+  "run_cap_nanousd": 100000000,
+  "campaign_cap_nanousd": 1000000000,
+  "seed": 42,
+  "source_revision": "1e25dc174b6a50af276983697df2ca4a5764f255",
+  "decision_timeout": 10.0,
+  "expected_initial_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be"
+}

@@ -1,0 +1,8 @@
+{
+  "failure": "AssertionError",
+  "reason": "Orchestrator supplied a literal placeholder image ID; rejected before fixture, DB or game creation",
+  "containers_created": false,
+  "native_source_revision": "d43050147bc13d8024bdc66b641b127c31253b7c",
+  "source_sha256": "194b00a7643aa927722290cb523e3d8cdd64d58d9c119472865a74ef97595f96",
+  "scope": "Separate rejected preflight A; no real run, excluded from supply-B scoring"
+}

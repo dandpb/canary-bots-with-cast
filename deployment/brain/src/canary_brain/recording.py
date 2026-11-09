@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextvars
 import hashlib
 import json
-import os
 import queue
 import re
 import sqlite3
@@ -19,7 +18,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .protocol import Observation
+from .native_admission import Admission
+from .protocol import Observation, TelemetryStatus
+from .sqlite_files import prepare_database, sqlite_operation
 
 SCHEMA = 1
 request_context: contextvars.ContextVar[tuple[int, str]] = contextvars.ContextVar(
@@ -119,10 +120,7 @@ class RecordingStore:
         self.path = path
         if path.is_symlink():
             raise ValueError("recording path must not be a symlink")
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
-        os.close(fd)
-        os.chmod(path, 0o600)
+        prepare_database(path)
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
             if version not in (0, SCHEMA):
@@ -156,13 +154,14 @@ class RecordingStore:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        db = sqlite3.connect(self.path, timeout=0.2)
-        db.execute("PRAGMA foreign_keys=ON")
-        try:
-            with db:
-                yield db
-        finally:
-            db.close()
+        with sqlite_operation("recording.write"):
+            db = sqlite3.connect(self.path, timeout=0.2)
+            try:
+                db.execute("PRAGMA foreign_keys=ON")
+                with db:
+                    yield db
+            finally:
+                db.close()
 
     def begin(self, manifest: Manifest) -> tuple[int, float | None]:
         encoded = canonical(manifest.model_dump())
@@ -290,17 +289,18 @@ class ReplayReader:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        if self._connection is not None:
-            yield self._connection
-            return
-        db = sqlite3.connect(
-            self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.2
-        )
-        try:
-            db.execute("BEGIN")
-            yield db
-        finally:
-            db.close()
+        with sqlite_operation("recording.read"):
+            if self._connection is not None:
+                yield self._connection
+                return
+            db = sqlite3.connect(
+                self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.2
+            )
+            try:
+                db.execute("BEGIN")
+                yield db
+            finally:
+                db.close()
 
     @contextmanager
     def snapshot(self) -> Iterator[ReplayReader]:
@@ -460,10 +460,16 @@ class Recorder:
         self.samples: dict[int, tuple[str, int, int, int, int]] = {}
         self.last_state: dict[int, tuple[int, bool, int, str]] = {}
         self.native: dict[int, tuple[str, int]] = {}
+        self.delivery: dict[int, TelemetryStatus] = {}
+        self.delivery_invalid: set[int] = set()
+        self.horizons: dict[int, Observation] = {}
         self.queue: queue.Queue[dict[str, Any] | None] = queue.Queue(config.queue_size)
         self.dropped: dict[int, int] = {}
         self.errors = 0
         self.closed = False
+        self.shutdown_timed_out = False
+        self.shutdown_interrupted = False
+        self._shutdown = threading.Event()
         for m in manifests:
             end, previous_wall = self.store.begin(m)
             gap = (
@@ -494,6 +500,15 @@ class Recorder:
         if kind not in KINDS:
             raise ValueError("unknown recording event kind")
         cleaned = public_data(data)
+        if bot in self.horizons and kind in {"sample", "level", "outcome"}:
+            cleaned = {
+                "phase": "post_horizon_" + kind,
+                "data": cleaned,
+                "temporal_attribution": "unknown"
+                if kind == "outcome"
+                else "after_target",
+            }
+            kind = "lifecycle"
         if len(canonical(cleaned).encode()) > 65536:
             self.dropped[bot] = self.dropped.get(bot, 0) + 1
             return False
@@ -512,6 +527,46 @@ class Recorder:
         except queue.Full:
             self.dropped[bot] = self.dropped.get(bot, 0) + 1
             return False
+        return True
+
+    def admit_native(self, admission: Admission) -> None:
+        bot = admission.bot_id
+        if bot in self.native:
+            raise ValueError("native admission cannot replace an existing boundary")
+        if not self.emit(
+            bot,
+            "lifecycle",
+            {"phase": "native_admitted", **admission.model_dump()},
+            "native-admission",
+        ):
+            raise ValueError("native admission recording failed")
+        self.observe(admission.observation)
+        self.flush(timeout=1.0)
+        if self.errors or self.dropped:
+            raise ValueError("native admission recording failed")
+        run = self.manifests[bot].run_id
+        reader = ReplayReader(self.config.path)
+        expected = {"phase": "native_admitted", **public_data(admission.model_dump())}
+        if reader.run(run)["incomplete"] or not any(
+            event["key"] == "native-admission" and event["data"] == expected
+            for event in reader.all_events(run)
+        ):
+            raise ValueError("native admission was not committed cleanly")
+        self.native[bot] = (admission.world, admission.begin_sequence - 1)
+
+    def freeze_horizon(self, observation: Observation) -> bool:
+        """Record the actual target now; later state cannot inflate its score."""
+        bot = observation.bot.id
+        if bot in self.horizons:
+            return self.horizons[bot] == observation
+        if not self.emit(
+            bot,
+            "sample",
+            observation.model_dump(exclude={"lease", "messages"}),
+            "horizon-final-sample",
+        ):
+            return False
+        self.horizons[bot] = observation
         return True
 
     def observe(self, observation: Observation) -> None:
@@ -601,11 +656,78 @@ class Recorder:
                     "missing": sequence - previous[1] - 1,
                 },
             )
+        payload = {"world": world, **data}
+        cutoff = self.horizons.get(bot)
+        if cutoff and (
+            cutoff.world != world
+            or not isinstance(data.get("captured_ms"), int)
+            or data["captured_ms"] > cutoff.captured_ms
+        ):
+            payload = {"phase": "post_horizon_telemetry", "data": payload}
         self.emit(
             bot,
             "lifecycle",
-            {"world": world, **data},
+            payload,
             f"native:{world}:{bot}:{sequence}",
+        )
+
+    def native_delivery(self, status: TelemetryStatus) -> None:
+        previous = self.delivery.get(status.bot_id)
+        if (
+            previous
+            and previous.world == status.world
+            and any(
+                getattr(status, field) < getattr(previous, field)
+                for field in (
+                    "captured_ms",
+                    "issued_sequence",
+                    "accepted_sequence",
+                    "overflow_frames",
+                    "discarded_frames",
+                )
+            )
+        ):
+            self.native_delivery_error(status.bot_id, "counter_regression")
+        overflow, discarded = status.overflow_frames, status.discarded_frames
+        if previous and previous.world == status.world:
+            overflow -= previous.overflow_frames
+            discarded -= previous.discarded_frames
+        if overflow > 0 or discarded > 0:
+            self.emit(
+                status.bot_id,
+                "gap",
+                {
+                    "reason": "native_telemetry_delivery_loss",
+                    "world": status.world,
+                    "overflow_frames": max(0, overflow),
+                    "discarded_frames": max(0, discarded),
+                },
+                f"native-delivery-loss:{status.world}:{status.bot_id}:"
+                f"{status.overflow_frames}:{status.discarded_frames}",
+            )
+        self.delivery[status.bot_id] = status
+        self.emit(
+            status.bot_id,
+            "lifecycle",
+            {
+                "phase": "native_telemetry_status",
+                **status.model_dump(
+                    exclude={"version", "type", "bot_id"}, exclude_defaults=True
+                ),
+            },
+        )
+
+    def native_delivery_error(
+        self, bot: int, reason: Literal["schema", "counter_regression"]
+    ) -> None:
+        self.delivery_invalid.add(bot)
+        self.emit(
+            bot,
+            "lifecycle",
+            {
+                "phase": "native_telemetry_status_invalid",
+                "reason": reason,
+            },
         )
 
     def health(self) -> dict[str, Any]:
@@ -614,11 +736,43 @@ class Recorder:
             "dropped": sum(self.dropped.values()),
             "errors": self.errors,
             "closed": self.closed,
+            "shutdown_timed_out": self.shutdown_timed_out,
+            "shutdown_interrupted": self.shutdown_interrupted,
         }
 
     def _write(self) -> None:
         while True:
-            event = self.queue.get()
+            try:
+                event = self.queue.get(timeout=0.05)
+            except queue.Empty:
+                if not self._shutdown.is_set():
+                    continue
+                # A blocked append may finish after close has exhausted its budget.
+                # Preserve the timeout in replay as well as in the in-memory gate.
+                if self.shutdown_timed_out or self.shutdown_interrupted:
+                    for manifest in self.manifests.values():
+                        try:
+                            self.store.append(
+                                {
+                                    "run": manifest.run_id,
+                                    "key": "shutdown-timeout:" + self.segment,
+                                    "segment": self.segment,
+                                    "t_ms": self.offsets[manifest.bot_id]
+                                    + max(
+                                        0, int((time.monotonic() - self.started) * 1000)
+                                    ),
+                                    "wall": time.time(),
+                                    "kind": "gap",
+                                    "data": {
+                                        "reason": "recorder_shutdown_timeout"
+                                        if self.shutdown_timed_out
+                                        else "recorder_shutdown_interrupted"
+                                    },
+                                }
+                            )
+                        except (sqlite3.Error, OSError):
+                            self.errors += 1
+                return
             try:
                 if event is None:
                     return
@@ -660,16 +814,47 @@ class Recorder:
             finally:
                 self.queue.task_done()
 
-    def flush(self) -> None:
-        self.queue.join()
+    def flush(self, timeout: float = 5.0) -> None:
+        """Wait for committed events, with a budget even when the writer is stuck."""
+        deadline = time.monotonic() + max(0.0, timeout)
+        with self.queue.all_tasks_done:
+            while self.queue.unfinished_tasks:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("recorder flush timed out")
+                self.queue.all_tasks_done.wait(remaining)
 
-    def close(self) -> None:
+    def close(self, timeout: float = 5.0) -> bool:
+        """Close admission and drain within one total budget; never certify a timeout.
+
+        Python cannot kill a thread blocked in storage. On timeout it remains a
+        daemon, drains accepted events if storage recovers, and records a gap.
+        Callers must treat False as failed recording even if storage never recovers.
+        """
         if self.closed:
-            return
-        self.flush()
+            return not (
+                self.shutdown_timed_out
+                or self.shutdown_interrupted
+                or self.thread.is_alive()
+            )
+        deadline = time.monotonic() + max(0.0, timeout)
         for bot in self.manifests:
             self.emit(bot, "segment", {"phase": "stopped", "errors": self.errors})
-        self.flush()
         self.closed = True
-        self.queue.put(None)
-        self.thread.join(timeout=5)
+        try:
+            self.flush(max(0.0, deadline - time.monotonic()))
+            self._shutdown.set()
+            self.thread.join(timeout=max(0.0, deadline - time.monotonic()))
+            if self.thread.is_alive():
+                raise TimeoutError("recorder writer shutdown timed out")
+        except TimeoutError:
+            self.shutdown_timed_out = True
+            self.errors += 1
+            self._shutdown.set()
+            return False
+        except BaseException:
+            self.shutdown_interrupted = True
+            self.errors += 1
+            self._shutdown.set()
+            raise
+        return True

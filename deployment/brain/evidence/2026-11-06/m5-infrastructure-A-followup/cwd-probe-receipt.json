@@ -1,0 +1,25 @@
+{
+  "at_utc": "2026-11-06T13:27:15.782249+00:00",
+  "scope": "Read-only directory/CLI probes; no signals or game orders",
+  "source_sha256": "9b75ebba97bd0c28bfc7bde96a6e9e9303d9173816402e9473160c086f4afddd",
+  "runs": [
+    {
+      "mode": "native",
+      "phase_status_rows": 5,
+      "command_errors": "\ngetwd: no such file or directory\n\n",
+      "process_pwd_returncode": 1,
+      "process_pwd_stderr": "pwd: couldn't find directory entry in \u2018../../../../../../..\u2019 with matching i-node",
+      "expected_path_pwd_returncode": 0,
+      "same_device_inode_at_probe": true
+    },
+    {
+      "mode": "fake",
+      "phase_status_rows": 5,
+      "command_errors": "\ngetwd: no such file or directory\n\n",
+      "process_pwd_returncode": 1,
+      "process_pwd_stderr": "pwd: couldn't find directory entry in \u2018../../../../../../..\u2019 with matching i-node",
+      "expected_path_pwd_returncode": 0,
+      "same_device_inode_at_probe": true
+    }
+  ]
+}

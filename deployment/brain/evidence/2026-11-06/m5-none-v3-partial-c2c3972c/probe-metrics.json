@@ -1,0 +1,285 @@
+{
+  "helper_source_sha256": "238347fd32574a17721f3783aa1d23318195cd04926fe015f8e736495aa9dc3e",
+  "helpers": [
+    "request_rows",
+    "latency_metrics"
+  ],
+  "no_recording_DB_opened_for_this_derivation": true,
+  "completed_response_percentiles_are_deadline_censored": true,
+  "probes": {
+    "openai": {
+      "scope": "synthetic decision qualification only, not scored gameplay",
+      "run_id": "decisions:b635391628be4592971f9506b98b132f:65001",
+      "recorder_status": "failed",
+      "qualification": {
+        "valid": 3,
+        "late": 1,
+        "technical_invalid": 0,
+        "unknown_requests": 1,
+        "unknown_nanousd": 946375,
+        "ledger_requests": 3,
+        "root_review_required": false,
+        "failure_interpretation": "deadline_controller_performance",
+        "accepted_for_game": true,
+        "evidence_reconciled": true,
+        "policy": "openai_none_performance_v3",
+        "long_valid": 2,
+        "causal_backoff": 2,
+        "model_opportunities": 5,
+        "liability_nanousd": 1053175,
+        "financial_final": false,
+        "short_contract_coverage_complete": false,
+        "case_outcomes": [
+          {
+            "index": 0,
+            "deadline_ms": 5000,
+            "outcome": "valid",
+            "decision_id": "646c2eacaf97432981e1e87461a28686",
+            "request_id": "cb5094f388574bc0934af52f7dac5a9b"
+          },
+          {
+            "index": 1,
+            "deadline_ms": 5000,
+            "outcome": "valid",
+            "decision_id": "5ac3ecdeb8b24a3a864e6212130da44b",
+            "request_id": "861e66cd47044361b97ed7842f45f4f9"
+          },
+          {
+            "index": 2,
+            "deadline_ms": 5000,
+            "outcome": "local_choice",
+            "decision_id": "234d92177c4a4abdb52bcc0f4b3edfe4",
+            "request_id": null
+          },
+          {
+            "index": 3,
+            "deadline_ms": 1000,
+            "outcome": "deadline_negative_unknown_charge",
+            "decision_id": "8f16625817c34b74969aa0222e7e76e1",
+            "request_id": "3f67f6f84893455893a9fd4dcd487131"
+          },
+          {
+            "index": 4,
+            "deadline_ms": 1500,
+            "outcome": "causal_backoff_negative",
+            "decision_id": "f2467a7932934b93aea1485305e0715e",
+            "request_id": "25bf08b2a3814ab985eb88fb438dfbb8"
+          },
+          {
+            "index": 5,
+            "deadline_ms": 1000,
+            "outcome": "causal_backoff_negative",
+            "decision_id": "f7e45938a3f64e428df595994a51af6d",
+            "request_id": "59b29a3b09d1410c911a7eac0c47b2c4"
+          }
+        ]
+      },
+      "latency": {
+        "by_deadline_ms": {
+          "1000": {
+            "reserved_attempts": 1,
+            "backoff_skips_observed": 1,
+            "completed_responses": 0,
+            "timeouts": 1,
+            "failures_by_type": {
+              "TimeoutError": 1
+            },
+            "timeout_rate": 1.0,
+            "completed_p50_ms": null,
+            "completed_p95_ms": null,
+            "completed_p95_is_deadline_censored": true,
+            "offered_ttl_ms": [
+              1000
+            ],
+            "action_classes": [
+              "hunt",
+              "retreat",
+              "target"
+            ]
+          },
+          "1500": {
+            "reserved_attempts": 0,
+            "backoff_skips_observed": 1,
+            "completed_responses": 0,
+            "timeouts": 0,
+            "failures_by_type": {},
+            "timeout_rate": null,
+            "completed_p50_ms": null,
+            "completed_p95_ms": null,
+            "completed_p95_is_deadline_censored": true,
+            "offered_ttl_ms": [
+              1500
+            ],
+            "action_classes": [
+              "continue",
+              "retreat"
+            ]
+          },
+          "5000": {
+            "reserved_attempts": 2,
+            "backoff_skips_observed": 0,
+            "completed_responses": 2,
+            "timeouts": 0,
+            "failures_by_type": {},
+            "timeout_rate": 0.0,
+            "completed_p50_ms": 2086.0,
+            "completed_p95_ms": 2299,
+            "completed_p95_is_deadline_censored": true,
+            "offered_ttl_ms": [
+              5000
+            ],
+            "action_classes": [
+              "hunt"
+            ]
+          }
+        },
+        "native_fallback_events_by_type": {},
+        "exact_backoff_skips": 2,
+        "observed_provider_backoff_events": 0,
+        "backoff_by_deadline_ms": {
+          "1000": 1,
+          "1500": 1,
+          "5000": 0
+        },
+        "runtime_error_fallbacks_unclassified": 0,
+        "backoff_limitation": "ProviderBackoff is distinct when declared by the instrumented source. Generic RuntimeError remains ambiguous; lifecycle events without decision/deadline identity cannot establish TTL attribution."
+      }
+    },
+    "gemini": {
+      "scope": "synthetic decision qualification only, not scored gameplay",
+      "run_id": "decisions:835e1f9a68cc47faabef1292a237f26c:65001",
+      "recorder_status": "completed",
+      "qualification": {
+        "valid": 6,
+        "late": 0,
+        "technical_invalid": 0,
+        "unknown_requests": 0,
+        "unknown_nanousd": 0,
+        "ledger_requests": 5,
+        "root_review_required": false,
+        "failure_interpretation": null,
+        "accepted_for_game": true,
+        "evidence_reconciled": true,
+        "policy": "openai_none_performance_v3",
+        "long_valid": 2,
+        "causal_backoff": 0,
+        "model_opportunities": 5,
+        "liability_nanousd": 1011400,
+        "financial_final": true,
+        "short_contract_coverage_complete": true,
+        "case_outcomes": [
+          {
+            "index": 0,
+            "deadline_ms": 5000,
+            "outcome": "valid",
+            "decision_id": "39e6665e59f84c2ebb88eff06f5f1fc1",
+            "request_id": "90aa1f6eaf644f7ba1552ffc8cbc6d3d"
+          },
+          {
+            "index": 1,
+            "deadline_ms": 5000,
+            "outcome": "valid",
+            "decision_id": "2ef9005df1a249499045e1ca700dd15c",
+            "request_id": "315971df466d44c081107882ed03ad3c"
+          },
+          {
+            "index": 2,
+            "deadline_ms": 5000,
+            "outcome": "local_choice",
+            "decision_id": "2e974d5ce6f546c3b0f9f5e553aa3fb5",
+            "request_id": null
+          },
+          {
+            "index": 3,
+            "deadline_ms": 1000,
+            "outcome": "valid",
+            "decision_id": "5340f6d4abef4965b610ba1f5728826b",
+            "request_id": "78402a7528f746eca7438a21164aac3f"
+          },
+          {
+            "index": 4,
+            "deadline_ms": 1500,
+            "outcome": "valid",
+            "decision_id": "ba9082e308964847b42133d961be0145",
+            "request_id": "78f4b4db0c064222af013d08f4f76001"
+          },
+          {
+            "index": 5,
+            "deadline_ms": 1000,
+            "outcome": "valid",
+            "decision_id": "702770920774431880b8703e54593323",
+            "request_id": "855414d4a1464259bd8365980324eeba"
+          }
+        ]
+      },
+      "latency": {
+        "by_deadline_ms": {
+          "1000": {
+            "reserved_attempts": 2,
+            "backoff_skips_observed": 0,
+            "completed_responses": 2,
+            "timeouts": 0,
+            "failures_by_type": {},
+            "timeout_rate": 0.0,
+            "completed_p50_ms": 862.5,
+            "completed_p95_ms": 873,
+            "completed_p95_is_deadline_censored": true,
+            "offered_ttl_ms": [
+              1000
+            ],
+            "action_classes": [
+              "hunt",
+              "retreat",
+              "target"
+            ]
+          },
+          "1500": {
+            "reserved_attempts": 1,
+            "backoff_skips_observed": 0,
+            "completed_responses": 1,
+            "timeouts": 0,
+            "failures_by_type": {},
+            "timeout_rate": 0.0,
+            "completed_p50_ms": 855,
+            "completed_p95_ms": 855,
+            "completed_p95_is_deadline_censored": true,
+            "offered_ttl_ms": [
+              1500
+            ],
+            "action_classes": [
+              "continue",
+              "retreat"
+            ]
+          },
+          "5000": {
+            "reserved_attempts": 2,
+            "backoff_skips_observed": 0,
+            "completed_responses": 2,
+            "timeouts": 0,
+            "failures_by_type": {},
+            "timeout_rate": 0.0,
+            "completed_p50_ms": 991.5,
+            "completed_p95_ms": 1119,
+            "completed_p95_is_deadline_censored": true,
+            "offered_ttl_ms": [
+              5000
+            ],
+            "action_classes": [
+              "hunt"
+            ]
+          }
+        },
+        "native_fallback_events_by_type": {},
+        "exact_backoff_skips": 0,
+        "observed_provider_backoff_events": 0,
+        "backoff_by_deadline_ms": {
+          "1000": 0,
+          "1500": 0,
+          "5000": 0
+        },
+        "runtime_error_fallbacks_unclassified": 0,
+        "backoff_limitation": "ProviderBackoff is distinct when declared by the instrumented source. Generic RuntimeError remains ambiguous; lifecycle events without decision/deadline identity cannot establish TTL attribution."
+      }
+    }
+  }
+}

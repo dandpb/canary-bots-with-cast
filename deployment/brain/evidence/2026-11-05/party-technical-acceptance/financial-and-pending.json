@@ -1,0 +1,295 @@
+{
+  "fake_state_files": [
+    {
+      "file": "party-1793875742322070374.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875269687898376.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875361033103323.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875958142677179.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793876272283515251.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793877797727253015.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793877048806001177.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 9
+    },
+    {
+      "file": "party-1793875451706205312.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793876135155905337.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793877660101427377.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793876182028494410.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875055193791721.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875099088498827.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793876848809558294.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793877752546111335.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875871406460674.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793877568082911154.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793874835971900829.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875180840872083.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875700047616862.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793877842932521748.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793874679244329017.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875407272121155.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793874446506913409.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793876452618627839.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 2
+    },
+    {
+      "file": "party-1793877613290997404.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793874523683059338.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793876091084807838.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875785137893191.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875913740010241.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793876361624084639.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793874756342826225.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793875225264082542.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793874367631070693.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    },
+    {
+      "file": "party-1793876317194021647.sqlite3",
+      "requests": 0,
+      "reserved_nanousd": 0,
+      "spent_nanousd": 0,
+      "durable_pending": 0,
+      "episodes": 0
+    }
+  ],
+  "requests_total": 0,
+  "reserved_total_nanousd": 0,
+  "spent_total_nanousd": 0,
+  "functional_state": {
+    "file": "party-1793877048806001177.sqlite3",
+    "requests": 0,
+    "reserved_nanousd": 0,
+    "spent_nanousd": 0,
+    "durable_pending": 0,
+    "episodes": 9
+  }
+}

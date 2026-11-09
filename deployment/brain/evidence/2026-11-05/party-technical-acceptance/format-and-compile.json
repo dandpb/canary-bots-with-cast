@@ -1,0 +1,8 @@
+{
+  "clang_format_version": "18.1.8",
+  "bridge_recompiled_after_format": true,
+  "binary_identical_to_exercised_fixture": true,
+  "sha256": "a4ede7a4d05d6785838f6333cc472e502d602d8c031cb492b325171ce2adb4ef",
+  "ruff_checked_python_files": 10,
+  "root_cmake_matches_tested_checkout": true
+}

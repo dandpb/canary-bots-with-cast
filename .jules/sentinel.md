@@ -1,0 +1,4 @@
+## 2026-11-08 - Sensitive Password Hash Exposure in Authentication Logs
+**Vulnerability:** In `Account::authenticatePassword`, failed password authentication attempts logged the account's stored password hash directly via `g_logger().error("Password '{}' doesn't match any account", getPassword());`. This leaked sensitive credential hashes into application log streams.
+**Learning:** Diagnostic logging during authentication failed to consider that `getPassword()` returns sensitive credential material (SHA1 or Argon2 hashes). When authentication fails, developers often attempt to print what was being verified, unintentionally exposing the secret.
+**Prevention:** Never log passwords, password hashes, or session tokens in error/warning logs. Log only generic failure messages and non-sensitive identifiers (such as account ID) without leaking credential material.

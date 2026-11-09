@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1.7
+# ARM64 (aarch64) production release profile.
+# Derived from Dockerfile.release; the x86-64 release path and the legacy QA
+# Dockerfile remain unchanged. Build-line differences are deliberate and minimal:
+#   - base image pinned by explicit linux/arm64 manifest digest;
+#   - vcpkg target/host triplets and the matching CMake toolchain variables set
+#     to arm64-linux;
+#   - CMAKE_EXPORT_COMPILE_COMMANDS=ON exports /build/compile_commands.json,
+#     preserved in the final image at /canary/compile_commands.json.
+#   - CANARY_TARGET_ARCH=armv8-a replaces -march=native so the core binary and
+#     libbot_engine both target the portable ARMv8-A baseline instead of the
+#     build host's micro-architecture.
+# The Git source verifier, SOURCE_REVISION identity, build targets and runtime
+# stage are identical to Dockerfile.release.
+#
+# Execution modes (choose at build time with docker buildx):
+#   1. Native AArch64 host: no emulation; triplets are natively coherent.
+#   2. Isolated cross-build from an amd64 executor (e.g. WSL): requires
+#      `--platform linux/arm64` AND a builder already capable of executing ARM
+#      stages (binfmt/QEMU emulation or an external ARM node). Under emulation
+#      every stage -- apt, vcpkg bootstrap and host tools, compiler -- runs as
+#      arm64, so --host-triplet=arm64-linux stays coherent; expect a much slower
+#      build. This file does NOT install binfmt, provision a builder, or run any
+#      service: the operator prepares and verifies the builder beforehand
+#      (see deployment/wsl/README.md, ARM64 section).
+ARG BASE_IMAGE=ubuntu:24.04@sha256:19cad59657037cffa0ac9a48107019b768900ff1071140965827513ac866bd5e
+FROM ${BASE_IMAGE} AS build
+ARG DEBIAN_FRONTEND=noninteractive
+ARG BUILD_JOBS=3
+ARG VCPKG_MAX_CONCURRENCY=3
+ENV VCPKG_ROOT=/opt/vcpkg VCPKG_MAX_CONCURRENCY=${VCPKG_MAX_CONCURRENCY} VCPKG_BINARY_SOURCES=clear
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake ninja-build git curl ca-certificates zip unzip tar pkg-config autoconf automake libtool python3 perl bison flex linux-libc-dev && rm -rf /var/lib/apt/lists/*
+COPY vcpkg.json /manifest/vcpkg.json
+RUN git init /opt/vcpkg && cd /opt/vcpkg && git remote add origin https://github.com/microsoft/vcpkg.git && git fetch --depth=1 origin 66c0373dc7fca549e5803087b9487edfe3aca0a1 && git checkout FETCH_HEAD && ./bootstrap-vcpkg.sh -disableMetrics
+RUN --mount=type=cache,target=/opt/vcpkg/downloads --mount=type=cache,target=/root/.cache/vcpkg /opt/vcpkg/vcpkg install --x-manifest-root=/manifest --x-install-root=/opt/installed --triplet=arm64-linux --host-triplet=arm64-linux
+WORKDIR /source
+ARG SOURCE_REVISION=unknown
+# Keep Git metadata out of image layers, while both native targets see the same
+# complete, read-only source tree and independently supplied local Git context.
+RUN --mount=type=bind,target=/source \
+    --mount=type=bind,from=gitmeta,target=/source-git \
+    export GIT_DIR=/source-git GIT_WORK_TREE=/source && \
+    git config --global --add safe.directory /source && \
+    python3 deployment/wsl/verify-build-source.py --source /source --revision "$SOURCE_REVISION" && \
+    cmake -S . -B /build -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLED_DIR=/opt/installed -DVCPKG_MANIFEST_INSTALL=OFF -DVCPKG_TARGET_TRIPLET=arm64-linux -DVCPKG_HOST_TRIPLET=arm64-linux -DCANARY_TARGET_ARCH=armv8-a -DCMAKE_BUILD_TYPE=Release -DTOGGLE_BIN_FOLDER=ON -DCANARY_BUILD_TESTS=OFF -DOPTIONS_ENABLE_IPO=OFF -DOPTIONS_ENABLE_CCACHE=OFF -DOPTIONS_ENABLE_SCCACHE=OFF -DSPEED_UP_BUILD_UNITY=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && \
+    cmake --build /build --target canary bot_engine -j ${BUILD_JOBS}
+
+FROM ${BASE_IMAGE} AS game
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libmariadb3 libluajit-5.1-2 libssl3t64 zlib1g libcurl4t64 libgomp1 curl python3 && rm -rf /var/lib/apt/lists/*
+WORKDIR /canary
+COPY --from=build /build/bin/canary /build/bin/libbot_engine.so ./
+COPY --from=build /build/compile_commands.json ./compile_commands.json
+COPY data ./data
+COPY data-canary ./data-canary
+COPY data-otservbr-global ./data-otservbr-global
+COPY config.lua.dist key.pem schema.sql ./
+COPY deployment/wsl/game-entrypoint.py /usr/local/bin/game-entrypoint.py
+ENTRYPOINT ["python3", "/usr/local/bin/game-entrypoint.py"]
+

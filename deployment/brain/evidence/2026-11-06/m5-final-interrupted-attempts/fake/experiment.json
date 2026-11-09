@@ -1,0 +1,52 @@
+{
+  "configuration_sha256": "3ee7301ffe8bc674cb68c24204697139fa054822552933e8410c6e6ddb76a989",
+  "plan": {
+    "bot_id": 65001,
+    "campaign_cap_nanousd": 1000000000,
+    "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+    "decision_timeout": 10.0,
+    "expected_initial_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+    "fixture": "<FROZEN_FIXTURE>/fixture",
+    "game_image": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+    "memory_mode": "frozen",
+    "name": "m5-current-fake-33215d2b04",
+    "output": "<FAKE_ATTEMPT>/runs",
+    "participants": [
+      {
+        "gateway": null,
+        "kind": "fake",
+        "name": "fake"
+      }
+    ],
+    "repetitions": 1,
+    "run_cap_nanousd": 100000000,
+    "seconds": 1800,
+    "seed": 42,
+    "source_revision": "1e25dc174b6a50af276983697df2ca4a5764f255",
+    "world_map": "/tmp/canary-lifecycle-qa-world.otbm"
+  },
+  "preflight": {
+    "budget": {
+      "available": 50000000000,
+      "cap": 50000000000,
+      "reserved": 0,
+      "spent": 0
+    },
+    "character": {
+      "experience": 98800,
+      "id": 65001,
+      "level": 20,
+      "posx": 32369,
+      "posy": 32241,
+      "posz": 7
+    },
+    "initial_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+    "limitations": [
+      "Live world RNG and scheduling are not deterministic.",
+      "Initial world and character identity do not make later encounters identical."
+    ],
+    "remaining_nanousd": 0,
+    "runs": 1,
+    "worst_case_nanousd": 0
+  }
+}

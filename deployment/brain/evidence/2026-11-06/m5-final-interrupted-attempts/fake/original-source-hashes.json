@@ -1,0 +1,20 @@
+{
+  "<FAKE_ATTEMPT>/attestation.json": "388a6d870fd11762147ae3997d3ffd18b7d34a1e20ecc2ac6139b5447cc9e2e3",
+  "<FAKE_ATTEMPT>/driver.py": "9232422178808e34d0d63b3cce9db7a412d3bcd650167c33552b391e64e4cc62",
+  "<FAKE_ATTEMPT>/experiment.json": "b784d68344c89c5fc4e3b62deaf2a72ed1e9cfbd369d7400cb08882a79d06cdd",
+  "<FAKE_ATTEMPT>/runs/experiment.json": "ee3b657840b87bf9ba4f72387264312350298dbb89a695c16b53ac3ab14b8998",
+  "<FAKE_ATTEMPT>/runs/recording.sqlite3": "cb2636128ee7c963fa810c0484bf24ace1f4c551e64080a73592c9b907ee3907",
+  "<FAKE_ATTEMPT>/runs/fake-0/worker.sqlite3": "c83b4335f61fc52af7187e0030772992a549401c4ed54b17a9e0f8aa14713ef8",
+  "<FAKE_ATTEMPT>/offline-ledger.sqlite3": "97bd8edbb49b043bd8fce3d403ad5ed0beda5ed8e1c1b7169e2a0c1a6bde1ca1",
+  "<FAKE_ATTEMPT>/runs/fake-0/runtime-image-attestation.json": "cdf73819861c7a8b8a97f091a6d93b9f0330cb5f73637cae2e804ea85807fe79",
+  "<FAKE_ATTEMPT>/runs/fake-0/resources-cleaned.json": "a379961030f77af950981c1854a015af7dd3b0c5afc5a77dcb9163dcaacdaf7c",
+  "<FAKE_ATTEMPT>/runs/fake-0/phase-status.jsonl": "36a33d0f8aa985190201ef385df1f3b7012b5028b4cb1e5f06d5a6f3275b07e1",
+  "<FAKE_ATTEMPT>/runs/fake-0/services.log": "48537e37091d147880efce4ab22bebd5712d0b9163cd96de7288d4c9d892e361",
+  "<FAKE_ATTEMPT>/runs/fake-0/command-errors.log": "70223fb1838a4d42086cd5fd5e3da424ebfe27ecf267f42b47fbf5d5cbd9c8cf",
+  "<FAKE_ATTEMPT>/runs/fake-0/character-live.jsonl": "86438e08610ddf6bac781f987c3655c0b73e1f8aeee8b3987e8089dc25fd8d49",
+  "<POSTMORTEM_DB_COPY>/fake/saved-character-postmortem.json": "23fe879c45fd1e13c8cd87f445978216d7142523e3fc216cfe9fbefcf634522d",
+  "<POSTMORTEM_DB_COPY>/fake/copy-integrity.json": "e8e7130f3e19af8314a076bb53aa303b9460ba1da166cb9e2d5f3e4291d3be21",
+  "<POSTMORTEM_DB_COPY>/fake/forensic-cleanup.json": "8e0a30ca16afecbaddd2cd81d4d30b9b3429bc6ec9573fb4c447b214c18ad14a",
+  "<POSTMORTEM_DB_COPY>/fake/source-final-integrity.json": "d0d7b0ae33368f9e340d4c79c6cc4d1589bf2aec1b932b7eb69eb30677c79106",
+  "<FAKE_ATTEMPT>.stdout.log": "7917aff4e8309e2738115cc5cd7d9e38c5d0e7d9efa6196d2e80f0c53799ad54"
+}

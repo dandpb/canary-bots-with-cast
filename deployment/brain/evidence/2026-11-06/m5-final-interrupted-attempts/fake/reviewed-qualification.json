@@ -1,0 +1,70 @@
+{
+  "evaluator_revision": "26d2e9667a36059a66635335f667c6deb2717728",
+  "producer_revision": "1e25dc174b6a50af276983697df2ca4a5764f255",
+  "saved_state_origin": "postmortem read of a private byte-verified DB copy; canonical saved-character export is absent",
+  "accepted": false,
+  "checks": {
+    "completed": false,
+    "supervisor_completed": false,
+    "recorded_horizon": false,
+    "observed_horizon": false,
+    "elapsed_horizon": false,
+    "no_gaps": true,
+    "zero_observed_deaths": true,
+    "no_operator_interventions": true,
+    "zero_inference": true,
+    "saved_xp_matches": true,
+    "positive_xp_observed": true,
+    "positive_xp_persisted": true,
+    "native_offers_multiple_hunts": true,
+    "hunt_cycle": true
+  },
+  "evidence": {
+    "mode": "fake",
+    "span_seconds": 1338.79,
+    "supervisor": [],
+    "initial_db_xp": 98800,
+    "first_sample_xp": 98800,
+    "observed_xp_delta": 2812,
+    "saved_db_xp": 101612,
+    "last_sample_xp": 101612,
+    "alternatives": {
+      "offered": true,
+      "t_ms": 16954,
+      "candidate_ids": [
+        "hunt:399",
+        "hunt:77"
+      ],
+      "meaning": "simultaneous native offers; does not assert every offer reached a model"
+    },
+    "hunt_cycle": {
+      "complete": true,
+      "completed_hunt": {
+        "identity": [
+          "350782c6ec60424a899d42315c6a4922",
+          65001,
+          "1-153091427454036"
+        ],
+        "candidate_id": "hunt:399",
+        "intent_t_ms": 16989,
+        "accepted_t_ms": 17142,
+        "completed_t_ms": 317239,
+        "xp_delta": 617.0,
+        "defeats_delta": 20.0
+      },
+      "restart": {
+        "identity": [
+          "bc57b9c0673e47c7830a9d1af16b64f6",
+          65001,
+          "1-153091427454036"
+        ],
+        "candidate_id": "hunt:399",
+        "intent_t_ms": 317451,
+        "accepted_t_ms": 317540
+      },
+      "meaning": "completed hunt macro followed by a new accepted hunt; not return or NPC purchase"
+    },
+    "automatic_recoveries_requested": 0
+  },
+  "scope": "timed gameplay only; runtime image/cleanup attestations and normal NPC purchase/return proof remain separate gates"
+}

@@ -6,8 +6,11 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
+import signal
+import sqlite3
 import subprocess
 import time
 from collections.abc import Iterator
@@ -30,13 +33,14 @@ from .recording import (
 )
 from .replay import campaign
 from .runtime import Configuration, run
+from .sqlite_files import failure_metadata
 from .store import USD, Store
 
 
 class Participant(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,47}$")
-    kind: Literal["native", "litellm"]
+    kind: Literal["native", "fake", "litellm"]
     gateway: GatewayConfiguration | None = None
 
     @model_validator(mode="after")
@@ -55,6 +59,7 @@ class Experiment(BaseModel):
     budget_file: Path
     gateway_credential: Path | None = None
     game_image: str = "canary-bots-wsl-game:local"
+    database_image: str = "mariadb:11.4"
     bot_id: int = Field(gt=0)
     participants: list[Participant] = Field(min_length=1, max_length=8)
     seconds: int = Field(default=1800, ge=10, le=86400)
@@ -144,6 +149,11 @@ def preflight(experiment: Experiment) -> dict[str, Any]:
             "character fixture must declare the exact initial saved progression and position"
         )
     if any(p.kind == "litellm" for p in experiment.participants):
+        for image in (experiment.game_image, experiment.database_image):
+            if re.fullmatch(r"(?:sha256:|[^@\s]+@sha256:)[a-f0-9]{64}", image) is None:
+                raise ValueError(
+                    "scored provider campaigns require immutable image IDs for game and database"
+                )
         credential = experiment.gateway_credential
         if (
             credential is None
@@ -227,6 +237,8 @@ class DockerFixture:
                 str(self.compose),
                 *arguments,
             ],
+            # A long-lived checkout cwd can outlive a detached WSL/DrvFS mount.
+            cwd="/",
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -316,7 +328,7 @@ class DockerFixture:
             game["volumes"].append(f"{authored}:/canary/data/bot/authored")
         services = {
             "database": {
-                "image": "mariadb:11.4",
+                "image": self.experiment.database_image,
                 "environment": {
                     "MARIADB_DATABASE": "canary",
                     "MARIADB_USER": "canary",
@@ -413,11 +425,62 @@ class DockerFixture:
             self.close()
 
 
+async def settle_teardown(
+    future: asyncio.Future[Any],
+) -> tuple[BaseException | None, asyncio.CancelledError | None]:
+    """Wait for owned cleanup to finish even if its caller is cancelled."""
+    cancellation: asyncio.CancelledError | None = None
+    while not future.done():
+        try:
+            await asyncio.shield(future)
+        except asyncio.CancelledError as error:
+            current = asyncio.current_task()
+            if not future.done() or (current is not None and current.cancelling()):
+                cancellation = cancellation or error
+        except BaseException:  # noqa: BLE001
+            break  # Read the completed future's own error below.
+    try:
+        future.result()
+    except BaseException as error:  # noqa: BLE001
+        return error, cancellation
+    return None, cancellation
+
+
 async def run_campaign(experiment: Experiment, *, live: bool = False) -> dict[str, Any]:
     if not live:
         raise ValueError("live game/provider execution requires --live")
-    with campaign_lease(experiment.output):
-        return await _run_campaign(experiment)
+    with campaign_lease(experiment.output), campaign_signals() as operator_stop:
+        return await _run_campaign(experiment, operator_stop)
+
+
+@contextmanager
+def campaign_signals() -> Iterator[asyncio.Event]:
+    stopped = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+
+    def interrupt(_signum: int, _frame: Any) -> None:
+        # Mark synchronously before a provisioning await can resume and create
+        # a provider worker. Wake the selector even if no timer is pending.
+        stopped.set()
+        loop.call_soon_threadsafe(stopped.set)
+
+    installed: list[signal.Signals] = []
+    loop_handlers = getattr(loop, "_signal_handlers", {})
+    try:
+        for sig in previous:
+            # An existing loop handler already keeps the wakeup FD active.
+            # Preserve it; only remove handlers this context installs.
+            if sig not in loop_handlers:
+                loop.add_signal_handler(sig, stopped.set)
+                installed.append(sig)
+            signal.signal(sig, interrupt)
+        yield stopped
+    finally:
+        for sig in installed:
+            loop.remove_signal_handler(sig)
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
 
 
 @contextmanager
@@ -442,7 +505,9 @@ def campaign_lease(output: Path) -> Iterator[None]:
         os.close(descriptor)
 
 
-async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
+async def _run_campaign(
+    experiment: Experiment, operator_stop: asyncio.Event
+) -> dict[str, Any]:
     check = preflight(experiment)
     experiment.output.mkdir(parents=True, exist_ok=True, mode=0o700)
     plan_file = experiment.output / "experiment.json"
@@ -473,6 +538,8 @@ async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
             + experiment.participants[: repetition % len(experiment.participants)]
         )
         for participant in participants:
+            if operator_stop.is_set():
+                raise asyncio.CancelledError("campaign stopped by operator")
             identity = f"{experiment.name}:{participant.name}:{repetition}"
             identities.append(identity)
             if recording.exists():
@@ -505,7 +572,7 @@ async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
                 else "none",
                 provider=participant.gateway.provider
                 if participant.gateway
-                else "native",
+                else participant.kind,
                 memory_mode=experiment.memory_mode,
                 initial_sha256=check["initial_sha256"],
                 configuration_sha256=fingerprint,
@@ -521,11 +588,26 @@ async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
             )
             worker: asyncio.Task[None] | None = None
             stopped = asyncio.Event()
+
+            async def forward_operator_stop(
+                stop_event: asyncio.Event = stopped,
+            ) -> None:
+                await operator_stop.wait()
+                stop_event.set()
+
+            stop_relay = asyncio.create_task(forward_operator_stop())
             status = "failed"
+            failure: BaseException | None = None
             try:
                 await asyncio.to_thread(harness.prepare, participant)
+                if operator_stop.is_set():
+                    raise asyncio.CancelledError("campaign stopped by operator")
                 await asyncio.to_thread(harness.start_database)
+                if operator_stop.is_set():
+                    raise asyncio.CancelledError("campaign stopped by operator")
                 initial = await asyncio.to_thread(harness.character)
+                if operator_stop.is_set():
+                    raise asyncio.CancelledError("campaign stopped by operator")
                 if initial != check["character"]:
                     raise ValueError(
                         "restored character differs from the declared initial fixture"
@@ -559,6 +641,8 @@ async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
                     policy_seed=experiment.seed + repetition,
                     run_cap_nanousd=experiment.run_cap_nanousd,
                     run_seconds=experiment.seconds,
+                    benchmark_supervision=True,
+                    native_source_revision=experiment.source_revision,
                     decision_timeout=experiment.decision_timeout
                     if participant.kind == "litellm"
                     else 1.2,
@@ -569,6 +653,8 @@ async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
                 worker = asyncio.create_task(run(configuration, stopped))
                 ready_until = time.monotonic() + 10
                 while not (directory / "socket" / "worker.sock").exists():
+                    if operator_stop.is_set():
+                        raise asyncio.CancelledError("campaign stopped by operator")
                     if worker.done():
                         await worker
                         raise RuntimeError(
@@ -577,50 +663,98 @@ async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
                     if time.monotonic() > ready_until:
                         raise TimeoutError("experiment worker did not become ready")
                     await asyncio.sleep(0.02)
+                if operator_stop.is_set():
+                    raise asyncio.CancelledError("campaign stopped by operator")
                 await asyncio.to_thread(harness.start_game)
-                deadline = time.monotonic() + experiment.seconds
                 started = time.monotonic()
-                while time.monotonic() < deadline:
+                while True:
+                    if operator_stop.is_set():
+                        raise asyncio.CancelledError("campaign stopped by operator")
                     if worker.done():
                         await worker
-                        clock = Store(state).get("run_clock", "start")
-                        if (
-                            clock
-                            and time.monotonic() - clock["monotonic"]
-                            >= experiment.seconds
-                        ):
-                            status = "completed"
-                            break
-                        raise RuntimeError(
-                            "experiment worker ended before the run horizon"
-                        )
-                    await asyncio.sleep(min(1, max(0.01, deadline - time.monotonic())))
+                        break
+                    await asyncio.sleep(1)
                     state_rows = Store(state).get("budget_stop", str(experiment.bot_id))
                     if state_rows:
                         status = "budget_stop"
                         break
-                    observed = Store(state).get("status", str(experiment.bot_id)) or {}
-                    if (
-                        time.monotonic() - started > min(15, experiment.seconds / 2)
-                        and time.time() - observed.get("last_observation", 0) > 5
-                    ):
+                    clock = Store(state).get("run_clock", "start")
+                    if time.monotonic() - started > 240 and clock is None:
                         raise ValueError(
                             "experiment bot observations are missing or stale"
+                        )
+                    if (
+                        clock
+                        and time.monotonic() - clock["monotonic"]
+                        > experiment.seconds + 30
+                    ):
+                        raise TimeoutError(
+                            "worker did not stop at its observed horizon"
                         )
                     bridge = Store(state).get("bridge", "benchmark")
                     if bridge is not None and not bridge["ready"]:
                         raise ValueError(
                             "game image lacks benchmark lifecycle/awake capabilities"
                         )
-                if status != "budget_stop":
-                    status = "completed"
                 stopped.set()
                 await worker
                 worker = None
+                if operator_stop.is_set():
+                    raise asyncio.CancelledError("campaign stopped by operator")
+                # The worker has drained its recorder and provider tasks. Only now
+                # classify the final durable evidence and financial marker.
+                if ReplayReader(recording).run(identity)["incomplete"]:
+                    raise RuntimeError("campaign stopped: recording_gap")
+                ending = Store(state).get("run_stop", "end")
+                if ending is None:
+                    raise RuntimeError(
+                        "experiment worker ended without a supervised stop"
+                    )
+                reason = ending["reason"]
+                if reason == "operator_stop" and not Store(state).get(
+                    "budget_stop", str(experiment.bot_id)
+                ):
+                    raise asyncio.CancelledError("campaign stopped by operator")
+                if reason not in {
+                    "completed",
+                    "deaths_limit",
+                    "stalled",
+                    "proposal_timeout",
+                    "budget_stop",
+                    "operator_stop",
+                }:
+                    raise RuntimeError("campaign stopped: " + reason)
+                if (
+                    Store(state).get("budget_stop", str(experiment.bot_id))
+                    or reason == "budget_stop"
+                ):
+                    status = "budget_stop"
+                elif reason == "completed":
+                    clock = Store(state).get("run_clock", "start")
+                    samples = [
+                        e["t_ms"]
+                        for e in ReplayReader(recording).all_events(identity)
+                        if e["kind"] == "sample"
+                    ]
+                    if (
+                        not clock
+                        or time.monotonic() - clock["monotonic"] < experiment.seconds
+                        or ending.get("elapsed_seconds", 0) < experiment.seconds
+                        or ending.get("observed_seconds", 0) < experiment.seconds
+                        or len(samples) < 2
+                        or max(samples) - min(samples) < experiment.seconds * 1000
+                    ):
+                        raise RuntimeError(
+                            "worker completed before the observed horizon"
+                        )
+                    status = "completed"
+                else:
+                    status = "failed"
                 await asyncio.to_thread(harness.stop_game)
                 saved = await asyncio.to_thread(harness.character)
                 (directory / "saved-character.json").write_text(canonical(saved))
             except BaseException as error:
+                failure = error
                 status = (
                     "interrupted"
                     if isinstance(error, (KeyboardInterrupt, asyncio.CancelledError))
@@ -645,12 +779,85 @@ async def _run_campaign(experiment: Experiment) -> dict[str, Any]:
                 raise
             finally:
                 stopped.set()
-                try:
-                    if worker:
-                        await asyncio.gather(worker, return_exceptions=True)
-                    store.finish(identity, status)
-                finally:
-                    await asyncio.to_thread(harness.close)
+                stop_relay.cancel()
+                tasks = [stop_relay]
+                if worker:
+                    tasks.append(worker)
+                drain = asyncio.gather(*tasks, return_exceptions=True)
+                teardown_failure, cancellation = await settle_teardown(drain)
+                if teardown_failure is not None:
+                    if failure is None:
+                        failure = teardown_failure
+                        status = (
+                            "interrupted"
+                            if isinstance(
+                                teardown_failure,
+                                (KeyboardInterrupt, asyncio.CancelledError),
+                            )
+                            else "failed"
+                        )
+                    else:
+                        failure.add_note(
+                            "Worker teardown also failed: "
+                            + type(teardown_failure).__name__
+                        )
+                close_task = asyncio.create_task(asyncio.to_thread(harness.close))
+                cleanup_error, close_cancellation = await settle_teardown(close_task)
+                cancellation = cancellation or close_cancellation
+                current = asyncio.current_task()
+                if (
+                    cancellation is None
+                    and not isinstance(failure, asyncio.CancelledError)
+                    and current is not None
+                    and current.cancelling()
+                ):
+                    cancellation = asyncio.CancelledError(
+                        "campaign cancelled during teardown"
+                    )
+                if cancellation is not None:
+                    status = "interrupted"
+                if cleanup_error is not None:
+                    if failure is None and cancellation is None:
+                        status = "failed"
+                    else:
+                        target = failure or cancellation
+                        assert target is not None
+                        target.add_note(
+                            "Isolated Docker cleanup also failed: "
+                            + type(cleanup_error).__name__
+                        )
+                    try:
+                        end = ReplayReader(recording).run(identity)["duration_ms"]
+                        store.append(
+                            {
+                                "run": identity,
+                                "key": "cleanup-unverified",
+                                "segment": "orchestrator",
+                                "t_ms": end + 1,
+                                "wall": time.time(),
+                                "kind": "gap",
+                                "data": {
+                                    "reason": "cleanup_unverified",
+                                    "category": type(cleanup_error).__name__,
+                                },
+                            }
+                        )
+                    except Exception as recording_error:  # noqa: BLE001
+                        # Evidence IO must not replace the original failure.
+                        target = failure or cancellation or cleanup_error
+                        target.add_note(
+                            "Could not record cleanup failure: "
+                            + type(recording_error).__name__
+                        )
+                store.finish(identity, status)
+                if cancellation is not None:
+                    if failure is not None:
+                        raise cancellation from failure
+                    raise cancellation
+                if teardown_failure is not None and failure is teardown_failure:
+                    raise teardown_failure
+                if cleanup_error is not None and failure is None:
+                    raise cleanup_error
     result = campaign(ReplayReader(recording), identities)
     (experiment.output / "summary.json").write_text(canonical(result))
     return result
@@ -794,6 +1001,8 @@ async def evaluate_decisions(
             }
         except Exception as error:  # noqa: BLE001 - provider exceptions may contain credentials
             row = {"valid": False, "error": type(error).__name__}
+            if isinstance(error, sqlite3.Error):
+                row["sqlite_failure"] = failure_metadata(error, "decision_fixture")
         rows.append(
             {
                 **row,

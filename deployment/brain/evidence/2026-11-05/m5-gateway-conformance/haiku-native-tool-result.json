@@ -1,0 +1,51 @@
+{
+  "route": "anthropic/claude-haiku-5-5",
+  "upstream_calls": 3,
+  "usage": {
+    "input_tokens": 15,
+    "input_tokens_details": {
+      "cache_write_tokens": 2,
+      "cached_tokens": 3,
+      "cache_write_tokens_details": null,
+      "audio_tokens": null,
+      "cached_tokens_details": null,
+      "image_tokens": null,
+      "text_tokens": 10,
+      "video_tokens": null
+    },
+    "output_tokens": 2,
+    "output_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": null,
+      "text_tokens": 2
+    },
+    "total_tokens": 17,
+    "cost": null
+  },
+  "known_fixture_nanousd": 124,
+  "unknown_liability_retained": true,
+  "native_tool_strict": true,
+  "output_bound": 256,
+  "wire_tool": {
+    "name": "choose_action",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "enum": [
+            "continue",
+            "resupply"
+          ]
+        }
+      },
+      "required": [
+        "candidate_id"
+      ],
+      "additionalProperties": false
+    },
+    "strict": true
+  },
+  "contract_qualified": true,
+  "account_access": "unverified; local mock only"
+}

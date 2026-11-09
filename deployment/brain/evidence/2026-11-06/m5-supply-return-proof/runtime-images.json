@@ -1,0 +1,12 @@
+{
+  "images": {
+    "game": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+    "database": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7"
+  },
+  "binary_sha256": {
+    "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+    "libbot_engine.so": "92017c8a83a34dea06a8441947a68ae03e56c512f2015603e24ea5a80d282b0d"
+  },
+  "native_source_revision": "d43050147bc13d8024bdc66b641b127c31253b7c",
+  "application_source_revision": "390b8c8920d4e42e8d2eaca056c2076798d1edf7"
+}

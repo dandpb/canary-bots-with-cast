@@ -102,6 +102,7 @@ public:
 	}
 
 	int32_t getClosedNodes() const { return closedNodes_; }
+	int32_t getCreatedNodes() const { return curNode_; }
 
 	AStarNode* getNodeByPosition(uint32_t x, uint32_t y) {
 		uint32_t key = (x << 16) | y;
@@ -138,12 +139,18 @@ static bool botGetPathMatchingCond(
 	const FrozenPathingConditionCall& pathCondition,
 	const FindPathParams& fpp,
 	int32_t maxNodes = BotAStarNodes::BOT_MAX_NODES,
-	const Position* startOverride = nullptr)
+	const Position* startOverride = nullptr, std::string* searchNote = nullptr)
 {
 	Position pos = startOverride ? *startOverride : creature->getPosition();
 	Position endPos;
 
 	BotAStarNodes nodes(pos.x, pos.y, AStarNodes::getTileWalkCost(creature, g_game().map.getTile(pos.x, pos.y, pos.z)), maxNodes);
+	auto trace = [&](const char* reason) {
+		if (searchNote) {
+			*searchNote = fmt::format("reason={} created={} closed={} budget={} radius={}",
+				reason, nodes.getCreatedNodes(), nodes.getClosedNodes(), maxNodes, fpp.maxSearchDist);
+		}
+	};
 
 	int32_t bestMatch = 0;
 
@@ -173,6 +180,7 @@ static bool botGetPathMatchingCond(
 		AStarNode* n = nodes.getBestNode();
 		if (!n) {
 			if (found) break;
+			trace("frontier_exhausted");
 			return false;
 		}
 
@@ -241,6 +249,7 @@ static bool botGetPathMatchingCond(
 				const int_fast32_t dY = std::abs(targetPos.getY() - pos.getY());
 				if (!nodes.createOpenNode(n, pos.x, pos.y, newf, ((dX - sX) << 3) + ((dY - sY) << 3) + (std::max(dX, dY) << 3), extraCost)) {
 					if (found) break;
+					trace("node_budget_exhausted");
 					return false;
 				}
 			}
@@ -248,7 +257,11 @@ static bool botGetPathMatchingCond(
 		nodes.closeNode(n);
 	} while (fpp.maxSearchDist != 0 || nodes.getClosedNodes() < 100);
 
-	if (!found) return false;
+	if (!found) {
+		trace("no_match");
+		return false;
+	}
+	trace("reached");
 
 	int_fast32_t prevx = endPos.x;
 	int_fast32_t prevy = endPos.y;
@@ -284,7 +297,7 @@ static bool botGetPathMatchingCond(
 //
 // `outTiles` receives every tile of the walk, start-exclusive and end-inclusive.
 bool BotEngine::botTraceLegPath(const std::shared_ptr<Player>& mover, const Position& from, const Position& to,
-	int32_t arrivalDist, std::vector<Position>& outTiles, bool wide) {
+	int32_t arrivalDist, std::vector<Position>& outTiles, bool wide, std::string* searchNote) {
 	outTiles.clear();
 	if (!mover) return false;
 
@@ -305,7 +318,7 @@ bool BotEngine::botTraceLegPath(const std::shared_ptr<Player>& mover, const Posi
 
 	std::vector<Direction> dirList;
 	const bool ok = botGetPathMatchingCond(mover, to, dirList, FrozenPathingConditionCall(to), fpp,
-		wide ? BotAStarNodes::BOT_MAX_NODES : STOCK_PATH_MAX_NODES, &from);
+		wide ? BotAStarNodes::BOT_MAX_NODES : STOCK_PATH_MAX_NODES, &from, searchNote);
 	if (allowFc) mover->clearBotAllowFcPos();
 	if (!ok) return false;
 
@@ -747,10 +760,10 @@ bool BotEngine::planScopedWalk(BotState& bot, const Position& target, int32_t ma
 	// pay for a 4096-node search each time. Jump straight back to tier 3.
 	auto hopIt = s_plannedHop.find(bot.guid);
 	if (hopIt != s_plannedHop.end()
-		&& (hopIt->second.forTarget != target || hopIt->second.hop.portal.pos.z != bot.currentPos.z)) {
-		// Retargeted, or the floor change already happened (the cached hop is on the floor we
-		// just left). Either way the plan is spent: drop it and re-enter at tier 1, which on the
-		// new floor naturally picks up the next leg.
+		&& (hopIt->second.forTarget != target || hopIt->second.hop.portal.pos.z != bot.currentPos.z
+		    || hopIt->second.blacklistStamp != zPortalBlacklistStamp(hopIt->second.hop.portal.pos))) {
+		// A new target, floor or quarantine state needs a fresh decision. A fallback
+		// selected under the same observed quarantine remains a valid cached decision.
 		s_plannedHop.erase(hopIt);
 		s_zLegPlan.erase(bot.guid);
 		hopIt = s_plannedHop.end();
@@ -775,6 +788,7 @@ bool BotEngine::planScopedWalk(BotState& bot, const Position& target, int32_t ma
 			cfg.logPrefix = "PLEG";
 			cfg.globalTimeoutMs = 120000;
 			cfg.perWpStuckMs = plannerWpStuckMs(bot.currentPos, target);
+			cfg.trackMovementProgress = true;
 			cfg.zChangeGraceMs = 500;
 			cfg.wideSearchOnFail = true; // planner leg: escalate a failed waypoint walk once
 			const size_t legSize = leg.wps.size();
@@ -835,16 +849,16 @@ bool BotEngine::planScopedWalk(BotState& bot, const Position& target, int32_t ma
 	const bool nearTarget = chebToTarget <= maxDist + 8;
 
 	// ---- Step 3: same floor — do we need hops, and what is in the way? ----
-	// ONE bounded door-permissive BFS answers both. A false return means the target cannot be
-	// reached on this floor even with every openable door treated as open, which is the signal to
-	// go to the portal graph — and it is meaningful even at same z, which is precisely the case
-	// that motivated the planner (two pockets of one floor joined only through another floor).
+	// A closed door-permissive frontier can require floor hops at the same z. Reaching the
+	// BFS node budget is unknown instead: try the existing bounded, cooldown-gated direct
+	// search before selecting a portal detour.
 	bool needHops = false;
 	if (sameFloor && !haveHop) {
 		std::vector<Position> doors;
 		// Consumed once: a re-plan after a stall must not reuse the answer that just failed.
 		const bool forceFresh = s_plannerForceFresh.erase(bot.guid) > 0;
-		if (plannerLegDoors(bot.currentPos, target, doors, forceFresh)) {
+		bool doorBudgetExhausted = false;
+		if (plannerLegDoors(bot.currentPos, target, doors, forceFresh, &doorBudgetExhausted)) {
 			if (doors.empty()) {
 				// Clear run. Near the target, hand over to goToClosest for the distance
 				// tightening that makes the final approach look human (walk up to the NPC rather
@@ -892,6 +906,7 @@ bool BotEngine::planScopedWalk(BotState& bot, const Position& target, int32_t ma
 				cfg.logPrefix = "PLEG";
 				cfg.globalTimeoutMs = 120000;
 				cfg.perWpStuckMs = plannerWpStuckMs(bot.currentPos, target);
+				cfg.trackMovementProgress = true;
 				cfg.zChangeGraceMs = 500;
 				cfg.wideSearchOnFail = true; // planner leg: escalate a failed waypoint walk once
 				const size_t legSize = stored.wps.size();
@@ -911,11 +926,17 @@ bool BotEngine::planScopedWalk(BotState& bot, const Position& target, int32_t ma
 				}
 			}
 		} else {
-			// Unreachable on this floor even door-permissively → this same-z target needs hops.
-			// Skip the direct search entirely (it cannot succeed) and go straight to the graph.
-			castLog(bot, fmt::format("PLAN: ({},{},{}) not reachable on z={} — planning floor hops",
-				target.x, target.y, target.z, bot.currentPos.z));
-			needHops = true; // skip the direct search below; it cannot succeed
+			if (doorBudgetExhausted) {
+				castLog(bot, fmt::format("PLAN: door search budget exhausted for ({},{},{}) — trying bounded direct path",
+					target.x, target.y, target.z));
+				if (goToWide(bot, target, maxDist)) return true;
+			} else {
+				castLog(bot, fmt::format("PLAN: ({},{},{}) not reachable within door-search bounds on z={} — planning floor hops",
+					target.x, target.y, target.z, bot.currentPos.z));
+			}
+			// Preserve the previous graph fallback on failure or cooldown. Do not run
+			// another ungated direct search in step 4 after the bounded attempt.
+			needHops = true;
 		}
 	}
 
@@ -997,6 +1018,10 @@ bool BotEngine::planScopedWalk(BotState& bot, const Position& target, int32_t ma
 		ph.hop.portal = hops.front().portal;
 		ph.hop.plannedAt = OTSYS_TIME();
 		ph.forTarget = target;
+		// A fresh fallback may deliberately accept a quarantined portal. Reuse
+		// that decision until its observed quarantine changes, rather than
+		// re-running the graph on every chunk of the accepted approach.
+		ph.blacklistStamp = zPortalBlacklistStamp(ph.hop.portal.pos);
 		hopIt = s_plannedHop.emplace(bot.guid, ph).first;
 		castLog(bot, fmt::format("PLAN: {} hop(s) to ({},{},{}) — next: {} {} at ({},{},{}) lands ({},{},{})",
 			hops.size(), target.x, target.y, target.z,
@@ -1026,6 +1051,7 @@ bool BotEngine::planScopedWalk(BotState& bot, const Position& target, int32_t ma
 		cfg.logPrefix = "ZLEG";
 		cfg.globalTimeoutMs = 60000;
 		cfg.perWpStuckMs = plannerWpStuckMs(bot.currentPos, hop.portal.pos);
+		cfg.trackMovementProgress = true;
 		cfg.zChangeGraceMs = 500;
 		cfg.wideSearchOnFail = true; // planner leg: escalate a failed waypoint walk once
 		const size_t zLegSize = leg.wps.size();
@@ -1062,10 +1088,11 @@ bool BotEngine::planScopedWalk(BotState& bot, const Position& target, int32_t ma
 	s_plannedFc[bot.guid] = hop;
 	startFloorChange(bot, hop.portal.goesDown, target);
 	if (bot.fcState == FloorChangeState::NONE) {
-		// The floor-change backstop can refuse to start after repeated failures.
-		// Do not report a successful walk with no transition or queued steps.
+		// The failure guard can refuse the handoff. Do not acknowledge a walk
+		// that has neither a queue nor a running floor-change executor.
 		s_plannedFc.erase(bot.guid);
 		s_plannedHop.erase(bot.guid);
+		s_zLegPlan.erase(bot.guid);
 		return false;
 	}
 	return true;

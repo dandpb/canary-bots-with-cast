@@ -1,0 +1,12 @@
+{
+  "purpose": "diagnostic-only: forced eligible retreat from failed checkpoint; not scored or qualification",
+  "changed_initial_position": [
+    32372,
+    32103,
+    7
+  ],
+  "changed_initial_xp": 100793,
+  "parent_fixture": "<PARENT_FIXTURE>",
+  "policy": "Supervisor pause then explicit retreat, recorded as operator interventions; fake suppressed while managed",
+  "instrumentation": "verbose on, 9 tileinfo, zplan, route, brain status, status; diagnostic only"
+}

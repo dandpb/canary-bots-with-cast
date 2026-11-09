@@ -1,0 +1,12 @@
+{
+  "source_artifact": "H.stdout.log",
+  "source_sha256": "81514db2d3975e3e7e0016763c1bd550106a09529864e544a54bdf49bbbc304d",
+  "selected_lines": [
+    "    raise asyncio.CancelledError(\"campaign stopped by operator\")",
+    "asyncio.exceptions.CancelledError: campaign stopped by operator"
+  ],
+  "canonical_qualification_present": false,
+  "canonical_saved_character_present": false,
+  "requested_horizon_completed": false,
+  "qualification_accepted": false
+}

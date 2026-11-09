@@ -1,0 +1,11 @@
+{
+  "captured_utc": "2026-11-06T11:38:13.309897+00:00",
+  "recording_status": "completed",
+  "resources_cleaned": true,
+  "inspection": "docker ps -a and network ls by exact Compose project label; no deletion",
+  "bind_data_preserved": true,
+  "source_artifact": "resources-cleaned.json",
+  "source_sha256": "672b5ee2eb305ab7f5913b28c05053042852c80ed07d928b35cb72c9835cb630",
+  "remaining_container_count": 0,
+  "remaining_network_count": 0
+}

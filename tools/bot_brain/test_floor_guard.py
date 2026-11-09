@@ -1,18 +1,23 @@
 """Exercise the real planned-floor handoff and its refusal after repeated failures."""
-from pathlib import Path
+
 import subprocess
 import tempfile
+from pathlib import Path
 
 root = Path(__file__).resolve().parents[2]
 tick = (root / "src/creatures/players/bot/bot_tick.cpp").read_text()
 nav = (root / "src/creatures/players/bot/bot_nav.cpp").read_text()
-start = tick[tick.index("void BotEngine::startFloorChange("):]
-start = start[:start.index("\n// Called wherever the FC machine")]
-tail = nav[nav.index("\ts_plannedFc[bot.guid] = hop;"):]
-tail = tail[:tail.index("\n}\n") + 3]
-fallback = nav[nav.index("\tif (bot.currentPos.z != target.z && bot.fcState == FloorChangeState::NONE && !isFollowingWaypoints)"):]
-fallback = fallback[:fallback.index("\n\t}\n") + 3]
-source = r'''
+start = tick[tick.index("void BotEngine::startFloorChange(") :]
+start = start[: start.index("\n// Called wherever the FC machine")]
+tail = nav[nav.index("\ts_plannedFc[bot.guid] = hop;") :]
+tail = tail[: tail.index("\n}\n") + 3]
+fallback = nav[
+    nav.index(
+        "\tif (bot.currentPos.z != target.z && bot.fcState == FloorChangeState::NONE && !isFollowingWaypoints)"
+    ) :
+]
+fallback = fallback[: fallback.index("\n\t}\n") + 3]
+source = r"""
 #include <cassert>
 #include <cstdint>
 #include <unordered_map>
@@ -29,14 +34,21 @@ struct BotState {
 };
 std::unordered_map<uint32_t, int> s_fcConsecutiveFailures;
 std::unordered_map<uint32_t, ZPlannedHop> s_plannedFc, s_plannedHop;
+std::unordered_map<uint32_t, int> s_zLegPlan;
 class BotEngine {
  public: bool zGraphReady_=false;
  bool zPlanNextHop(BotState&, const Position&, ZPlannedHop&) { return false; }
  void startFloorChange(BotState&, bool, const Position&);
  bool handoff(BotState& bot, const Position& target, const ZPlannedHop& hop) {
-'''
-source += tail + "\n bool fallback(BotState& bot, const Position& target) { bool isFollowingWaypoints=false;\n" + fallback + "\nreturn false; }\n};\n" + start
-source += r'''
+"""
+source += (
+    tail
+    + "\n bool fallback(BotState& bot, const Position& target) { bool isFollowingWaypoints=false;\n"
+    + fallback
+    + "\nreturn false; }\n};\n"
+    + start
+)
+source += r"""
 int main() {
   BotEngine engine; BotState bot; Position target{7}; ZPlannedHop hop;
   s_fcConsecutiveFailures[bot.guid]=5;
@@ -51,9 +63,12 @@ int main() {
   assert(engine.handoff(bot, target, hop));
   assert(bot.fcState == FloorChangeState::SCANNING);
 }
-'''
+"""
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory)
     (path / "test.cpp").write_text(source)
-    subprocess.run(["g++", "-std=c++20", str(path / "test.cpp"), "-o", str(path / "test")], check=True)
+    subprocess.run(
+        ["g++", "-std=c++20", str(path / "test.cpp"), "-o", str(path / "test")],
+        check=True,
+    )
     subprocess.run([str(path / "test")], check=True)

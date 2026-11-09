@@ -1,0 +1,37 @@
+{
+  "purpose": "goal proof, not 30-minute qualification or paid tournament",
+  "parent_fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+  "fixture_sha256": "a98765bba6267216cdb517673761c29823b32259361e1583b5e67efc02ffb930",
+  "game_image": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+  "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "application_source_revision": "390b8c8920d4e42e8d2eaca056c2076798d1edf7",
+  "native_source_revision": "d43050147bc13d8024bdc66b641b127c31253b7c",
+  "fixture_variation": {
+    "variation": "supply-only proof, not a scored equivalent-start trial",
+    "changes": {
+      "health_potion_stack": 1,
+      "mana_potion_stack": 1,
+      "hunt_mask_before": [
+        "77",
+        "399"
+      ],
+      "hunt_mask_after": []
+    },
+    "unchanged": "map, native code, HP, offers/filter implementation, bank, equipment, town, spawn",
+    "purpose": "At 40 potions no resupply is offered; no hunts remain, so normal retreat survives the healthy-idle filter."
+  },
+  "policy": "fake: resupply below10 potions, then retreat after confirmed purchase",
+  "expected_bank_debit": 2014,
+  "expected_stock": 40,
+  "native_build": {
+    "source_revision": "d43050147bc13d8024bdc66b641b127c31253b7c",
+    "archive_sha256": "b11994f7783e2bfb70b9517fea54e2739b0bca306163ea96493364964fdc8f3f",
+    "binary_sha256": {
+      "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+      "libbot_engine.so": "92017c8a83a34dea06a8441947a68ae03e56c512f2015603e24ea5a80d282b0d"
+    },
+    "gnu_unique_symbols": 0,
+    "native_unit_tests": "passed; raw log retained",
+    "compiler": "c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0"
+  }
+}

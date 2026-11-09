@@ -1,0 +1,67 @@
+{
+  "source_revision": "e65e8913becc6e5766e1fa050cbf82183e7ee69e",
+  "captured_role_count": 7,
+  "approved_payload_count": 6,
+  "captured_sha256": {
+    "campaign": "59a25503b423a23145b94e460b86d1468af0f3cd7eee2ea6500bf7055660ae06",
+    "admission": "d4a9d7c240b5a3e46fbf2911d289702cbd5bc87bb37cc2e1e1836df736515b49",
+    "authorization": "6143cf9463c5d260e85e08bbc85d527bbf40eec544775377be3d7a9845ddf3d4",
+    "source_manifest": "ff6fac4e60adfc09b51f06536ebb84629232755f08962eab3a6efd0f4607628b",
+    "decision_fixtures": "5f18c7805cf29a5ebffe29f6b1e4574f09a0adf358f3c76ba577ce36ce8265af",
+    "openai": "a051736a26464552fa358977a19de5b94aebc8f5813d764b2c15264aedd8d643",
+    "gemini": "948ecb368f05bc630ed2044a679c68b318224dabeccf76232e58ee9695c89794"
+  },
+  "actual_preflight_accepted": true,
+  "preflight_source_revision": "e65e8913becc6e5766e1fa050cbf82183e7ee69e",
+  "runtime_admission": {
+    "approved": true,
+    "source_revision": "e65e8913becc6e5766e1fa050cbf82183e7ee69e",
+    "approved_inputs_sha256": {
+      "campaign": "59a25503b423a23145b94e460b86d1468af0f3cd7eee2ea6500bf7055660ae06",
+      "authorization": "6143cf9463c5d260e85e08bbc85d527bbf40eec544775377be3d7a9845ddf3d4",
+      "source_manifest": "ff6fac4e60adfc09b51f06536ebb84629232755f08962eab3a6efd0f4607628b",
+      "decision_fixtures": "5f18c7805cf29a5ebffe29f6b1e4574f09a0adf358f3c76ba577ce36ce8265af",
+      "openai": "a051736a26464552fa358977a19de5b94aebc8f5813d764b2c15264aedd8d643",
+      "gemini": "948ecb368f05bc630ed2044a679c68b318224dabeccf76232e58ee9695c89794"
+    },
+    "required_gates": {
+      "fixture_30m_native_fake_current_runner": true,
+      "same_candidate_schema_and_application_validation": true,
+      "routing_immutable_before_upstream": true,
+      "current_gateway_ids_hash_and_prices_revalidated": true,
+      "conformance_input_provenance_frozen": true,
+      "same_canonical_ledger_available_at_least_12usd": true
+    },
+    "root_review_pending": false,
+    "real_technical_preflight_pending": false,
+    "explicit_GO_pending": false,
+    "captured_admission_sha256": "d4a9d7c240b5a3e46fbf2911d289702cbd5bc87bb37cc2e1e1836df736515b49",
+    "historical_review_bundle_admission": {
+      "approved": false,
+      "read_only_preparation": true,
+      "source_revision": "e65e8913becc6e5766e1fa050cbf82183e7ee69e",
+      "required_gates": {
+        "fixture_30m_native_fake_current_runner": true,
+        "same_candidate_schema_and_application_validation": true,
+        "routing_immutable_before_upstream": true,
+        "current_gateway_ids_hash_and_prices_revalidated": true,
+        "conformance_input_provenance_frozen": true,
+        "same_canonical_ledger_available_at_least_12usd": true
+      },
+      "approved_inputs_sha256": {
+        "campaign": "59a25503b423a23145b94e460b86d1468af0f3cd7eee2ea6500bf7055660ae06",
+        "authorization": "6143cf9463c5d260e85e08bbc85d527bbf40eec544775377be3d7a9845ddf3d4",
+        "source_manifest": "ff6fac4e60adfc09b51f06536ebb84629232755f08962eab3a6efd0f4607628b",
+        "decision_fixtures": "5f18c7805cf29a5ebffe29f6b1e4574f09a0adf358f3c76ba577ce36ce8265af",
+        "openai": "a051736a26464552fa358977a19de5b94aebc8f5813d764b2c15264aedd8d643",
+        "gemini": "948ecb368f05bc630ed2044a679c68b318224dabeccf76232e58ee9695c89794"
+      },
+      "root_review_pending": true,
+      "real_technical_preflight_pending": true,
+      "explicit_GO_pending": true
+    },
+    "roles": "Six approved payload hashes exclude admission self-reference; admission is captured separately, for seven JSON artifacts total."
+  },
+  "original_root_final_sha256": "2ff5b9375cef99c46efa0ffdb51fa5054e2c64b738313851cf5d0454ebf445f8",
+  "runtime_admission_matches_GO": true
+}

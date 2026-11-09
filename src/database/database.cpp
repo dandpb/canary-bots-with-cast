@@ -20,6 +20,9 @@
 
 #include <chrono> // dbMonoMs (JITTER FIX 2026-06-10) — explicit, don't rely on PCH
 
+thread_local std::pair<const Database*, unsigned int> Database::lastExecuteError_ {nullptr, 0};
+thread_local uint64_t Database::recoveryEpoch_ = 0;
+
 // PERF_INVESTIGATION_2026-05-24 pre-flight telemetry — log the first N sync
 // DB queries that fire on the dispatcher thread. Goal: identify which Lua /
 // C++ callsite is producing the hash_sparse 58.83% / pvio_socket_wait_io
@@ -284,13 +287,31 @@ bool Database::isRecoverableError(unsigned int error) {
 	return error == CR_SERVER_LOST || error == CR_SERVER_GONE_ERROR || error == CR_CONN_HOST_ERROR || error == 1053 /*ER_SERVER_SHUTDOWN*/ || error == CR_CONNECTION_ERROR;
 }
 
+unsigned int Database::getLastExecuteError() const {
+	return lastExecuteError_.first == this ? lastExecuteError_.second : 0;
+}
+
+Database::TransactionContext Database::transactionContext() const {
+	return {this, handle ? static_cast<uint64_t>(mysql_thread_id(handle)) : 0, recoveryEpoch_};
+}
+
+bool Database::canRetryDeadlock(const TransactionContext& context) const {
+	return context.owner == this && context.connectionId != 0 && handle
+		&& context.connectionId == static_cast<uint64_t>(mysql_thread_id(handle))
+		&& context.recoveryEpoch == recoveryEpoch_ && getLastExecuteError() == 1213;
+}
+
 bool Database::retryQuery(std::string_view query, int retries) {
+	lastExecuteError_ = {this, 0};
 	while (retries > 0 && mysql_query(handle, query.data()) != 0) {
+		const auto error = mysql_errno(handle);
+		lastExecuteError_ = {this, error};
 		g_logger().error("Query: {}", query.substr(0, 256));
-		g_logger().error("MySQL error [{}]: {}", mysql_errno(handle), mysql_error(handle));
-		if (!isRecoverableError(mysql_errno(handle))) {
+		g_logger().error("MySQL error [{}]: {}", error, mysql_error(handle));
+		if (!isRecoverableError(error)) {
 			return false;
 		}
+		++recoveryEpoch_;
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 		retries--;
 	}
@@ -299,6 +320,7 @@ bool Database::retryQuery(std::string_view query, int retries) {
 		return false;
 	}
 
+	lastExecuteError_ = {this, 0};
 	return true;
 }
 
@@ -366,6 +388,7 @@ retry:
 		if (!isRecoverableError(mysql_errno(handle))) {
 			return nullptr;
 		}
+		++recoveryEpoch_;
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 		goto retry;
 	}

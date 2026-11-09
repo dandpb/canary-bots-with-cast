@@ -1,0 +1,528 @@
+{
+  "approved_revision": "a1d9fe803c77da63f4aa1bf943d3d488d3117850",
+  "brain_image": {
+    "id": "sha256:9ea0a34688db0443dabfa6c64736f78b53e954a19c9ead8c61d52f2bbdefa0cd",
+    "platform": "linux/amd64",
+    "source_revision_label": "a1d9fe803c77da63f4aa1bf943d3d488d3117850",
+    "tag": "canary-core-qa-brain:local"
+  },
+  "brain_image_id": "sha256:9ea0a34688db0443dabfa6c64736f78b53e954a19c9ead8c61d52f2bbdefa0cd",
+  "brain_platform": "linux/amd64",
+  "brain_revision": "a1d9fe803c77da63f4aa1bf943d3d488d3117850",
+  "bundle_directory": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9",
+  "bundle_files": {
+    "brain/server.json": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/brain/server.json",
+      "bytes": 147,
+      "matches_a1d9_source": true,
+      "sha256": "526232a4195414a76923cd354dcf3d6257fc3a7723a0d90cae8da7a28f826930"
+    },
+    "brain/worker.json": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/brain/worker.json",
+      "bytes": 400,
+      "matches_a1d9_source": true,
+      "sha256": "78181081c72a5ab76329af5e411f83798e20ecacc3e383532c72a54e3bf16434"
+    },
+    "compose.brain-fake.yaml": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.brain-fake.yaml",
+      "bytes": 1154,
+      "matches_a1d9_source": true,
+      "sha256": "9be804b20f88aab0e275f0f0274acd67ded544969f68b75074de692b30fb6708"
+    },
+    "compose.game-pin.yaml": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.game-pin.yaml",
+      "bytes": 408,
+      "matches_a1d9_source": true,
+      "sha256": "a465fc92faa566b0b587381ee126073733627b1910ba819d289d1ac3a60acbfe"
+    },
+    "compose.image-ids.yaml": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.image-ids.yaml",
+      "bytes": 810,
+      "matches_a1d9_source": null,
+      "sha256": "1d61186f5dabf116f14baef1a84de8567050436a5444357c197777cd14d4fd59"
+    },
+    "compose.yaml": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.yaml",
+      "bytes": 3158,
+      "matches_a1d9_source": true,
+      "sha256": "7171d1f8e4281cdaf5f0ce0d5ad13c4336150f08c2bfa5ceb90069a2e5ba40e3"
+    }
+  },
+  "captured_at_utc": "2026-11-08T01:01:48.549491+00:00",
+  "containers": {
+    "canary-core-qa-database-1": {
+      "compose_labels": {
+        "com.docker.compose.config-hash": "32256a3e7a765f6ed505475c8556b37f174db28bda612a6b8feb707b43ce7094",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:a6ee0e234c527de59d6a1924703e5512e7a762c74616a443ec9c729b3a9c5154",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.project.config_files": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/compose.yaml,/home/daniel/canary-core-qa-preparation-20261106/execution-20261106T213132Z/compose.build-go.json",
+        "com.docker.compose.project.environment_file": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/.env",
+        "com.docker.compose.project.working_dir": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa",
+        "com.docker.compose.service": "database",
+        "com.docker.compose.version": "5.5.1"
+      },
+      "created_at": "2026-11-06T21:31:51.443601601Z",
+      "health": "healthy",
+      "id": "9ad6cae1cfb0b07a1e7905114e2e0089fc2dbb16dd8be07f68fdef9f3dfae2dc",
+      "image_id": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+      "image_ref": "mariadb:11.4",
+      "mounts": [
+        {
+          "destination": "/docker-entrypoint-initdb.d",
+          "rw": false,
+          "source": "/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/Ubuntu/4f99a391fa06fbd771d202895f6a16d0fae35d0690b26d1da9ce1add7c9be364",
+          "type": "bind"
+        },
+        {
+          "destination": "/var/lib/mysql",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/canary-core-qa_database/_data",
+          "type": "volume"
+        }
+      ],
+      "name": "canary-core-qa-database-1",
+      "restart_policy": "no",
+      "source_revision_label": null,
+      "status": "running"
+    },
+    "canary-core-qa-game-1": {
+      "compose_labels": {
+        "com.docker.compose.config-hash": "78e95b6623675973e319743977fd9be40ea474a34eb9e16ad81a530e7fa55899",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:47903ab12db9dd6c0189a7e111a39183f66d9349e7b01441a40ed4e91f211314",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.project.config_files": "/home/daniel/.laze/agents/agent_0003OqzHUxLD1TyVoJbVBmhg9d8ro/.rush/tmp/work-7cbb06cd/01a1ab62/review-84-3431/deployment/core-qa/compose.yaml,/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/game-image-override-3431b404.yaml",
+        "com.docker.compose.project.environment_file": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/.env",
+        "com.docker.compose.project.working_dir": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa",
+        "com.docker.compose.replace": "game-1",
+        "com.docker.compose.service": "game",
+        "com.docker.compose.version": "5.5.1"
+      },
+      "created_at": "2026-11-08T00:05:45.735034293Z",
+      "health": "healthy",
+      "id": "eaae6fe2171b91c8eb65ccad334ce029e8cbd3e8deb38653605c6ff1f479fcda",
+      "image_id": "sha256:358ee666db065a79625f5b5491efa363f0fc491fba04d14d5c176715f0930181",
+      "image_ref": "sha256:358ee666db065a79625f5b5491efa363f0fc491fba04d14d5c176715f0930181",
+      "mounts": [
+        {
+          "destination": "/canary/logs",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/canary-core-qa_game-logs/_data",
+          "type": "volume"
+        },
+        {
+          "destination": "/canary/data-otservbr-global/world/otservbr.otbm",
+          "rw": false,
+          "source": "/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/Ubuntu/24b492cae9d363502f1e847b1439a048e6e9187c8a21e23308652874ba5b755c",
+          "type": "bind"
+        },
+        {
+          "destination": "/canary/data/bot/authored",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/canary-core-qa_authored-data/_data",
+          "type": "volume"
+        }
+      ],
+      "name": "canary-core-qa-game-1",
+      "restart_policy": "no",
+      "source_revision_label": "3431b4046602875b161216ddb7be464eb4842f1a",
+      "status": "running"
+    },
+    "canary-core-qa-web-1": {
+      "compose_labels": {
+        "com.docker.compose.config-hash": "bf1e6126f353db6b3bf677aa6b8326a4222f98f454645c8f8f72777b09d3ed9c",
+        "com.docker.compose.container-number": "1",
+        "com.docker.compose.depends_on": "",
+        "com.docker.compose.image": "sha256:daeda5d1bcaad509151d7b23054320b87f236c830076c14e585c7a0dfce8b29a",
+        "com.docker.compose.oneoff": "False",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.project.config_files": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/compose.yaml,/home/daniel/canary-core-qa-preparation-20261106/execution-20261106T213132Z/compose.build-go.json",
+        "com.docker.compose.project.environment_file": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/.env",
+        "com.docker.compose.project.working_dir": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa",
+        "com.docker.compose.replace": "web-1",
+        "com.docker.compose.service": "web",
+        "com.docker.compose.version": "5.5.1"
+      },
+      "created_at": "2026-11-06T21:49:17.568520491Z",
+      "health": "healthy",
+      "id": "ab2d2614b63669c09c7b9046ccbab14a9f93dbfd86bf53410f3f1b045cf65c2b",
+      "image_id": "sha256:bacdb45d28e34a6e5b5ef5bad51e8c14084e1de670fa79633d4700f39853f199",
+      "image_ref": "canary-core-qa-web:local",
+      "mounts": [
+        {
+          "destination": "/var/www/html/system/cache",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/canary-core-qa_website-cache/_data",
+          "type": "volume"
+        }
+      ],
+      "name": "canary-core-qa-web-1",
+      "restart_policy": "no",
+      "source_revision_label": null,
+      "status": "running"
+    },
+    "qa-game-candidate-3431b404": {
+      "compose_labels": {
+        "com.docker.compose.project": "",
+        "com.docker.compose.service": "",
+        "com.docker.compose.version": ""
+      },
+      "created_at": "2026-11-07T18:33:05.951694681Z",
+      "health": "unhealthy",
+      "id": "4188037d71a5455ef40e76e05d0fa145a9e71d977a10f0774e491286b968b605",
+      "image_id": "sha256:358ee666db065a79625f5b5491efa363f0fc491fba04d14d5c176715f0930181",
+      "image_ref": "sha256:358ee666db065a79625f5b5491efa363f0fc491fba04d14d5c176715f0930181",
+      "mounts": [
+        {
+          "destination": "/canary/logs",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/canary-core-qa_game-logs/_data",
+          "type": "volume"
+        },
+        {
+          "destination": "/canary/data-otservbr-global/world/otservbr.otbm",
+          "rw": false,
+          "source": "/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/Ubuntu/24b492cae9d363502f1e847b1439a048e6e9187c8a21e23308652874ba5b755c",
+          "type": "bind"
+        },
+        {
+          "destination": "/canary/data/bot/authored",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/canary-core-qa_authored-data/_data",
+          "type": "volume"
+        }
+      ],
+      "name": "qa-game-candidate-3431b404",
+      "restart_policy": "no",
+      "source_revision_label": "3431b4046602875b161216ddb7be464eb4842f1a",
+      "status": "exited"
+    },
+    "qa-old-rescue-20261107": {
+      "compose_labels": {
+        "com.docker.compose.project": "",
+        "com.docker.compose.service": "",
+        "com.docker.compose.version": ""
+      },
+      "created_at": "2026-11-07T23:01:11.865292218Z",
+      "health": "unhealthy",
+      "id": "64385641c847ad44d6acf1dc7f5d10e206451212b4320973a27ba278e428d608",
+      "image_id": "sha256:78327d1a07a743683b0dc8f83c62edc4b4571098aa2b83e51e8bc6fdb0dfff72",
+      "image_ref": "sha256:78327d1a07a743683b0dc8f83c62edc4b4571098aa2b83e51e8bc6fdb0dfff72",
+      "mounts": [
+        {
+          "destination": "/canary/logs",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/canary-core-qa_game-logs/_data",
+          "type": "volume"
+        },
+        {
+          "destination": "/canary/data-otservbr-global/world/otservbr.otbm",
+          "rw": false,
+          "source": "/run/desktop/mnt/host/wsl/docker-desktop-bind-mounts/Ubuntu/24b492cae9d363502f1e847b1439a048e6e9187c8a21e23308652874ba5b755c",
+          "type": "bind"
+        },
+        {
+          "destination": "/canary/data/bot/authored",
+          "rw": true,
+          "source": "/var/lib/docker/volumes/canary-core-qa_authored-data/_data",
+          "type": "volume"
+        }
+      ],
+      "name": "qa-old-rescue-20261107",
+      "restart_policy": "no",
+      "source_revision_label": null,
+      "status": "exited"
+    }
+  },
+  "env_file": {
+    "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/.env",
+    "method": "SHA256 of exact file bytes; values not stored",
+    "sha256": "4cda5ef63dedbbaf8790e2527f2aaaf5c902cb35ad2f0d836027ba1a184a15a2"
+  },
+  "env_file_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/.env",
+  "env_file_variable_names_only": [
+    "BOT_PLAYERS_ONLINE",
+    "MARIADB_PASSWORD",
+    "MARIADB_ROOT_PASSWORD"
+  ],
+  "future_up_argv_not_executed": [
+    "env",
+    "-u",
+    "MARIADB_PASSWORD",
+    "-u",
+    "MARIADB_ROOT_PASSWORD",
+    "-u",
+    "BOT_PLAYERS_ONLINE",
+    "SOURCE_REVISION=a1d9fe803c77da63f4aa1bf943d3d488d3117850",
+    "docker",
+    "compose",
+    "--project-directory",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa",
+    "-p",
+    "canary-core-qa",
+    "-f",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.yaml",
+    "-f",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.brain-fake.yaml",
+    "-f",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.game-pin.yaml",
+    "-f",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.image-ids.yaml",
+    "--env-file",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/.env",
+    "up",
+    "-d",
+    "--no-build",
+    "--no-deps",
+    "--pull",
+    "never",
+    "--wait",
+    "--wait-timeout",
+    "180",
+    "-t",
+    "180",
+    "game",
+    "brain"
+  ],
+  "local_env_comparison_no_values": {
+    "database": {
+      "different_env_keys": [],
+      "expected_env_keys": [
+        "MARIADB_DATABASE",
+        "MARIADB_PASSWORD",
+        "MARIADB_ROOT_PASSWORD",
+        "MARIADB_USER"
+      ],
+      "missing_env_keys": []
+    },
+    "game": {
+      "different_env_keys": [
+        "CANARY_BRAIN_CONFIG"
+      ],
+      "expected_env_keys": [
+        "BOT_PLAYERS_ONLINE",
+        "BOT_POPULATION_REFERENCE_BOTS",
+        "CANARY_BRAIN_CONFIG",
+        "GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN",
+        "GAME_DISABLE_MAP_DOWNLOAD",
+        "GAME_LOGIN_PORT",
+        "GAME_PROTOCOL_PORT",
+        "GAME_PUBLIC_IP",
+        "GAME_STATUS_PORT",
+        "MARIADB_PASSWORD"
+      ],
+      "missing_env_keys": [
+        "BOT_POPULATION_REFERENCE_BOTS"
+      ]
+    },
+    "web": {
+      "different_env_keys": [],
+      "expected_env_keys": [
+        "CANARY_DB_HOST",
+        "CANARY_DB_NAME",
+        "CANARY_DB_PASSWORD",
+        "CANARY_DB_USER",
+        "CANARY_GAME_PORT",
+        "CANARY_LOGIN_PORT",
+        "CANARY_SERVER_IP",
+        "CANARY_SERVER_NAME",
+        "CANARY_STATUS_PORT",
+        "MYAAC_CLIENT_VERSION",
+        "MYAAC_SITE_URL"
+      ],
+      "missing_env_keys": []
+    }
+  },
+  "network": {
+    "created_at": "2026-11-06T21:31:51.357332385Z",
+    "id": "231b7c46216a77314881715cd0804d0bf0802c6b622e93b1d848e5b27e9cfab6",
+    "labels": {
+      "com.docker.compose.config-hash": "b858706fe945eec4259c0c5709b69af4f3d5b7c527563a724ed63feaaa2a3af2",
+      "com.docker.compose.network": "default",
+      "com.docker.compose.project": "canary-core-qa",
+      "com.docker.compose.version": "5.5.1"
+    },
+    "name": "canary-core-qa_default"
+  },
+  "qa_project_directory": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa",
+  "receipt_files": {
+    "brain_after": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/stage2-a1d9/brain-build-after.json",
+      "sha256": "df7f1822c210751b1d55921e70b0111adcfa77df7aa8053d65bca02d3bd73481"
+    },
+    "brain_before": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/stage2-a1d9/brain-build-before.json",
+      "sha256": "0a540e5d36089961d3b08f7eba9ed1b4d11e996952d02d7ccf8d18ca11d700c1"
+    },
+    "brain_build_log": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/stage2-a1d9/brain-build.log",
+      "sha256": "19d7927e1cf4db5710b97d5854aebc47ed072c63abff2ae8bbb976708afaf837"
+    },
+    "game_rollout_after": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/game-rollout-after-20261108T000636Z.json",
+      "sha256": "1c3fd7b8af24e99384344cb4243c767e1f5bd8c62b517ff01616321b51fa8d65"
+    },
+    "rescue_result": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/qa-old-rescue-result-20261107.json",
+      "sha256": "9f68b39c897aa2c274439d0e75d87cdaf8909f404729db5117a487ee0e143d9a"
+    },
+    "stage1_baseline": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/stage2-a1d9/stage1-baseline.json",
+      "sha256": "47351521b9b690fce7053e1b6e6e6ea97585f30da0f1a8d4fb5ad41eeb49fb04"
+    },
+    "stage2_full_preflight": {
+      "absolute_path": "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/evidence/stage2-a1d9/stage2-upgrade-receipt.json",
+      "sha256": "7eaacc11b4818396a6414f3e163cca36557e1a1ad907c8856d283c7a51598d59"
+    }
+  },
+  "receipts": {
+    "brain_after": "df7f1822c210751b1d55921e70b0111adcfa77df7aa8053d65bca02d3bd73481",
+    "brain_before": "0a540e5d36089961d3b08f7eba9ed1b4d11e996952d02d7ccf8d18ca11d700c1",
+    "brain_build_log": "19d7927e1cf4db5710b97d5854aebc47ed072c63abff2ae8bbb976708afaf837",
+    "game_rollout_after": "1c3fd7b8af24e99384344cb4243c767e1f5bd8c62b517ff01616321b51fa8d65",
+    "rescue_result": "9f68b39c897aa2c274439d0e75d87cdaf8909f404729db5117a487ee0e143d9a",
+    "stage1_baseline": "47351521b9b690fce7053e1b6e6e6ea97585f30da0f1a8d4fb5ad41eeb49fb04",
+    "stage2_full_preflight": "7eaacc11b4818396a6414f3e163cca36557e1a1ad907c8856d283c7a51598d59"
+  },
+  "render_argv": [
+    "env",
+    "-u",
+    "MARIADB_PASSWORD",
+    "-u",
+    "MARIADB_ROOT_PASSWORD",
+    "-u",
+    "BOT_PLAYERS_ONLINE",
+    "SOURCE_REVISION=a1d9fe803c77da63f4aa1bf943d3d488d3117850",
+    "docker",
+    "compose",
+    "--project-directory",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa",
+    "-p",
+    "canary-core-qa",
+    "-f",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.yaml",
+    "-f",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.brain-fake.yaml",
+    "-f",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.game-pin.yaml",
+    "-f",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/runtime/stage2-bundle-a1d9/compose.image-ids.yaml",
+    "--env-file",
+    "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa/.env",
+    "config",
+    "--format",
+    "json"
+  ],
+  "render_private_sha256": "adcbd2dea69f4e18141fdb4aec4102edbb7d8231d6b1de772f410f7d1ea90f29",
+  "render_sanitized_sha256": "3398493ae8ee24ce8fcb60c7182ebd7526958a328b40ff38e94817fd15c3cb69",
+  "rendered_service_environment_names_only": {
+    "brain": [],
+    "database": [
+      "MARIADB_DATABASE",
+      "MARIADB_PASSWORD",
+      "MARIADB_ROOT_PASSWORD",
+      "MARIADB_USER"
+    ],
+    "game": [
+      "BOT_PLAYERS_ONLINE",
+      "BOT_POPULATION_REFERENCE_BOTS",
+      "CANARY_BRAIN_CONFIG",
+      "GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN",
+      "GAME_DISABLE_MAP_DOWNLOAD",
+      "GAME_LOGIN_PORT",
+      "GAME_PROTOCOL_PORT",
+      "GAME_PUBLIC_IP",
+      "GAME_STATUS_PORT",
+      "MARIADB_PASSWORD"
+    ],
+    "web": [
+      "CANARY_DB_HOST",
+      "CANARY_DB_NAME",
+      "CANARY_DB_PASSWORD",
+      "CANARY_DB_USER",
+      "CANARY_GAME_PORT",
+      "CANARY_LOGIN_PORT",
+      "CANARY_SERVER_IP",
+      "CANARY_SERVER_NAME",
+      "CANARY_STATUS_PORT",
+      "MYAAC_CLIENT_VERSION",
+      "MYAAC_SITE_URL"
+    ]
+  },
+  "rescue_container_config": {
+    "adapter_config_sha256": "626ceb4905042d9410effb4a76da5b9c97432ab831cdccd4766ed6608482f4d2",
+    "adapter_method": "docker inspect full ID --format JSON with config=.Config, host_config=.HostConfig; SHA256(json.dumps({config,host_config}, sort_keys=True).encode()) using Python defaults",
+    "config_sha256": "626ceb4905042d9410effb4a76da5b9c97432ab831cdccd4766ed6608482f4d2",
+    "container_id": "64385641c847ad44d6acf1dc7f5d10e206451212b4320973a27ba278e428d608",
+    "legacy_config_only_sha256": "54df371805321dd19eabd07dc0693efa9e78d4d015f906da11a26452d9d67c1c",
+    "method": "SHA256 of UTF-8 JSON of docker inspect[0].Config, sort_keys=true, separators=(comma,colon), ensure_ascii=false; no Config values stored"
+  },
+  "rescue_stopped_state": {
+    "exit_code": 0,
+    "finished_at": "2026-11-07T23:04:40.459976298Z",
+    "health_field_after_stop": "unhealthy",
+    "interpretation": "health field is not a current running-health claim while container is exited; prior receipt proves two healthy starts, but a future start requires fresh health check",
+    "prior_receipt_first_start_healthy": true,
+    "prior_receipt_second_start_healthy_same_id": true,
+    "prior_receipt_two_clean_stops": true,
+    "restart_policy": "no",
+    "status": "exited"
+  },
+  "verification": {
+    "brain_id_in_brain_after": true,
+    "brain_id_in_brain_before": false,
+    "render_private_recomputed_sha256": "adcbd2dea69f4e18141fdb4aec4102edbb7d8231d6b1de772f410f7d1ea90f29",
+    "render_recomputed_equal_to_original_stdout_bytes": true
+  },
+  "volumes": {
+    "authored-data": {
+      "created_at": "2026-11-06T21:31:51Z",
+      "driver": "local",
+      "labels": {
+        "com.docker.compose.config-hash": "eb14bb0503fe17e3e8b9d8f9a080c6479ad1d5a3a48029c70e187109173bc3a0",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.version": "5.5.1",
+        "com.docker.compose.volume": "authored-data"
+      },
+      "name": "canary-core-qa_authored-data"
+    },
+    "database": {
+      "created_at": "2026-11-06T21:31:51Z",
+      "driver": "local",
+      "labels": {
+        "com.docker.compose.config-hash": "121933d78cfa2af597125de90138cbdf3b563c05c8eb42e57a9c9d96b2cf380a",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.version": "5.5.1",
+        "com.docker.compose.volume": "database"
+      },
+      "name": "canary-core-qa_database"
+    },
+    "game-logs": {
+      "created_at": "2026-11-06T21:31:51Z",
+      "driver": "local",
+      "labels": {
+        "com.docker.compose.config-hash": "04ed370c6a588f99595319e46cce012c50cdb26e8c45b0a5ee9c7ab24ef214a3",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.version": "5.5.1",
+        "com.docker.compose.volume": "game-logs"
+      },
+      "name": "canary-core-qa_game-logs"
+    },
+    "website-cache": {
+      "created_at": "2026-11-06T21:31:51Z",
+      "driver": "local",
+      "labels": {
+        "com.docker.compose.config-hash": "5f2c21fcfad13a88126879f431c4122eb04d554f50c03ed68bc9c0703be8e323",
+        "com.docker.compose.project": "canary-core-qa",
+        "com.docker.compose.version": "5.5.1",
+        "com.docker.compose.volume": "website-cache"
+      },
+      "name": "canary-core-qa_website-cache"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "source_revision": "e65e8913becc6e5766e1fa050cbf82183e7ee69e",
+  "composed_receipt_sha256": "63aca653b14021479e7dbb1b9abf3b117a1b5e55255f012891fbee1a68cec412",
+  "created_utc": "2026-11-06T16:39:16.198972+00:00",
+  "current_actual": {
+    "receipt_sha256": "bc97811179c06020f8487bf0b00997c13fe3b394a546dfc4c5affc01d7cc4a94",
+    "accepted": true,
+    "tests_passed": 534,
+    "subtests_passed": 59,
+    "pytest_seconds": 274.5,
+    "logs": {
+      "pytest-full.log": "caa3e6e8fba3d97ebd44dd5c3e30467d66707a797104ad8bb2dbbd19029bfeba",
+      "ruff-check.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "ruff-format.log": "2c29d51f92b117fee668b71acf5c85f0c8ef731c5cb59c82f7c51602834f3e84",
+      "mypy.log": "3253c7a5a8535995ce0dc8b25611174b1763d2c9ff1bbb0a29e2e90cca3ca91e"
+    },
+    "source_export": "raw git cat-file blobs, each blob hash verified; no Windows archive conversion",
+    "fresh_rerun_reason": "Root authorized a new full run after WSL restart removed previous /tmp environments/receipts; not a redundant lint-only rerun"
+  },
+  "fresh_raw_log_hashes_verified": true,
+  "legacy_531": {
+    "raw_logs_available": false,
+    "original_tmp_receipts_lost_after_restart": true,
+    "recreated_original_receipt": false
+  },
+  "scope": "Existing current e65 code-validation results only; not proof that the failed invocation succeeded"
+}

@@ -1,0 +1,14 @@
+{
+  "source_revision": "eec9407f18ffee306226db8f9e4f60860701ae89",
+  "fixture_sha256": "04d683410d2191dc38836d22b56cd0df40454166a4cc703a34a3c19adf78d6aa",
+  "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+  "game_image": "sha256:52fbd02e79d3323818f78092a7ef37dc2b1c41e9fd60a4ba67b73aa6aa3827b3",
+  "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "binary_sha256": {
+    "canary": "678a45f6390869b41c9feeaa893f0f38a513bbf19b19068963a786a97863cc9d",
+    "libbot_engine.so": "492a3e6a7d899cfa5e58f828c1127b1714f602c3f53139aeb4b2b8453a7b5fec"
+  },
+  "driver_sha256": "b3039ab8ce70d6fb2ea06aadcde10be37969a9f3daca1f983cf22d1434dab060",
+  "application_source_revision": "eec9407f18ffee306226db8f9e4f60860701ae89",
+  "native_source_revision": "667631ba7637c8021e1070a9f0237387080ebb68"
+}

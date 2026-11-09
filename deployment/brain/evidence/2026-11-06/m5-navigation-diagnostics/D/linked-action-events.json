@@ -1,0 +1,42 @@
+[
+  {
+    "id": 26,
+    "key": "intent:bdda2d6a8e1845c2a1a6a72cbf9f5d35",
+    "segment": "510492d9bfed4a6488bad406a893f137",
+    "t_ms": 23485,
+    "wall": 1793966604.9402971,
+    "kind": "intent",
+    "data": {
+      "action_id": "bdda2d6a8e1845c2a1a6a72cbf9f5d35",
+      "bot_id": 65001,
+      "candidate_id": "retreat",
+      "decision_id": "",
+      "expires_ms": 148939627,
+      "mode": "active",
+      "objective_generation": 1,
+      "observation_sequence": 23,
+      "operator": true,
+      "type": "intent",
+      "version": 1,
+      "world": "1-148931769561799"
+    }
+  },
+  {
+    "id": 31,
+    "key": "outcome:1-148931769561799:bdda2d6a8e1845c2a1a6a72cbf9f5d35:accepted",
+    "segment": "510492d9bfed4a6488bad406a893f137",
+    "t_ms": 23638,
+    "wall": 1793966605.0933607,
+    "kind": "outcome",
+    "data": {
+      "action_id": "bdda2d6a8e1845c2a1a6a72cbf9f5d35",
+      "bot_id": 65001,
+      "metrics": {},
+      "reason": "objective_started",
+      "status": "accepted",
+      "type": "outcome",
+      "version": 1,
+      "world": "1-148931769561799"
+    }
+  }
+]

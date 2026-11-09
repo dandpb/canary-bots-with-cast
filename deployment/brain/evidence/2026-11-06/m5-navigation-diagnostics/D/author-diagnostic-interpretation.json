@@ -1,0 +1,26 @@
+{
+  "run_id": "m5-current-fake-1fe3c8a163:fake:0",
+  "game_image": "sha256:52fbd02e79d3323818f78092a7ef37dc2b1c41e9fd60a4ba67b73aa6aa3827b3",
+  "recorded_span_ms": 240745,
+  "first_position": [
+    32372,
+    32103,
+    7
+  ],
+  "last_position": [
+    32425,
+    32165,
+    7
+  ],
+  "unique_positions": 48,
+  "arrival_sampled": false,
+  "terminal_return_outcomes": [],
+  "return_route_unavailable": false,
+  "scope": "Diagnostic checkpoint replay with explicit pause+retreat setup; no subsequent rescue; not scored qualification",
+  "arrival_proven": false,
+  "resources": {
+    "containers": [],
+    "networks": []
+  },
+  "resources_cleaned": true
+}

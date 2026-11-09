@@ -1,0 +1,13 @@
+{
+  "audit_identity": "litellm-real-probe-20261105T214442Z-ce3e01",
+  "source_revision": "908500b398fe2162536273970e47d0bee023cc47",
+  "executed_probe_sha256": "ffeb8b858c147e0fc1d228dd27c604ee489f24074a4dc29908aab687f1399f30",
+  "gateway_and_application_costs_match": true,
+  "positive_usage_both_providers": true,
+  "new_unknown_liability_nanousd": 0,
+  "completed_recordings": 2,
+  "artifacts": {
+    "report.json": "9f27739b96536644ce4626cfbab2911cdc067096da734dd8e202d8cea379b9d9",
+    "replay-events.json": "d2ca29b04b99d4435284e6b96b4db83695b9dac245575ca2eedc40ebbdbb9b50"
+  }
+}

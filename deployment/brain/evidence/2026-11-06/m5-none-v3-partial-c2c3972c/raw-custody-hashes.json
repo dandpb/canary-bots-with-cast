@@ -1,0 +1,228 @@
+{
+  "scope": "Closed owner custody copies only; original output/canonical DB not opened by this report.",
+  "original_owner_custody_receipt_sha256": "fac42f7a9b711ac9b258ea16cee81db0c8f8ef8cbb55eb5d979b3d93603f13f3",
+  "copied_files": 36,
+  "files": {
+    "approved-inputs/ROOT_FINAL_NONE.json": {
+      "sha256": "354ab98a54bd6559970e5e20ae81d6035c88f02633508df4ac2896c3b1388d1e",
+      "size": 31622,
+      "mtime_ns": 1793995011249812826,
+      "mode": 384
+    },
+    "approved-inputs/host-mount-audit.candidate.json": {
+      "sha256": "e3a5941f012740886e850ce24ffc1b3e9ded12cfb0a302b65fee8cd3c25fee63",
+      "size": 12089,
+      "mtime_ns": 1793995011250364539,
+      "mode": 384
+    },
+    "approved-inputs/pilot.plan.candidate.json": {
+      "sha256": "8e150a501bc27c3060c30cf83d4ad244b0f52d45d93aa0feb7dfd7edded25324",
+      "size": 890,
+      "mtime_ns": 1793995011250111733,
+      "mode": 384
+    },
+    "approved-inputs/root-GO.receipt.json": {
+      "sha256": "2e172d89be1046279d128bbd9e56796c0713b3685853bb0ca95e78c87c6f7c9a",
+      "size": 3103,
+      "mtime_ns": 1793995011249522920,
+      "mode": 384
+    },
+    "execution-audit/ONE_EXECUTION.intent": {
+      "sha256": "ed45dbfbaf4d04ecd771cda94fc6401efbd0a7b4ce150147e01f232820e7586f",
+      "size": 271,
+      "mtime_ns": 1793995011247558969,
+      "mode": 384
+    },
+    "execution-audit/campaign.stdout.log": {
+      "sha256": "1154b37400cb02a196a43f73e7f9781560b775dab7a236f68c8feb2dd8c2b971",
+      "size": 919,
+      "mtime_ns": 1793995011248554506,
+      "mode": 384
+    },
+    "execution-audit/execution-owner.json": {
+      "sha256": "f12a9ae6b76eda0350f66448dd4724ad34a0fc6ffdb57ebdf6f5d7fc86e3d501",
+      "size": 582,
+      "mtime_ns": 1793995011248284236,
+      "mode": 384
+    },
+    "execution-audit/harness-first-identity.json": {
+      "sha256": "c84ca70d5c304ab7c80fab71356a5e51dc03564ba9e5a789cf318ec20a2d9e20",
+      "size": 545,
+      "mtime_ns": 1793995011248055378,
+      "mode": 384
+    },
+    "execution-audit/launch-receipt.json": {
+      "sha256": "2e3cedd9d19e4d0ed52dc91e334f8023fc7144ce190fd34f979a3a7252740099",
+      "size": 401,
+      "mtime_ns": 1793995011247801475,
+      "mode": 384
+    },
+    "execution-audit/supervisor.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "mtime_ns": 1793995011248554506,
+      "mode": 384
+    },
+    "output/execution-result.json": {
+      "sha256": "688982f005ebe46506d15dfd5cf29c49d14f29cedb990b06ce81cc7f135e131a",
+      "size": 7873,
+      "mtime_ns": 1793995011236735616,
+      "mode": 384
+    },
+    "output/execution-started.json": {
+      "sha256": "3548dc2766d13653e6f52a3e8d8af75a88c89e36b963fcd4ac2bcf113744de90",
+      "size": 7576,
+      "mtime_ns": 1793995011236382968,
+      "mode": 384
+    },
+    "output/game/experiment.json": {
+      "sha256": "588b2bac6a627f1cb99bd00f50bf6d9b5643329b66642eccf620fbcd5ea933a5",
+      "size": 2575,
+      "mtime_ns": 1793995011238110673,
+      "mode": 384
+    },
+    "output/game/native-0/character-live.jsonl": {
+      "sha256": "94236246416407c7fbc4abd01258634ec498beb48f3fc8c216f40aeb36fc9740",
+      "size": 35850,
+      "mtime_ns": 1793995011239311061,
+      "mode": 384
+    },
+    "output/game/native-0/trial-attestation.json": {
+      "sha256": "b56e4f01c67531155e2129d1d5766d50a7afd1eef3bd781a16249a0ea2cc6c59",
+      "size": 3511,
+      "mtime_ns": 1793995011239035300,
+      "mode": 384
+    },
+    "output/game/native-0/worker.sqlite3": {
+      "sha256": "75f51b1e8be3e561e8ffa68ecf11bc0c9cd8fb574acfe2a4b872bab1d2439ad2",
+      "size": 28672,
+      "mtime_ns": 1793995011242002532,
+      "mode": 384
+    },
+    "output/game/recording.sqlite3": {
+      "sha256": "5f175ae88fc6bac71a25fb7f023a6239d4ce363190bd0275aedcc31d7cc030fe",
+      "size": 352256,
+      "mtime_ns": 1793995011242801126,
+      "mode": 384
+    },
+    "output/game/recording.sqlite3-shm": {
+      "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+      "size": 32768,
+      "mtime_ns": 1793995011243800002,
+      "mode": 384
+    },
+    "output/game/recording.sqlite3-wal": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "mtime_ns": 1793995011243800002,
+      "mode": 384
+    },
+    "output/game/trial-attestations.json": {
+      "sha256": "91570ce8ea8d840ae209b67e1c9483ef7933f2fb0b55a74fd92be4da81abd011",
+      "size": 3974,
+      "mtime_ns": 1793995011238404547,
+      "mode": 384
+    },
+    "output/gemini-probe-result.json": {
+      "sha256": "3c3bc894373790c016af6c38bd2103c2b6f798085595f3b421fdd4240dbcf98e",
+      "size": 3339,
+      "mtime_ns": 1793995011237497557,
+      "mode": 384
+    },
+    "output/inputs/admission.json": {
+      "sha256": "b35fef406e6bfe338b9e48ef2cae0ff0028ffe6df112ecd74514ccd9daaf7e1c",
+      "size": 5655,
+      "mtime_ns": 1793995011239989487,
+      "mode": 384
+    },
+    "output/inputs/authorization.json": {
+      "sha256": "32401d6c2f4908407ccf7de291d210837f18f8a249fe406bf69da9f4015e6e89",
+      "size": 4402,
+      "mtime_ns": 1793995011240246200,
+      "mode": 384
+    },
+    "output/inputs/campaign.json": {
+      "sha256": "4d57db3c6e395bd92051835843c2658e2e3d2194a982bab73b8a05439f017f84",
+      "size": 2587,
+      "mtime_ns": 1793995011240478458,
+      "mode": 384
+    },
+    "output/inputs/decision_fixtures.json": {
+      "sha256": "5f18c7805cf29a5ebffe29f6b1e4574f09a0adf358f3c76ba577ce36ce8265af",
+      "size": 17960,
+      "mtime_ns": 1793995011240868916,
+      "mode": 384
+    },
+    "output/inputs/gemini.json": {
+      "sha256": "c75f0a80de695265da71b58c470fb81b7f740623124768dfe7d9681d7fbdba25",
+      "size": 1275,
+      "mtime_ns": 1793995011241123245,
+      "mode": 384
+    },
+    "output/inputs/openai.json": {
+      "sha256": "0131db06696616b669bd18554162d794cc9d6acb3ff9bbfed4f3eab7c95c3222",
+      "size": 1286,
+      "mtime_ns": 1793995011241414785,
+      "mode": 384
+    },
+    "output/inputs/source_manifest.json": {
+      "sha256": "f3da59a39822ac165828a73bf80630a6fb2efc7c1e525a6fc24f4c1d35856115",
+      "size": 6446,
+      "mtime_ns": 1793995011241734362,
+      "mode": 384
+    },
+    "output/ledger.json": {
+      "sha256": "6730aa916addcff25d43da43e1a4f2aa4c7ddab9c3932d9088f3d86f3047184e",
+      "size": 4469,
+      "mtime_ns": 1793995011237009743,
+      "mode": 384
+    },
+    "output/openai-probe-result.json": {
+      "sha256": "51f32ee4159d4500bfc349d77d76eda18aee7cb93481f25c1b6b5a0fa781ef43",
+      "size": 3283,
+      "mtime_ns": 1793995011237242356,
+      "mode": 384
+    },
+    "output/probes/gemini/recording.sqlite3": {
+      "sha256": "4ed16b1579ea5f8d8e2d19b6ca3b8bb52366ef75d19c61dc29b4c830332ce813",
+      "size": 49152,
+      "mtime_ns": 1793995011245130968,
+      "mode": 384
+    },
+    "output/probes/gemini/recording.sqlite3-shm": {
+      "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+      "size": 32768,
+      "mtime_ns": 1793995011245467726,
+      "mode": 384
+    },
+    "output/probes/gemini/recording.sqlite3-wal": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "mtime_ns": 1793995011245467726,
+      "mode": 384
+    },
+    "output/probes/openai/recording.sqlite3": {
+      "sha256": "01f2f2d02796464f312b5ec46ee0bd89f5d067b3d71d9bbd77451709770b640f",
+      "size": 45056,
+      "mtime_ns": 1793995011246342680,
+      "mode": 384
+    },
+    "output/probes/openai/recording.sqlite3-shm": {
+      "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+      "size": 32768,
+      "mtime_ns": 1793995011246662664,
+      "mode": 384
+    },
+    "output/probes/openai/recording.sqlite3-wal": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0,
+      "mtime_ns": 1793995011246662664,
+      "mode": 384
+    }
+  },
+  "custody_copy_hashes_still_unchanged_after_reporting_and_rendering": true,
+  "db_main_wal_and_shm_are_separate_physical_identities": true,
+  "no_claim_of_physical_hash_equality_between_working_or_imported_SQLite_files": true,
+  "provider_calls_by_reporter": 0,
+  "canonical_ledger_opened_by_reporter": false
+}

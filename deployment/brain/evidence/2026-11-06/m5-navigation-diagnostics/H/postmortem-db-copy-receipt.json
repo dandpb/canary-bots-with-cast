@@ -1,0 +1,33 @@
+{
+  "purpose": "Postmortem query of COPY after terminal-goal cancellation; original DB mounted read-only only for copy",
+  "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+  "source_read_only": true,
+  "started_utc": "2026-11-06T12:56:14.722907+00:00",
+  "source_hashes": {
+    "method": "SHA256 of every regular file in closed H DB, before and after copying through read-only mount",
+    "before_tree_sha256": "96d5cc58d7c69600c6dd0e8e78f53b3ae3ccfa57432ec693499f0ec5ff269aa0",
+    "after_tree_sha256": "96d5cc58d7c69600c6dd0e8e78f53b3ae3ccfa57432ec693499f0ec5ff269aa0",
+    "unchanged": true,
+    "files_hashed": 345
+  },
+  "missing_canonical_reason": "External diagnostic terminal stop caused CancelledError before canonical saved-character export; original remains absent",
+  "character": {
+    "id": 65001,
+    "level": 20,
+    "experience": 100793,
+    "posx": 32369,
+    "posy": 32238,
+    "posz": 7,
+    "health": 365,
+    "mana": 85,
+    "balance": 10000
+  },
+  "query": "SELECT id,level,experience,posx,posy,posz,health,mana,balance FROM players WHERE id=65001;",
+  "resources_cleaned": true,
+  "ended_utc": "2026-11-06T12:56:19.281268+00:00",
+  "canonical_saved_character_present": false,
+  "canonical_qualification_present": false,
+  "copy_id": "postmortem-B",
+  "source_receipt_sha256": "d50e3a3d998255fb6cb473fa8c0fd04f039bd20711bb8328a401fbd974865a69",
+  "private_source_hash_manifest_sha256": "152227141ec0bbc7de0447287af17efb1bd0bb168ca99e7a8caaa98c938735ea"
+}

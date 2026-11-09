@@ -3,56 +3,15 @@
 #include "pch.hpp"
 #include "creatures/players/bot/bot_engine_loader.hpp"
 #include "creatures/players/player.hpp"
-#include "game/game.hpp"
-#include "io/iologindata.hpp"
-#include "server/network/protocol/protocolgame.hpp"
-#include "server/network/protocol/protocollogin.hpp"
-#include "server/network/connection/connection.hpp"
 #include "game/scheduling/save_manager.hpp"
 #include "game/scheduling/dispatcher.hpp"
+#include "utils/tools.hpp"
 extern "C" {
 #include <lua.h>
 #include <lauxlib.h>
 }
 
 namespace {
-// Test-only member access: invoke the real private release path without exposing
-// control hooks in the product or constructing a fake implementation of it.
-template<class Tag, typename Tag::Type Member> struct Access {
-	friend typename Tag::Type member(Tag) { return Member; }
-};
-struct Release { using Type = void (Protocol::*)(); friend Type member(Release); };
-struct Client { using Type = std::shared_ptr<ProtocolGame> Player::*; friend Type member(Client); };
-struct Character { using Type = std::shared_ptr<Player> ProtocolGame::*; friend Type member(Character); };
-struct ViewerCount { using Type = uint32_t (Player::*)() const; friend Type member(ViewerCount); };
-struct Socket { using Type = asio::ip::tcp::socket Connection::*; friend Type member(Socket); };
-struct CharacterList { using Type = void (ProtocolLogin::*)(const std::string&, const std::string&) const; friend Type member(CharacterList); };
-template struct Access<Release, &Protocol::release>;
-template struct Access<Client, &Player::client>;
-template struct Access<Character, &ProtocolGame::player>;
-template struct Access<ViewerCount, &Player::getRealCastViewerCount>;
-template struct Access<Socket, &Connection::socket>;
-template struct Access<CharacterList, &ProtocolLogin::getCharacterList>;
-std::shared_ptr<ProtocolGame> caster, oldCaster, viewer;
-std::shared_ptr<Player> human;
-asio::io_context testIo;
-std::vector<Connection_ptr> transports;
-std::vector<std::shared_ptr<asio::ip::tcp::socket>> peers;
-std::shared_ptr<ProtocolGame> protocol() {
-	// Connected loopback sockets keep the real connection-loss guard meaningful.
-	// The private test I/O context is not pumped: packet contents are tested by
-	// the external login/status probes, this bridge tests lifecycle transitions.
-	auto connection = std::make_shared<Connection>(testIo, nullptr);
-	asio::ip::tcp::acceptor acceptor(testIo, {asio::ip::tcp::v4(), 0});
-	auto peer = std::make_shared<asio::ip::tcp::socket>(testIo);
-	peer->connect({asio::ip::make_address("127.0.0.1"), acceptor.local_endpoint().port()});
-	acceptor.accept(connection.get()->*member(Socket{}));
-	transports.push_back(connection);
-	peers.push_back(peer);
-	auto result = std::make_shared<ProtocolGame>(connection);
-	connection->accept(result);
-	return result;
-}
 std::atomic<int> fired {0};
 std::atomic<int> destroyed {0};
 struct Marker { ~Marker() { ++destroyed; } };
@@ -99,6 +58,92 @@ int counts(lua_State* state) {
 	return 2;
 }
 
+// Seed only a state-machine boundary; transitions still run through production tick().
+int reloadProgress(lua_State* state) {
+	auto* current = engine(state);
+	const auto guid = static_cast<uint32_t>(luaL_checkinteger(state, 1));
+	const std::string operation = luaL_checkstring(state, 2);
+	auto* bot = current->getBotState(guid);
+	if (!bot || !bot->getPlayer()) return luaL_error(state, "awake reload fixture required");
+	if (operation == "sourceTown") {
+		// The fixture avatar is stationary; select a town with an authored boat
+		// so startTravel does not choose Dawnport's unrelated recovery route.
+		bot->townId = 8;
+		bot->townName = "Thais";
+	} else if (operation == "questProgress" || operation == "regularCollision") {
+		bot->state = BotAIState::HUNTING;
+		bot->huntPhase = HuntPhase::PATROLLING;
+		if (operation == "regularCollision") bot->huntScriptId = 1;
+		bot->huntWaypointIdx = guid == 65001 ? 1 : 2;
+		bot->huntKillCount = guid == 65001 ? 5 : 7;
+		bot->huntStartTime = OTSYS_TIME() - 1000;
+		bot->huntEndTime = OTSYS_TIME() + 300000;
+	} else if (operation == "questCompleted") {
+		// The journey is not simulated here: drive the real completion/reroll
+		// boundary after the quest's return and supply steps have finished.
+		bot->state = BotAIState::HUNTING;
+		bot->huntPhase = HuntPhase::RESUPPLYING;
+		bot->huntResupplyStart = OTSYS_TIME() - 1000;
+		bot->prepareStartTime = OTSYS_TIME() - 1000;
+		bot->prepareStep = 5;
+		bot->resupplyRerolled = true;
+	} else if (operation == "preparing" || operation == "resupplying") {
+		bot->state = BotAIState::HUNTING;
+		bot->huntPhase = operation == "preparing" ? HuntPhase::PREPARING : HuntPhase::RESUPPLYING;
+		bot->prepareStartTime = OTSYS_TIME() - 1000;
+		bot->prepareWaitUntil = OTSYS_TIME() + 5000;
+		bot->prepareStep = 1;
+		bot->prepareTarget = bot->getPlayer()->getPosition();
+		bot->prepareHasTarget = false;
+		bot->huntResupplyStart = OTSYS_TIME() - 500;
+		bot->huntResupplyPhase = 1;
+		bot->resupplyRerolled = false;
+	} else if (operation == "unavailableHunt") {
+		bot->state = BotAIState::TRAVELING;
+		bot->huntScriptId = 0xFFFFFFFE;
+		bot->pendingHuntAfterTravel = true;
+		bot->travelPhase = "arrived";
+	} else if (operation == "dwelling") {
+		bot->state = BotAIState::DWELLING;
+		bot->dwellUntil = OTSYS_TIME() + luaL_checkinteger(state, 3);
+		bot->hasWalkTarget = false;
+		bot->currentPOI = nullptr;
+		bot->hasDepotTarget = false;
+		bot->aiPaused = true;
+	} else if (operation == "arrived") {
+		if (bot->state != BotAIState::TRAVELING) return luaL_error(state, "traveling fixture required");
+		bot->travelPhase = "arrived";
+	} else if (operation == "tick") {
+		bot->wakeQuietTicks = 0;
+		bot->tickCounter = 29; // Next tick is due for travel (%2), preparation (%3) and dwell (%5).
+		bot->aiPaused = false;
+		current->tick();
+		bot = current->getBotState(guid);
+		if (!bot) return luaL_error(state, "fixture disappeared during tick");
+		bot->aiPaused = true;
+	} else if (operation != "inspect") return luaL_error(state, "unknown progress fixture operation");
+	lua_newtable(state);
+	lua_pushinteger(state, static_cast<int>(bot->state)); lua_setfield(state, -2, "state");
+	lua_pushboolean(state, bot->pendingHuntAfterTravel); lua_setfield(state, -2, "pendingHuntAfterTravel");
+	lua_pushinteger(state, bot->dwellUntil); lua_setfield(state, -2, "dwellUntil");
+	lua_pushinteger(state, OTSYS_TIME()); lua_setfield(state, -2, "now");
+	lua_pushinteger(state, bot->huntScriptId); lua_setfield(state, -2, "huntId");
+	lua_pushboolean(state, bot->isQuestBot); lua_setfield(state, -2, "isQuestBot");
+	lua_pushinteger(state, bot->huntWaypointIdx); lua_setfield(state, -2, "waypoint");
+	lua_pushinteger(state, bot->huntKillCount); lua_setfield(state, -2, "kills");
+	lua_pushinteger(state, static_cast<int>(bot->huntPhase)); lua_setfield(state, -2, "huntPhase");
+	lua_pushinteger(state, bot->prepareStep); lua_setfield(state, -2, "prepareStep");
+	lua_pushinteger(state, bot->prepareStartTime); lua_setfield(state, -2, "prepareStarted");
+	lua_pushinteger(state, bot->prepareWaitUntil); lua_setfield(state, -2, "prepareWaitUntil");
+	lua_pushinteger(state, bot->huntResupplyStart); lua_setfield(state, -2, "resupplyStarted");
+	lua_pushinteger(state, bot->huntResupplyPhase); lua_setfield(state, -2, "resupplyPhase");
+	lua_pushboolean(state, bot->resupplyRerolled); lua_setfield(state, -2, "resupplyRerolled");
+	lua_pushinteger(state, bot->getPlayer() ? bot->getPlayer()->getID() : 0); lua_setfield(state, -2, "runtimeId");
+	const auto reservations = current->executeCommand("_global", "whohunts");
+	lua_pushlstring(state, reservations.data(), reservations.size()); lua_setfield(state, -2, "reservations");
+	return 1;
+}
+
 int roster(lua_State* state) {
 	const auto snapshot = engine(state)->captureReloadState();
 	lua_newtable(state);
@@ -112,95 +157,8 @@ int roster(lua_State* state) {
 		lua_pushinteger(state, entry.player ? entry.player->getID() : 0); lua_setfield(state, -2, "runtimeId");
 		lua_pushinteger(state, entry.position.x); lua_setfield(state, -2, "x");
 		lua_pushinteger(state, entry.position.y); lua_setfield(state, -2, "y");
-		lua_pushinteger(state, entry.player ? (entry.player.get()->*member(ViewerCount{}))() : 0); lua_setfield(state, -2, "viewers");
 		lua_rawseti(state, -2, ++index);
 	}
-	return 1;
-}
-
-int cast(lua_State* state) {
-	const std::string action = luaL_checkstring(state, 1);
-	if (action == "botState") {
-		if (!BotEngineLoader::getInstance().isLoaded()) return luaL_error(state, "engine unavailable");
-		auto& engine = BotEngineLoader::getInstance().getEngine();
-		auto* bot = engine.getBotState(65001);
-		const auto player = bot ? (bot->hibernated ? engine.getHibernatedBotPlayer(65001) : bot->playerRef.lock()) : nullptr;
-		if (!player) return luaL_error(state, "loaded bot fixture required");
-		lua_newtable(state);
-		lua_pushinteger(state, player->getID()); lua_setfield(state, -2, "runtimeId");
-		lua_pushboolean(state, bot->hibernated); lua_setfield(state, -2, "hibernated");
-		lua_pushinteger(state, (player.get()->*member(ViewerCount{}))()); lua_setfield(state, -2, "viewers");
-		return 1;
-	}
-	if (action == "watchBot") {
-		viewer = protocol();
-		viewer->castViewerLogin("Grizzle Alyronia");
-		lua_pushboolean(state, true);
-		return 1;
-	}
-	if (action == "list") {
-		auto connection = std::make_shared<Connection>(testIo, nullptr);
-		asio::ip::tcp::acceptor acceptor(testIo, {asio::ip::tcp::v4(), 0});
-		asio::ip::tcp::socket peer(testIo);
-		peer.connect({asio::ip::make_address("127.0.0.1"), acceptor.local_endpoint().port()});
-		acceptor.accept(connection.get()->*member(Socket{}));
-		auto login = std::make_shared<ProtocolLogin>(connection);
-		connection->accept(login);
-		(login.get()->*member(CharacterList{}))("@cast", "");
-		testIo.restart(); testIo.poll();
-		std::string bytes(peer.available(), '\0');
-		if (!bytes.empty()) peer.read_some(asio::buffer(bytes));
-		std::string hex;
-		constexpr auto digits = "0123456789abcdef";
-		for (const unsigned char byte : bytes) { hex += digits[byte >> 4]; hex += digits[byte & 15]; }
-		lua_pushlstring(state, hex.data(), hex.size());
-		connection->close(true);
-		return 1;
-	}
-	if (action == "human") {
-		caster = protocol();
-		caster->login("Lifecycle Human", 64999, CLIENTOS_LINUX);
-		human = g_game().getPlayerByName("Lifecycle Human");
-		if (!human || human->isBotPlayer()) return luaL_error(state, "human login failed");
-	} else if (!human) return luaL_error(state, "human fixture required");
-	else if (action == "on") human->setCastBroadcasting(true);
-	else if (action == "off") human->setCastBroadcasting(false);
-	else if (action == "view") {
-		viewer = protocol();
-		viewer->castViewerLogin(human->getName());
-	} else if (action == "release") (caster.get()->*member(Release{}))();
-	else if (action == "drop") caster->getConnection()->close(true);
-	else if (action == "logout") caster->logout(false, true);
-	else if (action == "order") g_game().playerSay(human->getID(), 0, TALKTYPE_PRIVATE_TO,
-		"Grizzle Alyronia", luaL_checkstring(state, 2));
-	else if (action == "invite") {
-		for (const auto& name : {"Grizzle Alyronia", "Sever Heartspear", "Galdon Whitehoof"}) {
-			const auto player = g_game().getPlayerByName(name);
-			if (!player) return luaL_error(state, "awake companion required");
-			g_game().playerInviteToParty(human->getID(), player->getID());
-		}
-	}
-	else if (action == "replace") {
-		oldCaster = caster;
-		caster = protocol();
-		caster.get()->*member(Character{}) = human;
-		human.get()->*member(Client{}) = caster;
-	} else if (action == "lateRelease") (oldCaster.get()->*member(Release{}))();
-	else if (action == "teleport") {
-		const auto position = human->getPosition();
-		bool moved = false;
-		for (int x = -1; x <= 1 && !moved; ++x) for (int y = -1; y <= 1 && !moved; ++y) {
-			if (x == 0 && y == 0) continue;
-			moved = g_game().internalTeleport(human, Position(position.x + x, position.y + y, position.z), false) == RETURNVALUE_NOERROR;
-		}
-		if (!moved) return luaL_error(state, "fixture needs an adjacent teleport tile");
-		g_game().playerSay(human->getID(), 0, TALKTYPE_SAY, "", "isolated optional engine check");
-		g_game().playerSay(human->getID(), 0, TALKTYPE_PRIVATE_TO, "No Such Offline Fixture", "isolated PM check");
-	}
-	lua_newtable(state);
-	lua_pushboolean(state, human->isCastBroadcasting()); lua_setfield(state, -2, "broadcasting");
-	lua_pushinteger(state, (human.get()->*member(ViewerCount{}))()); lua_setfield(state, -2, "viewers");
-	lua_pushboolean(state, bool(human.get()->*member(Client{}))); lua_setfield(state, -2, "connected");
 	return 1;
 }
 }
@@ -209,7 +167,7 @@ extern "C" int luaopen_lifecycle_bridge(lua_State* state) {
 	lua_newtable(state);
 	for (const auto& [name, function] : std::initializer_list<std::pair<const char*, lua_CFunction>> {
 		{"setVirtual", setVirtual}, {"unregister", unregister}, {"pending", pending},
-		{"armPause", armPause}, {"counts", counts}, {"roster", roster}, {"cast", cast}}) {
+		{"armPause", armPause}, {"counts", counts}, {"roster", roster}, {"reloadProgress", reloadProgress}}) {
 		lua_pushcfunction(state, function);
 		lua_setfield(state, -2, name);
 	}

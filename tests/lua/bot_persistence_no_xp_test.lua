@@ -123,6 +123,22 @@ function qa.run(command)
 		local fired, destroyed = qa.native.counts()
 		return { fired = fired, destroyed = destroyed }
 	end
+	if command.action == "reloadProgress" then
+		qa.native = qa.native or assert(package.loadlib("/qa/lifecycle_bridge.so", "luaopen_lifecycle_bridge"))()
+		return qa.native.reloadProgress(command.guid or 65001, command.operation or "inspect", command.delay or 5000)
+	end
+	if command.action == "huntFixture" then
+		return { message = Game.botCommand(name, command.text or "hunt 1") }
+	end
+	if command.action == "reloadDebug" then
+		qa.native = qa.native or assert(package.loadlib("/qa/lifecycle_bridge.so", "luaopen_lifecycle_bridge"))()
+		Game.botCommand("_global", "schedule on")
+		local before, schedulerBefore = qa.native.roster(), Game.botCommand("_global", "schedule status")
+		local outcome = BotSystem.executeReload({ source = "invalid selection QA", debugCount = 1, debugBotNames = { "No Such QA Bot" } })
+		local after, schedulerAfter = qa.native.roster(), Game.botCommand("_global", "schedule status")
+		Game.botCommand("_global", "schedule off") -- Restore the frozen QA fixture after observing its state.
+		return { outcome = outcome, before = before, after = after, schedulerBefore = schedulerBefore, schedulerAfter = schedulerAfter }
+	end
 	if command.action == "load" then
 		Game.botCommand("_global", "schedule off")
 		local player = assert(Game.loadBotPlayer(name), "fixture load failed")

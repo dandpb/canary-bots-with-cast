@@ -1,0 +1,89 @@
+{
+  "mode": "native",
+  "run_id": "m5-current-native-02100ea095:native:0",
+  "accepted": true,
+  "checks": {
+    "completed": true,
+    "supervisor_completed": true,
+    "recorded_horizon": true,
+    "observed_horizon": true,
+    "elapsed_horizon": true,
+    "no_gaps": true,
+    "zero_observed_deaths": true,
+    "no_operator_interventions": true,
+    "zero_inference": true,
+    "saved_xp_matches": true,
+    "positive_xp_persisted": true,
+    "native_offers_multiple_hunts": true,
+    "hunt_cycle": true,
+    "status_observer_healthy": true,
+    "resources_cleaned": true,
+    "runtime_images_verified": true
+  },
+  "evidence": {
+    "mode": "native",
+    "span_seconds": 1800.387,
+    "supervisor": [
+      {
+        "elapsed_seconds": 1800.4040314700105,
+        "observed_seconds": 1800.374012646993,
+        "phase": "run_supervisor_stop",
+        "reason": "completed"
+      }
+    ],
+    "initial_db_xp": 98800,
+    "saved_db_xp": 102691,
+    "last_sample_xp": 102691,
+    "alternatives": {
+      "offered": true,
+      "t_ms": 15902,
+      "candidate_ids": [
+        "hunt:399",
+        "hunt:77"
+      ],
+      "meaning": "simultaneous native offers; does not assert every offer reached a model"
+    },
+    "hunt_cycle": {
+      "complete": true,
+      "transitions": [
+        {
+          "elapsed": 1033.1463334339787,
+          "hunt_id": "399",
+          "phase": "PATROLLING",
+          "command_id": 48
+        },
+        {
+          "elapsed": 1044.0671967589878,
+          "hunt_id": "399",
+          "phase": "LEAVING",
+          "command_id": 49
+        },
+        {
+          "elapsed": 1054.3216839529923,
+          "hunt_id": "399",
+          "phase": "RESUPPLYING",
+          "command_id": 50
+        },
+        {
+          "elapsed": 1327.086655230989,
+          "hunt_id": "399",
+          "phase": "PATROLLING",
+          "command_id": 76
+        }
+      ],
+      "meaning": "hunt phases only; does not establish an NPC purchase"
+    },
+    "automatic_recoveries_requested": 0
+  },
+  "requests": 0,
+  "event_counts": {
+    "configuration": 1,
+    "lifecycle": 1792,
+    "sample": 1501,
+    "segment": 2
+  },
+  "failed_outcomes": [],
+  "audit_at_utc": "2026-11-06T14:26:55.706789+00:00",
+  "source_audit_sha256": "7a8a03d6c6c98fd0ab0579b710bee150eac6e15a18b0aae26d434d88171523a5",
+  "independent_scoped_absence_verified": true
+}

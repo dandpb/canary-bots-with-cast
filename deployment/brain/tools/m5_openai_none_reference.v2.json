@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "reference_profile": "closed_r2_default_before_explicit_none",
+  "producer_revision": "4c5bb9bf4b93fb11abffd7bd3020e6381296fd6d",
+  "root_final_R2_sha256": "1db97ba8f49c798b3c933d48510358794fbc2f3bf0de09a5351a6de621546d46",
+  "captured_six_input_sha256": {
+    "campaign": "ae5521fb157483a3456c0e0da89f6b52071bc04633d5fb2f8ea7eb753bc21285",
+    "authorization": "8fe905800fdbab627928be86a536233e5b9f7c2eff0956c9ff47f38b39bb4a91",
+    "source_manifest": "feac8d08a7184460877b9c2755ebbb8236de4205dede63789481a0fe13ef7e26",
+    "decision_fixtures": "5f18c7805cf29a5ebffe29f6b1e4574f09a0adf358f3c76ba577ce36ce8265af",
+    "openai": "367dc687614b9821c703a8404b5a9a2340771aa3b5151f20d2a6e3a9f6dbd263",
+    "gemini": "d88057ebe03b21abcebeb1eade01ba18f6734d172edbd51ca0b2a7be7b71489c"
+  },
+  "closed_wrapper_ledger_sha256": "f9c5d0bd47b9fd3dc3f1911692c2beb5c59a6cbfc2b7e7a39ab0461428bfb36a",
+  "finance_1821_public_sha256": "8750cf48751b7958a68078e6cd3179cc097d3115e2ed74b68c75bd7b58a08be8",
+  "old_namespaces_denied_case_insensitive": [
+    "m5-og-20261106-dae4b84b",
+    "m5-og-r2-20261106-27120d96"
+  ],
+  "images": {
+    "worker": "sha256:dfd281ce86a6e9690e76003feea358514779455c7cd9f1e77c11538254d1c737",
+    "game": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+    "database": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+    "gateway": "sha256:6c8fe99746613f76ba9496f1fb101c94d37ce6cb7c4f950904bf98589e5286d4"
+  },
+  "gateway_policy_sha256": "7dfb6687f71b079d7e5e0ab81f0a88d81e6e932470d11cb64ef589832ae0f844",
+  "gateway_route_projection_sha256": "d32f25161251a7cf7ab268d2d93cb7ea310095ff39238d24c4d847d1844e2582",
+  "worker_dependency_versions": {
+    "common_worker_python": "3.12.16",
+    "openai_sdk": "3.42.1",
+    "pydantic": "2.14.2"
+  },
+  "fixture_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+  "world_sha256": "a80de1dda6a9aca3956a9d5b7fb2e0caebb451570d26853fc21beb40d5f31da2",
+  "world_bytes": 184776037,
+  "decision_fixtures_sha256": "5f18c7805cf29a5ebffe29f6b1e4574f09a0adf358f3c76ba577ce36ce8265af",
+  "functional_campaign": {
+    "budget_file": "/var/lib/canary-brain/state.sqlite3",
+    "game_image": "sha256:9bd6213c4d37fa9acdb46c4149d4f3427c3af1d6e1ed6b8b6599c37244185b99",
+    "database_image": "sha256:a794d9eb009e20de605858a11f32f63b4075cbd197c650436f0e3b457e4caed7",
+    "bot_id": 65001,
+    "seconds": 1800,
+    "decision_timeout": 10,
+    "repetitions": 3,
+    "memory_mode": "frozen",
+    "run_cap_nanousd": 1000000000,
+    "campaign_cap_nanousd": 6000000000,
+    "seed": 42,
+    "expected_initial_sha256": "42467745d544801e44e32deecf99f5f6d1e1aa869e2bf227734daf95ae42e5be",
+    "participants": [
+      {
+        "name": "native",
+        "kind": "native"
+      },
+      {
+        "name": "openai",
+        "kind": "litellm",
+        "gateway": {
+          "base_url": "http://gateway:4000/v1",
+          "alias": "canary-openai",
+          "effective_model": "gpt-6-luna",
+          "upstream_model": "openai/gpt-6-luna",
+          "provider": "openai",
+          "deployment_id": "canary-openai-luna-20261105",
+          "version": "1.108.0",
+          "configuration_sha256": "7dfb6687f71b079d7e5e0ab81f0a88d81e6e932470d11cb64ef589832ae0f844",
+          "decision_api": "responses",
+          "reasoning": false,
+          "prices": {
+            "version": "official-standard-text-2026-11-06-openai",
+            "input_nanousd": 100,
+            "cached_nanousd": 10,
+            "cache_write_nanousd": 125,
+            "output_nanousd": 500
+          }
+        }
+      },
+      {
+        "name": "gemini",
+        "kind": "litellm",
+        "gateway": {
+          "base_url": "http://gateway:4000/v1",
+          "alias": "canary-gemini",
+          "effective_model": "gemini-3.5-flash-lite",
+          "upstream_model": "gemini/gemini-3.5-flash-lite",
+          "provider": "gemini",
+          "deployment_id": "canary-gemini-flash-lite-20261105",
+          "version": "1.108.0",
+          "configuration_sha256": "7dfb6687f71b079d7e5e0ab81f0a88d81e6e932470d11cb64ef589832ae0f844",
+          "decision_api": "responses",
+          "reasoning": false,
+          "prices": {
+            "version": "official-standard-text-2026-11-06-gemini",
+            "input_nanousd": 300,
+            "cached_nanousd": 30,
+            "cache_write_nanousd": null,
+            "output_nanousd": 2500
+          }
+        }
+      }
+    ]
+  },
+  "functional_probe_controls": {
+    "mode": "shadow",
+    "provider": "litellm",
+    "budget_file": "/var/lib/canary-brain/state.sqlite3",
+    "credential_file": "/etc/canary-brain/gateway.env",
+    "bots": [
+      65001
+    ],
+    "monthly_usd": 50,
+    "decision_timeout": 10,
+    "memory_mode": "frozen",
+    "run_cap_nanousd": 490000000,
+    "recording": {
+      "sample_ms": 1000
+    }
+  },
+  "gateway_profiles": {
+    "openai": {
+      "base_url": "http://gateway:4000/v1",
+      "alias": "canary-openai",
+      "effective_model": "gpt-6-luna",
+      "upstream_model": "openai/gpt-6-luna",
+      "provider": "openai",
+      "deployment_id": "canary-openai-luna-20261105",
+      "version": "1.108.0",
+      "configuration_sha256": "7dfb6687f71b079d7e5e0ab81f0a88d81e6e932470d11cb64ef589832ae0f844",
+      "decision_api": "responses",
+      "reasoning": false,
+      "prices": {
+        "version": "official-standard-text-2026-11-06-openai",
+        "input_nanousd": 100,
+        "cached_nanousd": 10,
+        "cache_write_nanousd": 125,
+        "output_nanousd": 500
+      }
+    },
+    "gemini": {
+      "base_url": "http://gateway:4000/v1",
+      "alias": "canary-gemini",
+      "effective_model": "gemini-3.5-flash-lite",
+      "upstream_model": "gemini/gemini-3.5-flash-lite",
+      "provider": "gemini",
+      "deployment_id": "canary-gemini-flash-lite-20261105",
+      "version": "1.108.0",
+      "configuration_sha256": "7dfb6687f71b079d7e5e0ab81f0a88d81e6e932470d11cb64ef589832ae0f844",
+      "decision_api": "responses",
+      "reasoning": false,
+      "prices": {
+        "version": "official-standard-text-2026-11-06-gemini",
+        "input_nanousd": 300,
+        "cached_nanousd": 30,
+        "cache_write_nanousd": null,
+        "output_nanousd": 2500
+      }
+    }
+  },
+  "probe_effective_ttls_ms": [
+    5000,
+    5000,
+    5000,
+    1000,
+    1500,
+    1000
+  ],
+  "max_output_tokens": 256,
+  "prior_requests_as_observed": [
+    {
+      "id": "0127734202e044e9aa93cc3261a82647",
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "reserved": 825375,
+      "spent": 133900
+    },
+    {
+      "id": "2ad399344ae54433b080c600156eefd6",
+      "run_id": "decisions:bdf836b5a98e4247a47cce1352fae837:65001",
+      "reserved": 825375,
+      "spent": 170900
+    },
+    {
+      "id": "57f0becd17ab47a2ad3638987ca2f6ef",
+      "run_id": "credential-smoke-out-gemini",
+      "reserved": 2337700,
+      "spent": 161800
+    },
+    {
+      "id": "742774dec9f94c4eb5c903b69bffe0aa",
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "reserved": 825500,
+      "spent": 53400
+    },
+    {
+      "id": "81c26627802f4161a43d40a0d0b1f26f",
+      "run_id": "decisions:bdf836b5a98e4247a47cce1352fae837:65001",
+      "reserved": 825500,
+      "spent": 114900
+    },
+    {
+      "id": "847b421069fc4e19aeab9a1a3385c8d8",
+      "run_id": "decisions:bdf836b5a98e4247a47cce1352fae837:65001",
+      "reserved": 942250,
+      "spent": null
+    },
+    {
+      "id": "8e32e915ca5e4407a3ec55ab501bd99a",
+      "run_id": "credential-smoke-out-openai",
+      "reserved": 835375,
+      "spent": 52800
+    },
+    {
+      "id": "952c7a462a36461485d7fe37f3ee8444",
+      "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+      "reserved": 2414800,
+      "spent": null
+    },
+    {
+      "id": "b91f101ecf4a4d7ea2315922365e4193",
+      "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+      "reserved": 2414500,
+      "spent": 175800
+    },
+    {
+      "id": "c8f2779f524c49be9da807f71eeffd58",
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "reserved": 942250,
+      "spent": null
+    }
+  ],
+  "allowed_functional_delta": {
+    "gateway_profiles.openai.decision_reasoning_effort": {
+      "before": "absent_or_null",
+      "after": "none"
+    }
+  },
+  "allowed_identity_exclusions": {
+    "campaign": [
+      "name",
+      "output",
+      "fixture",
+      "world_map",
+      "gateway_credential",
+      "source_revision"
+    ],
+    "probe": [
+      "socket_directory",
+      "state_file"
+    ],
+    "probe_recording": [
+      "path",
+      "namespace"
+    ],
+    "requirements": [
+      "Fresh namespace/output/source are bound by the newly approved hashes; old names are denied.",
+      "Relocated fixture/world paths must retain the exact content hashes above.",
+      "New private gateway process/CID/session may differ, but policy hash, image, routes, aliases and deployment IDs remain exact.",
+      "Gateway credential host-mount source may relocate; internal credential_file and canonical budget authority remain exact; no secret value is part of this reference.",
+      "Probe socket/state/recording paths and namespace must be owned descendants of the new output as validated by preflight.",
+      "Authorization/admission/source/claim/GO evidence changes for the new contract; these are not scored gameplay changes."
+    ]
+  },
+  "billing_interpretation": "Observed prior amounts are evidence, not a replacement for a fresh canonical read; all ten identities/run associations and all current liabilities remain mandatory."
+}

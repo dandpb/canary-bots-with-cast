@@ -1,0 +1,6 @@
+{
+  "gemini_result_json_present": false,
+  "campaign_result_is_null": true,
+  "wrapper_error_type": "OperationalError",
+  "scope": "Missing result/terminal remains unknown; do not fabricate acceptance, timeout or zero charge"
+}

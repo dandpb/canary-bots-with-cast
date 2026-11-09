@@ -1,0 +1,187 @@
+{
+  "containers": [
+    {
+      "health": "healthy",
+      "health_last_end": "2026-11-08T03:37:35.476768348Z",
+      "health_last_exit": 0,
+      "id": "9ad6cae1cfb0b07a1e7905114e2e0089fc2dbb16dd8be07f68fdef9f3dfae2dc",
+      "ips": {
+        "canary-core-qa_default": "172.22.0.2"
+      },
+      "name": "canary-core-qa-database-1",
+      "started_at": "2026-11-06T21:31:51.979449015Z",
+      "status": "running"
+    },
+    {
+      "health": "healthy",
+      "health_last_end": "2026-11-08T03:37:21.717364041Z",
+      "health_last_exit": 0,
+      "id": "ab2d2614b63669c09c7b9046ccbab14a9f93dbfd86bf53410f3f1b045cf65c2b",
+      "ips": {
+        "canary-core-qa_default": "172.22.0.4"
+      },
+      "name": "canary-core-qa-web-1",
+      "started_at": "2026-11-06T21:49:19.268269317Z",
+      "status": "running"
+    },
+    {
+      "health": "healthy",
+      "health_last_end": "2026-11-08T03:37:27.545518979Z",
+      "health_last_exit": 0,
+      "id": "eaae6fe2171b91c8eb65ccad334ce029e8cbd3e8deb38653605c6ff1f479fcda",
+      "ips": {
+        "canary-core-qa_default": "172.22.0.3"
+      },
+      "name": "canary-core-qa-game-1",
+      "started_at": "2026-11-08T03:33:16.686594686Z",
+      "status": "running"
+    },
+    {
+      "health": "unhealthy",
+      "health_last_end": "2026-11-08T03:32:09.182319664Z",
+      "health_last_exit": 0,
+      "id": "64385641c847ad44d6acf1dc7f5d10e206451212b4320973a27ba278e428d608",
+      "ips": {
+        "canary-core-qa_default": ""
+      },
+      "name": "qa-old-rescue-20261107",
+      "started_at": "2026-11-08T03:10:55.91308995Z",
+      "status": "exited"
+    },
+    {
+      "health": "unhealthy",
+      "health_last_end": "2026-11-08T00:05:23.815317984Z",
+      "health_last_exit": 0,
+      "id": "4188037d71a5455ef40e76e05d0fa145a9e71d977a10f0774e491286b968b605",
+      "ips": {
+        "canary-core-qa_default": ""
+      },
+      "name": "qa-game-candidate-3431b404",
+      "started_at": "2026-11-07T23:04:48.55782924Z",
+      "status": "exited"
+    }
+  ],
+  "db_container_id": "9ad6cae1cfb0b07a1e7905114e2e0089fc2dbb16dd8be07f68fdef9f3dfae2dc",
+  "effective_account": "root@localhost",
+  "end_utc": "2026-11-08T03:37:36.203833+00:00",
+  "innodb_trx": [],
+  "own_connection_id": 24187,
+  "privileges": {
+    "PROCESS": {
+      "is_grantable": true,
+      "present": true
+    },
+    "RELOAD": {
+      "is_grantable": true,
+      "present": true
+    },
+    "SHOW DATABASES": {
+      "is_grantable": true,
+      "present": true
+    },
+    "SUPER": {
+      "is_grantable": true,
+      "present": true
+    }
+  },
+  "processlist": [
+    {
+      "command": "Sleep",
+      "db": "canary",
+      "has_innodb_trx": false,
+      "host": "172.22.0.3:56590",
+      "id": 24116,
+      "info_is_null": true,
+      "is_observer": false,
+      "state": "",
+      "time_seconds": 19,
+      "user": "canary"
+    },
+    {
+      "command": "Sleep",
+      "db": "canary",
+      "has_innodb_trx": false,
+      "host": "172.22.0.3:45330",
+      "id": 24120,
+      "info_is_null": true,
+      "is_observer": false,
+      "state": "",
+      "time_seconds": 0,
+      "user": "canary"
+    },
+    {
+      "command": "Sleep",
+      "db": "canary",
+      "has_innodb_trx": false,
+      "host": "172.22.0.3:58294",
+      "id": 24125,
+      "info_is_null": true,
+      "is_observer": false,
+      "state": "",
+      "time_seconds": 10,
+      "user": "canary"
+    },
+    {
+      "command": "Sleep",
+      "db": "canary",
+      "has_innodb_trx": false,
+      "host": "172.22.0.3:58304",
+      "id": 24126,
+      "info_is_null": true,
+      "is_observer": false,
+      "state": "",
+      "time_seconds": 0,
+      "user": "canary"
+    },
+    {
+      "command": "Sleep",
+      "db": "canary",
+      "has_innodb_trx": false,
+      "host": "172.22.0.3:58314",
+      "id": 24127,
+      "info_is_null": true,
+      "is_observer": false,
+      "state": "",
+      "time_seconds": 11,
+      "user": "canary"
+    },
+    {
+      "command": "Sleep",
+      "db": "canary",
+      "has_innodb_trx": false,
+      "host": "172.22.0.3:58326",
+      "id": 24128,
+      "info_is_null": true,
+      "is_observer": false,
+      "state": "",
+      "time_seconds": 1,
+      "user": "canary"
+    },
+    {
+      "command": "Query",
+      "db": null,
+      "has_innodb_trx": false,
+      "host": "localhost",
+      "id": 24187,
+      "info_is_null": false,
+      "is_observer": true,
+      "state": "Filling schema table",
+      "time_seconds": 0,
+      "user": "root"
+    }
+  ],
+  "query_utc": "2026-11-08 03:37:36.190487",
+  "result": "ok",
+  "schema": "qa-db-process-visibility-v1",
+  "start_utc": "2026-11-08T03:37:36.087456+00:00",
+  "variables": {
+    "event_scheduler": "OFF",
+    "performance_schema": "0",
+    "wait_timeout_seconds": 28800
+  },
+  "visibility": {
+    "observed_other_connections": 6,
+    "observed_transactions": 0,
+    "process_privilege_present": true
+  }
+}

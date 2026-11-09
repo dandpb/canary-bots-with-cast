@@ -1,0 +1,164 @@
+{
+  "method": "Owner-provided closed custody copied into private report workspace; Reader only opened a further temporary DB+WAL copy",
+  "provided_custody_receipt_sha256": "40824d0f69adb7f892c00d3d27be1612c72033a1edb5c5a8981a7d9106d27191",
+  "provided_copy_properties_unchanged": {
+    "execution-started.json": {
+      "sha256": "7300007b263576ac33769d30f03acd0cf8824811d13f506e3f6837be1b08df1a",
+      "bytes": 7443,
+      "mtime_ns": 1793989256712669800,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "execution-result.json": {
+      "sha256": "fa872328a0b2c4c3b128799dc2ffe128a6ff20b3c894c373d76bca6ca4b6cae8",
+      "bytes": 2424,
+      "mtime_ns": 1793989256722180200,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "ledger.json": {
+      "sha256": "f9c5d0bd47b9fd3dc3f1911692c2beb5c59a6cbfc2b7e7a39ab0461428bfb36a",
+      "bytes": 2596,
+      "mtime_ns": 1793989256731817200,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "openai-probe-result.json": {
+      "sha256": "db5a5ee81d6c212d5d174387784c7f97a97fd0310438f5c48eacf56d532ed409",
+      "bytes": 1865,
+      "mtime_ns": 1793989256740811400,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "captured-inputs/decision_fixtures.json": {
+      "sha256": "5f18c7805cf29a5ebffe29f6b1e4574f09a0adf358f3c76ba577ce36ce8265af",
+      "bytes": 17960,
+      "mtime_ns": 1793989256752389000,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "captured-inputs/source_manifest.json": {
+      "sha256": "feac8d08a7184460877b9c2755ebbb8236de4205dede63789481a0fe13ef7e26",
+      "bytes": 6207,
+      "mtime_ns": 1793989256775412200,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "captured-inputs/authorization.json": {
+      "sha256": "8fe905800fdbab627928be86a536233e5b9f7c2eff0956c9ff47f38b39bb4a91",
+      "bytes": 4884,
+      "mtime_ns": 1793989256787502600,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "captured-inputs/admission.json": {
+      "sha256": "483cc668230e6fd3904aca1ecf9889b28e9d148709c07839e35a6b86e6692c02",
+      "bytes": 15037,
+      "mtime_ns": 1793989256800600200,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "captured-inputs/campaign.json": {
+      "sha256": "ae5521fb157483a3456c0e0da89f6b52071bc04633d5fb2f8ea7eb753bc21285",
+      "bytes": 2540,
+      "mtime_ns": 1793989256813683400,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "captured-inputs/gemini.json": {
+      "sha256": "d88057ebe03b21abcebeb1eade01ba18f6734d172edbd51ca0b2a7be7b71489c",
+      "bytes": 1273,
+      "mtime_ns": 1793989256825824000,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "captured-inputs/openai.json": {
+      "sha256": "367dc687614b9821c703a8404b5a9a2340771aa3b5151f20d2a6e3a9f6dbd263",
+      "bytes": 1243,
+      "mtime_ns": 1793989256836793600,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "root-proof/root-technical-admission.receipt.json": {
+      "sha256": "91226e61635ea0184291979cb20921ffe5c919d305f208ae72994e93f9ac76b1",
+      "bytes": 2022,
+      "mtime_ns": 1793989256848324200,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "root-proof/root-GO.receipt.json": {
+      "sha256": "944a94de02ca12cd6a3a99ced89e9d902d2bf2a033e071d518d61c648b3b1f9c",
+      "bytes": 2655,
+      "mtime_ns": 1793989256861081800,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "root-proof/ROOT_FINAL_R2.json": {
+      "sha256": "1db97ba8f49c798b3c933d48510358794fbc2f3bf0de09a5351a6de621546d46",
+      "bytes": 43699,
+      "mtime_ns": 1793989256872942800,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "openai-raw/recording.sqlite3-shm": {
+      "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+      "bytes": 32768,
+      "mtime_ns": 1793989256888502000,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "openai-raw/recording.sqlite3-wal": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "mtime_ns": 1793989256899047700,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "openai-raw/recording.sqlite3": {
+      "sha256": "46efaa7530660996de927afe37601d73105cac2f32c097e11483ffcf4145d4f1",
+      "bytes": 45056,
+      "mtime_ns": 1793989256911651100,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "root-proof/preflight/stdout.log": {
+      "sha256": "944d8691637e3b5c94f4fb7dc81dd6d61d7ad3c5e271f8c90e3f756159210b58",
+      "bytes": 6331,
+      "mtime_ns": 1793989256926613800,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    },
+    "root-proof/preflight/receipt.json": {
+      "sha256": "5f3e3fc91542cf5e1052eccce96d52f458adb9cb4cf12d5b6de70013c381f6e1",
+      "bytes": 619,
+      "mtime_ns": 1793989256944589400,
+      "mode": 511,
+      "uid": 1000,
+      "gid": 1000
+    }
+  },
+  "all_19_copy_hashes_sizes_mtimes_modes_owners_unchanged": true,
+  "raw_preserved_custody_opened_by_sqlite": false,
+  "original_f6_f7_or_canonical_opened": false,
+  "credential_values_read": false,
+  "provider_or_docker_calls_by_collector": 0,
+  "claim_or_reservation_mutations": 0
+}

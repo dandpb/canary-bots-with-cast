@@ -1,0 +1,26 @@
+{
+  "method": "Each DB+WAL copied privately before SQLite Reader; compare full metadata and all events, preserving distinct physical hashes",
+  "scope": "Only two closed probe recording representations; no canonical financial DB accessed",
+  "providers": {
+    "openai": {
+      "run_id": "decisions:e9b235a5fcd24566b020fc332cd44e0d:65001",
+      "event_count": 19,
+      "f6_original_recording_sha256": "fe5d63273527e1121f6d84d9a6d7613dc8c69c280cc311a5615462b05ff4e7b5",
+      "financial_snapshot_sha256": "0edc8b7f4520ba97a59c48111a42b4a1c6a689ff468a9968f14e8f9b0e1750de",
+      "physical_db_hashes_equal": false,
+      "metadata_and_all_events_equal": true,
+      "canonical_logical_payload_sha256": "3b635ba4743b2116fdd9359fb9b437e01563f7fb536c652455759f06ad4b880b",
+      "source_properties_unchanged": true
+    },
+    "gemini": {
+      "run_id": "decisions:3f5394354a1a43ef8072c99256c4cbb3:65001",
+      "event_count": 16,
+      "f6_original_recording_sha256": "87fb8292f8b4a36045f7a12767075e65f3392d9b5c9e9431c2b513d2d05189f7",
+      "financial_snapshot_sha256": "044f50250fb68890db0e44bce01a1d8e98f2d203733bf5a03eaa025cebab3f04",
+      "physical_db_hashes_equal": false,
+      "metadata_and_all_events_equal": true,
+      "canonical_logical_payload_sha256": "c1677a19cbf084a7f3837f4ad764cff6a1e8fea166e578e8c8e19d9b2e03c2db",
+      "source_properties_unchanged": true
+    }
+  }
+}

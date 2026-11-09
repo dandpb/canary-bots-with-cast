@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "kind": "later_offline_financial_validator_supplement",
+  "parent_publication_head": "e49d162fbb94a3629313b042eda654fcc12d8f2c",
+  "parent_pull_request": 66,
+  "parent_directory": "../m5-r2-negative-qualification-27120d96",
+  "parent_files_preserved": 22,
+  "parent_checksums_sha256": "c507e4e033a8c3bd2942ecdd58a38eed7c6c9097e5d191fa27d1525354822c6b",
+  "parent_v1_checker_sha256": "49c353d7f3d2d92d3e198c2fec80c707808e669f98977561549a6fd60039e4bc",
+  "parent_finance_1821_sha256": "8750cf48751b7958a68078e6cd3179cc097d3115e2ed74b68c75bd7b58a08be8",
+  "evidence_producer_revision": "4c5bb9bf4b93fb11abffd7bd3020e6381296fd6d",
+  "supplement_base_revision": "29db1ef186865f73c0bcfc1350a0556bd612861d",
+  "original_facts_correct": true,
+  "original_v1_misses_rehashed_summary_partition": true,
+  "original_v1_misses_rehashed_per_request_spend_swap": true,
+  "historical_index_or_results_rewritten": false,
+  "financial_final": false,
+  "qualification_accepted": false,
+  "scored_games": 0,
+  "new_provider_calls": 0,
+  "runtime_or_canonical_ledger_accessed": false
+}

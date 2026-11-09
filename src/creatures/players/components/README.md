@@ -1,7 +1,33 @@
 # Player Components
 
-This directory gathers modular components that implement specific `Player` features.
-Each class is designed to keep the `Player` entity decoupled, improving maintainability, readability, and testability.
+## Overview
+Gathers modular per-player components (`PlayerAchievement`, `PlayerAttachedEffects`, `PlayerBadge`, `PlayerCyclopedia`, `PlayerForgeHistory`, `PlayerStorage`, `PlayerTitle`, `PlayerVIP`, and the `./wheel` subsystem) that decouple specific feature domains from the core `Player` entity, improving maintainability, readability, and testability.
+
+## Interface
+- `PlayerAchievement`, `Achievement` (`[player_achievement.hpp:PlayerAchievement]`, `[player_achievement.hpp:Achievement]`, `[player_achievement.cpp:PlayerAchievement]`): Manages unlocked player achievements and points (`add`, `remove`, `isUnlocked`, `getPoints`, `addPoints`, `removePoints`, `loadUnlockedAchievements`, `sendUnlockedSecretAchievements`).
+- `PlayerAttachedEffects` (`[player_attached_effects.hpp:PlayerAttachedEffects]`, `[player_attached_effects.cpp:PlayerAttachedEffects]`): Manages cosmetic wings, auras, effects, and shaders (`toggleWing`, `tameWing`, `untameWing`, `toggleAura`, `tameAura`, `untameAura`, `toggleEffect`, `tameEffect`, `untameEffect`, `toggleShader`, `tameShader`, `untameShader`, `addCustomOutfit`, `removeCustomOutfit`, `sendAttachedEffect`, `sendDetachEffect`, `sendShader`, `sendMapShader`).
+- `PlayerBadge`, `Badge` (`[player_badge.hpp:PlayerBadge]`, `[player_badge.hpp:Badge]`, `[player_badge.cpp:PlayerBadge]`): Evaluates and unlocks account/character Cyclopedia badges (`hasBadge`, `add`, `checkAndUpdateNewBadges`, `loadUnlockedBadges`).
+- `PlayerCyclopedia`, `Summary` (`[player_cyclopedia.hpp:PlayerCyclopedia]`, `[player_cyclopedia.hpp:Summary]`, `[player_cyclopedia.cpp:PlayerCyclopedia]`): Manages Cyclopedia character summaries, asynchronous recent death and PvP kill queries, and store summary counters (`getSummary`, `loadSummaryData`, `loadDeathHistory`, `loadRecentKills`, `updateStoreSummary`, `getAmount`, `updateAmount`).
+- `PlayerForgeHistory`, `ForgeHistory`, `PlayerForgeHistory::Pending` (`[player_forge_history.hpp:PlayerForgeHistory]`, `[player_forge_history.hpp:ForgeHistory]`, `[player_forge_history.cpp:PlayerForgeHistory]`): Tracks and persists Exaltation Forge action history with delta tracking (`get`, `add`, `remove`, `load`, `save`, `pending`, `acknowledge`).
+- `PlayerStorage`, `PlayerStorageRow`, `PlayerStorage::PlayerStorageDelta` (`[player_storage.hpp:PlayerStorage]`, `[player_storage.hpp:PlayerStorageRow]`, `[player_storage.cpp:PlayerStorage]`): Thread-safe key-value storage manager with dirty/deleted delta tracking and reserved range expansion (`ingest`, `add`, `remove`, `has`, `get`, `prepareForPersist`, `delta`, `clearDirty`, `acknowledge`).
+- `PlayerTitle`, `Title` (`[player_title.hpp:PlayerTitle]`, `[player_title.hpp:Title]`, `[player_title.cpp:PlayerTitle]`): Evaluates, unlocks, and selects character titles (`isTitleUnlocked`, `manage`, `remove`, `getUnlockedTitles`, `getCurrentTitle`, `setCurrentTitle`, `getCurrentTitleName`, `checkAndUpdateNewTitles`, `loadUnlockedTitles`).
+- `PlayerVIP`, `VIPGroup` (`[player_vip.hpp:PlayerVIP]`, `[player_vip.hpp:VIPGroup]`, `[player_vip.cpp:PlayerVIP]`): Manages VIP buddy entries and custom VIP groups (`add`, `addInternal`, `remove`, `edit`, `notifyStatusChange`, `addGroup`, `editGroup`, `removeGroup`, `getMaxEntries`, `getMaxGroupEntries`).
+- [wheel](./wheel/README.md): Implements the Wheel of Destiny progression system, gem Atelier, and modifier strategies (`PlayerWheel`, `PlayerWheelGem`, `WheelModifierContext`).
+
+## Invariants
+- `PlayerStorage` protects all reads and mutations of `m_storageMap`, `m_modifiedKeys`, and `m_removedKeys` with `std::recursive_mutex mutex_` (`[player_storage.hpp:PlayerStorage::mutex_]`); assigning `-1` to a key removes it and records the key in `m_removedKeys` (`[player_storage.cpp:PlayerStorage::add]`).
+- Reserved storage ranges for outfits (`PSTRG_OUTFITS_RANGE_START`) and familiars (`PSTRG_FAMILIARS_RANGE_START`) are unpacked into `m_player.outfits` and `m_player.familiars` on `add()` and re-encoded into `m_storageMap` only when `prepareForPersist()` is called (`[player_storage.cpp:PlayerStorage::add]`, `[player_storage.cpp:PlayerStorage::getReservedRange]`).
+- `PlayerForgeHistory::add` monotonically increments `adjustedHistory.createdAt` if an entry with the same timestamp already exists in `m_history`, ensuring `(player_id, done_at)` uniqueness for statement-capturing checkpoints (`[player_forge_history.cpp:PlayerForgeHistory::add]`, `[player_forge_history.cpp:PlayerForgeHistory::save]`).
+- `PlayerVIP` caps buddy entries at `group->maxVipEntries` (or 100 for premium, 20 for free, hard maximum 200) and custom VIP group IDs within `firstID`..`lastID` (`1`..`8`) (`[player_vip.cpp:PlayerVIP::getMaxEntries]`, `[player_vip.cpp:PlayerVIP::add]`, `[player_vip.cpp:PlayerVIP::getFreeId]`).
+- Toggling wings, auras, effects, or shaders enforces a 3000ms exhaustion cooldown (`lastToggle*`) and is rejected while the player has `CONDITION_OUTFIT` active (`[player_attached_effects.cpp:PlayerAttachedEffects::toggleWing]`, `[player_attached_effects.cpp:PlayerAttachedEffects::toggleAura]`, `[player_attached_effects.cpp:PlayerAttachedEffects::toggleEffect]`, `[player_attached_effects.cpp:PlayerAttachedEffects::toggleShader]`).
+
+## Side Effects
+- Reads and writes scoped player `KV` entries for achievements, badges, titles, cyclopedia summaries, and last-used wings/auras/effects (`[player_achievement.cpp:PlayerAchievement::add]`, `[player_badge.cpp:PlayerBadge::add]`, `[player_title.cpp:PlayerTitle::manage]`, `[player_cyclopedia.cpp:PlayerCyclopedia::updateAmount]`, `[player_attached_effects.cpp:PlayerAttachedEffects::toggleWing]`).
+- Executes synchronous and asynchronous SQL queries against `players`, `player_hirelings`, `player_deaths`, `forge_history`, `player_charms`, and VIP tables (`IOLoginData`) (`[player_badge.cpp:PlayerBadge::getPlayersInfoByAccount]`, `[player_cyclopedia.cpp:PlayerCyclopedia::loadDeathHistory]`, `[player_cyclopedia.cpp:PlayerCyclopedia::loadRecentKills]`, `[player_forge_history.cpp:PlayerForgeHistory::save]`, `[player_title.cpp:PlayerTitle::checkHighscore]`, `[player_vip.cpp:PlayerVIP::add]`).
+- Fires Lua events and callbacks (`eventOnStorageUpdate`, `EventCallback_t::playerOnStorageUpdate`) when non-login storage keys change (`[player_storage.cpp:PlayerStorage::add]`) and sends network packets to the owning player's client (`ProtocolGame`).
+
+## Verification
+- Run: `ctest --test-dir build --output-on-failure`
 
 ---
 

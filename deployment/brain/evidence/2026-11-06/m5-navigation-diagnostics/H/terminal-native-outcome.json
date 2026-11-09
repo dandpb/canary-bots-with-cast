@@ -1,0 +1,21 @@
+{
+  "action_id": "0d61f013af5f4b24bab7baf88f349281",
+  "bot_id": 65001,
+  "metrics": {
+    "danger": 0.0,
+    "deaths": 0.0,
+    "defeats_delta": 0,
+    "elapsed_seconds": 71.501,
+    "level": 20,
+    "party_distance": 0.0,
+    "party_size": 1,
+    "progress": 1.0,
+    "supply_delta": 0,
+    "xp_delta": 0.0
+  },
+  "reason": "party_rejoined",
+  "status": "completed",
+  "type": "outcome",
+  "version": 1,
+  "world": "1-151796694768357"
+}

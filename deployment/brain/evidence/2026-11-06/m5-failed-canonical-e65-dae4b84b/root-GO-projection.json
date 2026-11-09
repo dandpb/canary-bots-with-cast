@@ -1,0 +1,37 @@
+{
+  "at_utc": "2026-11-06T16:52:09.005227+00:00",
+  "decision": "GO_one_canonical_M5_execution",
+  "namespace": "m5-og-20261106-dae4b84b",
+  "source_revision": "e65e8913becc6e5766e1fa050cbf82183e7ee69e",
+  "reviewed_bundle_sha256": "2ff5b9375cef99c46efa0ffdb51fa5054e2c64b738313851cf5d0454ebf445f8",
+  "preflight_receipt_sha256": "b065bc6a851c7b8bf4e3894b07bcadb0192b94bb15d99bfea5b21aff58b16cc7",
+  "admission_sha256": "d4a9d7c240b5a3e46fbf2911d289702cbd5bc87bb37cc2e1e1836df736515b49",
+  "maximum_complete_liability_nanousd": 6980214600,
+  "user_ceiling_nanousd": 7000000000,
+  "probe_per_model_nanousd": 490000000,
+  "paid_trial_nanousd": 1000000000,
+  "paid_trials": 6,
+  "run_horizon_seconds": 1800,
+  "order": [
+    [
+      "native",
+      "openai",
+      "gemini"
+    ],
+    [
+      "openai",
+      "gemini",
+      "native"
+    ],
+    [
+      "gemini",
+      "native",
+      "openai"
+    ]
+  ],
+  "no_retries_or_replacements": true,
+  "unknown_charges_stay_reserved": true,
+  "inference_performed_by_this_GO_step": false,
+  "source_sha256": "40bd05b7c4f507768cce92831f3325886aa92e0f99aa89e7ecf34b3bae34add3",
+  "scope": "Historical GO used by exactly one closed failed invocation; not authorization to restart it"
+}

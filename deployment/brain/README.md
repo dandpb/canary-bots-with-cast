@@ -1,10 +1,12 @@
 # Optional intelligent party companions
 
-For durable bot-life recordings, the read-only map replay, independent gameplay experiments and the LiteLLM gateway, see [Replay and gameplay benchmarks](REPLAY.md). All new runtime paths are opt-in; existing configurations retain their behavior.
+Start with the [Portuguese initial setup guide](SETUP.pt-BR.md) for WSL, the LiteLLM dashboard, named OpenAI/Gemini credentials, model routes, the shared ledger and an offline replay check. For recording/runner/export details, see [Replay and gameplay benchmarks](REPLAY.md). New runtime paths are opt-in; existing configurations retain their behavior.
+
+The planned M5 uses the [admission wrapper and offline evidence report](tools/M5_PILOT.md), with frozen source/input hashes and the existing canonical ledger. Integration of these tools does not approve a fixture or authorize a paid campaign.
 
 Implements [issue #1](https://github.com/dandpb/canary-bots-with-cast/issues/1) for one to three explicitly selected native bots. The feature is disabled when `data/bot/brain.json` is absent. Other bots retain their existing engine.
 
-The C++ engine owns gameplay and projects live observations. A native Python worker calls **GPT-6 Luna only**: Decisions selects an offered action; Responses interprets Portuguese requests and proposes objectives. Neither API receives administrative commands or database credentials. Movement, attacks, cooldowns and emergency healing remain local.
+The C++ engine owns gameplay and projects live observations. The default direct OpenAI configuration calls GPT-6 Luna: Decisions selects an offered action; Responses interprets Portuguese requests and proposes objectives. The optional `provider: "litellm"` configuration uses explicit gateway routes, including OpenAI/Gemini, and constrained Responses choices. Neither path receives administrative commands or database credentials. Movement, attacks, cooldowns and emergency healing remain local.
 
 ## Playing
 
@@ -22,7 +24,7 @@ Replies describe proposals. Completion is recorded only after a matching server 
 ## Architecture and limits
 
 ```text
-game dispatcher → bounded observation → private Unix datagram socket → ARM64 worker
+game dispatcher → bounded observation → private Unix datagram socket → Python worker
 game validator ← versioned intent     ← offered choice / strict function call
 game outcome   → durable episode      → reward / contextual preferences
 ```
@@ -47,10 +49,11 @@ The optional `budget_file` shares one accounting database across isolated evalua
 
 ## Installation
 
-Build the `bot_engine` target with the repository's normal CMake/vcpkg toolchain. The library architecture and dependency ABI must match the running **game binary**, even when the host is ARM64 and that binary runs under amd64 emulation. The worker runs natively on the host. This change does not alter `IBotEngine` or the shared `BotState` layout.
+Build the server executable and `bot_engine` with the repository's normal CMake/vcpkg toolchain. The library architecture and dependency ABI must match the running **game binary**, even when the host is ARM64 and that binary runs under amd64 emulation. The Python worker runs on the host or in its own container. A Python update, library reload and executable deployment are separate operations; verify the revisions actually running.
 
 ```sh
-cmake --build build --target bot_engine
+# Configured Release build; Debug uses the canary-debug executable target.
+cmake --build build --target canary bot_engine
 python3 -m venv /opt/canary-brain/venv
 /opt/canary-brain/venv/bin/pip install -r deployment/brain/requirements.lock
 /opt/canary-brain/venv/bin/pip install --no-deps ./deployment/brain
@@ -197,13 +200,23 @@ luajit tools/bot_brain/test_reload.lua
 
 `provider: "fake"` is an explicit offline fixture; it requires no key, issues no billable request and is never selected automatically. The Unix datagram integration test drives the real worker process with this fixture. Native unit tests also join the existing `canary_ut` target.
 
-Opt-in real probes use the same monthly ledger and do not send game actions:
+The legacy direct-OpenAI probe below requires a separate explicit paid opt-in
+and does not send game actions. It does not qualify the LiteLLM M5 campaign;
+use the [M5 wrapper](tools/M5_PILOT.md) for that path. Run it only where the
+existing canonical ledger is mounted, without copying the database or creating
+another monthly allowance. In WSL that authority is
+`canary-bots-wsl_brain-state:/var/lib/canary-brain/state.sqlite3`.
 
 ```sh
-.venv/bin/python deployment/brain/tools/probe.py --live \
-  --credential /etc/canary-brain/openai.env \
-  --state /var/lib/canary-brain/budget.sqlite3 \
-  --output /var/lib/canary-brain/probe.json --samples 10 --max-effort --tool-result
+CANONICAL_LEDGER=/var/lib/canary-brain/state.sqlite3
+if test -f "$CANONICAL_LEDGER"; then
+  .venv/bin/python deployment/brain/tools/probe.py --live \
+    --credential /etc/canary-brain/openai.env \
+    --state "$CANONICAL_LEDGER" \
+    --output /var/lib/canary-brain/probe.json --samples 10 --max-effort --tool-result
+else
+  printf '%s\n' 'Existing canonical ledger is not mounted; probe was not started.' >&2
+fi
 ```
 
 See [EVALUATION.md](EVALUATION.md) for measured evidence, limitations and the human playtest rubric.

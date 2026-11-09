@@ -1,0 +1,14 @@
+{
+  "data/scripts": {
+    "same": 531,
+    "different": [],
+    "extra_lua": [
+      "data/scripts/globalevents/aaa_party_qa.lua"
+    ]
+  },
+  "data/bot/authored": {
+    "same": 291,
+    "different": [],
+    "extra_lua": []
+  }
+}

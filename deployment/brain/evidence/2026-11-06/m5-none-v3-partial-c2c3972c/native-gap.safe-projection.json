@@ -1,0 +1,277 @@
+{
+  "run": {
+    "id": "m5-none-v3-20261106-c2c3972c:native:0",
+    "status": "failed",
+    "incomplete": 1
+  },
+  "event_counts": {
+    "configuration": 1,
+    "gap": 1,
+    "lifecycle": 224,
+    "sample": 183,
+    "segment": 2
+  },
+  "worker_record_counts": {
+    "bridge": 1,
+    "run_clock": 1,
+    "run_stop": 1,
+    "status": 1
+  },
+  "worker_run_stop": {
+    "reason": "recording_gap",
+    "elapsed_seconds": 221.87192558100105,
+    "observed_seconds": 221.78822725899954
+  },
+  "last_lua_character_audit": {
+    "hp": 365,
+    "at": 1793994854325,
+    "xp": 98800,
+    "hpmax": 365,
+    "manamax": 95,
+    "position": [
+      32433,
+      32295,
+      7
+    ],
+    "level": 20,
+    "money": 0,
+    "mana": 95,
+    "bank": 10000,
+    "potions": 40
+  },
+  "saved_character_exists": false,
+  "context": [
+    {
+      "id": 398,
+      "event_key": "sample:1-12112776806752:718",
+      "t_ms": 233572,
+      "kind": "sample",
+      "data": {
+        "world": "1-12112776806752",
+        "sequence": 718,
+        "captured_ms": 12328605,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "follow",
+          "objective_defeats": 0,
+          "objective_running": false,
+          "position": [
+            32436,
+            32283,
+            7
+          ],
+          "potions": 40,
+          "state": "HUNTING",
+          "vocation": 4,
+          "xp": 98800
+        },
+        "mode": "shadow"
+      }
+    },
+    {
+      "id": 399,
+      "event_key": "native:1-12112776806752:65001:216",
+      "t_ms": 233773,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 12328806,
+        "deaths": 0,
+        "model_owned": false,
+        "phase": "alive",
+        "world": "1-12112776806752"
+      }
+    },
+    {
+      "id": 400,
+      "event_key": "native:1-12112776806752:65001:217",
+      "t_ms": 234776,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 12329809,
+        "deaths": 0,
+        "model_owned": false,
+        "phase": "alive",
+        "world": "1-12112776806752"
+      }
+    },
+    {
+      "id": 401,
+      "event_key": "sample:1-12112776806752:722",
+      "t_ms": 234777,
+      "kind": "sample",
+      "data": {
+        "world": "1-12112776806752",
+        "sequence": 722,
+        "captured_ms": 12329809,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "follow",
+          "objective_defeats": 0,
+          "objective_running": false,
+          "position": [
+            32436,
+            32286,
+            7
+          ],
+          "potions": 40,
+          "state": "HUNTING",
+          "vocation": 4,
+          "xp": 98800
+        },
+        "mode": "shadow"
+      }
+    },
+    {
+      "id": 402,
+      "event_key": "sample:1-12112776806752:725",
+      "t_ms": 238613,
+      "kind": "sample",
+      "data": {
+        "world": "1-12112776806752",
+        "sequence": 725,
+        "captured_ms": 12330712,
+        "bot": {
+          "alive": true,
+          "health": 100,
+          "id": 65001,
+          "level": 20,
+          "mana": 100,
+          "name": "Grizzle Alyronia",
+          "objective": "follow",
+          "objective_defeats": 0,
+          "objective_running": false,
+          "position": [
+            32436,
+            32288,
+            7
+          ],
+          "potions": 40,
+          "state": "HUNTING",
+          "vocation": 4,
+          "xp": 98800
+        },
+        "mode": "shadow"
+      }
+    },
+    {
+      "id": 403,
+      "event_key": "native:1-12112776806752:65001:218",
+      "t_ms": 238650,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 12330811,
+        "deaths": 0,
+        "model_owned": false,
+        "phase": "alive",
+        "world": "1-12112776806752"
+      }
+    },
+    {
+      "id": 404,
+      "event_key": "native:1-12112776806752:65001:219",
+      "t_ms": 238670,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 12331814,
+        "deaths": 0,
+        "model_owned": false,
+        "phase": "alive",
+        "world": "1-12112776806752"
+      }
+    },
+    {
+      "id": 405,
+      "event_key": "0877adb3d4e54b198edb780ee5985415",
+      "t_ms": 238689,
+      "kind": "lifecycle",
+      "data": {
+        "jump": 3,
+        "note": "Native validation also advances this counter; this is not proof of packet loss.",
+        "phase": "observation_sequence_jump"
+      }
+    },
+    {
+      "id": 406,
+      "event_key": "7b18202c3f834911a8ce6e7a309b4d26",
+      "t_ms": 238783,
+      "kind": "gap",
+      "data": {
+        "missing": 1,
+        "reason": "native_telemetry_loss"
+      }
+    },
+    {
+      "id": 407,
+      "event_key": "native:1-12112776806752:65001:221",
+      "t_ms": 238783,
+      "kind": "lifecycle",
+      "data": {
+        "captured_ms": 12333816,
+        "deaths": 0,
+        "model_owned": false,
+        "phase": "alive",
+        "world": "1-12112776806752"
+      }
+    },
+    {
+      "id": 408,
+      "event_key": "259b3dccff614fd98746d3cc37c1f3a5",
+      "t_ms": 239679,
+      "kind": "lifecycle",
+      "data": {
+        "elapsed_seconds": 221.87192558100105,
+        "observed_seconds": 221.78822725899954,
+        "phase": "run_supervisor_stop",
+        "reason": "recording_gap"
+      }
+    },
+    {
+      "id": 409,
+      "event_key": "3e27b49d04fc43018d34bb08e05256c0",
+      "t_ms": 239687,
+      "kind": "segment",
+      "data": {
+        "errors": 0,
+        "phase": "stopped"
+      }
+    },
+    {
+      "id": 410,
+      "event_key": "supervisor-final-validation",
+      "t_ms": 239688,
+      "kind": "lifecycle",
+      "data": {
+        "after_flush": true,
+        "phase": "run_supervisor_stop",
+        "reason": "recording_gap"
+      }
+    },
+    {
+      "id": 411,
+      "event_key": "orchestrator-failure",
+      "t_ms": 239689,
+      "kind": "lifecycle",
+      "data": {
+        "category": "RuntimeError",
+        "classification": "infrastructure_or_operator_interruption",
+        "phase": "run_failed"
+      }
+    }
+  ],
+  "limitations": [
+    "Analysis opened only the second disposable copy; original and first raw copies were preserved first.",
+    "native_telemetry_loss and observation_sequence_jump are distinct recorded reasons; the sequence jump note explicitly disclaims proof of packet loss.",
+    "No native telemetry payload or worker_stats counter record was retained in worker records; no underlying transport cause is assigned here.",
+    "The final Lua character audit is not a final saved DB character attestation."
+  ]
+}

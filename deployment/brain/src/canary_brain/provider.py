@@ -9,8 +9,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from . import tracing
 from .protocol import Observation
 from .recording import Recorder, request_context
+from .sqlite_files import failure_metadata
 from .store import Store, month_now
 
 MODEL = "gpt-6-luna"
@@ -21,7 +23,8 @@ class Prices(BaseModel):
     version: str = Field(min_length=1, max_length=80)
     input_nanousd: int = Field(ge=0)
     cached_nanousd: int = Field(ge=0)
-    cache_write_nanousd: int = Field(ge=0)
+    # None is an unqualified price, distinct from an explicitly free write (0).
+    cache_write_nanousd: int | None = Field(ge=0)
     output_nanousd: int = Field(ge=0)
 
 
@@ -40,6 +43,14 @@ class Proposal:
     reply: str
     effort: str
     tool_call: dict[str, Any] = field(default_factory=dict)
+
+
+class UnpricedCacheWrite(ValueError):
+    """Returned usage includes cache writes whose cost cannot be settled."""
+
+
+class ProviderBackoff(RuntimeError):
+    """This decision was skipped during cooldown before any transmission."""
 
 
 class Provider:
@@ -71,8 +82,10 @@ class Provider:
         resource = (
             self.client.decisions if endpoint == "decisions" else self.client.responses
         )
-        result = await resource.create(**body)
-        data: dict[str, Any] = result.model_dump(mode="json", by_alias=True)
+        with tracing.model_call(endpoint, body) as trace:
+            result = await resource.create(**body)
+            data: dict[str, Any] = result.model_dump(mode="json", by_alias=True)
+            trace.output(data)
         return data
 
     async def _request(
@@ -101,20 +114,29 @@ class Provider:
                 )
 
         # UTF-8 bytes bound tokenized content; leave room for API tool serialization.
+        cache_write_price = self.prices.cache_write_nanousd
         upper = (len(json.dumps(body, ensure_ascii=False).encode()) + 4096) * max(
             self.prices.input_nanousd,
             self.prices.cached_nanousd,
-            self.prices.cache_write_nanousd,
+            cache_write_price if cache_write_price is not None else 0,
         )
         upper += int(body.get("max_output_tokens", 0)) * self.prices.output_nanousd
         upper = max(1, upper)
         async with (
-            asyncio.timeout(timeout),
+            asyncio.timeout(timeout) as deadline,
             self.fast_slots if endpoint == "decisions" or fast else self.planning_slots,
         ):
             failures, retry_at = self.backoff.get(endpoint, (0, 0))
             if time.monotonic() < retry_at:
-                raise RuntimeError("provider temporarily backed off")
+                record(
+                    {
+                        "phase": "skipped",
+                        "reason": "backoff",
+                        "deadline_ms": round(timeout * 1000),
+                        "reserved_nanousd": 0,
+                    }
+                )
+                raise ProviderBackoff("provider temporarily backed off")
             self.store.reserve(
                 request_id,
                 upper,
@@ -123,17 +145,28 @@ class Provider:
                 run_id=run_id,
                 run_cap=self.run_cap,
             )
-            record({"phase": "reserved", "reserved_nanousd": upper})
+            record(
+                {
+                    "phase": "reserved",
+                    "reserved_nanousd": upper,
+                    "deadline_ms": round(timeout * 1000),
+                }
+            )
             started = time.monotonic()
             settled = False
+            stage = "provider.transmit"
             try:
                 async with asyncio.timeout(timeout):
                     data = await self._transmit(endpoint, body)
+                stage = "provider.usage"
                 usage = data.get("usage")
                 if (
                     not isinstance(usage, dict)
                     or type(usage.get("input_tokens")) is not int
-                    or usage["input_tokens"] < 0
+                    # Our transmitted prompts are nonempty. LiteLLM's Responses
+                    # bridge can synthesize zero counters when upstream usage is
+                    # absent; those counters cannot release an unknown charge.
+                    or usage["input_tokens"] <= 0
                 ):
                     raise TypeError("provider response has no trustworthy usage")
                 details = usage.get("input_tokens_details") or {}
@@ -152,17 +185,26 @@ class Provider:
                 inputs = int(usage["input_tokens"])
                 if cached + written > inputs:
                     raise TypeError("provider cache usage exceeds total input")
+                if written and cache_write_price is None:
+                    # Unknown is not free. Keep the pre-request reservation open;
+                    # cache storage/time charges cannot be inferred per token.
+                    raise UnpricedCacheWrite(
+                        "provider cache-write usage has no qualified price"
+                    )
                 spent = (
                     max(0, inputs - cached - written) * self.prices.input_nanousd
                     + cached * self.prices.cached_nanousd
-                    + written * self.prices.cache_write_nanousd
+                    + written
+                    * (cache_write_price if cache_write_price is not None else 0)
                 )
                 if endpoint == "responses":
                     spent += (
                         int(usage.get("output_tokens", 0)) * self.prices.output_nanousd
                     )
+                stage = "provider.settle"
                 self.store.settle(request_id, spent)
                 settled = True
+                stage = "provider.request_metadata"
                 self.store.put(
                     "request",
                     request_id,
@@ -187,35 +229,58 @@ class Provider:
                         "gateway": data.get("gateway", {}),
                     }
                 )
+                stage = "provider.identity"
                 if data.get("model") != self.model:
                     raise ValueError("unexpected provider model")
                 self.backoff.pop(endpoint, None)
                 return data
             except (Exception, asyncio.CancelledError) as error:
+                # The outer scope expires first and cancels the transmission; record
+                # the deadline miss as a timeout, not as an external cancellation.
+                deadline_expired_on_error = deadline.expired()
+                deadline_timeout = (
+                    isinstance(error, asyncio.CancelledError)
+                    and deadline_expired_on_error
+                )
+                failure = "TimeoutError" if deadline_timeout else type(error).__name__
+                timeout_origin = (
+                    "outer_deadline" if deadline_timeout else "provider_error"
+                )
                 self.backoff[endpoint] = (
                     failures + 1,
                     time.monotonic() + min(60, 2 ** min(failures, 6)),
                 )
-                # Do not print exception text: authentication errors may contain key fragments.
-                self.store.put(
-                    "request",
-                    request_id,
-                    {
-                        "endpoint": endpoint,
-                        "error": type(error).__name__,
-                        "unsettled": not settled,
-                        "elapsed_ms": round((time.monotonic() - started) * 1000),
-                    },
-                )
-                record(
-                    {
-                        "phase": "failed",
-                        "error": type(error).__name__,
-                        "reserved_nanousd": 0 if settled else upper,
-                        "unsettled": not settled,
-                        "elapsed_ms": round((time.monotonic() - started) * 1000),
-                    }
-                )
+                # Capture the original stage/code before auxiliary storage can fail.
+                diagnostic = {
+                    "endpoint": endpoint,
+                    "error": failure,
+                    "deadline_ms": round(timeout * 1000),
+                    "unsettled": not settled,
+                    "deadline_expired_on_error": deadline_expired_on_error,
+                    "timeout_origin": timeout_origin,
+                    "elapsed_ms": round((time.monotonic() - started) * 1000),
+                    **failure_metadata(error, stage),
+                }
+                try:
+                    self.store.put("request", request_id, diagnostic)
+                except Exception as diagnostic_error:  # noqa: BLE001 - preserve the primary outcome and reservation
+                    diagnostic["diagnostic_failure"] = failure_metadata(
+                        diagnostic_error, "provider.failure_metadata"
+                    )
+                try:
+                    record(
+                        {
+                            **diagnostic,
+                            "phase": "failed",
+                            "reserved_nanousd": 0 if settled else upper,
+                            "failure_elapsed_ms": diagnostic["elapsed_ms"],
+                            "elapsed_ms": round((time.monotonic() - started) * 1000),
+                        }
+                    )
+                except Exception as recording_error:  # noqa: BLE001 - retain the primary failure if recording is unavailable too
+                    error.add_note(
+                        "terminal recorder failed: " + type(recording_error).__name__
+                    )
                 raise
 
     async def decide(

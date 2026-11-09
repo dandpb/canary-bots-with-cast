@@ -1,8 +1,12 @@
 """Export lifecycle tests use a codec stub; test_timelapse covers real ffmpeg."""
 
 import json
+import os
+import signal
 import sqlite3
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -104,6 +108,8 @@ def test_source_digest_covers_recorded_manifest_and_status(tmp_path, monkeypatch
         )
     second = export(ReplayReader(recording), run, tmp_path / "second.mp4")
     assert first["source_snapshot_sha256"] != second["source_snapshot_sha256"]
+    assert first["source_evidence_sha256"] != second["source_evidence_sha256"]
+    assert first["render_input_sha256"] != second["render_input_sha256"]
     assert first["source_events_sha256"] == second["source_events_sha256"]
     assert second["source_snapshot_sha256"] == digest(
         {
@@ -164,7 +170,9 @@ def test_failed_publication_leaves_no_final_artifacts_and_can_retry(
 
     assert not video.exists()
     assert not sidecar.exists()
-    assert not any(path.name.startswith(".canary-video-") for path in tmp_path.iterdir())
+    assert not any(
+        path.name.startswith(".canary-video-") for path in tmp_path.iterdir()
+    )
     evidence = export(ReplayReader(recording), run, video)
     assert video.read_bytes() == b"fixture-video"
     assert json.loads(sidecar.read_text()) == evidence
@@ -188,7 +196,7 @@ def test_publication_collision_preserves_existing_artifact_and_rolls_back_its_ow
         return result
 
     monkeypatch.setattr(timelapse.subprocess, "run", race)
-    with pytest.raises(FileExistsError):
+    with pytest.raises(ValueError, match="video export failed"):
         export(ReplayReader(recording), run, video)
     assert target.read_bytes() == b"existing artifact"
     assert not (sidecar if occupied == "video" else video).exists()
@@ -216,3 +224,240 @@ def test_interruption_just_after_publishing_a_name_cleans_both_outputs(
         export(ReplayReader(recording), run, video)
     assert not video.exists()
     assert not sidecar.exists()
+
+
+def crash_publisher(tmp_path, termination, after_link=1):
+    encoded = tmp_path / "encoded.bin"
+    encoded.write_bytes(b"complete encoded bytes")
+    video = tmp_path / "clip.mp4"
+    program = """
+import os, signal, sys
+from pathlib import Path
+from canary_brain import timelapse
+from canary_brain.timelapse import publish_video
+link = os.link
+calls = 0
+def crash(source, destination):
+    global calls
+    link(source, destination)
+    calls += 1
+    if calls == int(sys.argv[4]):
+        os.kill(os.getpid(), getattr(signal, sys.argv[3]))
+os.link = crash
+if int(sys.argv[4]) == 3:
+    def cleanup_crash(path):
+        (Path(path) / Path(sys.argv[2]).name).unlink()
+        os.kill(os.getpid(), getattr(signal, sys.argv[3]))
+    timelapse.cleanup_staging = cleanup_crash
+publish_video(Path(sys.argv[1]), Path(sys.argv[2]), {'fixture': True})
+"""
+    env = {**os.environ, "PYTHONPATH": str(Path(timelapse.__file__).parents[1])}
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            program,
+            str(encoded),
+            str(video),
+            termination,
+            str(after_link),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == -getattr(signal, termination), result.stderr
+    return video
+
+
+@pytest.mark.parametrize("termination", ["SIGKILL", "SIGTERM"])
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-death regression")
+def test_process_death_between_links_is_recovered_before_retry(
+    tmp_path, monkeypatch, termination
+):
+    video = crash_publisher(tmp_path, termination)
+    assert video.read_bytes() == b"complete encoded bytes"
+    assert not video.with_suffix(".mp4.json").exists()
+    stub_codec(monkeypatch)
+    recording = tmp_path / "recording.db"
+    run = demo(recording)[0]
+    evidence = export(ReplayReader(recording), run, video)
+    assert video.read_bytes() == b"fixture-video"
+    assert json.loads(video.with_suffix(".mp4.json").read_text()) == evidence
+    assert not list(tmp_path.glob(".canary-video-*"))
+
+
+@pytest.mark.parametrize("replacement", ["video", "sidecar"])
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-death regression")
+def test_orphan_recovery_preserves_a_foreign_replacement(
+    tmp_path, monkeypatch, replacement
+):
+    video = crash_publisher(tmp_path, "SIGKILL")
+    sidecar = video.with_suffix(".mp4.json")
+    target = video if replacement == "video" else sidecar
+    target.unlink(missing_ok=True)
+    target.write_bytes(b"foreign replacement")
+    stub_codec(monkeypatch)
+    recording = tmp_path / "recording.db"
+    run = demo(recording)[0]
+    with pytest.raises(ValueError, match="new .mp4"):
+        export(ReplayReader(recording), run, video)
+    assert target.read_bytes() == b"foreign replacement"
+    assert not (sidecar if replacement == "video" else video).exists()
+    assert not list(tmp_path.glob(".canary-video-*"))
+
+
+@pytest.mark.parametrize("after_link", [2, 3])
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process-death regression")
+def test_process_death_after_both_links_preserves_the_completed_pair(
+    tmp_path, monkeypatch, after_link
+):
+    video = crash_publisher(tmp_path, "SIGKILL", after_link=after_link)
+    sidecar = video.with_suffix(".mp4.json")
+    original = video.read_bytes(), sidecar.read_bytes()
+    stub_codec(monkeypatch)
+    recording = tmp_path / "recording.db"
+    run = demo(recording)[0]
+    with pytest.raises(ValueError, match="new .mp4"):
+        export(ReplayReader(recording), run, video)
+    assert (video.read_bytes(), sidecar.read_bytes()) == original
+    assert not list(tmp_path.glob(".canary-video-*"))
+
+
+def test_render_identity_separates_parameters_from_source_evidence(
+    tmp_path, monkeypatch
+):
+    stub_codec(monkeypatch)
+    recording = tmp_path / "recording.db"
+    run = demo(recording)[0]
+    reader = ReplayReader(recording)
+    baseline = timelapse.export_video(
+        reader, run, tmp_path / "base.mp4", fps=1, end_ms=1000
+    )
+    for index, override in enumerate([{"start_ms": 500}, {"fps": 2}, {"speed": 30}]):
+        options = {"fps": 1, "end_ms": 1000, **override}
+        changed = timelapse.export_video(
+            reader, run, tmp_path / f"changed-{index}.mp4", **options
+        )
+        assert changed["source_evidence_sha256"] == baseline["source_evidence_sha256"]
+        assert changed["render_input_sha256"] != baseline["render_input_sha256"]
+
+
+def test_unused_envelopes_and_later_events_do_not_change_window_identity(
+    tmp_path, monkeypatch
+):
+    stub_codec(monkeypatch)
+    recording = tmp_path / "recording.db"
+    run = demo(recording)[0]
+    first = export(ReplayReader(recording), run, tmp_path / "first.mp4")
+    with sqlite3.connect(recording) as db:
+        db.execute(
+            "UPDATE replay_events SET event_key='audit-'||id,segment='other',wall=wall+10 WHERE run=?",
+            (run,),
+        )
+        db.execute("UPDATE replay_runs SET updated=updated+10 WHERE id=?", (run,))
+        db.execute(
+            "INSERT INTO replay_events(run,event_key,segment,t_ms,wall,kind,data) SELECT run,'later-event',segment,999999,wall,kind,data FROM replay_events WHERE run=? AND kind='sample' LIMIT 1",
+            (run,),
+        )
+    second = export(ReplayReader(recording), run, tmp_path / "second.mp4")
+    for field in ["source_evidence_sha256", "render_input_sha256"]:
+        assert first[field] == second[field]
+
+
+def test_recovery_does_not_remove_a_live_publishers_first_link(tmp_path):
+    video = tmp_path / "clip.mp4"
+    encoded = tmp_path / "encoded.bin"
+    encoded.write_bytes(b"live publication")
+    ready = tmp_path / "ready"
+    program = """
+import os, sys, time
+from pathlib import Path
+from canary_brain.timelapse import publish_video
+link = os.link
+def pause(source, destination):
+    link(source, destination)
+    Path(sys.argv[3]).touch()
+    time.sleep(30)
+os.link = pause
+publish_video(Path(sys.argv[1]), Path(sys.argv[2]), {'fixture': True})
+"""
+    child = subprocess.Popen(
+        [sys.executable, "-c", program, str(encoded), str(video), str(ready)],
+        env={**os.environ, "PYTHONPATH": str(Path(timelapse.__file__).parents[1])},
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while not ready.exists():
+            assert child.poll() is None and time.monotonic() < deadline
+            time.sleep(0.02)
+        with pytest.raises(ValueError, match="active publisher"):
+            timelapse.publish_video(encoded, video, {"other": True})
+        assert video.read_bytes() == b"live publication"
+        assert list(tmp_path.glob(".canary-video-*"))
+    finally:
+        child.kill()
+        child.wait(timeout=5)
+    timelapse.publish_video(encoded, video, {"retry": True})
+    assert json.loads(video.with_suffix(".mp4.json").read_text()) == {"retry": True}
+
+
+def test_hash_contracts_are_recomputable_and_track_visible_evidence(
+    tmp_path, monkeypatch
+):
+    stub_codec(monkeypatch)
+    recording = tmp_path / "recording.db"
+    run = demo(recording)[0]
+    first = export(ReplayReader(recording), run, tmp_path / "first.mp4")
+    assert first["source_evidence_sha256"] == digest(first["source_evidence"])
+    assert first["render_input_sha256"] == digest(first["render_input"])
+    with sqlite3.connect(recording) as db:
+        row = db.execute(
+            "SELECT id,data FROM replay_events WHERE run=? AND kind='sample' ORDER BY t_ms,id LIMIT 1",
+            (run,),
+        ).fetchone()
+        data = json.loads(row[1])
+        data["bot"]["xp"] += 1
+        db.execute(
+            "UPDATE replay_events SET data=? WHERE id=?", (json.dumps(data), row[0])
+        )
+    changed = export(ReplayReader(recording), run, tmp_path / "changed.mp4")
+    for field in ["source_evidence_sha256", "render_input_sha256"]:
+        assert first[field] != changed[field]
+    monkeypatch.setattr(timelapse, "RENDERER_VERSION", 999)
+    renderer = export(ReplayReader(recording), run, tmp_path / "renderer.mp4")
+    assert changed["source_evidence_sha256"] == renderer["source_evidence_sha256"]
+    assert changed["render_input_sha256"] != renderer["render_input_sha256"]
+
+
+@pytest.mark.parametrize("failure", ["snapshot", "ffmpeg", "ffprobe"])
+def test_export_deadlines_and_codec_errors_are_reported_without_cli_tracebacks(
+    tmp_path, monkeypatch, failure
+):
+    stub_codec(monkeypatch)
+    recording = tmp_path / "recording.db"
+    run = demo(recording)[0]
+    if failure == "snapshot":
+
+        def fail(*args, **kwargs):
+            raise TimeoutError("snapshot deadline")
+
+        monkeypatch.setattr(timelapse, "materialized_snapshot", fail)
+    elif failure == "ffmpeg":
+
+        def fail(*args, **kwargs):
+            raise subprocess.TimeoutExpired("ffmpeg", 600)
+
+        monkeypatch.setattr(timelapse.subprocess, "run", fail)
+    else:
+
+        def fail(*args, **kwargs):
+            raise subprocess.CalledProcessError(1, "ffprobe")
+
+        monkeypatch.setattr(timelapse.subprocess, "check_output", fail)
+    video = tmp_path / "clip.mp4"
+    with pytest.raises(ValueError, match="video export failed"):
+        export(ReplayReader(recording), run, video)
+    assert not video.exists() and not video.with_suffix(".mp4.json").exists()

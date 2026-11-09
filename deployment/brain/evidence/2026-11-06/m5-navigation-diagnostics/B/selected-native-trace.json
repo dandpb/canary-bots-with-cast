@@ -1,0 +1,20 @@
+{
+  "source": "services.full.log",
+  "source_sha256": "a20b634d427e38f0538be9b80d0a93a8c33668a9f17c525e0a2ff42e128262e2",
+  "matching_lines": 3,
+  "selection": "all when <=160; otherwise first80 and last80 matching lines",
+  "lines": [
+    {
+      "source_line": 3719,
+      "text": "game-1      | 2026-11-06T11:37:25.950919885Z [2026-06-11 11:37:25.950] [info] [BotEngine] Grizzle Alyronia: BRAIN: Walking to node wp 1/16 at (32407,32215,7) "
+    },
+    {
+      "source_line": 3743,
+      "text": "game-1      | 2026-11-06T11:37:52.142626574Z [2026-06-11 11:37:52.142] [warning] [BotEngine] Grizzle Alyronia: BRAIN: Skipping stuck node wp 1/16 at (32407,32215,7) (pathfails=50 dist=77 bot=(32395,32138,7)) "
+    },
+    {
+      "source_line": 3744,
+      "text": "game-1      | 2026-11-06T11:37:52.142672442Z [2026-06-11 11:37:52.142] [info] [BotEngine] Grizzle Alyronia: BRAIN: Walking to node wp 2/16 at (32424,32218,7) "
+    }
+  ]
+}

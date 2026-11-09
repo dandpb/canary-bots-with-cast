@@ -144,3 +144,23 @@ Here is an example of a new event you could add:
 ## Contact
 For additional help, contact the support team or refer to the project's documentation.
 
+## Subdirectories & Boundaries
+
+- [scripts](./scripts/README.md): Lua `GlobalEvent` scripts referenced by scheduled entries in `events.json` (e.g., `example.lua`).
+
+## Interface
+
+- `[events.json:events]`: JSON array of scheduled event definitions (`Forge Time`, `Double Bestiary`, `Fast Exercise`, `50% Loot Bonus`, `50% Exp Bonus`, `Boss Cooldown Reduction`, `Double Exp`, `Double Loot`, `Double Bosstiary`, `Fast Respawn`) specifying `name`, `startdate`, `enddate`, `script`, `ingame` modifiers (`forgechance`, `doublebestiary`, `fastexercise`, `lootrate`, `exprate`, `bosscooldown`, `doublebosstiary`, `spawnrate`, `bosslootrate`, `skillrate`), `description`, `colors` (`colordark`, `colorlight`), and `details` (`displaypriority`, `isseasonal`, `specialevent`).
+- [scripts](./scripts/README.md): Exposes `[example.lua:GlobalEvent("EventScheduleExample")]` and `[example.lua:globalEvent.onStartup]`.
+
+## Invariants
+
+- `[events.json:events]`: Each event entry requires valid `mm/dd/yyyy` `startdate` and `enddate` strings, `colors` hex strings (`colordark`, `colorlight`), and `details` integer flags (`displaypriority`, `isseasonal`, `specialevent`).
+
+## Side Effects
+
+- Modifies active server rates (`exprate`, `lootrate`, `bosslootrate`, `spawnrate`, `skillrate`, `forgechance`, `bosscooldown`, `doublebestiary`, `doublebosstiary`, `fastexercise`) during scheduled date windows and registers scheduled Lua `GlobalEvent` scripts in `./scripts/README.md`.
+
+## Verification
+
+- Run: `ctest --test-dir build --output-on-failure`

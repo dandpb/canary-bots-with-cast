@@ -1,0 +1,13 @@
+{
+  "qualification.json": "ae01380711d7ecb52c0bcee55f184d1db3ea3a81fde5b2447b63a767cd5df51a",
+  "attestation.json": "deb3933b421cf91b82d05dd54352feae05ef2cdb94c46aa56e9da88621ba236b",
+  "runs/experiment.json": "7a653d312732b551056432c1d6f4ccadfb4ff344ddf5e0fb38a716d26e7c931f",
+  "runs/native-0/saved-character.json": "ec49fb00cdcdc8bdc4e7adfe79e41cca753f65869689715a7324724ba937f6d1",
+  "runs/native-0/resources-cleaned.json": "def2fc1919502776a4f39b4dabffb20308e946db56c4a9316aa200285833fb75",
+  "runs/native-0/runtime-image-attestation.json": "5060eeb7c8e9405a8bc6dae3b6183b283d095179335fbdeef9d9bbc54c11d7b2",
+  "driver.py": "6f3c8fc550b24511fbd0d30c2ebe7611a1e977a7006fcbcae39343ed791c1336",
+  "runs/native-0/phase-status.jsonl": "fabd1cb634fcdb2132346da19d34014192d6d882c434e77b5cc79b51eeadb526",
+  "runs/recording.sqlite3": "0cd37c5589a12dcb855918ad00aea74c4307c4fdf4d98b6eb78687b3568d0c42",
+  "runs/recording.sqlite3-wal": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "runs/native-0/character-live.jsonl": "5c48539be7a01dd4542a35d6be1fefc66c7f881ce83b63f3100011e3ec789b93"
+}

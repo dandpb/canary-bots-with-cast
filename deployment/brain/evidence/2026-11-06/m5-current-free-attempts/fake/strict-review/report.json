@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "campaign": "m5-current-fake-d6226a4777",
+  "horizon_seconds": 1800,
+  "horizon_tolerance_seconds": 5,
+  "maximum_completed_seconds": 1805,
+  "ready_for_review": false,
+  "financial_totals_complete": true,
+  "expected_attempts": 1,
+  "recorded_attempts": 1,
+  "reviewed_attempts": 1,
+  "settled_nanousd": 0,
+  "unknown_nanousd": 0,
+  "additional_cost_run_ids": [],
+  "unplanned_cost_run_ids": [],
+  "unplanned_spent_nanousd": 0,
+  "unplanned_unknown_nanousd": 0,
+  "ledger_snapshot_month": "2026-11",
+  "ledger_snapshot_utc": "2026-11-06T11:40:57.123538+00:00",
+  "total_cap_nanousd": 1000000000,
+  "monthly_snapshot": {
+    "cap": 50000000000,
+    "spent": 0,
+    "reserved": 0,
+    "available": 50000000000
+  },
+  "runs": [
+    {
+      "run_id": "m5-current-fake-d6226a4777:fake:0",
+      "participant": "fake",
+      "repetition": 0,
+      "status": "failed",
+      "stop_reason": "stalled",
+      "observed_span_ms": 1508244,
+      "metrics": {
+        "version": 2,
+        "xp_delta": 1993,
+        "xp_per_wall_hour": 4757.055224486224,
+        "xp_per_active_hour": 4760.15450532157,
+        "active_ms": 1507262,
+        "wall_ms": 1508244,
+        "calendar_elapsed_ms": 1514470,
+        "duration_ms": 1531291,
+        "deaths": 0,
+        "initial_native_deaths_excluded": 0,
+        "deaths_observed": true,
+        "interventions": 0,
+        "intervention_free_ms": 1531291,
+        "intervention_free_censored": true,
+        "automatic_recoveries_requested": 1,
+        "model_decisions": 337,
+        "valid_proposals": 329,
+        "policy_overrides": 0,
+        "accepted_actions": 14,
+        "completed_actions": 3,
+        "failed_actions": 8,
+        "provider_failures": 0,
+        "spent_nanousd": 0,
+        "reserved_nanousd": 0,
+        "xp_per_dollar": null,
+        "latency_p50_ms": null,
+        "latency_p95_ms": null,
+        "gaps": 0,
+        "gap_times": [],
+        "levels": [],
+        "milestones": [
+          {
+            "t_ms": 322803,
+            "kind": "completed",
+            "text": "hunt_progress"
+          },
+          {
+            "t_ms": 623041,
+            "kind": "completed",
+            "text": "hunt_progress"
+          },
+          {
+            "t_ms": 923440,
+            "kind": "completed",
+            "text": "hunt_progress"
+          }
+        ],
+        "native_control_ms": 0,
+        "native_fallback_ms": 0,
+        "stalled_ms": 0,
+        "confirmed_objective_defeats": 65,
+        "limitations": [
+          "Sampled observations; hidden events are not reconstructed.",
+          "Elapsed rates use the recorded monotonic timeline; restart gaps retain their recorded estimates.",
+          "Fallback coverage and stalled duration require explicit timed evidence; unavailable is not zero."
+        ]
+      },
+      "ledger_spent_nanousd": 0,
+      "ledger_unknown_nanousd": 0,
+      "xp_per_settled_dollar": null,
+      "requests": [],
+      "skipped_requests": [],
+      "latency": {
+        "by_deadline_ms": {},
+        "native_fallback_events_by_type": {},
+        "exact_backoff_skips": null,
+        "observed_provider_backoff_events": 0,
+        "backoff_by_deadline_ms": null,
+        "runtime_error_fallbacks_unclassified": 0,
+        "backoff_limitation": "ProviderBackoff is distinct when declared by the instrumented source. Generic RuntimeError remains ambiguous; lifecycle events without decision/deadline identity cannot establish TTL attribution."
+      }
+    }
+  ],
+  "participants": [
+    {
+      "participant": "fake",
+      "attempts": 1,
+      "completed": 0,
+      "xp_per_wall_hour_values": [
+        4757.055224486224
+      ],
+      "xp_per_wall_hour_median": 4757.055224486224,
+      "xp_per_wall_hour_min": 4757.055224486224,
+      "xp_per_wall_hour_max": 4757.055224486224
+    }
+  ],
+  "findings": [
+    {
+      "code": "qualification_not_completed",
+      "run_id": "m5-current-fake-d6226a4777:fake:0",
+      "detail": "Free qualification requires reason=completed"
+    }
+  ],
+  "verdict": "descriptive_pilot_no_winner",
+  "limitations": [
+    "The independent run is the sample unit; repeated frames are not extra samples.",
+    "Completed-response latency is deadline-censored; inspect failures by deadline.",
+    "Generic RuntimeError fallback is not an exact backoff count; instrumented ProviderBackoff is reported separately. TTL attribution requires additional identity.",
+    "Usage-priced costs are not provider invoice reconciliation.",
+    "This checker does not establish fixture hunt/resupply acceptance or human/AFK safety."
+  ],
+  "input_sha256": {
+    "<REVIEW_BUNDLE>/fake/fake.replay.zip": "1b11eba6fa0e6eeeb130b0f154376303662e827737d1d8b54ac11321f3567706",
+    "<REVIEW_BUNDLE>/fake/experiment.json": "96cd8605aa62be019178969b9764b9bdbb9925ce375bfbbac73c3d668caf7b03",
+    "<REVIEW_BUNDLE>/fake/offline-ledger-export.json": "4305771af36d22b7f6f66300fefe4d17aaf39b901539b7be27a7a9b0f38b055d",
+    "<REVIEW_BUNDLE>/fake/trials.json": "447a0fe29f07da5840af18b1c3c545bc9f5fb02b847312aefbf32bbb83ad4093"
+  }
+}

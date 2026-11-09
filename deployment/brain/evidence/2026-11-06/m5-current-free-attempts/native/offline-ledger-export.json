@@ -1,0 +1,12 @@
+{
+  "authority": "offline-free-qualification-only:<SOURCE_NATIVE>/offline-ledger.sqlite3",
+  "snapshot_utc": "2026-11-06T11:40:55.088080+00:00",
+  "month": "2026-11",
+  "budget": {
+    "cap": 50000000000,
+    "spent": 0,
+    "reserved": 0,
+    "available": 50000000000
+  },
+  "requests": []
+}

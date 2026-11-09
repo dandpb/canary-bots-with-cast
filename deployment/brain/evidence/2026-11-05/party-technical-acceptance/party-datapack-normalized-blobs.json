@@ -1,0 +1,18 @@
+{
+  "data-otservbr-global/npc/xodet.lua": {
+    "crlf": 192,
+    "lf_blob": "7f0fa10d9047093037465b06c56ba6f394fbc7db"
+  },
+  "data/XML/vocations.xml": {
+    "crlf": 150,
+    "lf_blob": "050f30faecbaa1c6b95f7e50d2ebc2dbdc6bd952"
+  },
+  "data/items/items.xml": {
+    "crlf": 84667,
+    "lf_blob": "7e973c4ddd5049d3ccc02ed4cacbe50d66537443"
+  },
+  "data-otservbr-global/monster/mammals/wolf.lua": {
+    "crlf": 112,
+    "lf_blob": "2b1a13734e9ef49cb0ca689fffc368ec7453a848"
+  }
+}
