@@ -418,6 +418,14 @@ def run_preflight(resources_only=False, approved_revision=None, receipt_path=Non
                          compose_sha, images, myaac, map_sha, brain_fake or upgrade, stage1, game_pin)
 
 
+def require_stage1(action):
+    """Stage-1-only tools (baseline, rollout, rollback, upgrade, capture) refuse another profile at dispatch,
+    before any git, Docker or file read: they act only on the pinned canary-core-qa."""
+    if PROFILE["name"] != "stage1":
+        raise RuntimeError(f"{action} is stage-1 only (project {PROFILES['stage1']['project']}); refused under "
+                           f"CORE_QA_PROFILE={PROFILE['name']} (project {PROJECT})")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resources-only", action="store_true",
@@ -438,6 +446,8 @@ def main():
     parser.add_argument("--db-audit", type=Path,
                         help="with --capture-stage1-baseline: DB audit JSON when the DB slice differs from the pin")
     args = parser.parse_args()
+    if args.capture_stage1_baseline or args.upgrade_from_stage1:
+        require_stage1("--capture-stage1-baseline" if args.capture_stage1_baseline else "--upgrade-from-stage1")
     if args.capture_stage1_baseline:
         import stage1_baseline
 

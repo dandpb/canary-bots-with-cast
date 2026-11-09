@@ -1330,6 +1330,11 @@ def main() -> None:
     parser.add_argument("branch", choices=("start-managed", "rescue"))
     args = parser.parse_args()
     try:
+        profile = os.environ.get("CORE_QA_PROFILE", "stage1")
+        if profile != "stage1":  # stage 1 only; before the adapter, git or Docker
+            raise RuntimeError(
+                f"the managed return is stage-1 only; refused under CORE_QA_PROFILE={profile}"
+            )
         adapter = load_adapter(args.adapter, args.adapter_sha256)
         qa, _s1 = adapter.load_tooling(args.source_checkout.resolve())
         bound_tooling(qa)

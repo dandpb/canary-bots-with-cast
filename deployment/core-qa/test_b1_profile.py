@@ -31,6 +31,9 @@ STAGE1_COMPOSE_SHA256 = {
     "compose.game-pin.yaml": "a465fc92faa566b0b587381ee126073733627b1910ba819d289d1ac3a60acbfe",
 }
 REFUSED_STAGE1 = "stage-1 baseline schema or project differs; refused"
+ONLY_STAGE1 = (
+    "is stage-1 only"  # the dispatch guard, before any git, Docker or assert_* call
+)
 EXISTING = "refused: QA resources already exist; review before up: "
 
 # Run in a fresh interpreter under a profile: what preflight/stage1_baseline derive, the Compose argv
@@ -457,6 +460,20 @@ class CrossUseTests(unittest.TestCase):
                 ["stage1_baseline.py", "verify-restored"],
                 [
                     "stage1_baseline.py",
+                    "game-rollout-gate",
+                    "--approved-revision",
+                    "0" * 40,
+                    "--historical-receipt",
+                    str(historical),
+                ],
+                [
+                    "stage1_baseline.py",
+                    "game-rollout",
+                    "--historical-receipt",
+                    str(historical),
+                ],
+                [
+                    "stage1_baseline.py",
                     "capture",
                     "--historical-receipt",
                     str(historical),
@@ -477,14 +494,14 @@ class CrossUseTests(unittest.TestCase):
                 with self.subTest(args=args):
                     result = run_profile(None, "b1", args)
                     self.assertNotEqual(result.returncode, 0)
-                    self.assertIn(REFUSED_STAGE1, result.stderr)
+                    self.assertIn(ONLY_STAGE1, result.stderr)
                     self.assertNotIn(
                         "FileNotFoundError", result.stderr
                     )  # never reached docker or git
             stage1 = run_profile(
                 None, None, ["stage1_baseline.py", "check"]
             )  # stage 1 gets past the baseline
-            self.assertNotIn(REFUSED_STAGE1, stage1.stderr)
+            self.assertNotIn(ONLY_STAGE1, stage1.stderr)
             self.assertIn("FileNotFoundError", stage1.stderr)
 
     def test_b1_handoff_refuses_the_pinned_stage1_manifest(self):
@@ -503,7 +520,9 @@ with patch("stage2_handoff.git_blob", return_value=adapter):
 """
         refused = run_profile(code, "b1")
         self.assertEqual(
-            refused.stdout.strip(), f"refused: {REFUSED_STAGE1}", refused.stderr
+            refused.stdout.strip(),
+            "refused: the stage-2 handoff is stage-1 only; refused under CORE_QA_PROFILE=b1",
+            refused.stderr,
         )
         # The managed return builds this same Handoff before any gate, so it refuses with it.
         self.assertIn(
@@ -598,6 +617,145 @@ with patch("preflight.command", side_effect=fake_docker([tuple(item) for item in
                     None, "b1", ["-c", code, json.dumps([objects, images])]
                 )
                 self.assertEqual(result.stdout.strip(), expected, result.stderr)
+
+
+# Under a profile: run one CLI with every subprocess call and the first gates spied. A spy raises
+# Reached (a BaseException, past `except Exception`), so the first call reached is the outcome.
+SPY = """
+import contextlib, io, json, subprocess, sys
+from unittest.mock import patch
+import preflight, stage1_baseline
+class Reached(BaseException):
+    pass
+calls = []
+def spy(name):
+    def record(*args, **kwargs):
+        calls.append(name)
+        raise Reached(name)
+    return record
+argv = json.loads(sys.argv[1])
+spies = [patch("subprocess.run", side_effect=spy("subprocess.run")),
+         patch("subprocess.Popen", side_effect=spy("subprocess.Popen")),
+         patch("preflight.command", side_effect=spy("preflight.command"))]
+spies += [patch(f"preflight.{name}", side_effect=spy(name)) for name in (
+    "assert_source", "assert_compose", "assert_game_base", "assert_no_resources", "assert_image_lock")]
+spies += [patch("stage1_baseline.load_baseline", side_effect=spy("load_baseline"))]
+stderr = io.StringIO()
+with contextlib.ExitStack() as stack, contextlib.redirect_stderr(stderr):
+    for item in spies:
+        stack.enter_context(item)
+    stack.enter_context(patch("sys.argv", argv))
+    module = {"stage1_baseline.py": stage1_baseline, "preflight.py": preflight}.get(argv[0])
+    if module is None:
+        import qa_return_attempt as module
+    try:
+        module.main()
+        outcome = "returned"
+    except Reached as error:
+        outcome = f"reached {error}"
+    except RuntimeError as error:
+        outcome = f"refused: {error}"
+    except SystemExit as error:
+        outcome = f"exit {error.code}: {stderr.getvalue().strip()}"
+print(json.dumps({"outcome": outcome, "calls": calls}))
+"""
+
+
+class EarlyGuardTests(unittest.TestCase):
+    """Stage-1-only commands refuse another profile at dispatch, before any git, Docker or assert_* call;
+    unset, they reach the same first step as before."""
+
+    def spied(self, profile, argv):
+        result = run_profile(None, profile, ["-c", SPY, json.dumps(argv)])
+        if result.returncode:
+            raise AssertionError(result.stderr)
+        return json.loads(result.stdout)
+
+    def commands(self, directory):
+        historical = Path(directory) / "web-rollout-after.json"
+        historical.write_text("{}")
+        revision = ["--approved-revision", "0" * 40]
+        receipt = ["--historical-receipt", str(historical)]
+        adapter = HERE / "stage2_handoff.py"
+        return {  # argv -> the first call stage 1 reaches, as before CORE_QA_PROFILE
+            (
+                "stage1_baseline.py",
+                "game-rollout-gate",
+                *revision,
+                *receipt,
+            ): "assert_source",
+            ("stage1_baseline.py", "game-rollout", *receipt): "assert_source",
+            ("stage1_baseline.py", "check"): "load_baseline",
+            ("stage1_baseline.py", "rollback"): "load_baseline",
+            ("stage1_baseline.py", "verify-restored"): "load_baseline",
+            ("stage1_baseline.py", "capture", *receipt): "load_baseline",
+            ("preflight.py", "--upgrade-from-stage1", *revision): "load_baseline",
+            ("preflight.py", "--capture-stage1-baseline", *receipt): "load_baseline",
+            (
+                "qa_return_attempt.py",
+                "--adapter",
+                str(adapter),
+                "--adapter-sha256",
+                hashlib.sha256(adapter.read_bytes()).hexdigest(),
+                "--adapter-revision",
+                "f" * 40,
+                "--source-checkout",
+                str(REPO),
+                "--manifest",
+                str(MANIFEST),
+                "--attempt",
+                "a" * 64,
+                "--window-notice",
+                str(historical),
+                "--window-notice-sha256",
+                "b" * 64,
+                "start-managed",
+            ): "subprocess.run",  # the Handoff's git blob of the adapter
+        }
+
+    def test_b1_refuses_at_dispatch_with_zero_calls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for argv in self.commands(directory):
+                with self.subTest(argv=argv[:2]):
+                    found = self.spied("b1", list(argv))
+                    self.assertEqual(found["calls"], [])
+                    self.assertIn(ONLY_STAGE1, found["outcome"])
+                    self.assertIn("CORE_QA_PROFILE=b1", found["outcome"])
+
+    def test_stage1_still_reaches_its_first_step(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for argv, first in self.commands(directory).items():
+                for profile in (None, "stage1"):
+                    with self.subTest(argv=argv[:2], profile=profile):
+                        found = self.spied(profile, list(argv))
+                        self.assertEqual(found["calls"], [first])
+                        self.assertNotIn(ONLY_STAGE1, found["outcome"])
+
+    def test_b1_handoff_refuses_before_git(self):
+        code = f"""
+from pathlib import Path
+from unittest.mock import patch
+import stage2_handoff as handoff
+with patch("subprocess.run", side_effect=AssertionError("subprocess.run")), \\
+     patch("stage2_handoff.load_tooling", side_effect=AssertionError("load_tooling")):
+    try:
+        handoff.Handoff(Path({str(REPO)!r}), Path({str(MANIFEST)!r}))
+    except RuntimeError as error:
+        print("refused:", error)
+"""
+        refused = run_profile(code, "b1")
+        self.assertEqual(
+            refused.stdout.strip(),
+            "refused: the stage-2 handoff is stage-1 only; refused under CORE_QA_PROFILE=b1",
+            refused.stderr,
+        )
+
+    def test_the_baseline_project_check_stays_a_second_layer(self):
+        with (
+            patch("preflight.PROJECT", "canary-qa-b1"),
+            self.assertRaisesRegex(RuntimeError, REFUSED_STAGE1),
+        ):
+            stage1_baseline.load_baseline()
 
 
 if __name__ == "__main__":

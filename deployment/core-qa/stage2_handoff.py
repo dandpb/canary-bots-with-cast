@@ -383,6 +383,16 @@ def execute(argv: list[str]) -> tuple[int, str, str]:
     return result.returncode, result.stdout, result.stderr
 
 
+def require_stage1_profile() -> None:
+    """This adapter and its manifest are stage 1 (canary-core-qa) only: under another CORE_QA_PROFILE
+    it refuses before any git, Docker or tooling call, whatever the source checkout."""
+    profile = os.environ.get("CORE_QA_PROFILE", "stage1")
+    if profile != "stage1":
+        raise RuntimeError(
+            f"the stage-2 handoff is stage-1 only; refused under CORE_QA_PROFILE={profile}"
+        )
+
+
 def load_tooling(source: Path) -> tuple[Any, Any]:
     """Import preflight and stage1_baseline from the source checkout, read-only, without bytecode."""
     core = (source / "deployment/core-qa").resolve()
@@ -549,6 +559,7 @@ class Handoff:
         adapter_revision: str = "",
         adapter_repo: Path | None = None,
     ) -> None:
+        require_stage1_profile()
         self.source = source.resolve()
         content = Path(__file__).read_bytes()
         if sha256(content) != adapter_sha256:

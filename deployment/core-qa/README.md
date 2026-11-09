@@ -332,9 +332,10 @@ Separação, falhando fechado:
 - o preflight confere que o render é do perfil: projeto, portas publicadas, portas no
   ambiente e, no B1, limites em todo serviço. Um render da etapa 1 sob o B1, ou do B1 sob
   a etapa 1, é recusado;
-- sob o B1, `stage1_baseline.py` (todas as ações), `--upgrade-from-stage1`,
-  `--capture-stage1-baseline`, `stage2_handoff.py` e `qa_return_attempt.py` recusam antes de
-  qualquer Docker: a baseline e o manifesto a1d9 são do projeto `canary-core-qa`;
+- sob o B1, `stage1_baseline.py` (todas as ações, `game-rollout-gate` e `game-rollout`
+  inclusive), `--upgrade-from-stage1`, `--capture-stage1-baseline`, `stage2_handoff.py` e
+  `qa_return_attempt.py` recusam já no despacho, antes de qualquer git, Docker ou `assert_*`:
+  a baseline e o manifesto a1d9 são do projeto `canary-core-qa`;
 - `--record-brain-image` recusa recibo de outro projeto (recibo sem projeto é da etapa 1);
 - os gates de cada um não veem os objetos do outro: um B1 de pé não bloqueia os gates da
   etapa 1, e a etapa 1 de pé não conta como recurso existente do B1;
@@ -353,7 +354,7 @@ python3 preflight.py --brain-fake --approved-revision "$SOURCE_REVISION"
 # $B1 up -d --no-build --pull never --wait database game web brain
 ```
 
-Com uma source checkout anterior (a1d9), `stage2_handoff.py` e `qa_return_attempt.py`
+Cópias anteriores (a1d9) de `stage2_handoff.py`, `qa_return_attempt.py` e das ferramentas
 ignoram `CORE_QA_PROFILE` e continuam só da etapa 1.
 
 Os limites de `compose.b1.yaml` (game 2 CPUs/6 GB, banco 1/2 GB, web 1/1 GB, brain

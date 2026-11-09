@@ -787,6 +787,7 @@ def main():
     parser.add_argument("--game-rollout-receipt", type=Path, help="capture: the receipt written by game-rollout")
     parser.add_argument("--db-audit", type=Path, help="capture: DB audit JSON when the slice differs from the pin")
     args = parser.parse_args()
+    qa.require_stage1(f"stage1_baseline.py {args.action}")  # every action, before any git or Docker call
     if args.action in ("capture", "game-rollout", "game-rollout-gate") and not args.historical_receipt:
         parser.error(f"{args.action} needs --historical-receipt")
     if args.action == "capture":
