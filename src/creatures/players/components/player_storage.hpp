@@ -96,6 +96,9 @@ public:
 
 		// Keys that were removed; should be deleted from the database.
 		std::vector<uint32_t> deletions;
+
+		// Mutation identity captured with each dirty key; values alone cannot detect ABA.
+		std::map<uint32_t, uint64_t> revisions;
 	};
 
 	/**
@@ -188,4 +191,8 @@ private:
 	 * Cleared after success. Never loaded from the DB.
 	 */
 	std::set<uint32_t> m_removedKeys;
+
+	// Never reset the sequence on ingest/clearDirty: an older checkpoint may still ack.
+	uint64_t m_nextRevision = 0;
+	std::map<uint32_t, uint64_t> m_dirtyRevisions;
 };

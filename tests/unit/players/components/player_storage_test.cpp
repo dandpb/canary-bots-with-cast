@@ -14,6 +14,7 @@
 #include "utils/const.hpp"
 #include "creatures/players/components/player_forge_history.hpp"
 #include "database/database.hpp"
+#include "game/scheduling/serial_save_queue.hpp"
 
 #include "lib/logging/in_memory_logger.hpp"
 
@@ -199,4 +200,93 @@ TEST_F(PlayerStorageTest, GetReturnsMinusOneForMissingKey) {
 	storage.ingest({});
 	EXPECT_EQ(-1, storage.get(999999u));
 	EXPECT_FALSE(storage.has(999999u));
+}
+
+TEST_F(PlayerStorageTest, QueuedCheckpointAcknowledgementsRetainUpsertABA) {
+	auto player = std::make_shared<Player>();
+	auto& storage = player->storage();
+	SerialSaveQueue<PlayerStorage::PlayerStorageDelta> queue;
+	storage.add(50000, 1, true);
+	ASSERT_TRUE(queue.request(7, storage.delta()).start);
+	const auto first = queue.take(7).value();
+	storage.add(50000, 2, true);
+	EXPECT_FALSE(queue.request(7, storage.delta()).start);
+	storage.add(50000, 1, true);
+	storage.acknowledge(first.value);
+	ASSERT_TRUE(queue.finish(7, first.generation, true));
+	const auto second = queue.take(7).value();
+	storage.acknowledge(second.value);
+	EXPECT_FALSE(queue.finish(7, second.generation, true));
+	ASSERT_TRUE(storage.delta().upserts.contains(50000));
+	EXPECT_EQ(storage.delta().upserts.at(50000), 1);
+	storage.acknowledge(storage.delta());
+	EXPECT_TRUE(storage.delta().upserts.empty());
+}
+
+TEST_F(PlayerStorageTest, AcknowledgingOldDeletionRetainsDeleteReinsertDelete) {
+	auto player = std::make_shared<Player>();
+	auto& storage = player->storage();
+	storage.add(50000, 1, true);
+	storage.remove(50000);
+	const auto first = storage.delta();
+	storage.add(50000, 2, true);
+	const auto second = storage.delta();
+	storage.remove(50000);
+	storage.acknowledge(first);
+	storage.acknowledge(second);
+	ASSERT_EQ(storage.delta().deletions.size(), 1);
+	EXPECT_EQ(storage.delta().deletions.front(), 50000);
+	storage.acknowledge(storage.delta());
+	EXPECT_TRUE(storage.delta().deletions.empty());
+}
+
+TEST_F(PlayerStorageTest, MissingRevisionAndEmptyAcknowledgementsFailClosed) {
+	auto player = std::make_shared<Player>();
+	auto& storage = player->storage();
+	storage.add(50000, 1, true);
+	storage.acknowledge({});
+	auto missing = storage.delta();
+	missing.revisions.clear();
+	storage.acknowledge(missing);
+	EXPECT_TRUE(storage.delta().upserts.contains(50000));
+	storage.remove(50000);
+	missing = storage.delta();
+	missing.revisions.clear();
+	storage.acknowledge(missing);
+	EXPECT_EQ(storage.delta().deletions.size(), 1);
+}
+
+TEST_F(PlayerStorageTest, ClearAndIngestDoNotRecycleCheckpointRevisions) {
+	auto player = std::make_shared<Player>();
+	auto& storage = player->storage();
+	storage.add(50000, 1, true);
+	const auto old = storage.delta();
+	storage.clearDirty();
+	storage.add(50000, 1, true);
+	storage.acknowledge(old);
+	EXPECT_TRUE(storage.delta().upserts.contains(50000));
+	storage.ingest({});
+	storage.add(50000, 1, true);
+	storage.acknowledge(old);
+	EXPECT_TRUE(storage.delta().upserts.contains(50000));
+}
+
+TEST_F(PlayerStorageTest, RegeneratedReservedKeyReplacesPendingDeletion) {
+	auto player = std::make_shared<Player>();
+	auto& storage = player->storage();
+	const auto key = PSTRG_OUTFITS_RANGE_START + 1;
+	storage.add(key, (50 << 16) | 3, true);
+	storage.prepareForPersist();
+	storage.acknowledge(storage.delta());
+	ASSERT_TRUE(storage.remove(key));
+	const auto staleDeletion = storage.delta();
+	storage.prepareForPersist();
+	const auto regenerated = storage.delta();
+	ASSERT_TRUE(regenerated.upserts.contains(key));
+	EXPECT_TRUE(regenerated.deletions.empty());
+	storage.acknowledge(staleDeletion);
+	EXPECT_TRUE(storage.delta().upserts.contains(key));
+	storage.acknowledge(regenerated);
+	EXPECT_TRUE(storage.delta().upserts.empty());
+	EXPECT_TRUE(storage.delta().deletions.empty());
 }
