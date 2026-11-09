@@ -1,0 +1,39 @@
+# B1 companion playtest only (CORE_QA_PROFILE=b1), never stage 1 and never production.
+# A second QA project next to the live canary-core-qa on the same Docker daemon: its own project
+# name (so containers, volumes and network are canary-qa-b1-*), image tags, loopback host ports
+# and CPU/memory limits. Always after compose.yaml; preflight.py renders and checks it.
+# `!override` replaces the stage-1 port lists instead of merging them (Compose >= 2.24.4);
+# an older Compose that merges them is refused by the preflight's port check.
+name: canary-qa-b1
+services:
+  database:
+    cpus: 1
+    mem_limit: 2g
+
+  game:
+    image: canary-qa-b1-game:local
+    cpus: 2
+    mem_limit: 6g
+    environment:
+      GAME_LOGIN_PORT: 27171
+      GAME_PROTOCOL_PORT: 27172
+      GAME_STATUS_PORT: 27173
+    ports: !override
+      - 127.0.0.1:27171:27171
+      - 127.0.0.1:27172:27172
+      - 127.0.0.1:27173:27173
+    healthcheck:
+      test: !override [CMD, python3, -c, "import socket; socket.create_connection(('127.0.0.1',27173),2).close()"]
+
+  web:
+    image: canary-qa-b1-web:local
+    cpus: 1
+    mem_limit: 1g
+    environment:
+      CANARY_SERVER_NAME: Canary QA B1
+      CANARY_LOGIN_PORT: 27171
+      CANARY_GAME_PORT: 27172
+      CANARY_STATUS_PORT: 27173
+      MYAAC_SITE_URL: http://127.0.0.1:28080
+    ports: !override
+      - 127.0.0.1:28080:80
