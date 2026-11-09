@@ -45,6 +45,29 @@ RUN --mount=type=bind,target=/source \
     cmake -S . -B /build -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLED_DIR=/opt/installed -DVCPKG_MANIFEST_INSTALL=OFF -DVCPKG_TARGET_TRIPLET=arm64-linux -DVCPKG_HOST_TRIPLET=arm64-linux -DCANARY_TARGET_ARCH=armv8-a -DCMAKE_BUILD_TYPE=Release -DTOGGLE_BIN_FOLDER=ON -DCANARY_BUILD_TESTS=OFF -DOPTIONS_ENABLE_IPO=OFF -DOPTIONS_ENABLE_CCACHE=OFF -DOPTIONS_ENABLE_SCCACHE=OFF -DSPEED_UP_BUILD_UNITY=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && \
     cmake --build /build --target canary bot_engine -j ${BUILD_JOBS}
 
+# Optional native unit qualification; never changes the production builddir.
+FROM build AS unit-build
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+RUN test "$BUILDPLATFORM" = linux/arm64 && test "$TARGETPLATFORM" = linux/arm64
+RUN --mount=type=bind,target=/source \
+    --mount=type=bind,from=gitmeta,target=/source-git \
+    export GIT_DIR=/source-git GIT_WORK_TREE=/source && \
+    python3 deployment/wsl/verify-build-source.py --source /source --revision "$SOURCE_REVISION" && \
+    cmake -S . -B /build-ut -G Ninja -DCMAKE_TOOLCHAIN_FILE=/opt/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLED_DIR=/opt/installed -DVCPKG_MANIFEST_INSTALL=OFF -DVCPKG_TARGET_TRIPLET=arm64-linux -DVCPKG_HOST_TRIPLET=arm64-linux -DCANARY_TARGET_ARCH=armv8-a -DCMAKE_BUILD_TYPE=Release -DTOGGLE_BIN_FOLDER=ON -DCANARY_BUILD_TESTS=ON -DCANARY_BUILD_SERVER=OFF -DOPTIONS_ENABLE_IPO=OFF -DOPTIONS_ENABLE_CCACHE=OFF -DOPTIONS_ENABLE_SCCACHE=OFF -DSPEED_UP_BUILD_UNITY=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON && \
+    cmake --build /build-ut --target canary_ut -j 1
+# An empty, private writable cwd: fixtures need no game configuration or DB.
+WORKDIR /unit-work
+RUN --network=none --mount=type=bind,target=/source \
+    umask 077 && mkdir /unit-evidence && \
+    timeout 120s /build-ut/tests/unit/canary_ut --gtest_filter='PlayerStorageTest.*' --gtest_list_tests > /unit-evidence/tests.txt && \
+    timeout 120s /build-ut/tests/unit/canary_ut --gtest_filter='PlayerStorageTest.*' --gtest_output=xml:/unit-evidence/results.xml > /unit-evidence/run.log 2>&1 && \
+    cp /build-ut/tests/unit/canary_ut /unit-evidence/canary_ut && \
+    python3 /source/deployment/wsl/validate-native-unit-evidence.py --evidence /unit-evidence --revision "$SOURCE_REVISION" --release-core /build/bin/canary --release-lib /build/bin/libbot_engine.so
+
+FROM scratch AS native-unit-evidence
+COPY --from=unit-build /unit-evidence/ /
+
 FROM ${BASE_IMAGE} AS game
 ARG SOURCE_REVISION=unknown
 LABEL org.opencontainers.image.revision=$SOURCE_REVISION
