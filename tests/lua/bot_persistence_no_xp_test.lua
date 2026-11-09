@@ -43,6 +43,69 @@ end
 
 function qa.run(command)
 	local name = command.name or "Grizzle Alyronia"
+	if command.action == "brain" then
+		local operation = command.operation or "status"
+		assert(operation == "status" or operation == "reload" or operation == "disable")
+		return Game.botCommand("_global", "brain " .. operation)
+	end
+	if command.action == "party" then
+		local leader = assert(Player("Lifecycle Human"))
+		if leader:getParty() then leader:getParty():disband() end
+		for _, botName in ipairs({ "Grizzle Alyronia", "Sever Heartspear", "Galdon Whitehoof" }) do
+			local player = assert(Player(botName))
+			Game.botSetAIPaused(player:getGuid(), false)
+		end
+		qa.native = qa.native or assert(package.loadlib("/qa/lifecycle_bridge.so", "luaopen_lifecycle_bridge"))()
+		qa.native.cast("invite")
+		return { invited = 3 }
+	end
+	if command.action == "population" then
+		local start = assert(tonumber(command.start))
+		local limit = assert(tonumber(command.limit))
+		assert(limit > 0 and limit <= 25 and start >= 65000)
+		Game.botCommand("_global", "schedule off")
+		local cursor = db.storeQuery("SELECT id,name FROM players WHERE account_id=65000 AND id>=" .. start .. " ORDER BY id LIMIT " .. limit)
+		local names, last = {}, start
+		if cursor then
+			repeat names[#names + 1] = result.getString(cursor, "name"); last = result.getNumber(cursor, "id") until not result.next(cursor)
+			result.free(cursor)
+		end
+		for _, botName in ipairs(names) do
+			local player = assert(Game.loadBotPlayer(botName))
+			Game.botActivate(player:getGuid())
+			Game.botSetAIPaused(player:getGuid(), true)
+			Game.botHibernate(player:getGuid())
+		end
+		return { count = #names, last = last }
+	end
+	if command.action == "dbprobe" then
+		local cursor = assert(db.storeQuery("SELECT 1 AS value"))
+		result.free(cursor)
+		return { completed = true }
+	end
+	if command.action == "cast" then
+		qa.native = qa.native or assert(package.loadlib("/qa/lifecycle_bridge.so", "luaopen_lifecycle_bridge"))()
+		return qa.native.cast(command.operation or "status", command.text or "")
+	end
+	if command.action == "optional" then
+		assert(Game.loadBotPlayer(name) == nil)
+		assert(Game.botCountActive() == 0)
+		assert(Game.botActivate(65001) == false)
+		assert(Game.botHibernate(65001) == false)
+		assert(Game.botGetState(65001) == -1)
+		assert(Game.botCommand("_global", "schedule status"):find("unavailable"))
+		assert(Game.botReregisterAll() == 0)
+		return { safe = true }
+	end
+	if command.action == "config" then
+		assert(Game.reload(RELOAD_TYPE_CONFIG))
+		return { showBots = configManager.getBoolean(configKeys.BOT_PLAYERS_SHOW_AS_ONLINE) }
+	end
+	if command.action == "death" then
+		local player = assert(Player("Lifecycle Human"))
+		player:addHealth(-player:getHealth())
+		return { health = player:getHealth() }
+	end
 	if command.action == "virtual" or command.action == "unregister" or command.action == "pending"
 		or command.action == "arm" or command.action == "counts" or command.action == "roster" then
 		qa.native = qa.native or assert(package.loadlib("/qa/lifecycle_bridge.so", "luaopen_lifecycle_bridge"))()

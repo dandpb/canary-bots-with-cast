@@ -132,3 +132,40 @@ trigger and run a global save. Compare a fresh database read and a new process.
 Record save counts, capture/queue durations, dispatcher gaps and DB/CPU load for the
 population being measured. A small fixture does not establish 997-bot overhead.
 The full hot-reload Player handoff consumes this contract in #12/B.
+
+## Integrated cast acceptance (#13)
+
+`tools/bot_brain/test_cast_lifecycle.py` uses the labelled lifecycle stack and a
+labelled `canary-lifecycle-qa-web` container on its private network, aliased `web`.
+The web service must use only the disposable database and dummy credentials.
+No host ports, provider keys or model workers are needed. `seed_human()` creates
+an ordinary account/character (`Lifecycle Human`), separate from bot account 65000;
+death/logout scripts intentionally treat the bot account differently.
+
+The test-only bridge invokes real protocol login, Connection::close, release,
+replacement/late release, Player broadcasting and viewer initialization. Connected
+loopback sockets keep the genuine connection-loss guard active; a private test I/O
+context controls their lifetime. Member access lives entirely in the fixture; no
+product control API or authentication bypass is installed. The character-list probe
+executes the native TCP serializer and reads its bytes over a loopback connection;
+it does not replace a full client authentication/playtest.
+
+```sh
+python3 tools/bot_brain/test_cast_lifecycle.py
+```
+
+In the integrated Release build, all 30 selected native tests and 16 Lua startup
+tests passed. Actual disconnect/release, late old release, viewer teardown, normal
+logout, human death and recovery beyond the immediate retry limit converged in
+the real HTTP login list. A delayed DELETE followed by a new start retained the
+new publication. The shared-connection implementation blocked a dispatcher DB probe
+for 2049 ms behind a 2000 ms DELETE; dedicated cast connections reduced the same
+probe to about 200 ms, including the Docker/control round trip. This is a small
+fixture measurement, not production throughput.
+
+Additional #12 integration: initial missing library allowed normal human teleport,
+speech, offline PM, administrative bot calls, native TCP cast listing/viewing and
+actual XML/binary status requests with bot population reporting both off and on.
+Restoring the matching library allowed explicit reload without process restart.
+Selecting a hibernated bot's cast woke the same Player; a following reload retained
+its runtime ID and connected viewer. These probes preserve production data.
