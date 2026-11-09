@@ -27,7 +27,8 @@ ARG BASE_IMAGE=ubuntu:24.04@sha256:19cad59657037cffa0ac9a48107019b768900ff107114
 FROM ${BASE_IMAGE} AS build
 ARG DEBIAN_FRONTEND=noninteractive
 ARG BUILD_JOBS=3
-ENV VCPKG_ROOT=/opt/vcpkg VCPKG_MAX_CONCURRENCY=3 VCPKG_BINARY_SOURCES=clear
+ARG VCPKG_MAX_CONCURRENCY=3
+ENV VCPKG_ROOT=/opt/vcpkg VCPKG_MAX_CONCURRENCY=${VCPKG_MAX_CONCURRENCY} VCPKG_BINARY_SOURCES=clear
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake ninja-build git curl ca-certificates zip unzip tar pkg-config autoconf automake libtool python3 perl bison flex linux-libc-dev && rm -rf /var/lib/apt/lists/*
 COPY vcpkg.json /manifest/vcpkg.json
 RUN git init /opt/vcpkg && cd /opt/vcpkg && git remote add origin https://github.com/microsoft/vcpkg.git && git fetch --depth=1 origin 66c0373dc7fca549e5803087b9487edfe3aca0a1 && git checkout FETCH_HEAD && ./bootstrap-vcpkg.sh -disableMetrics
