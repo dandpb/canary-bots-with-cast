@@ -504,3 +504,8 @@ data/bot/dumps/
 /deployment/brain/gateway/runtime/
 /deployment/brain/experiments/runtime/
 *.replay.zip
+
+!/tools/bot_brain/test_checkpoint_overlap.py
+!/tools/bot_brain/test_cast_lifecycle.py
+!/tools/bot_brain/test_accepted_navigation_reset.py
+!/tools/bot_brain/test_lifecycle_import_safety.py

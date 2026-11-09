@@ -62,6 +62,15 @@ TRACEBACK_PATTERN = re.compile(
 NOISE_PATTERN = re.compile(r"(0x[0-9a-f]+|\b\d{3,}\b|[0-9a-f]{8,})", re.IGNORECASE)
 SAVE_PATTERN = re.compile(r"Saving (\d+) players", re.IGNORECASE)
 SAVED_PATTERN = re.compile(r"Players saved in ([\d.]+) milliseconds", re.IGNORECASE)
+CAPTURE_PATTERN = re.compile(
+    r"Captured (\d+) players for server save(?: in [\d.]+ milliseconds)?",
+    re.IGNORECASE,
+)
+COMPLETED_SAVE_PATTERN = re.compile(
+    r"Server saved (\d+) players in (\d+(?:\.\d+)?) milliseconds",
+    re.IGNORECASE,
+)
+
 HIBERNATION_PATTERN = re.compile(
     r"\[BotHibernation\]\s*(\d+) bots:\s*hibernated=(\d+)\s*awake=(\d+)", re.IGNORECASE
 )
@@ -453,13 +462,8 @@ def scan_logs(containers, service, window_seconds):
             "skew_seconds": int(skew),
         }
     if service == "game":
-        saves = SAVE_PATTERN.findall(combined)
-        saved = SAVED_PATTERN.findall(combined)
-        hibernation = HIBERNATION_PATTERN.findall(combined)
-        result["save_health"] = {
-            "last_save_count": int(saves[-1]) if saves else None,
-            "last_save_milliseconds": float(saved[-1]) if saved else None,
-        }
+        hibernation = HIBERNATION_PATTERN.findall("\n".join(selected))
+        result["save_health"] = completed_save_health(selected)
         if hibernation:
             total, hibernated, awake = hibernation[-1]
             result["save_health"]["tracked_bots"] = int(total)
@@ -482,6 +486,32 @@ def scan_logs(containers, service, window_seconds):
         if activity:
             result["activity"] = activity
     return result, None
+
+
+def completed_save_health(lines):
+    """Count/duration come from completion; capture alone is not a saved batch."""
+    count = duration = pending_count = captured_count = None
+    for line in lines:
+        capture = CAPTURE_PATTERN.search(line) or SAVE_PATTERN.search(line)
+        if capture:
+            pending_count = captured_count = int(capture.group(1))
+        completed = COMPLETED_SAVE_PATTERN.search(line)
+        legacy = SAVED_PATTERN.search(line)
+        if completed:
+            count = int(completed.group(1))
+            duration = float(completed.group(2))
+            pending_count = None
+        elif legacy:
+            # Older completion messages did not include their count. Only pair
+            # with a preceding capture in this window, never a later capture.
+            count = pending_count
+            duration = float(legacy.group(1))
+            pending_count = None
+    return {
+        "last_save_count": count,
+        "last_save_milliseconds": duration,
+        "last_capture_count": captured_count,
+    }
 
 
 def read_history(path, limit=200):
