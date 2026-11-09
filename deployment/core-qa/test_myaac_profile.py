@@ -37,6 +37,7 @@ EOF
 exec "$@"
 """
 REAL_RUN = subprocess.run
+NOT_B1 = "is not the expected b1 config"
 STAGE1 = preflight.load_profile("stage1")
 B1 = preflight.load_profile("b1")
 
@@ -148,9 +149,7 @@ class MyaacProfileTests(unittest.TestCase):
             RuntimeError, "does not advertise QA game port 17172"
         ):
             self.verify(STAGE1, render=lambda script, fixture=None: b1)
-        with self.assertRaisesRegex(
-            RuntimeError, "does not advertise b1 game port 27172"
-        ):
+        with self.assertRaisesRegex(RuntimeError, NOT_B1):
             self.verify(B1, render=lambda script, fixture=None: stage1)
 
     def test_wrong_port_or_divergent_config_is_refused(self):
@@ -165,26 +164,83 @@ class MyaacProfileTests(unittest.TestCase):
             (
                 "wrong game port",
                 altered(b"gameProtocolPort = 27172", b"gameProtocolPort = 27174"),
-                "beyond the profile",
+                NOT_B1,
             ),
             (
                 "stage-1 port left",
                 altered(b"gameProtocolPort = 27172", b"gameProtocolPort = 17172"),
-                "does not advertise b1 game port 27172",
+                NOT_B1,
             ),
             (
                 "other line changed",
                 altered(b'mysqlHost = "database"', b'mysqlHost = "operational"'),
-                "beyond the profile",
+                NOT_B1,
+            ),
+            (  # each field left stage 1 while the other three are B1: refused one by one
+                "server name left stage 1",
+                altered(
+                    b'serverName = "Canary QA B1"', b'serverName = "Canary core QA"'
+                ),
+                NOT_B1,
+            ),
+            (
+                "login port left stage 1",
+                altered(b"loginProtocolPort = 27171", b"loginProtocolPort = 17171"),
+                NOT_B1,
+            ),
+            (
+                "status port left stage 1",
+                altered(b"statusProtocolPort = 27173", b"statusProtocolPort = 17173"),
+                NOT_B1,
+            ),
+            (
+                "login and game ports swapped",
+                lambda script, fixture=None: (
+                    self.stage1_config
+                    if fixture is None
+                    else self.b1_config.replace(b"= 27171", b"= X")
+                    .replace(b"= 27172", b"= 27171")
+                    .replace(b"= X", b"= 27172")
+                ),
+                NOT_B1,
             ),
             (
                 "line added",
                 altered(b"mysqlDatabase", b"extra = 1\nmysqlDatabase"),
-                "other lines",
+                NOT_B1,
             ),
         ):
             with self.subTest(name), self.assertRaisesRegex(RuntimeError, message):
                 self.verify(B1, render=render)
+
+    def test_expected_bytes_need_each_anchored_field_exactly_once(self):
+        fixture = verify_myaac.profile_fixture(B1)
+        self.assertEqual(
+            verify_myaac.expected_profile_config(self.stage1_config, fixture, B1),
+            self.b1_config,
+        )
+        for name, config in (
+            (
+                "absent",
+                self.stage1_config.replace(b"statusProtocolPort", b"statusPort"),
+            ),
+            (
+                "not a whole line",
+                self.stage1_config.replace(b"= 17171\n", b"= 17171 -- x\n"),
+            ),
+            ("twice", self.stage1_config + b"gameProtocolPort = 17172\n"),
+        ):
+            with (
+                self.subTest(name),
+                self.assertRaisesRegex(RuntimeError, "not exactly 1"),
+            ):
+                verify_myaac.expected_profile_config(config, fixture, B1)
+        with self.assertRaisesRegex(RuntimeError, "not a plain value"):
+            verify_myaac.expected_profile_config(
+                self.stage1_config,
+                {**fixture, "CANARY_SERVER_NAME": 'B1" -- x'},
+                B1,
+            )
 
     def test_template_ignoring_the_port_is_refused(self):
         script = FAKE_ENTRYPOINT.replace(
@@ -197,9 +253,7 @@ class MyaacProfileTests(unittest.TestCase):
         self.assertEqual(
             self.verify(STAGE1, script, pin=pins)["entrypoint_sha256"], sha(script)
         )
-        with self.assertRaisesRegex(
-            RuntimeError, "does not advertise b1 game port 27172"
-        ):
+        with self.assertRaisesRegex(RuntimeError, NOT_B1):
             self.verify(B1, script, pin=pins)
 
     def test_pins_are_not_loosened_for_b1(self):

@@ -30,6 +30,8 @@ PUBLIC_FIXTURE = {
     "CANARY_DB_NAME": "canary",
 }
 PROFILE_KEYS = ("CANARY_SERVER_NAME", "CANARY_LOGIN_PORT", "CANARY_GAME_PORT", "CANARY_STATUS_PORT")
+# The config.lua line each PROFILE_KEYS value renders to (Canary config.lua names, as in config.lua.dist).
+CONFIG_FIELDS = ('serverName = "{}"', "loginProtocolPort = {}", "gameProtocolPort = {}", "statusProtocolPort = {}")
 
 
 def entrypoint_from_image():
@@ -92,24 +94,29 @@ def rendered_config(script, fixture=None):
         return output.read_bytes()
 
 
+def expected_profile_config(stage1_config, fixture, profile):
+    """The bytes the profile config must be: the pinned stage-1 config with each CONFIG_FIELDS line, anchored
+    as a whole line and present exactly once, rewritten with the profile's fixture value. Built from the pinned
+    render and the profile row only, never from the config under check."""
+    expected = stage1_config
+    for key, line in zip(PROFILE_KEYS, CONFIG_FIELDS, strict=True):
+        if re.search(r'["\\\n]', fixture[key]):
+            raise RuntimeError(f"MyAAC {profile['name']} {key} is not a plain value; refused")
+        anchored = re.compile(rb"(?m)^" + re.escape(line.format(PUBLIC_FIXTURE[key]).encode()) + rb"$")
+        found = len(anchored.findall(stage1_config))
+        if found != 1:
+            raise RuntimeError(f"pinned stage-1 MyAAC config has {found} '{line.format(PUBLIC_FIXTURE[key])}' "
+                               "lines, not exactly 1; refused")
+        replacement = line.format(fixture[key]).encode()
+        expected = anchored.sub(lambda _match, value=replacement: value, expected)
+    return expected
+
+
 def assert_profile_config(stage1_config, config, fixture, profile):
-    """The profile config is the pinned stage-1 config with exactly the profile's fixture values in place of
-    the stage-1 ones: same lines, and every changed line maps back to its stage-1 line. The expectation comes
-    from the pinned render and the profile row, never from the config under check."""
-    changes = [(fixture[key], PUBLIC_FIXTURE[key]) for key in PROFILE_KEYS if fixture[key] != PUBLIC_FIXTURE[key]]
-    expected, actual = stage1_config.decode().splitlines(), config.decode().splitlines()
-    if len(actual) != len(expected):
-        raise RuntimeError(f"MyAAC {profile['name']} config has other lines than the pinned stage-1 config")
-    for before, line in zip(expected, actual, strict=True):
-        mapped = line
-        for value, stage1 in changes:
-            mapped = mapped.replace(value, stage1)
-        if mapped != before:
-            raise RuntimeError(f"MyAAC {profile['name']} config differs from the pinned stage-1 config beyond "
-                               "the profile's server name and ports")
-    if not re.search(rb"(?m)^gameProtocolPort = %d$" % profile["ports"]["game"], config):
-        raise RuntimeError(f"MyAAC generated config does not advertise {profile['name']} game port "
-                           f"{profile['ports']['game']}")
+    """The profile config equals, byte for byte, expected_profile_config()."""
+    if config != expected_profile_config(stage1_config, fixture, profile):
+        raise RuntimeError(f"MyAAC generated config is not the expected {profile['name']} config (the pinned "
+                           f"stage-1 config with the {profile['name']} server name and ports); refused")
 
 
 def verify(profile=None):
