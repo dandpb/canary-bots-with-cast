@@ -773,7 +773,7 @@ class Stage1RecaptureTests(unittest.TestCase):
             ("stage1_baseline.py", 635): "game_config()", ("stage1_baseline.py", 506): '"exec", GAME',
             ("stage1_baseline.py", 676): 'item["historical_comparison"]', ("stage1_baseline.py", 110): "State.Health",
             ("stage1_baseline.py", 270): '"status": item["status"]', ("stage1_baseline.py", 337): "observe()",
-            ("preflight.py", 406): "assert_stage1_upgrade()", ("stage1_baseline.py", 401): '("id", "created_at")',
+            ("preflight.py", 410): "assert_stage1_upgrade()", ("stage1_baseline.py", 401): '("id", "created_at")',
             ("stage1_baseline.py", 418): "playable()", ("stage1_baseline.py", 630): '"baseline_sha256") != expected',
         }
         found = {(name, int(line)) for name, line in re.findall(r"`(stage1_baseline\.py|preflight\.py):(\d+)", section)}

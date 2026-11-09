@@ -148,7 +148,7 @@ def dump(profile=None):
 
 
 def stage1_render():
-    """The real stage-1 render (sanitized fixture) with the port values of compose.yaml put back."""
+    """The real stage-1 render (sanitized fixture) with the port and server-name values of compose.yaml put back."""
     render = json.loads(RENDER.read_text())
     render["services"]["game"]["environment"].update(
         GAME_LOGIN_PORT="17171", GAME_PROTOCOL_PORT="17172", GAME_STATUS_PORT="17173"
@@ -158,6 +158,7 @@ def stage1_render():
         CANARY_GAME_PORT="17172",
         CANARY_STATUS_PORT="17173",
         MYAAC_SITE_URL="http://127.0.0.1:18080",
+        CANARY_SERVER_NAME="Canary core QA",
     )
     return render
 
@@ -177,6 +178,7 @@ def b1_render():
         CANARY_GAME_PORT="27172",
         CANARY_STATUS_PORT="27173",
         MYAAC_SITE_URL="http://127.0.0.1:28080",
+        CANARY_SERVER_NAME="Canary QA B1",
     )
     services["game"]["ports"] = [
         {"host_ip": "127.0.0.1", "published": str(port), "target": port}

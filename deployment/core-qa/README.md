@@ -337,6 +337,13 @@ Separação, falhando fechado:
   `qa_return_attempt.py` recusam já no despacho, antes de qualquer git, Docker ou `assert_*`:
   a baseline e o manifesto a1d9 são do projeto `canary-core-qa`;
 - `--record-brain-image` recusa recibo de outro projeto (recibo sem projeto é da etapa 1);
+- MyAAC: sob o B1, `verify_myaac.py` confere a mesma imagem e o mesmo entrypoint fixados e o
+  `config.lua` da etapa 1 (`qa_config_sha256`), e então gera o `config.lua` do B1 pelo mesmo
+  entrypoint com a fixture pública (`PUBLIC_FIXTURE`, nunca a `.env`) trocando só nome do
+  servidor e portas pela linha do perfil (a mesma que o render do Compose precisa ter). Ele
+  precisa ser o da etapa 1 com exatamente essas trocas e anunciar `gameProtocolPort = 27172`.
+  O recibo do B1 guarda `myaac_attestation` (perfil, hashes da fixture e dos dois configs);
+  o da etapa 1 não muda;
 - os gates de cada um não veem os objetos do outro: um B1 de pé não bloqueia os gates da
   etapa 1, e a etapa 1 de pé não conta como recurso existente do B1;
 - um perfil desconhecido, ou um perfil que divida prefixo, porta ou evidência com a etapa 1,
@@ -795,7 +802,7 @@ passar. Os conflitos:
    `health` de cada container (`stage1_baseline.py:110`, `stage1_baseline.py:270`).
    `assert_stage1_upgrade` compara os dois com a baseline
    (`stage1_baseline.py:337-340`), e o preflight do upgrade o chama
-   (`preflight.py:406`). A baseline fixada tem os três containers
+   (`preflight.py:410`). A baseline fixada tem os três containers
    `running`/`healthy`. Com o `game` parado, o gate vê `exited` e recusa. Com o
    `game` religado, os bots voltam a gravar e o recorte se move de novo.
 3. **Uma baseline capturada com o `game` parado quebraria o rollback.**
