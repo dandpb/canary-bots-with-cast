@@ -735,12 +735,6 @@ void BotEngine::tickBrain() {
 				bot->getPlayer()->listWalkDir.clear();
 				bot->getPlayer()->stopEventWalk();
 				bot->hasWalkTarget = false;
-				if (action == "retreat") {
-					// A newly accepted objective is a fresh navigation attempt. Do not
-					// inherit a previous attempt's five-failure floor-change lockout.
-					plannerReplan(*bot, bot->getPlayer());
-					s_fcConsecutiveFailures.erase(guid);
-				}
 				if (action == "hunt") bot->huntIgnoredMonsters.clear();
 			}
 			if (action == "hunt") {
