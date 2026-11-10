@@ -18,6 +18,10 @@ services:
     image: canary-qa-b1-game:local
     cpus: 2
     mem_limit: 6g
+    # B1 common budget: a reviewed no-op replaces the image's bot_market_funding.lua (bank 100000000000 for
+    # every bot at each start), only in this project; compose.yaml's binds and volumes stay (merge by target).
+    volumes:
+      - ./b1/bot_market_funding.lua:/canary/data/scripts/globalevents/bot_market_funding.lua:ro
     environment:
       GAME_LOGIN_PORT: 27171
       GAME_PROTOCOL_PORT: 27172

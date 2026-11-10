@@ -25,7 +25,7 @@ PROFILES = {
                "server_name": "Canary core QA", "binds": {"/docker-entrypoint-initdb.d": "runtime/initdb", "/etc/canary-core-qa/brain/server.json": "brain/server.json"}},
     "b1": {"project": "canary-qa-b1", "overlays": ("compose.b1.yaml",), "brain_overlays": ("compose.b1-brain.yaml",),
            "evidence": "runtime/b1/evidence", "ports": {"login": 27171, "game": 27172, "status": 27173, "web": 28080},
-           "limits": True, "server_name": "Canary QA B1", "binds": {"/docker-entrypoint-initdb.d": "runtime/b1/initdb", "/etc/canary-core-qa/brain/server.json": "b1/server.json"}},
+           "limits": True, "server_name": "Canary QA B1", "binds": {"/docker-entrypoint-initdb.d": "runtime/b1/initdb", "/etc/canary-core-qa/brain/server.json": "b1/server.json", "/canary/data/scripts/globalevents/bot_market_funding.lua": "b1/bot_market_funding.lua"}},
 }
 
 
@@ -245,7 +245,7 @@ def assert_compose(brain_fake=False, game_pin=None):
     if f"FROM {IMAGE_LOCK['web_base']['ref']}" not in dockerfile.read_text().splitlines():
         raise RuntimeError("QA web base image differs from the image lock")
     runtime = (HERE / "runtime").resolve()
-    reviewed = {HERE / PROFILE["binds"][BRAIN_SERVER_TARGET], HERE / "brain/worker.json"} if brain_fake else set()
+    reviewed = ({HERE / PROFILE["binds"][BRAIN_SERVER_TARGET], HERE / "brain/worker.json"} if brain_fake else set()) | reviewed_binds(PROFILE)
     for service in services.values():
         for mount in service.get("volumes", []):
             source = Path(mount.get("source", "")).resolve()
@@ -430,13 +430,27 @@ INITDB_TARGET = "/docker-entrypoint-initdb.d"
 BRAIN_SERVER_TARGET = "/etc/canary-core-qa/brain/server.json"
 
 
+def reviewed_binds(profile):
+    """The reviewed files of a profile bound read-only from outside runtime/ besides the brain config (B1: the
+    no-op bot_market_funding.lua). Stage 1 has none."""
+    return {HERE / source for target, source in profile["binds"].items() if target not in (INITDB_TARGET, BRAIN_SERVER_TARGET)}
+
+
 def assert_profile_binds(data, profile):
+    """Each bind at a profile target comes from that profile's source, and each reviewed bind of the profile
+    (reviewed_binds; B1: the funding no-op) is present and read-only. Stage 1 has no reviewed bind."""
+    mounted = set()
     for name, service in data.get("services", {}).items():
         for mount in service.get("volumes", []):
             expected = Path(profile["binds"].get(mount.get("target"), ""))
             if expected.parts and Path(mount.get("source", "")).parts[-len(expected.parts):] != expected.parts:
                 raise RuntimeError(f"{name} binds {mount.get('source')} at {mount.get('target')}, not the "
                                    f"{profile['name']} {expected}; refused")
+            if expected.parts and (mount.get("type") == "bind" and mount.get("read_only")):
+                mounted.add(mount.get("target"))
+    missing = sorted(set(profile["binds"]) - {INITDB_TARGET, BRAIN_SERVER_TARGET} - mounted)
+    if missing:
+        raise RuntimeError(f"the {profile['name']} render lacks its read-only bind at {', '.join(missing)}; refused")
 
 
 def require_stage1(action):

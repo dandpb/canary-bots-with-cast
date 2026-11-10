@@ -28,7 +28,7 @@ OVERLAY_DIR = HERE / "runtime/b1/authored"
 OVERLAY_HUNTS = {"399"}  # v4 2.3: only Thais Paw Collector
 EVIDENCE = HERE / "runtime/b1/evidence"
 METHOD = "b1-fixture-slice-v2"
-MARKER = "b1-companions-v2"
+MARKER = "b1-companions-v3"
 PLACEHOLDER = "@@LEADER_NAME@@"
 PROJECT = "canary-qa-b1"
 AUTHORED_TARGET = (
@@ -59,14 +59,33 @@ LOADOUT = {
 OVERLAY_LEVELS = range(20, 30)
 BACKPACK = 2854
 SEED_BALANCE = (
-    100000000000  # 02_players.sql, and what bot_market_funding.lua sets at each start
+    100000000000  # 02_players.sql (the preimage), and what bot_market_funding.lua sets
+)
+PILOT_BALANCE = (
+    0  # B1 common budget: no bank; b1/bot_market_funding.lua keeps the funding off
+)
+FUNDING_NOOP = (
+    HERE / "b1/bot_market_funding.lua"
+)  # compose.b1.yaml binds it read-only over FUNDING_TARGET
+FUNDING_SOURCE = SOURCE / "data/scripts/globalevents/bot_market_funding.lua"
+FUNDING_TARGET = "/canary/data/scripts/globalevents/bot_market_funding.lua"
+READY_SLICE = "runtime/b1/evidence/ready/db-slice.tsv"  # the readiness slice, before T0
+LOADOUT_SCOPE = (
+    "every B1 bot of level 20-29 (vocations 1-4), not only the pilots, gets the B1 starter loadout when it is "
+    "activated (equipBot); the other levels keep the source rows"
 )
 PILOTS = {  # id: name, vocation, potions (health 266, mana 268): 20 in all, each type under 20
     65001: ("Grizzle Alyronia", 4, {266: 14, 268: 6}),
     65003: ("Sever Heartspear", 3, {266: 10, 268: 10}),
     65004: ("Galdon Whitehoof", 2, {266: 6, 268: 14}),
 }
-COINS = {3035: 100}  # 100 platinum coins = 10000 gp, in the backpack
+COINS = {
+    3031: 0,
+    3035: 100,
+    3043: 0,
+}  # 100 platinum coins = 10000 gp, in the backpack; no gold, no crystal
+WORTH = {3031: 1, 3035: 100, 3043: 10000}  # Item::getWorth (src/items/item.cpp)
+BUDGET = 10000
 STOCK = (236, 237, 266, 268, 3031, 3035, 3043)
 TAGS = ("fixture", "humans", "player", "slot", "stock", "deaths", "death")
 LEADER_NAME = re.compile(r"[A-Za-z][A-Za-z -]{1,27}[A-Za-z]")
@@ -114,7 +133,7 @@ def pilot_lines(guid):
     return {
         "player": [
             "\t".join(
-                map(str, player_fields(guid, 65000, name, vocation, SEED_BALANCE))
+                map(str, player_fields(guid, 65000, name, vocation, PILOT_BALANCE))
             )
         ],
         "slot": [f"slot\t{guid}\t{pid}\t{slots[pid]}\t1" for pid in sorted(slots)],
@@ -147,33 +166,164 @@ def digest(lines):
     return sha256("".join(line + "\n" for line in lines).encode())
 
 
+# The columns of each slice line after its tag, as b1/slice.sql selects them (a test compares the two).
+PLAYER_COLUMNS = (
+    "id", "account_id", "name", "vocation", "level", "experience", "health", "healthmax", "mana", "manamax",
+    "cap", "maglevel", "skill_fist", "skill_club", "skill_sword", "skill_axe", "skill_dist", "skill_shielding",
+    "skill_fishing", "town_id", "posx", "posy", "posz", "balance",
+)  # fmt: skip
+SHAPES = {
+    "fixture": ("k", "v"),
+    "humans": ("accounts", "players"),
+    "player": PLAYER_COLUMNS,
+    "slot": ("player_id", "pid", "itemtype", "count"),
+    "stock": ("player_id", "itemtype", "count"),
+    "deaths": ("player_id", "count"),
+    "death": ("player_id", "time", "level", "killed_by", "is_player", "mostdamage_by", "mostdamage_is_player"),
+}  # fmt: skip
+TEXT_COLUMNS = {"k", "v", "name", "killed_by", "mostdamage_by"}
+KEY_WIDTH = {"fixture": 1, "humans": 0, "player": 1, "slot": 2, "stock": 2, "deaths": 1}
+
+
+def named(fields):
+    """A slice row as {column: value}, or None when its shape is not the slice's (column count or a number)."""
+    columns = SHAPES.get(fields[0])
+    if columns is None or len(fields) != len(columns) + 1:
+        return None
+    row = dict(zip(columns, fields[1:]))
+    if any(
+        not re.fullmatch(r"-?\d+", value)
+        for column, value in row.items()
+        if column not in TEXT_COLUMNS
+    ):
+        return None
+    return row
+
+
 def row_key(fields):
     """The identity of a slice row: one row per key, or the slice is contradictory."""
-    tag = fields[0]
-    width = {
-        "fixture": 2,
-        "humans": 1,
-        "player": 2,
-        "slot": 3,
-        "stock": 3,
-        "deaths": 2,
-    }.get(tag, len(fields))
-    return tuple(fields[:width])
+    width = KEY_WIDTH.get(fields[0], len(fields) - 1)
+    return tuple(fields[: 1 + width])
 
 
-def check(lines, stage):
-    """Problems of a slice against the declared state, and the observed values that are not declared.
-
-    s0: exactly expected_s0(). leader: exactly the S0 pilot rows, the marker naming the one leader, humans 1 1,
-    and the leader's rows complete: his player row as leader-prep declares it (balance observed), his six
-    loadout slots (other slots observed), one stock row per STOCK item (observed), deaths 0 and no death row."""
-    rows = [line.split("\t") for line in lines]
+def shape_problems(rows):
     keys = [row_key(fields) for fields in rows]
     problems = [
         f"duplicate: {' '.join(key)}"
         for index, key in enumerate(keys)
         if key in keys[:index]
     ]
+    problems += [
+        f"malformed: {' '.join(fields)}" for fields in rows if named(fields) is None
+    ]
+    return problems
+
+
+def marker(rows):
+    """The marker rows as {k: v} when they are exactly the B1 marker and one leader name, else None."""
+    fixture = [named(fields) for fields in rows if fields[0] == "fixture"]
+    pairs = {row["k"]: row["v"] for row in fixture if row}
+    if (
+        len(fixture) != 2
+        or pairs.keys() != {"fixture", "leader"}
+        or pairs["fixture"] != MARKER
+    ):
+        return None
+    return pairs
+
+
+def the_leader(rows, pairs):
+    """The one player row >= 66100, named as the marker's leader, of an account >= 65001 and vocation 1-4."""
+    humans = [
+        named(fields) for fields in rows if fields[0] == "player" and named(fields)
+    ]
+    humans = [row for row in humans if int(row["id"]) >= 66100]
+    if pairs is None or len(humans) != 1 or humans[0]["name"] != pairs["leader"]:
+        return None, "not exactly one character >= 66100 named as the marker's leader"
+    human = humans[0]
+    if int(human["account_id"]) < 65001 or int(human["vocation"]) not in VOCATION:
+        return None, f"leader {human['id']} account or vocation is not eligible"
+    return human, None
+
+
+def check_ready(lines, rows):
+    """After the game start (the funding window past) and before T0: the pilots' money is still the fixture
+    (balance 0, exactly the fixture coins, worth 10000); 100000000000 means bot_market_funding ran. The marker
+    names the one leader; his balance and stock are recorded as observed (hashed), never expected. Other
+    pilot changes (activation: HP, ring, position) are observed, not refused."""
+    problems, observed = [], {"pilots": {}}
+    good = [
+        (line, fields, named(fields))
+        for line, fields in zip(lines, rows)
+        if named(fields)
+    ]
+    for guid in sorted(PILOTS):
+        mine = [
+            (line, fields, row) for line, fields, row in good if fields[1] == str(guid)
+        ]
+        player = [row for _line, fields, row in mine if fields[0] == "player"]
+        stock = {
+            row["itemtype"]: row["count"]
+            for _line, fields, row in mine
+            if fields[0] == "stock"
+        }
+        if len(player) != 1:
+            problems.append(f"pilot {guid}: not exactly one player row")
+            continue
+        balance = player[0]["balance"]
+        if balance == str(SEED_BALANCE):
+            problems.append(
+                f"pilot {guid}: balance {SEED_BALANCE}: bot_market_funding ran (B1 bind missing?)"
+            )
+        elif balance != str(PILOT_BALANCE):
+            problems.append(f"pilot {guid}: balance {balance}, not {PILOT_BALANCE}")
+        coins = {item: stock.get(str(item)) for item in COINS}
+        if coins != {item: str(count) for item, count in COINS.items()}:
+            problems.append(f"pilot {guid}: coins {coins}, not the fixture {COINS}")
+        expected = {line for block in pilot_lines(guid).values() for line in block}
+        observed["pilots"][str(guid)] = [
+            line for line, _fields, _row in mine if line not in expected
+        ]
+    pairs = marker(rows)
+    if pairs is None:
+        problems.append("marker rows are not exactly the B1 marker and one leader")
+    if [fields for fields in rows if fields[0] == "humans"] != [["humans", "1", "1"]]:
+        problems.append(
+            "humans is not exactly one account >= 65001 and one character >= 66100"
+        )
+    human, refused = the_leader(rows, pairs)
+    if human is None:
+        return problems + [refused], observed
+    guid = human["id"]
+    stock = [
+        line
+        for line, fields, _row in good
+        if fields[0] == "stock" and fields[1] == guid
+    ]
+    if sorted(line.split("\t")[2] for line in stock) != sorted(map(str, STOCK)):
+        problems.append(f"leader {guid} stock rows are not exactly {STOCK}")
+    recorded = [f"balance\t{guid}\t{human['balance']}", *stock]
+    observed["leader"] = {
+        "balance": human["balance"],
+        "stock": {line.split("\t")[2]: line.split("\t")[3] for line in stock},
+        "recorded_sha256": digest(recorded),
+    }
+    return problems, observed
+
+
+def check(lines, stage):
+    """Problems of a slice against the declared state, and the observed values that are not declared. Every
+    row must have its tag's shape and appear once per key (shape_problems), in every stage.
+
+    s0: exactly expected_s0(). leader: exactly the S0 pilot rows, the two marker rows naming the one leader,
+    humans 1 1, and the leader's rows complete: his player row as leader-prep declares it (balance observed),
+    his six loadout slots as whole rows (item, count 1; other slots observed), one stock row per STOCK item
+    (observed), deaths 0 and no death row. ready: check_ready."""
+    rows = [line.split("\t") for line in lines]
+    problems = shape_problems(rows)
+    if stage == "ready":
+        ready_problems, observed = check_ready(lines, rows)
+        return problems + ready_problems, observed
     if stage == "s0":
         expected = expected_s0()
         problems += [f"missing: {line}" for line in expected if line not in lines]
@@ -187,88 +337,81 @@ def check(lines, stage):
         if line.split("\t")[0] not in ("fixture", "humans")
     ]
     problems += [f"missing: {line}" for line in pilots if line not in lines]
-    fixture = {
-        fields[1]: fields[2]
-        for fields in rows
-        if fields[0] == "fixture" and len(fields) == 3
-    }
-    leader = fixture.get("leader")
-    if fixture.keys() != {"fixture", "leader"} or fixture["fixture"] != MARKER:
-        problems.append(f"marker rows differ: {sorted(fixture.items())}")
+    pairs = marker(rows)
+    if pairs is None:
+        problems.append("marker rows are not exactly the B1 marker and one leader")
     if [fields for fields in rows if fields[0] == "humans"] != [["humans", "1", "1"]]:
         problems.append(
             "humans is not exactly one account >= 65001 and one character >= 66100"
         )
-    humans = [
-        fields
-        for fields in rows
-        if fields[0] == "player" and fields[1].isdigit() and int(fields[1]) >= 66100
-    ]
-    if len(humans) != 1 or humans[0][3] != leader:
-        return problems + [
-            f"not exactly one character >= 66100 named as the marker's leader {leader!r}"
-        ], {}
-    human = humans[0]
-    guid, observed = human[1], {}
-    if not (
-        human[2].isdigit()
-        and int(human[2]) >= 65001
-        and human[4].isdigit()
-        and int(human[4]) in VOCATION
-    ):
-        return problems + [
-            f"leader {guid} account or vocation is not eligible: {' '.join(human)}"
-        ], {}
-    vocation = int(human[4])
-    declared = [
-        str(value)
-        for value in player_fields(int(guid), human[2], leader, vocation, human[-1])
-    ]
-    if human != declared:
-        problems.append(f"leader row differs: {' '.join(human)}")
-    observed["balance"] = human[-1]
-    allowed = (
-        set(pilots)
-        | {line for line, fields in zip(lines, rows) if fields[0] == "fixture"}
-        | {"humans\t1\t1"}
+    human, refused = the_leader(rows, pairs)
+    if human is None:
+        return problems + [refused], {}
+    guid, vocation = human["id"], int(human["vocation"])
+    declared = dict(
+        zip(
+            PLAYER_COLUMNS,
+            map(
+                str,
+                player_fields(
+                    int(guid),
+                    human["account_id"],
+                    pairs["leader"],
+                    vocation,
+                    human["balance"],
+                )[1:],
+            ),
+        )
     )
-    allowed.add("\t".join(human))
-    slots = {
-        fields[2]: fields[3]
-        for fields in rows
+    if human != declared:
+        changed = sorted(
+            column for column in PLAYER_COLUMNS if human[column] != declared[column]
+        )
+        problems.append(f"leader {guid} row differs in {', '.join(changed)}")
+    allowed = set(pilots) | {
+        "humans\t1\t1",
+        f"fixture\tfixture\t{MARKER}",
+        f"fixture\tleader\t{pairs['leader']}",
+    }
+    allowed.add("\t".join(["player", *human.values()]))
+    required = [
+        f"slot\t{guid}\t{pid}\t{item}\t1"
+        for pid, item in sorted(LOADOUT[vocation].items())
+    ]
+    problems += [
+        f"leader {guid} lacks the declared slot row {line!r}"
+        for line in required
+        if line not in lines
+    ]
+    good = [
+        (line, fields, named(fields))
+        for line, fields in zip(lines, rows)
+        if named(fields)
+    ]
+    slots = [
+        (line, row)
+        for line, fields, row in good
         if fields[0] == "slot" and fields[1] == guid
-    }
-    for pid, item in LOADOUT[vocation].items():
-        if slots.get(str(pid)) != str(item):
-            problems.append(f"leader {guid} slot {pid} is not {item}")
-    observed["slots"] = slots
-    allowed |= {
-        line
-        for line, fields in zip(lines, rows)
-        if fields[0] == "slot"
-        and fields[1] == guid
-        and len(fields) == 5
-        and fields[2].isdigit()
-        and 1 <= int(fields[2]) <= 11
-    }
-    stock = {
-        fields[2]: fields[3]
-        for fields in rows
+    ]
+    allowed |= {line for line, row in slots if 1 <= int(row["pid"]) <= 11}
+    stock = [
+        (line, row)
+        for line, fields, row in good
         if fields[0] == "stock" and fields[1] == guid
-    }
-    if sorted(stock) != sorted(map(str, STOCK)):
+    ]
+    if sorted(row["itemtype"] for _line, row in stock) != sorted(map(str, STOCK)):
         problems.append(f"leader {guid} stock rows are not exactly {STOCK}")
-    observed["stock"] = stock
-    allowed |= {
-        line
-        for line, fields in zip(lines, rows)
-        if fields[0] == "stock" and fields[1] == guid and len(fields) == 4
-    }
+    allowed |= {line for line, _row in stock}
     deaths = f"deaths\t{guid}\t0"
     if deaths not in lines:
         problems.append(f"leader {guid} deaths is not 0 before the game")
     allowed.add(deaths)
     problems += [f"unexpected: {line}" for line in lines if line not in allowed]
+    observed = {
+        "balance": human["balance"],
+        "slots": {row["pid"]: row["itemtype"] for _line, row in slots},
+        "stock": {row["itemtype"]: row["count"] for _line, row in stock},
+    }
     return problems, observed
 
 
@@ -411,7 +554,13 @@ def render_overlays():
     """runtime/b1/authored/<file> for each overlay, with source and overlay hashes (overlay-manifest.json)."""
     require_b1()
     OVERLAY_DIR.mkdir(parents=True, exist_ok=True)
-    manifest = {"profile": "b1", "target": AUTHORED_TARGET, "files": {}}
+    manifest = {
+        "profile": "b1",
+        "target": AUTHORED_TARGET,
+        "files": {},
+        "loadout_scope": LOADOUT_SCOPE,
+        "binds": {FUNDING_TARGET: funding_bind()},
+    }
     for name, render in OVERLAYS.items():
         source = (AUTHORED / name).read_bytes()
         (OVERLAY_DIR / name).write_text(render(source.decode()))
@@ -428,9 +577,20 @@ def render_overlays():
     return manifest
 
 
-def install_commands(project=None):
-    """The future, NOT executed, commands that put the overlays into the B1 authored-data volume. Only the
-    canary-qa-b1 project and its own volume and image; anything that could name stage 1 is refused."""
+def funding_bind():
+    """The funding no-op is not in authored-data (that volume is /canary/data/bot/authored; the script is
+    /canary/data/scripts/globalevents in the image): compose.b1.yaml binds it read-only, and the preflight
+    requires that bind in every B1 render (PROFILES["b1"]["binds"], assert_profile_binds)."""
+    return {
+        "source": str(FUNDING_NOOP.relative_to(HERE)),
+        "sha256": sha256(FUNDING_NOOP.read_bytes()),
+        "replaces_sha256": sha256(FUNDING_SOURCE.read_bytes()),
+        "via": "compose.b1.yaml read-only bind, not authored-data",
+    }
+
+
+def b1_project(project=None):
+    """project (default canary-qa-b1) if it is the B1 project of the preflight profiles, else refused."""
     import preflight  # the profile table is the single source of the project names
 
     project = project or PROJECT
@@ -439,18 +599,15 @@ def install_commands(project=None):
         preflight.PROFILES["b1"]["project"],
         preflight.PROFILES["stage1"]["project"],
     )
-    volume, image = f"{project}_authored-data", f"{project}-game:local"
-    if (
-        project != b1
-        or project.startswith(stage1)
-        or stage1 in volume
-        or stage1 in image
-    ):
+    if project != b1 or project.startswith(stage1) or stage1 in project:
         raise RuntimeError(
             f"overlay install is for the B1 project {b1} only, never {stage1}; refused"
         )
-    files = sorted(OVERLAYS)
-    compose = [
+    return project, stage1
+
+
+def compose_argv(project):
+    return [
         "env",
         "-u",
         "MARIADB_PASSWORD",
@@ -473,6 +630,15 @@ def install_commands(project=None):
         "--env-file",
         ".env",
     ]
+
+
+def install_commands(project=None):
+    """The future, NOT executed, commands that put the overlays into the B1 authored-data volume. Only the
+    canary-qa-b1 project and its own volume and image; anything that could name stage 1 is refused."""
+    project, stage1 = b1_project(project)
+    volume, image = f"{project}_authored-data", f"{project}-game:local"
+    files = sorted(OVERLAYS)
+    compose = compose_argv(project)
     copy = " && ".join(
         [
             f"cp {' '.join(f'/b1-overlay/{name}' for name in files)} {AUTHORED_TARGET}/",
@@ -505,6 +671,33 @@ def install_commands(project=None):
     return [shlex.join(command) for command in commands]
 
 
+def readiness_commands(project=None):
+    """The future, NOT executed, readiness checkpoint after the game start and before T0: the funding no-op is
+    what the B1 game runs, no BotMarketFunding line was logged, and (at least 60 s after the game is healthy,
+    past the 30 s funding delay) the slice passes `check ready`."""
+    project, stage1 = b1_project(project)
+    compose = compose_argv(project)
+    commands = [
+        [*compose, "exec", "-T", "game", "sha256sum", FUNDING_TARGET],
+        [*compose, "logs", "--no-color", "game"],
+        [
+            "sh",
+            "-c",
+            f"docker exec -i {project}-database-1 mariadb -ucanary -N -B canary < b1/slice.sql > {READY_SLICE}",
+        ],
+        [
+            "python3",
+            "b1_fixture.py",
+            "check",
+            "ready",
+            READY_SLICE,
+        ],
+    ]
+    if any(stage1 in part for command in commands for part in command):
+        raise RuntimeError(f"readiness names {stage1}; refused")
+    return [shlex.join(command) for command in commands]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
@@ -517,7 +710,7 @@ def main(argv=None):
     leader = sub.add_parser("render-leader")
     leader.add_argument("name")
     checked = sub.add_parser("check")
-    checked.add_argument("stage", choices=("s0", "leader"))
+    checked.add_argument("stage", choices=("s0", "leader", "ready"))
     checked.add_argument(
         "output", type=Path, help="the mariadb -N -B output of b1/slice.sql"
     )
@@ -527,7 +720,20 @@ def main(argv=None):
     elif args.action == "render-overlays":
         result = render_overlays()
     elif args.action == "install-plan":
-        result = {"executed": False, "commands": install_commands()}
+        result = {
+            "executed": False,
+            "commands": install_commands(),
+            "loadout_scope": LOADOUT_SCOPE,
+            "funding_bind": {FUNDING_TARGET: funding_bind()},
+            "readiness": {
+                "commands": readiness_commands(),
+                "expect": [
+                    f"sha256sum prints {funding_bind()['sha256']}",
+                    "the game log has no [BotMarketFunding] line",
+                    "check ready: no problems; the leader balance and stock are observed only",
+                ],
+            },
+        }
     elif args.action == "render-leader":
         result = render_leader(args.name)
     elif args.action == "expected":

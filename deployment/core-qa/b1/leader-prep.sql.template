@@ -18,7 +18,7 @@ BEGIN NOT ATOMIC
   IF (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'qa_b1_fixture') <> 1 THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'b1 leader: no B1 fixture marker (stage 1 or an unseeded database); refused';
   END IF;
-  IF (SELECT COUNT(*) FROM qa_b1_fixture WHERE k = 'fixture' AND v = 'b1-companions-v2') <> 1 THEN
+  IF (SELECT COUNT(*) FROM qa_b1_fixture WHERE k = 'fixture' AND v = 'b1-companions-v3') <> 1 THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'b1 leader: B1 fixture marker differs; refused';
   END IF;
   IF (SELECT COUNT(*) FROM qa_b1_fixture WHERE k = 'leader' AND v <> @b1_leader) <> 0 THEN
