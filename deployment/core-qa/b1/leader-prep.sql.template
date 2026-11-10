@@ -2,8 +2,9 @@
 -- Applied once, after Daniel created his own account and character through the B1 MyAAC and before his first
 -- game login, with the character offline. Render it with `b1_fixture.py render-leader "<name>"` (the name
 -- is checked and written below); never edit the placeholder by hand. No account and no password are read
--- or written. Level 20 (98800 exp), the vocation's normal HP/mana/cap, the level-20 loadout of
--- equipment.csv in the slots the bots use, Thais (town 8) temple. Backpack and its contents stay his.
+-- or written. Level 20 (98800 exp), the vocation's normal HP/mana/cap, skills 50 and magic level 4 (the same
+-- simplified fixture as the pilots), the B1 starter loadout of his vocation (B1 equipment.csv overlay, level 20) in the
+-- slots the bots use, Thais (town 8) temple. Backpack, its contents and his balance stay his.
 
 SET @b1_leader := '@@LEADER_NAME@@';
 -- One transaction: a refusal or a failed check ends the client before COMMIT, so nothing is kept.
@@ -17,7 +18,7 @@ BEGIN NOT ATOMIC
   IF (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'qa_b1_fixture') <> 1 THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'b1 leader: no B1 fixture marker (stage 1 or an unseeded database); refused';
   END IF;
-  IF (SELECT COUNT(*) FROM qa_b1_fixture WHERE k = 'fixture' AND v = 'b1-companions-v1') <> 1 THEN
+  IF (SELECT COUNT(*) FROM qa_b1_fixture WHERE k = 'fixture' AND v = 'b1-companions-v2') <> 1 THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'b1 leader: B1 fixture marker differs; refused';
   END IF;
   IF (SELECT COUNT(*) FROM qa_b1_fixture WHERE k = 'leader' AND v <> @b1_leader) <> 0 THEN
@@ -50,29 +51,37 @@ UPDATE `players` SET `level` = 20, `experience` = 98800,
   `manamax` = CASE `vocation` WHEN 4 THEN 95 WHEN 3 THEN 215 ELSE 395 END,
   `mana` = CASE `vocation` WHEN 4 THEN 95 WHEN 3 THEN 215 ELSE 395 END,
   `cap` = CASE `vocation` WHEN 4 THEN 770 WHEN 3 THEN 710 ELSE 590 END,
-  `town_id` = 8, `posx` = 32369, `posy` = 32241, `posz` = 7
+  `maglevel` = 4, `skill_fist` = 50, `skill_club` = 50, `skill_sword` = 50, `skill_axe` = 50, `skill_dist` = 50,
+  `skill_shielding` = 50, `skill_fishing` = 50, `town_id` = 8, `posx` = 32369, `posy` = 32241, `posz` = 7
   WHERE `id` = @b1_leader_id AND `name` = @b1_leader;
 
--- Equipment: replace head, armor, legs, feet and both hands with the equipment.csv level-20 row of his vocation.
+-- Equipment: replace head, armor, legs, feet and both hands with the B1 equipment.csv level-20 row of his vocation.
 SET @b1_sid := (SELECT GREATEST(COALESCE(MAX(sid), 100), 300) FROM player_items WHERE player_id = @b1_leader_id);
 SET @b1_voc := (SELECT vocation FROM players WHERE id = @b1_leader_id);
 DELETE FROM `player_items` WHERE `player_id` = @b1_leader_id AND `pid` IN (1, 4, 5, 6, 7, 8);
 INSERT INTO `player_items` (`player_id`, `pid`, `sid`, `itemtype`, `count`, `attributes`) VALUES
-  (@b1_leader_id, 1, @b1_sid + 1, 3365, 1, ''),
-  (@b1_leader_id, 4, @b1_sid + 2, IF(@b1_voc IN (3, 4), 3366, 3388), 1, ''),
-  (@b1_leader_id, 5, @b1_sid + 3, 3423, 1, ''),
-  (@b1_leader_id, 6, @b1_sid + 4, CASE @b1_voc WHEN 4 THEN 3284 WHEN 3 THEN 3347 WHEN 2 THEN 3069 ELSE 3072 END, 1, ''),
-  (@b1_leader_id, 7, @b1_sid + 5, 3363, 1, ''),
-  (@b1_leader_id, 8, @b1_sid + 6, 3555, 1, '');
+  (@b1_leader_id, 1, @b1_sid + 1, CASE @b1_voc WHEN 4 THEN 3351 WHEN 3 THEN 3352 ELSE 3355 END, 1, ''),
+  (@b1_leader_id, 4, @b1_sid + 2, CASE @b1_voc WHEN 4 THEN 3357 WHEN 3 THEN 3359 ELSE 3361 END, 1, ''),
+  (@b1_leader_id, 5, @b1_sid + 3, CASE @b1_voc WHEN 4 THEN 3409 WHEN 3 THEN 3409 ELSE 3412 END, 1, ''),
+  (@b1_leader_id, 6, @b1_sid + 4, CASE @b1_voc WHEN 4 THEN 3264 WHEN 3 THEN 3277 WHEN 2 THEN 3066 ELSE 3074 END, 1, ''),
+  (@b1_leader_id, 7, @b1_sid + 5, CASE @b1_voc WHEN 4 THEN 3557 WHEN 3 THEN 3372 ELSE 3362 END, 1, ''),
+  (@b1_leader_id, 8, @b1_sid + 6, 3552, 1, '');
 INSERT INTO `qa_b1_fixture` (`k`, `v`) VALUES ('leader', @b1_leader) ON DUPLICATE KEY UPDATE `v` = `v`;
 
 DELIMITER //
 BEGIN NOT ATOMIC
   IF (SELECT COUNT(*) FROM players WHERE id = @b1_leader_id AND level = 20 AND experience = 98800 AND town_id = 8
-        AND (posx, posy, posz) = (32369, 32241, 7) AND health = healthmax AND mana = manamax
+        AND (posx, posy, posz) = (32369, 32241, 7) AND health = healthmax AND mana = manamax AND maglevel = 4
+        AND (skill_fist, skill_club, skill_sword, skill_axe, skill_dist, skill_shielding, skill_fishing) = (50, 50, 50, 50, 50, 50, 50)
         AND (vocation, healthmax, manamax, cap) IN ((4, 365, 95, 770), (3, 305, 215, 710), (2, 245, 395, 590),
                                                     (1, 245, 395, 590))) <> 1
-     OR (SELECT COUNT(*) FROM player_items WHERE player_id = @b1_leader_id AND pid IN (1, 4, 5, 6, 7, 8)) <> 6 THEN
+     OR (SELECT COUNT(*) FROM player_items WHERE player_id = @b1_leader_id AND pid IN (1, 4, 5, 6, 7, 8)) <> 6
+     OR (SELECT COUNT(*) FROM player_items WHERE player_id = @b1_leader_id AND (
+           (@b1_voc = 4 AND (pid, itemtype) IN ((1, 3351), (4, 3357), (5, 3409), (6, 3264), (7, 3557), (8, 3552)))
+        OR (@b1_voc = 3 AND (pid, itemtype) IN ((1, 3352), (4, 3359), (5, 3409), (6, 3277), (7, 3372), (8, 3552)))
+        OR (@b1_voc = 2 AND (pid, itemtype) IN ((1, 3355), (4, 3361), (5, 3412), (6, 3066), (7, 3362), (8, 3552)))
+        OR (@b1_voc = 1 AND (pid, itemtype) IN ((1, 3355), (4, 3361), (5, 3412), (6, 3074), (7, 3362), (8, 3552)))))
+        <> 6 THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'b1 leader: result differs from the declared preparation';
   END IF;
 END//
