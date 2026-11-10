@@ -13,11 +13,15 @@ import os
 import re
 import sqlite3
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 from m5_current_lowstock import cleanup_evidence, native_build_contract
 from m5_qualification_gates import qualify_run
+from m5_status_capture import ExternalEpoch
+from m5_status_runner_adapter import (BOT_NAME, CaptureDriver, DurableEvents,
+                                      ExactProcessedTransport, seal_events)
 
 from canary_brain import benchmark, runtime
 from canary_brain.recording import ReplayReader
@@ -97,7 +101,8 @@ async def read_native_status(query):
     raise TimeoutError("native status command did not produce a processed result")
 
 
-async def run_with_status_observer(configuration, stopped, run, observe):
+async def run_with_status_observer(configuration, stopped, run, observe,
+                                   *, strict_cleanup=False):
     worker = asyncio.create_task(run(configuration, stopped))
     observer = asyncio.create_task(observe(configuration, stopped))
     try:
@@ -132,10 +137,29 @@ async def run_with_status_observer(configuration, stopped, run, observe):
         await worker
     finally:
         stopped.set()
+        if strict_cleanup and not observer.done():
+            # Give the observer its normal stop path so it can close and seal
+            # completed evidence. An outstanding SQL call remains unsealed.
+            await asyncio.wait((observer,), timeout=5)
         for task in (observer, worker):
             if not task.done():
                 task.cancel()
-        await asyncio.gather(observer, worker, return_exceptions=True)
+        observer_result, _ = await asyncio.gather(
+            observer, worker, return_exceptions=True
+        )
+        if (strict_cleanup and isinstance(observer_result, BaseException)
+                and not isinstance(observer_result, asyncio.CancelledError)):
+            marker = configuration.state_file.parent / "observer-error.json"
+            if not marker.exists():
+                marker.write_text(json.dumps({
+                    "error_type": type(observer_result).__name__,
+                    "at_utc": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "scope": "Status observer cleanup failed; result must be rejected",
+                }, indent=2))
+            if sys.exc_info()[0] is None:
+                raise QualificationObserverError(
+                    "Qualification status observer failed during cleanup"
+                ) from observer_result
 
 
 def validate_result(
@@ -193,6 +217,11 @@ async def execute(args):
         == frozen["fixture_sha256"]
     )
     assert benchmark.file_hash(WORLD) == frozen["world_sha256"]
+    if args.status_capture_opt_in and (
+        args.status_script_id not in frozen["hunts"]
+        or frozen["guid"] != 65001
+    ):
+        raise ValueError("status capture bindings differ from the frozen fixture")
     actual = await asyncio.to_thread(
         subprocess.check_output,
         [
@@ -233,12 +262,23 @@ async def execute(args):
         "driver_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "scope": "Controlled fixture G; real game with native or explicitly scripted fake choices. No provider inference.",
     }
+    if args.status_capture_opt_in:
+        attestation["status_capture_opt_in"] = {
+            "script_id": args.status_script_id,
+            "source_sha256": {
+                name: hashlib.sha256((Path(__file__).parent / name).read_bytes()).hexdigest()
+                for name in ("m5_status_capture.py", "m5_status_runner_adapter.py")
+            },
+            "qualification_input": False,
+        }
     (work / "attestation.json").write_text(json.dumps(attestation, indent=2))
     runtime.read_credential = forbidden
     runtime.AsyncOpenAI = forbidden
     runtime.FakeProvider = ScriptedFake
     base = benchmark.DockerFixture
     active_fixture = None
+    game_started = asyncio.Event()
+    loop = asyncio.get_running_loop()
 
     class AttestedFixture(base):
         def prepare(self, participant):
@@ -301,6 +341,8 @@ async def execute(args):
                     indent=2,
                 ),
             )
+            if args.status_capture_opt_in:
+                loop.call_soon_threadsafe(game_started.set)
 
         def close(self):
             try:
@@ -352,11 +394,166 @@ async def execute(args):
                     )
             await asyncio.sleep(1)
 
+    async def observe_status_opt_in(configuration, stopped):
+        await game_started.wait()
+        fixture = active_fixture
+        if fixture is None:
+            raise RuntimeError("opt-in capture has no active fixture")
+        container_name = fixture.project + "-game-1"
+
+        def inspect_epoch():
+            raw = subprocess.check_output(
+                ["docker", "inspect", container_name, "--format",
+                 '{"id":{{json .Id}},"image":{{json .Image}},'
+                 '"started":{{json .State.StartedAt}},"running":{{json .State.Running}},'
+                 '"project":{{json (index .Config.Labels "com.docker.compose.project")}},'
+                 '"service":{{json (index .Config.Labels "com.docker.compose.service")}}}'],
+                text=True, timeout=10, cwd="/",
+            )
+            value = json.loads(raw)
+            if (value["image"] != frozen["image_id"] or value["running"] is not True
+                    or value["project"] != fixture.project or value["service"] != "game"):
+                raise ValueError("game identity or state differs from frozen trial")
+            return value
+
+        initial = await asyncio.to_thread(inspect_epoch)
+        clock = Store(configuration.state_file).get("run_clock", "start")
+        if not clock or type(clock.get("monotonic")) not in (int, float):
+            raise ValueError("opt-in capture lacks the observed worker clock")
+        epoch = ExternalEpoch(
+            run_id=f"{experiment.name}:{args.mode}:0",
+            world_sha256=frozen["world_sha256"],
+            game_container_id=initial["id"],
+            game_started_at=initial["started"],
+            bot_guid=frozen["guid"], bot_name=BOT_NAME,
+            script_id=args.status_script_id,
+        )
+
+        def verify_epoch():
+            actual = inspect_epoch()
+            if (actual["id"] != epoch.game_container_id
+                    or actual["started"] != epoch.game_started_at
+                    or benchmark.file_hash(WORLD) != epoch.world_sha256):
+                raise ValueError("external world or game epoch changed")
+
+        def query(sql):
+            return fixture.command(
+                "exec", "-T", "database", "sh", "-c",
+                'MYSQL_PWD="$MARIADB_PASSWORD" mariadb -u canary canary -N -e "$1"',
+                "sh", sql, timeout=10,
+            )
+
+        sink = DurableEvents(configuration.state_file.parent / "status-capture-events.jsonl")
+        driver = CaptureDriver(epoch, ExactProcessedTransport(query, verify_epoch), sink,
+                               start_mono=clock["monotonic"])
+        sink({"event": "trace_source_start", "external_epoch": epoch.__dict__,
+              "at_mono": time.monotonic(), "source": "docker_logs_follow"})
+        stderr_path = configuration.state_file.parent / "status-trace-source.stderr"
+        with stderr_path.open("xb") as stderr:
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    "docker", "logs", "--follow", "--timestamps", "--since",
+                    epoch.game_started_at, epoch.game_container_id,
+                    stdout=asyncio.subprocess.PIPE, stderr=stderr,
+                    limit=65536,
+                )
+            except BaseException:
+                driver.shutdown()
+                sink.close()
+                raise
+            wake = asyncio.Event()
+            trace_lines = 0
+            matched_hints = 0
+
+            async def read_trace():
+                nonlocal trace_lines, matched_hints
+                while True:
+                    line = await process.stdout.readline()
+                    if not line:
+                        if not stopped.is_set():
+                            driver.source_lost(lines=trace_lines,
+                                               matched_hints=matched_hints,
+                                               process_exit=process.returncode)
+                        return
+                    trace_lines += 1
+                    if driver.hint(line.decode("utf-8", errors="replace")) is not None:
+                        matched_hints += 1
+                        wake.set()
+
+            async def schedule_periodic():
+                while not stopped.is_set():
+                    delay = max(0, driver.next_periodic - time.monotonic())
+                    try:
+                        await asyncio.wait_for(stopped.wait(), timeout=delay)
+                    except asyncio.TimeoutError:
+                        driver.periodic_due()
+                        wake.set()
+
+            async def drain_capture():
+                while not stopped.is_set():
+                    await wake.wait()
+                    wake.clear()
+                    await driver.drain()
+
+            tasks = [asyncio.create_task(coro()) for coro in
+                     (read_trace, schedule_periodic, drain_capture)]
+            stop_task = asyncio.create_task(stopped.wait())
+            completed_normally = False
+            try:
+                done, _ = await asyncio.wait((*tasks, stop_task),
+                                             return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    if task is not stop_task:
+                        await task
+                if stop_task not in done:
+                    raise RuntimeError("opt-in status capture ended before worker")
+                completed_normally = True
+            finally:
+                driver.shutdown()
+                for task in (*tasks, stop_task):
+                    if not task.done():
+                        task.cancel()
+                task_results = await asyncio.gather(
+                    *tasks, stop_task, return_exceptions=True
+                )
+                if process.returncode is None:
+                    process.terminate()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=2)
+                    except asyncio.TimeoutError:
+                        process.kill()
+                        await process.wait()
+                sink({"event": "trace_source_closed", "at_mono": time.monotonic(),
+                      "lines": trace_lines, "matched_hints": matched_hints,
+                      "process_exit": process.returncode,
+                      "pending_command_id": driver.capture.command_id})
+                stderr.flush()
+                os.fsync(stderr.fileno())
+                # On cancellation/timeout the SQL thread may still finish. Keep
+                # its durable sink alive for a late_reply until process exit.
+                if driver.capture.active is None:
+                    if completed_normally and not any(
+                        isinstance(value, BaseException)
+                        and not isinstance(value, asyncio.CancelledError)
+                        for value in task_results
+                    ):
+                        seal_events(driver, sink,
+                                    configuration.state_file.parent /
+                                    "status-capture-seal.json")
+                    else:
+                        sink.close()
+                for value in task_results:
+                    if (isinstance(value, BaseException)
+                            and not isinstance(value, asyncio.CancelledError)):
+                        raise value
+
     original_run = benchmark.run
 
     async def observed_worker(configuration, stopped):
         await run_with_status_observer(
-            configuration, stopped, original_run, observe_status
+            configuration, stopped, original_run,
+            observe_status_opt_in if args.status_capture_opt_in else observe_status,
+            strict_cleanup=args.status_capture_opt_in,
         )
 
     benchmark.DockerFixture = AttestedFixture
@@ -407,6 +604,22 @@ async def execute(args):
         "database": frozen["database_image_id"],
     }
     result["accepted"] = all(result["checks"].values())
+    if args.status_capture_opt_in:
+        capture_path = directory / "status-capture-events.jsonl"
+        seal_path = directory / "status-capture-seal.json"
+        sealed = seal_path.exists() and capture_path.exists()
+        digest = json.loads(seal_path.read_text()).get("events_sha256") if sealed else None
+        sealed = sealed and digest == hashlib.sha256(capture_path.read_bytes()).hexdigest()
+        result["checks"]["status_capture_sealed"] = sealed
+        result["accepted"] = all(result["checks"].values())
+        result["status_capture_diagnostic"] = {
+            "path": str(capture_path),
+            "sha256": digest if sealed else None,
+            "seal_path": str(seal_path) if sealed else None,
+            "sealed": sealed,
+            "qualification_input": False,
+            "internal_epoch": "not_demonstrated",
+        }
     result["attestation"] = attestation
     (work / "qualification.json").write_text(json.dumps(result, indent=2))
     print(
@@ -430,6 +643,10 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--mode", choices=["native", "fake"], required=True)
     parser.add_argument("--seconds", type=int, choices=[10, 1800], default=10)
+    parser.add_argument("--status-capture-opt-in", action="store_true",
+                        help="write separate command-correlated diagnostic evidence; not a qualification input")
+    parser.add_argument("--status-script-id", type=int, default=77,
+                        help="frozen fixture hunt identity for opt-in diagnostics")
     parser.add_argument(
         "--require-progress",
         action="store_true",
