@@ -326,7 +326,10 @@ portas `27171`-`27173` e `28080`, tags `canary-qa-b1-*:local`, limites de CPU e 
 recibos em `runtime/b1/evidence/`. Os valores ficam em `compose.b1.yaml` (e
 `compose.b1-brain.yaml` com o brain fake), aplicados depois dos arquivos da etapa 1. As
 listas de portas usam `!override` (Compose 2.24.4 ou mais novo); se o Compose somar as
-portas, o preflight recusa. `.env`, `runtime/initdb` e o mapa podem ser os mesmos.
+portas, o preflight recusa. `.env` e o mapa podem ser os mesmos. O banco do B1 nasce de
+`runtime/b1/initdb` (os arquivos de `runtime/initdb` mais o seed dos pilotos) e o `game` lê
+`b1/server.json` (`autonomous_bot: 0`); só os overlays do B1 apontam para eles e o preflight
+confere o bind de cada perfil. Fixture, preparação do líder e baseline S0: [B1_FIXTURE.md](B1_FIXTURE.md).
 
 Separação, falhando fechado:
 - o preflight confere que o render é do perfil: projeto, portas publicadas, portas no
