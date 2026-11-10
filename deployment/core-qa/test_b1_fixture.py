@@ -25,7 +25,7 @@ SEED = (HERE / "b1/seed-companions.sql").read_text()
 LEADER = (HERE / "b1/leader-prep.sql.template").read_text()
 SLICE = (HERE / "b1/slice.sql").read_text()
 # Pinned: the slice of the fresh B1 database at S0 (fx.expected_s0) and the query that produces it.
-S0_SLICE_SHA256 = "e2fbad56d4207c8955a5e7279afb41b7201741341c13a63451ebc4c1210d30d4"
+S0_SLICE_SHA256 = "170a78f86420ab6abefaf0d837284a932f2c5867580ee3c466e5f506f90b8b05"
 FORBIDDEN = {3366: "magic plate armor", 3388: "demon armor", 3363: "dragon scale legs"}
 STARTER = {  # id: (items.xml name, armor or defense or level the starter claim rests on)
     3351: "steel helmet",
@@ -108,7 +108,7 @@ def fresh_db():
         db.execute(f"INSERT INTO players VALUES ({', '.join(row.values())})")
     db.executescript(
         "CREATE TABLE accounts (id); CREATE TABLE player_depotitems (player_id); CREATE TABLE player_inboxitems "
-        "(player_id); CREATE TABLE players_online (player_id); CREATE TABLE player_storage (player_id, `key`, value);"
+        "(player_id); CREATE TABLE players_online (player_id); CREATE TABLE player_storage (player_id, `key`, value, PRIMARY KEY (player_id, `key`));"
         "CREATE TABLE player_items (player_id, pid, sid, itemtype, `count`, attributes);"
         "CREATE TABLE player_deaths (player_id, time, level, killed_by, is_player, mostdamage_by, "
         "mostdamage_is_player); CREATE TABLE qa_b1_fixture (k PRIMARY KEY, v);"
@@ -203,7 +203,7 @@ class SourceNumbersTests(unittest.TestCase):
             self.assertTrue(all(count < 20 for count in stock.values()))
             self.assertLess((20 - stock[266]) * 50 + (20 - stock[268]) * 56, 10000)
 
-    def test_gold_is_inventory_coins_because_the_bank_is_refunded_at_start(self):
+    def test_budget_is_10000_gp_in_coins_with_bank_0(self):
         funding = (
             SOURCE / "data/scripts/globalevents/bot_market_funding.lua"
         ).read_text()
@@ -224,7 +224,47 @@ class SourceNumbersTests(unittest.TestCase):
             "case ITEM_PLATINUM_COIN:\n\t\t\treturn count * 100;",
             (SOURCE / "src/items/item.cpp").read_text(),
         )
-        self.assertEqual(sum(count * 100 for count in fx.COINS.values()), 10000)
+        item = (SOURCE / "src/items/item.cpp").read_text()
+        for worth in fx.WORTH.values():
+            self.assertIn(
+                f"return count{' * ' + str(worth) if worth > 1 else ''};", item
+            )
+        self.assertEqual(sorted(fx.COINS), [3031, 3035, 3043])
+        self.assertEqual(
+            sum(fx.WORTH[coin] * count for coin, count in fx.COINS.items()), fx.BUDGET
+        )
+        self.assertEqual((fx.BUDGET, fx.PILOT_BALANCE), (10000, 0))
+        for guid in fx.PILOTS:
+            self.assertRegex(
+                SEED, rf"`posz` = 7, `balance` = 0\n  WHERE `id` = {guid} AND"
+            )
+        self.assertIn("AND `mana` = `manamax` AND `balance` = 0\n", SEED)
+
+    def test_npc_takes_the_coins_and_gives_change_without_the_bank(self):
+        # The NPC charges with removeMoney(useBalance=true): inventory coins first, sorted by worth; a stack worth
+        # more than the rest is split and the change added; the bank is touched only for what coins cannot pay.
+        npc = (SOURCE / "src/lua/functions/creatures/npc/npc_functions.cpp").read_text()
+        self.assertIn(
+            "if (!g_game().removeMoney(player, itemCost + backpackCost, 0, true)) {",
+            npc,
+        )
+        game = (SOURCE / "src/game/game.cpp").read_text()
+        body = game[game.index("bool Game::removeMoney(") :]
+        body = body[: body.index("\n}\n")]
+        self.assertIn("std::multimap<uint32_t, std::shared_ptr<Item>> moneyMap;", body)
+        self.assertIn("addMoney(cylinder, (worth * removeCount) - money, flags);", body)
+        self.assertIn(
+            "if (useBalance && player && player->getBankBalance() >= money) {", body
+        )
+        brain = (SOURCE / "src/creatures/players/bot/bot_brain.cpp").read_text()
+        self.assertIn("getBankBalance()", brain)
+        for _name, _vocation, stock in fx.PILOTS.values():
+            cost = (20 - stock[266]) * 50 + (20 - stock[268]) * 56
+            platinum = -(-cost // 100)  # what removeMoney takes from the 100-coin stack
+            self.assertLessEqual(platinum, fx.COINS[3035])
+            self.assertEqual(
+                platinum * 100 - cost + (fx.BUDGET - platinum * 100), fx.BUDGET - cost
+            )
 
     def test_thais_is_town_8(self):
         self.assertIn(
@@ -392,7 +432,7 @@ class EquipmentOverlayTests(unittest.TestCase):
     def test_loadout_potions_and_coins_fit_the_capacity(self):
         weight = {
             item: int(re.search(r'key="weight" value="(\d+)"', item_xml(item)).group(1))
-            for item in {*STARTER, 266, 268, 3035, fx.BACKPACK}
+            for item in {*STARTER, 266, 268, *fx.COINS, fx.BACKPACK}
         }
         for _name, vocation, stock in fx.PILOTS.values():
             carried = (
@@ -447,6 +487,15 @@ class EquipmentOverlayTests(unittest.TestCase):
                 json.loads((root / "evidence/overlay-manifest.json").read_text()),
                 manifest,
             )
+        self.assertEqual(manifest["loadout_scope"], fx.LOADOUT_SCOPE)
+        self.assertIn("every B1 bot of level 20-29", fx.LOADOUT_SCOPE)
+        bind = manifest["binds"][fx.FUNDING_TARGET]
+        self.assertEqual(bind["source"], "b1/bot_market_funding.lua")
+        self.assertEqual(bind["sha256"], fx.sha256(fx.FUNDING_NOOP.read_bytes()))
+        self.assertEqual(
+            bind["replaces_sha256"], fx.sha256(fx.FUNDING_SOURCE.read_bytes())
+        )
+        self.assertIn("not authored-data", bind["via"])
 
     def test_install_plan_targets_only_the_b1_volume_and_is_never_run(self):
         with b1_env():
@@ -475,15 +524,36 @@ class EquipmentOverlayTests(unittest.TestCase):
             self.assertRaisesRegex(RuntimeError, "refused"),
         ):
             fx.install_commands()
+        with b1_env():
+            readiness = fx.readiness_commands()
+        self.assertTrue(
+            readiness[0].endswith(f"exec -T game sha256sum {fx.FUNDING_TARGET}")
+        )
+        self.assertIn("docker exec -i canary-qa-b1-database-1 mariadb", readiness[2])
+        self.assertEqual(
+            readiness[3],
+            "python3 b1_fixture.py check ready runtime/b1/evidence/ready/db-slice.tsv",
+        )
+        for command in readiness:
+            self.assertNotIn("canary-core-qa", command)
+        with b1_env(), self.assertRaisesRegex(RuntimeError, "refused"):
+            fx.readiness_commands("canary-core-qa")
         with (
             patch("subprocess.run") as run,
             patch("os.system") as system,
             b1_env(),
-            patch("sys.stdout"),
+            patch("sys.stdout") as stdout,
         ):
             self.assertEqual(fx.main(["install-plan"]), 0)
         run.assert_not_called()
         system.assert_not_called()
+        printed = json.loads(
+            "".join(call.args[0] for call in stdout.write.call_args_list)
+        )
+        self.assertIs(printed["executed"], False)
+        self.assertEqual(printed["loadout_scope"], fx.LOADOUT_SCOPE)
+        self.assertEqual(printed["readiness"]["commands"], readiness)
+        self.assertIn(fx.FUNDING_TARGET, printed["funding_bind"])
 
 
 class SeedGuardTests(unittest.TestCase):
@@ -514,6 +584,28 @@ class SeedGuardTests(unittest.TestCase):
                 guard_part(),
             )
 
+    def test_storage_rows_are_exactly_03_player_storage(self):
+        # (player_id, key, value) of each pilot, as the guard lists them, equal 03_player_storage.sql, and the
+        # schema's (player_id, key) primary key makes "N exact matches and N rows" set equality.
+        listed = re.findall(
+            r"SELECT (6500[134])(?: AS player_id)?, (-?\d+)(?: AS k)?, (-?\d+)(?: AS v)?",
+            guard_part(),
+        )
+        self.assertEqual(
+            sorted(tuple(map(int, row)) for row in listed), sorted(storage_seed())
+        )
+        self.assertEqual(len(listed), 299 + 133 + 300)
+        self.assertIn(
+            "CONSTRAINT `player_storage_pk` PRIMARY KEY (`player_id`, `key`),",
+            (SOURCE / "schema.sql").read_text(),
+        )
+        for guid, count in ((65001, 299), (65003, 133), (65004, 300)):
+            self.assertIn(
+                f"s.`key` = e.k AND s.value = e.v) <> {count} THEN\n"
+                f"    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'b1 seed: pilot {guid} storage rows",
+                guard_part(),
+            )
+
     def test_every_write_comes_after_the_whole_guard(self):
         end = SEED.index("END//")
         for pattern in (
@@ -532,7 +624,7 @@ class SeedGuardTests(unittest.TestCase):
     def test_guard_passes_the_fresh_init_and_writes_reach_the_declared_state(self):
         db = fresh_db()
         self.assertEqual(failing(db, conditions(guard_part())), [])
-        self.assertEqual(len(conditions(guard_part())), 3 + 2 + 5 + 3)
+        self.assertEqual(len(conditions(guard_part())), 3 + 2 + 5 + 3 + 3)
         apply_seed(db)
         post = conditions(SEED[SEED.rindex("DELIMITER //") :])
         self.assertEqual(len(post), 6)
@@ -557,8 +649,16 @@ class SeedGuardTests(unittest.TestCase):
             ("items", "INSERT INTO player_items VALUES (65003, 3, 101, 2854, 1, '')"),
             ("depot", "INSERT INTO player_depotitems VALUES (65001)"),
             (
-                "storage",
+                "storage row deleted",
                 "DELETE FROM player_storage WHERE player_id = 65004 AND `key` = 10001001",
+            ),
+            (  # same count: one value changed
+                "storage value changed",
+                "UPDATE player_storage SET value = value + 1 WHERE player_id = 65001 AND `key` = 10001001",
+            ),
+            (  # same count: one key replaced by another
+                "storage key replaced",
+                "UPDATE player_storage SET `key` = 99999999 WHERE player_id = 65003 AND `key` = 10001001",
             ),
             (
                 "death",
@@ -571,6 +671,31 @@ class SeedGuardTests(unittest.TestCase):
                 db = fresh_db()
                 db.execute(change)
                 self.assertTrue(failing(db, checks), name)
+
+    def test_same_count_storage_mutations_pass_the_counts_but_not_the_rows(self):
+        checks = conditions(guard_part())
+        for change, guid in (
+            (
+                "UPDATE player_storage SET value = value + 1 WHERE player_id = 65001 AND `key` = 10001001",
+                65001,
+            ),
+            (
+                "UPDATE player_storage SET `key` = 99999999 WHERE player_id = 65003 AND `key` = 10001001",
+                65003,
+            ),
+        ):
+            with self.subTest(change):
+                db = fresh_db()
+                db.execute(change)
+                self.assertEqual(
+                    db.execute(
+                        f"SELECT COUNT(*) FROM player_storage WHERE player_id = {guid}"
+                    ).fetchone()[0],
+                    {65001: 299, 65003: 133}[guid],
+                )
+                refused = failing(db, checks)
+                self.assertEqual(len(refused), 1)
+                self.assertIn(f"SELECT {guid} AS player_id", refused[0])
 
     def test_reapplication_is_refused(self):
         db = fresh_db()
@@ -644,6 +769,30 @@ class LeaderTemplateTests(unittest.TestCase):
             LEADER,
         )
         self.assertIn("= (50, 50, 50, 50, 50, 50, 50)", LEADER)
+
+    def test_template_grants_no_balance_potions_or_coins(self):
+        code = "\n".join(
+            line for line in LEADER.splitlines() if not line.lstrip().startswith("--")
+        )
+        self.assertNotRegex(code.lower(), r"balance|bank")
+        for item in fx.STOCK:
+            self.assertNotRegex(code, rf"\b{item}\b")
+        inserted = re.findall(r"^INSERT INTO `(\w+)`", code, re.MULTILINE)
+        self.assertEqual(inserted, ["player_items", "qa_b1_fixture"])
+        items = code[code.index("INSERT INTO `player_items`") :]
+        items = items[: items.index(";")]
+        self.assertEqual(
+            sorted(re.findall(r"^  \(@b1_leader_id, (\d+),", items, re.MULTILINE)),
+            ["1", "4", "5", "6", "7", "8"],
+        )
+        self.assertIn(
+            "DELETE FROM `player_items` WHERE `player_id` = @b1_leader_id AND `pid` IN (1, 4, 5, 6, 7, 8);",
+            code,
+        )
+        self.assertEqual(
+            set(map(int, re.findall(r"\b(\d{4})\b", items))),
+            {item for slots in fx.LOADOUT.values() for item in slots.values()},
+        )
 
     def test_render_validates_the_name_and_needs_b1(self):
         with (
@@ -728,6 +877,24 @@ class SliceTests(unittest.TestCase):
         self.assertNotIn(S0_SLICE_SHA256, (HERE / "stage1_baseline.py").read_text())
         self.assertNotIn(S0_SLICE_SHA256, (HERE / "stage1-baseline.json").read_text())
 
+    def test_slice_columns_are_named_as_slice_sql_selects_them(self):
+        select = re.search(r"SELECT 'player', (.*?) FROM players", SLICE).group(1)
+        self.assertEqual(tuple(select.split(", ")), fx.PLAYER_COLUMNS)
+        self.assertEqual(set(fx.SHAPES), set(fx.TAGS))
+        for line in fx.expected_s0():
+            self.assertIsNotNone(fx.named(line.split("\t")), line)
+        lines = fx.expected_s0()
+        for bad in (
+            "fixture\textra\tx\ty",
+            "stock\t65001\t266",
+            "slot\t65001\t1\tx\t1",
+            "humans\t0",
+        ):
+            with self.subTest(bad):
+                for stage in ("s0", "leader", "ready"):
+                    problems = fx.check(lines + [bad], stage)[0]
+                    self.assertIn(f"malformed: {bad.replace(chr(9), ' ')}", problems)
+
     def test_s0_names_every_difference(self):
         lines = fx.expected_s0()
         problems, _ = fx.check(
@@ -809,6 +976,16 @@ class SliceTests(unittest.TestCase):
             "leader not prepared": [
                 line.replace("\t20\t98800\t305", "\t8\t4200\t305") for line in good
             ],
+            "leader slot count 2": edit(
+                "slot\t66100\t6\t3277\t1", "slot\t66100\t6\t3277\t2"
+            ),
+            "extra fixture row": good + ["fixture\textra\tx"],
+            "extra malformed fixture row": good + ["fixture\textra\tx\ty"],
+            "second leader row": good + ["fixture\tleader\tSomeone Else"],
+            "malformed stock row": good + ["stock\t66100\t266"],
+            "non-numeric slot": edit(
+                "slot\t66100\t3\t1988\t1", "slot\t66100\t3\tbag\t1"
+            ),
             "leader skills": [
                 line.replace("\t4\t50\t50", "\t4\t10\t50")
                 if line.startswith("player\t66100")
@@ -820,6 +997,89 @@ class SliceTests(unittest.TestCase):
             with self.subTest(name):
                 self.assertNotEqual(lines, good)
                 self.assertTrue(fx.check(lines, "leader")[0], name)
+
+    def test_ready_passes_the_fixture_money_and_records_the_leader(self):
+        lines = leader_slice(balance=4321)
+        # activation drift (HP, the ring of equipBot) is observed, not refused
+        lines = [line.replace("\t365\t365\t95", "\t300\t365\t95") for line in lines] + [
+            "slot\t65001\t9\t3099\t1"
+        ]
+        problems, observed = fx.check(lines, "ready")
+        self.assertEqual(problems, [])
+        self.assertEqual(observed["leader"]["balance"], "4321")
+        self.assertEqual(observed["leader"]["stock"]["266"], "7")
+        self.assertEqual(len(observed["pilots"]["65001"]), 2)
+        self.assertEqual(observed["pilots"]["65003"], [])
+        other = fx.check(leader_slice(balance=4322), "ready")[1]
+        self.assertNotEqual(
+            observed["leader"]["recorded_sha256"], other["leader"]["recorded_sha256"]
+        )
+        self.assertEqual(
+            fx.check(leader_slice(balance=4321), "ready")[1]["leader"],
+            observed["leader"],
+        )
+
+    def test_ready_refuses_funding_and_any_other_pilot_money(self):
+        good = leader_slice()
+
+        def pilot(guid, change):
+            return [
+                change(line) if line.split("\t")[1:2] == [str(guid)] else line
+                for line in good
+            ]
+
+        def balance(value):
+            return lambda line: (
+                line.rsplit("\t", 1)[0] + f"\t{value}"
+                if line.startswith("player")
+                else line
+            )
+
+        cases = {
+            "funding ran": (
+                pilot(65003, balance(fx.SEED_BALANCE)),
+                "bot_market_funding ran",
+            ),
+            "bank refilled": (pilot(65001, balance(500)), "balance 500, not 0"),
+            "coins spent": (
+                [
+                    l.replace("stock\t65004\t3035\t100", "stock\t65004\t3035\t89")
+                    for l in good
+                ],
+                "coins",
+            ),
+            "change in gold": (
+                [
+                    l.replace("stock\t65004\t3031\t0", "stock\t65004\t3031\t16")
+                    for l in good
+                ],
+                "coins",
+            ),
+            "coin row missing": (
+                [l for l in good if l != "stock\t65001\t3043\t0"],
+                "coins",
+            ),
+            "pilot missing": (
+                [l for l in good if not l.startswith("player\t65004")],
+                "not exactly one player row",
+            ),
+            "no leader in the marker": (
+                [l for l in good if not l.startswith("fixture\tleader")],
+                "marker rows are not exactly",
+            ),
+            "leader stock incomplete": (
+                [l for l in good if l != "stock\t66100\t3043\t0"],
+                "stock rows are not exactly",
+            ),
+            "duplicate": (good + ["stock\t65001\t3035\t100"], "duplicate"),
+        }
+        for name, (lines, message) in cases.items():
+            with self.subTest(name):
+                self.assertNotEqual(lines, good)
+                problems = fx.check(lines, "ready")[0]
+                self.assertTrue(
+                    any(message in problem for problem in problems), problems
+                )
 
     def test_cli_check_reports_observed_and_exit_code(self):
         with tempfile.TemporaryDirectory() as directory:

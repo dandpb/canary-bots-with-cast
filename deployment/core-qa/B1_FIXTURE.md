@@ -12,6 +12,7 @@ Aqui só há arquivos para revisar e testes offline. Nenhum SQL e nenhum Docker 
 | `b1/leader-prep.sql.template` | Preparação do líder. Parametrizada pelo nome do personagem. |
 | `b1/slice.sql` | Recorte do banco. Só leitura. Método `b1-fixture-slice-v2`. |
 | `b1/server.json` | Config do servidor do brain no B1. Igual à da etapa 1, com `autonomous_bot: 0`. |
+| `b1/bot_market_funding.lua` | No-op revisado. Desliga o BotMarketFunding só no B1. |
 | `b1_fixture.py` | Monta o initdb do B1, gera o SQL do líder e os overlays, imprime a instalação, confere o recorte. |
 | `test_b1_fixture.py` | Testes offline: números contra a fonte, guarda do seed, overlays, recorte e caminho. |
 
@@ -19,16 +20,15 @@ Aqui só há arquivos para revisar e testes offline. Nenhum SQL e nenhum Docker 
 
 Os três pilotos, no banco, antes do primeiro jogo:
 
-| Piloto | Voc. | Nível | Exp | HP | Mana | Cap | Skills | ML | Town, posição | 266 / 268 | Ouro |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| 65001 Grizzle Alyronia (guia) | knight 4 | 20 | 98800 | 365 | 95 | 770 | 50 | 4 | 8, 32369,32241,7 | 14 / 6 | 100 × 3035 |
-| 65003 Sever Heartspear | paladin 3 | 20 | 98800 | 305 | 215 | 710 | 50 | 4 | 8, 32369,32241,7 | 10 / 10 | 100 × 3035 |
-| 65004 Galdon Whitehoof | druid 2 | 20 | 98800 | 245 | 395 | 590 | 50 | 4 | 8, 32369,32241,7 | 6 / 14 | 100 × 3035 |
+| Piloto | Voc. | Nível | Exp | HP | Mana | Cap | Skills | ML | Town, posição | 266 / 268 | Moedas | Banco |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 65001 Grizzle Alyronia (guia) | knight 4 | 20 | 98800 | 365 | 95 | 770 | 50 | 4 | 8, 32369,32241,7 | 14 / 6 | 100 × 3035 | 0 |
+| 65003 Sever Heartspear | paladin 3 | 20 | 98800 | 305 | 215 | 710 | 50 | 4 | 8, 32369,32241,7 | 10 / 10 | 100 × 3035 | 0 |
+| 65004 Galdon Whitehoof | druid 2 | 20 | 98800 | 245 | 395 | 590 | 50 | 4 | 8, 32369,32241,7 | 6 / 14 | 100 × 3035 | 0 |
 
 - HP e mana cheios. Skills = fist, club, sword, axe, distance, shielding e fishing.
-- 100 platinum coins (3035) = 10000 gp, na backpack, com as poções.
-- Poções 236/237 e moedas 3031/3043: zero. Mortes: zero.
-- `balance` fica como no seed: 100000000000. Veja "Ouro" abaixo.
+- Orçamento comum: 10000 gp no total. São 100 platinum coins (3035), na backpack, com as poções.
+- Banco (`balance`) 0. Gold 3031 e crystal 3043: zero. Poções 236/237: zero. Mortes: zero.
 - O líder (preparado depois) tem o mesmo nível, exp, skills 50, ML 4, os valores da vocação
   (sorcerer e druid 245/395/590), o equipamento da vocação, town 8 e o templo.
   Backpack, conteúdo e saldo continuam dele.
@@ -79,20 +79,49 @@ O motor recoloca esse equipamento. Por isso há o overlay de `equipment.csv`:
 - O overlay troca só as linhas de nível 20 a 29 das vocações 1-4 por esse equipamento.
   O resto do arquivo fica igual, byte a byte. Assim um nível a mais no B1 não traz de volta
   o equipamento alto.
+- **Alcance:** TODO bot do B1 de nível 20 a 29, não só os pilotos, recebe esse equipamento
+  comum quando é ativado. `render-overlays` e `install-plan` dizem isso em `loadout_scope`.
 - Os `player_items` do seed são a linha de nível 20 do overlay (teste).
 - `equipBot` também põe o anel 3099 e a runa 3165 (`bot_data.cpp:1167-1260`). O recorte
   mostra isso no T0 como diferença relatada.
 
-### Ouro
+### Ouro: orçamento comum
 
-`bot_market_funding.lua:15-38` põe `balance = 100000000000` em todo bot da conta 65000,
-30 s depois de cada start. Um banco de 10000 não se mantém. Por isso o ouro é de inventário:
-100 platinum coins. O NPC paga primeiro com o inventário e depois com o banco
-(`removeMoney(..., useBalance=true)`, `npc_functions.cpp:630`; `game.cpp:2680-2740`).
+Cada piloto tem 10000 gp no total: 100 platinum coins (3035), banco 0.
+- Por que platinum: uma pilha só, valor exato, 1000 oz de peso, cabe no cap.
+  O NPC cobra com `removeMoney(..., useBalance=true)` (`npc_functions.cpp:630`). Ele junta as
+  moedas do inventário por valor, parte a pilha e devolve o troco (`game.cpp:2680-2760`).
+  O banco só paga o que as moedas não cobrem. Com banco 0, nada sai do banco.
+- Compra esperada no Xodet (266 = 50 gp, 268 = 56 gp, `xodet.lua:34-35`), até 20 de cada
+  (`bot_brain.cpp:911-920`): knight 1084 gp, paladin 1060 gp, druid 1036 gp. Saem 11 platinum;
+  o troco volta em gold.
 
-Compra esperada no Xodet (266 = 50 gp, 268 = 56 gp, `xodet.lua:34-35`), até 20 de cada
-(`bot_brain.cpp:911-920`): knight 6 + 14 = 1084 gp, paladin 10 + 10 = 1060 gp,
-druid 14 + 6 = 1036 gp. Sai das moedas. O troco vem em platinum e gold.
+O BotMarketFunding fica desligado só no B1:
+- `data/scripts/globalevents/bot_market_funding.lua:15-38` põe `balance = 100000000000` em
+  todo bot da conta 65000, 30 s depois de cada start: na memória e por SQL.
+- O arquivo está na imagem (`/canary/data/scripts/globalevents`). Não está no volume
+  `authored-data` (`/canary/data/bot/authored`). Por isso não vai pelo overlay de authored-data.
+- Vai por um bind só leitura em `compose.b1.yaml`: `b1/bot_market_funding.lua`, só comentários,
+  no lugar do original. O loader lê todo `.lua` de `data/scripts` (`scripts.cpp:76`); um arquivo
+  sem código carrega e não registra nada.
+- O preflight exige esse bind no render do B1, só leitura, com essa origem
+  (`PROFILES["b1"]["binds"]`, `reviewed_binds`, `assert_profile_binds`). Sem ele, recusa.
+  A etapa 1 não tem esse bind, e um bind desse arquivo não é revisado para ela.
+- `render-overlays` e `install-plan` mostram o hash do no-op e o do original.
+
+Outros caminhos de dinheiro (busca na fonte):
+- **Mercado dos bots, ainda ligado no B1.** `bot_market.lua` (seller a cada 30-120 s,
+  `bot_market.lua:169-184`; 5% dos bots, `bot_market_data.lua:88`) escolhe qualquer bot da conta
+  65000, pilotos incluídos. Uma oferta cobra taxa (≥20 gp) ou reserva preço + taxa com
+  `removeMoney` (`game_bot_market.cpp:147-166`): primeiro as moedas. Pode gastar moedas dos pilotos.
+  Aceitar oferta de humano paga no banco (`game_bot_market.cpp:249`, `278-282`). Oferta de compra
+  vencida devolve no banco (`iomarket.cpp:227`). Não desligado aqui: decisão de Socrates.
+- **Aluguel de casa.** Os pilotos têm casas (`database/bots/14_houses.sql`) com aluguel não pago.
+  `Houses::payHouses` só cobra se `balance >= rent` (`house.cpp:1017`). Com banco 0, não cobra.
+  Manda cartas de aviso e, depois de 7, tira a casa. O dinheiro não muda.
+- Sem efeito nos pilotos: `equipBot` não cria moedas (pilotos têm backpack, então nem poções);
+  `send_first_items.lua` não roda para bots (sem onLogin); `autoBank` desligado; brain só compra;
+  `/addmoney` e `/attr` só GM; cancelar oferta (`game_bot_market.cpp:354`) não tem chamador.
 
 ### Outras fontes
 
@@ -118,6 +147,9 @@ A guarda do seed é a segunda linha. Antes de qualquer escrita, até da tabela d
 - compara cada piloto com a linha inteira de `02_players.sql` (todas as 103 colunas);
 - exige zero `player_items`, depot, inbox, mortes e `players_online` dos pilotos;
 - exige o número de linhas de `player_storage` de `03_player_storage.sql` (299, 133, 300).
+- e as linhas de `player_storage` uma a uma: cada (player_id, key, value) do arquivo 03. Com a chave
+  (player_id, key) do `schema.sql`, N iguais e N no total é o mesmo conjunto. Valor trocado ou
+  chave trocada com a mesma contagem são recusados.
 Qualquer diferença: `SIGNAL`, o init para e nada é escrito. Um banco jogado é recusado.
 Depois vêm as escritas numa transação e uma checagem final antes do `COMMIT`.
 
@@ -142,6 +174,7 @@ docker run --rm --pull never --network none -v canary-qa-b1_authored-data:/canar
 ```
 
 O `sha256sum` tem de dar os hashes de `overlay-manifest.json`.
+O no-op do funding não precisa de cópia: o bind de `compose.b1.yaml` já o põe no lugar.
 
 ## Líder (depois que Daniel cria o personagem)
 
@@ -150,9 +183,11 @@ O `sha256sum` tem de dar os hashes de `overlay-manifest.json`.
    `runtime/b1/leader-prep.sql` e mostra os hashes.
 3. Com o personagem offline e o `game` parado:
    `docker exec -i canary-qa-b1-database-1 mariadb -ucanary canary < runtime/b1/leader-prep.sql`.
-4. O SQL recusa: sem a marca `b1-companions-v2`; nome ausente ou repetido; id < 66100;
+4. O SQL recusa: sem a marca `b1-companions-v3`; nome ausente ou repetido; id < 66100;
    conta < 65001; ids 6, 65001, 65003, 65004; vocação fora de 1-4; online; outro líder;
    slot com container cheio. Nunca lê conta nem senha.
+5. O SQL não dá banco, poções nem moedas ao líder. Só troca os seis slots de equipamento.
+   O estado dele (banco, backpack, poções) fica como ele criou (teste).
 
 ## Recorte antes/depois
 
@@ -161,24 +196,44 @@ personagem ≥66100:
 
 ```
 docker exec -i canary-qa-b1-database-1 mariadb -ucanary -N -B canary < b1/slice.sql > <ponto>.tsv
-python3 b1_fixture.py check s0|leader <ponto>.tsv
+python3 b1_fixture.py check s0|leader|ready <ponto>.tsv
 ```
 
 - Linhas: `fixture`, `humans`, `player` (com skills e ML), `slot` (pid 1-11), `stock`
   (236, 237, 266, 268, 3031, 3035, 3043), `deaths`, `death`.
 - Hash: SHA-256 das linhas, na ordem, cada uma com `\n`.
+- Toda linha tem a forma da sua marca (número de colunas, números onde há números) e aparece
+  uma vez por chave. Linha fora da forma é `malformed`, em todo `check`.
 - `check s0`: igual a `python3 b1_fixture.py expected`. Hash S0 esperado:
-  `e2fbad56d4207c8955a5e7279afb41b7201741341c13a63451ebc4c1210d30d4`.
+  `170a78f86420ab6abefaf0d837284a932f2c5867580ee3c466e5f506f90b8b05`.
   É do B1. Não é o `BASELINE_SHA256` da etapa 1.
 - `check leader` exige exatamente:
   - as linhas dos pilotos como no S0;
-  - a marca com `fixture` e `leader`, e o líder é o nome da marca;
+  - exatamente duas linhas de marca, `fixture` e `leader`, e o líder é o nome da marca;
   - `humans 1 1` e um só personagem ≥66100, de conta ≥65001;
-  - a linha do líder como declarada, os seis slots do equipamento, as sete linhas de stock,
-    `deaths 0` e nenhuma linha `death`.
+  - a linha do líder como declarada, os seis slots do equipamento como linhas inteiras
+    (item e quantidade 1), as sete linhas de stock, `deaths 0` e nenhuma linha `death`.
   Linha repetida, a mais ou faltando é problema. Saldo, stock e outros slots do líder só são
   observados: vão em `observed` e no hash.
+- `check ready` (prontidão, antes do T0): veja abaixo.
 - T0 e T1 (com o `game` ligado): hash e diferenças relatadas.
+
+## Prontidão (depois do start, antes do T0)
+
+`install-plan` imprime os comandos em `readiness` (NÃO executados). Com o `game` saudável há
+pelo menos 60 s (o funding esperaria 30 s) e antes do `brain`:
+1. `exec -T game sha256sum /canary/data/scripts/globalevents/bot_market_funding.lua` dá o hash do no-op.
+2. O log do `game` não tem linha `[BotMarketFunding]`.
+3. Recorte em `runtime/b1/evidence/ready/db-slice.tsv` e `check ready`.
+
+`check ready` recusa:
+- piloto com banco 100000000000 (o funding rodou de novo) ou qualquer banco diferente de 0;
+- piloto com moedas diferentes da fixture (3031 = 0, 3035 = 100, 3043 = 0);
+- piloto sem linha, marca que não seja a do B1 com um líder, linhas fora da forma ou repetidas.
+O resto dos pilotos (HP, anel do `equipBot`, posição) só é observado.
+Do líder, grava banco e stock REAIS como observados, com `recorded_sha256`. Nada é esperado.
+
+Limite: o recorte lê o banco. Um valor só na memória aparece depois que o servidor salva.
 
 ## Baseline S0
 
@@ -200,12 +255,13 @@ Ordem:
 1. `prepare.py`, `prepare-initdb`, `render-overlays`, preflight do B1, build.
 2. `up -d --no-build --pull never --wait database`. Recorte S0 e `check s0`.
 3. Instalação dos overlays (acima). Grave os arquivos e o `S0.SHA256SUMS`.
-4. Só então: `web`, conta do líder, `leader-prep`, `check leader`, `game`, `brain`.
+4. Só então: `web`, conta do líder, `leader-prep`, `check leader`, `game`, prontidão
+   (`check ready`), `brain`, T0.
 
 ## Em aberto
 
-- **Saldo.** `balance` fica 100000000000 (o funding do bot repõe isso). O orçamento da compra
-  conta o banco (`bot_brain.cpp:911`). Se a moeda acabar, o banco paga. Decisão de Socrates.
+- **Mercado dos bots.** Continua ligado no B1 e pode gastar moedas dos pilotos (veja "Ouro").
+  Desligar seria outro no-op como o do funding. Decisão de Socrates.
 - **Outros bots.** O overlay vale para todo bot do B1 de nível 20 a 29 que for ativado.
 - **Docker e MariaDB não executados.** Ordem do initdb, `DELIMITER`, `SIGNAL`, parada no
   primeiro erro, troca do bind pelo alvo e cópia da imagem para o volume vazio. Nos testes,

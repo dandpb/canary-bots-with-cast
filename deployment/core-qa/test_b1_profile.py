@@ -23,6 +23,7 @@ FIXTURES = HERE / "fixtures/stage2-handoff"
 MANIFEST = FIXTURES / "qa-stage2-bundle-manifest-a1d9.json"
 RENDER = FIXTURES / "qa-stage2-full-render-sanitized.json"
 HOST = "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa"
+FUNDING_TARGET = "/canary/data/scripts/globalevents/bot_market_funding.lua"
 STAGE1_PORTS = {17171, 17172, 17173, 18080}
 # The stage-1 Compose files, byte for byte as before CORE_QA_PROFILE and as the a1d9 bundle manifest pins them.
 STAGE1_COMPOSE_SHA256 = {
@@ -205,6 +206,15 @@ def b1_render():
         for mount in services[name]["volumes"]:
             if mount["target"] == target:
                 mount["source"] = f"{HOST}/{source}"
+    services["game"]["volumes"].append(  # compose.b1.yaml: the funding no-op, read-only
+        {
+            "bind": {},
+            "read_only": True,
+            "source": f"{HOST}/b1/bot_market_funding.lua",
+            "target": FUNDING_TARGET,
+            "type": "bind",
+        }
+    )
     return render
 
 
@@ -441,6 +451,56 @@ class B1ProfileTests(unittest.TestCase):
         stage1 = json.loads((HERE / "brain/server.json").read_text())
         self.assertEqual((b1["autonomous_bot"], stage1["autonomous_bot"]), (0, 65001))
         self.assertEqual(b1, {**stage1, "autonomous_bot": 0})
+
+    def test_b1_disables_bot_funding_with_a_reviewed_read_only_bind_and_stage1_does_not(
+        self,
+    ):
+        text = (HERE / "compose.b1.yaml").read_text()
+        self.assertIn(
+            f"      - ./b1/bot_market_funding.lua:{FUNDING_TARGET}:ro\n", text
+        )
+        noop = (HERE / "b1/bot_market_funding.lua").read_text()
+        self.assertEqual(
+            [line for line in noop.splitlines() if not line.startswith("--")], []
+        )
+        for name in STAGE1_COMPOSE_SHA256:
+            self.assertNotIn("bot_market_funding", (HERE / name).read_text())
+        self.assertEqual(
+            bind_sources(b1_render(), FUNDING_TARGET),
+            [f"{HOST}/b1/bot_market_funding.lua"],
+        )
+        self.assertEqual(bind_sources(stage1_render(), FUNDING_TARGET), [])
+        stage1, b1 = preflight.load_profile("stage1"), preflight.load_profile("b1")
+        self.assertEqual(preflight.reviewed_binds(stage1), set())
+        self.assertEqual(
+            preflight.reviewed_binds(b1), {HERE / "b1/bot_market_funding.lua"}
+        )
+        preflight.assert_profile_render(b1_render(), b1)
+        missing = (
+            b1_render()
+        )  # Compose without the funding bind: B1 would fund every bot
+        missing["services"]["game"]["volumes"].pop()
+        writable = b1_render()
+        writable["services"]["game"]["volumes"][-1]["read_only"] = False
+        other = b1_render()
+        other["services"]["game"]["volumes"][-1]["source"] = f"{HOST}/b1/other.lua"
+        for name, render, message in (
+            ("missing", missing, "lacks its read-only bind at " + FUNDING_TARGET),
+            ("writable", writable, "lacks its read-only bind at " + FUNDING_TARGET),
+            ("other file", other, "binds .*other.lua at " + FUNDING_TARGET),
+        ):
+            with self.subTest(name), self.assertRaisesRegex(RuntimeError, message):
+                preflight.assert_profile_render(render, b1)
+        leaked = (
+            stage1_render()
+        )  # the B1 no-op in a stage-1 render: not a reviewed stage-1 bind
+        leaked["services"]["game"]["volumes"].append(
+            b1_render()["services"]["game"]["volumes"][-1]
+        )
+        self.assertNotIn(
+            Path(leaked["services"]["game"]["volumes"][-1]["source"]),
+            preflight.reviewed_binds(stage1),
+        )
 
     def test_each_profile_refuses_the_initdb_and_server_config_of_the_other(self):
         stage1, b1 = preflight.load_profile("stage1"), preflight.load_profile("b1")
