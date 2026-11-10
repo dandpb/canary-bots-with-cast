@@ -64,12 +64,25 @@ SEED_BALANCE = (
 PILOT_BALANCE = (
     0  # B1 common budget: no bank; b1/bot_market_funding.lua keeps the funding off
 )
-FUNDING_NOOP = (
-    HERE / "b1/bot_market_funding.lua"
-)  # compose.b1.yaml binds it read-only over FUNDING_TARGET
-FUNDING_SOURCE = SOURCE / "data/scripts/globalevents/bot_market_funding.lua"
-FUNDING_TARGET = "/canary/data/scripts/globalevents/bot_market_funding.lua"
+GLOBALEVENTS = "data/scripts/globalevents"
+FUNDING_TARGET = f"/canary/{GLOBALEVENTS}/bot_market_funding.lua"
+MARKET_TARGET = f"/canary/{GLOBALEVENTS}/bot_market.lua"
+# Reviewed no-ops that compose.b1.yaml binds read-only on the B1 game service over the image's scripts
+# (target: the no-op here, the source file it replaces); preflight PROFILES["b1"]["binds"] holds the same pairs.
+NOOP_BINDS = {
+    FUNDING_TARGET: (
+        HERE / "b1/bot_market_funding.lua",
+        SOURCE / GLOBALEVENTS / "bot_market_funding.lua",
+    ),
+    MARKET_TARGET: (
+        HERE / "b1/bot_market.lua",
+        SOURCE / GLOBALEVENTS / "bot_market.lua",
+    ),
+}
+# Log lines either replaced script writes ([BotMarketFunding], [BotMarketSeller], [MARKET_PASS], ...).
+MARKET_LOG = re.compile(r"\[(BotMarket|MARKET_)")
 READY_SLICE = "runtime/b1/evidence/ready/db-slice.tsv"  # the readiness slice, before T0
+READY_LOG = "runtime/b1/evidence/ready/game.log"
 LOADOUT_SCOPE = (
     "every B1 bot of level 20-29 (vocations 1-4), not only the pilots, gets the B1 starter loadout when it is "
     "activated (equipBot); the other levels keep the source rows"
@@ -246,44 +259,10 @@ def the_leader(rows, pairs):
     return human, None
 
 
-def check_ready(lines, rows):
-    """After the game start (the funding window past) and before T0: the pilots' money is still the fixture
-    (balance 0, exactly the fixture coins, worth 10000); 100000000000 means bot_market_funding ran. The marker
-    names the one leader; his balance and stock are recorded as observed (hashed), never expected. Other
-    pilot changes (activation: HP, ring, position) are observed, not refused."""
-    problems, observed = [], {"pilots": {}}
-    good = [
-        (line, fields, named(fields))
-        for line, fields in zip(lines, rows)
-        if named(fields)
-    ]
-    for guid in sorted(PILOTS):
-        mine = [
-            (line, fields, row) for line, fields, row in good if fields[1] == str(guid)
-        ]
-        player = [row for _line, fields, row in mine if fields[0] == "player"]
-        stock = {
-            row["itemtype"]: row["count"]
-            for _line, fields, row in mine
-            if fields[0] == "stock"
-        }
-        if len(player) != 1:
-            problems.append(f"pilot {guid}: not exactly one player row")
-            continue
-        balance = player[0]["balance"]
-        if balance == str(SEED_BALANCE):
-            problems.append(
-                f"pilot {guid}: balance {SEED_BALANCE}: bot_market_funding ran (B1 bind missing?)"
-            )
-        elif balance != str(PILOT_BALANCE):
-            problems.append(f"pilot {guid}: balance {balance}, not {PILOT_BALANCE}")
-        coins = {item: stock.get(str(item)) for item in COINS}
-        if coins != {item: str(count) for item, count in COINS.items()}:
-            problems.append(f"pilot {guid}: coins {coins}, not the fixture {COINS}")
-        expected = {line for block in pilot_lines(guid).values() for line in block}
-        observed["pilots"][str(guid)] = [
-            line for line, _fields, _row in mine if line not in expected
-        ]
+def identify(rows):
+    """The marker, humans and leader checks that leader and ready share: (problems, marker pairs, the leader's
+    player row or None). Eligibility lives here only, so both stages stay in sync."""
+    problems = []
     pairs = marker(rows)
     if pairs is None:
         problems.append("marker rows are not exactly the B1 marker and one leader")
@@ -293,21 +272,82 @@ def check_ready(lines, rows):
         )
     human, refused = the_leader(rows, pairs)
     if human is None:
-        return problems + [refused], observed
-    guid = human["id"]
-    stock = [
-        line
-        for line, fields, _row in good
-        if fields[0] == "stock" and fields[1] == guid
+        problems.append(refused)
+    return problems, pairs, human
+
+
+CHARACTER_COLUMN = {
+    "player": "id",
+    "slot": "player_id",
+    "stock": "player_id",
+    "deaths": "player_id",
+    "death": "player_id",
+}
+
+
+def check_ready(lines, rows):
+    """After the game start (the funding window past) and before T0. Roster = the 3 pilots + the leader: every
+    row names a roster character, and each has one player row, all seven STOCK rows and one deaths row. The
+    pilots' money is still the fixture (balance 0, exactly the fixture coins, worth 10000); 100000000000 means
+    bot_market_funding ran. The leader's balance and stock are recorded as observed (hashed), never expected.
+    Other values (activation: HP, ring, position) are observed, not refused."""
+    problems, _pairs, human = identify(rows)
+    roster = [str(guid) for guid in sorted(PILOTS)] + ([human["id"]] if human else [])
+    good = [
+        (line, fields, named(fields))
+        for line, fields in zip(lines, rows)
+        if named(fields)
     ]
-    if sorted(line.split("\t")[2] for line in stock) != sorted(map(str, STOCK)):
-        problems.append(f"leader {guid} stock rows are not exactly {STOCK}")
-    recorded = [f"balance\t{guid}\t{human['balance']}", *stock]
-    observed["leader"] = {
-        "balance": human["balance"],
-        "stock": {line.split("\t")[2]: line.split("\t")[3] for line in stock},
-        "recorded_sha256": digest(recorded),
-    }
+    problems += [
+        f"not a roster character: {line}"
+        for line, fields, row in good
+        if fields[0] in CHARACTER_COLUMN
+        and row[CHARACTER_COLUMN[fields[0]]] not in roster
+    ]
+    observed = {"pilots": {}}
+    for guid in roster:
+        mine = [
+            (line, fields, row)
+            for line, fields, row in good
+            if fields[0] in CHARACTER_COLUMN and fields[1] == guid
+        ]
+        player = [row for _line, fields, row in mine if fields[0] == "player"]
+        stock = {
+            row["itemtype"]: row["count"]
+            for _line, fields, row in mine
+            if fields[0] == "stock"
+        }
+        if len(player) != 1:
+            problems.append(f"character {guid}: not exactly one player row")
+        if sorted(stock) != sorted(map(str, STOCK)):
+            problems.append(f"character {guid}: stock rows are not exactly {STOCK}")
+        if len([fields for _line, fields, _row in mine if fields[0] == "deaths"]) != 1:
+            problems.append(f"character {guid}: not exactly one deaths row")
+        if human and guid == human["id"]:
+            recorded = [f"balance\t{guid}\t{human['balance']}"] + [
+                line for line, fields, _row in mine if fields[0] == "stock"
+            ]
+            observed["leader"] = {
+                "balance": human["balance"],
+                "stock": stock,
+                "recorded_sha256": digest(recorded),
+            }
+            continue
+        if player:
+            balance = player[0]["balance"]
+            if balance == str(SEED_BALANCE):
+                problems.append(
+                    f"pilot {guid}: balance {SEED_BALANCE}: bot_market_funding ran (B1 bind missing?)"
+                )
+            elif balance != str(PILOT_BALANCE):
+                problems.append(f"pilot {guid}: balance {balance}, not {PILOT_BALANCE}")
+        coins = {item: stock.get(str(item)) for item in COINS}
+        if coins != {item: str(count) for item, count in COINS.items()}:
+            problems.append(f"pilot {guid}: coins {coins}, not the fixture {COINS}")
+        expected = {line for block in pilot_lines(int(guid)).values() for line in block}
+        observed["pilots"][guid] = [
+            line for line, _fields, _row in mine if line not in expected
+        ]
     return problems, observed
 
 
@@ -337,16 +377,10 @@ def check(lines, stage):
         if line.split("\t")[0] not in ("fixture", "humans")
     ]
     problems += [f"missing: {line}" for line in pilots if line not in lines]
-    pairs = marker(rows)
-    if pairs is None:
-        problems.append("marker rows are not exactly the B1 marker and one leader")
-    if [fields for fields in rows if fields[0] == "humans"] != [["humans", "1", "1"]]:
-        problems.append(
-            "humans is not exactly one account >= 65001 and one character >= 66100"
-        )
-    human, refused = the_leader(rows, pairs)
+    identified, pairs, human = identify(rows)
+    problems += identified
     if human is None:
-        return problems + [refused], {}
+        return problems, {}
     guid, vocation = human["id"], int(human["vocation"])
     declared = dict(
         zip(
@@ -559,7 +593,7 @@ def render_overlays():
         "target": AUTHORED_TARGET,
         "files": {},
         "loadout_scope": LOADOUT_SCOPE,
-        "binds": {FUNDING_TARGET: funding_bind()},
+        "binds": noop_binds(),
     }
     for name, render in OVERLAYS.items():
         source = (AUTHORED / name).read_bytes()
@@ -577,16 +611,25 @@ def render_overlays():
     return manifest
 
 
-def funding_bind():
-    """The funding no-op is not in authored-data (that volume is /canary/data/bot/authored; the script is
-    /canary/data/scripts/globalevents in the image): compose.b1.yaml binds it read-only, and the preflight
-    requires that bind in every B1 render (PROFILES["b1"]["binds"], assert_profile_binds)."""
+def noop_binds():
+    """The no-ops are not in authored-data (that volume is /canary/data/bot/authored; the scripts are
+    /canary/data/scripts/globalevents in the image): compose.b1.yaml binds them read-only on game, and the
+    preflight requires exactly that placement in every B1 render (PROFILES["b1"]["binds"], assert_profile_binds)."""
     return {
-        "source": str(FUNDING_NOOP.relative_to(HERE)),
-        "sha256": sha256(FUNDING_NOOP.read_bytes()),
-        "replaces_sha256": sha256(FUNDING_SOURCE.read_bytes()),
-        "via": "compose.b1.yaml read-only bind, not authored-data",
+        target: {
+            "source": str(noop.relative_to(HERE)),
+            "sha256": sha256(noop.read_bytes()),
+            "replaces_sha256": sha256(original.read_bytes()),
+            "service": "game",
+            "via": "compose.b1.yaml read-only bind, not authored-data",
+        }
+        for target, (noop, original) in NOOP_BINDS.items()
     }
+
+
+def market_log_lines(text):
+    """The lines of a game log that the replaced scripts would write; readiness wants none."""
+    return [line for line in text.splitlines() if MARKET_LOG.search(line)]
 
 
 def b1_project(project=None):
@@ -672,14 +715,19 @@ def install_commands(project=None):
 
 
 def readiness_commands(project=None):
-    """The future, NOT executed, readiness checkpoint after the game start and before T0: the funding no-op is
-    what the B1 game runs, no BotMarketFunding line was logged, and (at least 60 s after the game is healthy,
-    past the 30 s funding delay) the slice passes `check ready`."""
+    """The future, NOT executed, readiness checkpoint after the game start and before T0: both no-ops are what
+    the B1 game runs, no [BotMarketFunding] or market pass line was logged (check-log), and (at least 60 s
+    after the game is healthy, past the 30 s funding delay) the slice passes `check ready`."""
     project, stage1 = b1_project(project)
     compose = compose_argv(project)
     commands = [
-        [*compose, "exec", "-T", "game", "sha256sum", FUNDING_TARGET],
-        [*compose, "logs", "--no-color", "game"],
+        [*compose, "exec", "-T", "game", "sha256sum", *NOOP_BINDS],
+        [
+            "sh",
+            "-c",
+            f"{shlex.join([*compose, 'logs', '--no-color', 'game'])} > {READY_LOG}",
+        ],
+        ["python3", "b1_fixture.py", "check-log", READY_LOG],
         [
             "sh",
             "-c",
@@ -709,6 +757,10 @@ def main(argv=None):
     sub.add_parser("expected")
     leader = sub.add_parser("render-leader")
     leader.add_argument("name")
+    log = sub.add_parser(
+        "check-log", help="refuse a game log with funding or bot market lines"
+    )
+    log.add_argument("log", type=Path)
     checked = sub.add_parser("check")
     checked.add_argument("stage", choices=("s0", "leader", "ready"))
     checked.add_argument(
@@ -724,16 +776,28 @@ def main(argv=None):
             "executed": False,
             "commands": install_commands(),
             "loadout_scope": LOADOUT_SCOPE,
-            "funding_bind": {FUNDING_TARGET: funding_bind()},
+            "noop_binds": noop_binds(),
             "readiness": {
                 "commands": readiness_commands(),
                 "expect": [
-                    f"sha256sum prints {funding_bind()['sha256']}",
-                    "the game log has no [BotMarketFunding] line",
+                    *(
+                        f"sha256sum prints {bind['sha256']} for {target}"
+                        for target, bind in noop_binds().items()
+                    ),
+                    "check-log: the game log has no [BotMarketFunding], [BotMarket...] or [MARKET_...] line",
                     "check ready: no problems; the leader balance and stock are observed only",
                 ],
             },
         }
+    elif args.action == "check-log":
+        lines = market_log_lines(args.log.read_text(encoding="utf-8", errors="replace"))
+        print(
+            json.dumps(
+                {"log_sha256": sha256(args.log.read_bytes()), "market_lines": lines},
+                indent=2,
+            )
+        )
+        return 1 if lines else 0
     elif args.action == "render-leader":
         result = render_leader(args.name)
     elif args.action == "expected":

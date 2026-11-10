@@ -32,6 +32,140 @@ ROOT = Path(__file__).resolve().parents[2]
 WORLD = Path("/tmp/canary-lifecycle-qa-world.otbm")
 
 
+def short_status_options(args):
+    """Reject trial-only switches before touching a fixture or output path."""
+    short_native = (args.status_capture_opt_in and args.mode == "native"
+                    and args.seconds == 10)
+    requested = (args.status_script_id != 77
+                 or args.status_first_periodic is not None
+                 or args.status_period is not None
+                 or args.world_map is not None
+                 or args.status_hold_first_fetch
+                 or args.status_terminate_log_after_observed)
+    if requested and not short_native:
+        raise ValueError("short status options require opt-in native 10s mode")
+    if not short_native:
+        return WORLD, 540.0, 10.0
+    if args.world_map is None:
+        raise ValueError("short status capture requires a private --world-map")
+    if args.world_map.is_symlink():
+        raise ValueError("short status world map cannot be a symlink")
+    world = args.world_map.resolve(strict=True)
+    private_root = args.fixture_root.resolve().parent
+    if (not world.is_file() or private_root.stat().st_mode & 0o077
+            or world.stat().st_mode & 0o077
+            or not world.is_relative_to(args.fixture_root.resolve().parent)):
+        raise ValueError("short status world map must be a private fixture file")
+    if ((args.status_first_periodic is None) != (args.status_period is None)):
+        raise ValueError("short status cadence requires both switches")
+    if args.status_hold_first_fetch and args.status_terminate_log_after_observed:
+        raise ValueError("fault injections are separate trials")
+    if args.status_first_periodic is None:
+        return world, 540.0, 10.0
+    if (args.status_first_periodic, args.status_period) != (1.0, 3.0):
+        raise ValueError("short status cadence must be 1/3 seconds")
+    return world, 1.0, 3.0
+
+
+async def short_clock_ready(read_clock, first_periodic, *, clock=time.monotonic,
+                            timeout=0.5):
+    """Bound worker-clock discovery without changing its original time origin."""
+    deadline = clock() + timeout
+    while True:
+        remaining = deadline - clock()
+        if remaining <= 0:
+            raise ValueError("opt-in capture lacks the observed worker clock")
+        try:
+            value = await asyncio.wait_for(asyncio.to_thread(read_clock),
+                                           timeout=remaining)
+        except asyncio.TimeoutError as error:
+            raise ValueError("opt-in capture lacks the observed worker clock") from error
+        now = clock()
+        if value is not None:
+            if (not isinstance(value, dict)
+                    or type(value.get("monotonic")) not in (int, float)):
+                raise ValueError("opt-in capture has an invalid worker clock")
+            due = value["monotonic"] + first_periodic
+            if now >= due:
+                raise ValueError("opt-in capture missed first periodic window before clock readiness")
+            return value, now
+        if now >= deadline:
+            raise ValueError("opt-in capture lacks the observed worker clock")
+        await asyncio.sleep(min(0.02, deadline - now))
+
+
+def require_first_periodic_window(start_mono, first_periodic, observed_at,
+                                  *, clock=time.monotonic):
+    """The first stream line must be observed before the original worker deadline."""
+    due = start_mono + first_periodic
+    if observed_at is None or observed_at >= due or clock() >= due:
+        raise ValueError("opt-in capture missed first periodic stream window")
+    return due
+
+
+async def wait_for_trace_boundary(observed, start_mono, first_periodic,
+                                  observed_at, *, clock=time.monotonic,
+                                  timeout=0.5):
+    """Accept a stream only when its first complete line precedes the first due time."""
+    remaining = start_mono + first_periodic - clock()
+    if remaining <= 0:
+        raise ValueError("opt-in capture missed first periodic stream window")
+    try:
+        await asyncio.wait_for(observed.wait(), timeout=min(remaining, timeout))
+    except asyncio.TimeoutError as error:
+        raise ValueError("opt-in capture lacks a timely observed log stream") from error
+    return require_first_periodic_window(
+        start_mono, first_periodic, observed_at(), clock=clock)
+
+
+class HeldFetchAfterFence:
+    """Hold one real processed reply until shutdown has durably fenced capture."""
+
+    def __init__(self, transport, emit):
+        self.transport = transport
+        self.emit = emit
+        self.used = False
+        self.fenced = asyncio.Event()
+        self.held = asyncio.Event()
+
+    async def submit(self, bot_name):
+        return await self.transport.submit(bot_name)
+
+    async def fetch(self, command_id):
+        status = await self.transport.fetch(command_id)
+        if not self.used:
+            self.used = True
+            self.emit({"event": "test_fetch_held", "command_id": command_id,
+                       "at_mono": time.monotonic()})
+            self.held.set()
+            await self.fenced.wait()
+            self.emit({"event": "test_fetch_released_after_fence",
+                       "command_id": command_id, "at_mono": time.monotonic()})
+        return status
+
+    def release_after_shutdown(self):
+        self.fenced.set()
+
+
+def apply_short_trace_guid(compose, args, guid):
+    """Add the native trace switch only to this private ten-second fixture."""
+    if args.status_capture_opt_in and args.mode == "native" and args.seconds == 10:
+        compose["services"]["game"]["environment"][
+            "CANARY_QA_HUNT_PHASE_TRACE_GUID"] = str(guid)
+    return compose
+
+
+async def terminate_owned_log_after_observed(ready, stopped, process, sink, game_id):
+    await ready.wait()
+    if not stopped.is_set() and process.returncode is None:
+        sink({"event": "test_trace_log_termination", "at_mono": time.monotonic(),
+              "log_pid": process.pid, "game_container_id": game_id})
+        process.terminate()
+    # Let read_trace report the resulting EOF. This injector is not itself a
+    # reason to finish the observer before the worker's stop event.
+    await stopped.wait()
+
+
 def forbidden(*args, **kwargs):
     raise AssertionError(
         "free qualification cannot read credentials or call a provider"
@@ -202,6 +336,7 @@ def validate_result(
 
 async def execute(args):
     os.umask(0o077)
+    world, first_periodic, period = short_status_options(args)
     work = args.output.resolve()
     work.mkdir(mode=0o700, exist_ok=False)
     fixture_root = args.fixture_root.resolve()
@@ -213,10 +348,10 @@ async def execute(args):
     )
     assert frozen["database_image_id"].startswith("sha256:")
     assert (
-        benchmark.fixture_hash(fixture_root / "fixture", WORLD)
+        benchmark.fixture_hash(fixture_root / "fixture", world)
         == frozen["fixture_sha256"]
     )
-    assert benchmark.file_hash(WORLD) == frozen["world_sha256"]
+    assert benchmark.file_hash(world) == frozen["world_sha256"]
     if args.status_capture_opt_in and (
         args.status_script_id not in frozen["hunts"]
         or frozen["guid"] != 65001
@@ -265,6 +400,11 @@ async def execute(args):
     if args.status_capture_opt_in:
         attestation["status_capture_opt_in"] = {
             "script_id": args.status_script_id,
+            "first_periodic_seconds": first_periodic,
+            "period_seconds": period,
+            "trace_guid": frozen["guid"] if args.mode == "native" and args.seconds == 10 else None,
+            "hold_first_fetch_after_processed": args.status_hold_first_fetch,
+            "terminate_own_log_after_observed": args.status_terminate_log_after_observed,
             "source_sha256": {
                 name: hashlib.sha256((Path(__file__).parent / name).read_bytes()).hexdigest()
                 for name in ("m5_status_capture.py", "m5_status_runner_adapter.py")
@@ -288,6 +428,7 @@ async def execute(args):
             compose = json.loads(self.compose.read_text())
             compose["networks"] = {"default": {"internal": True}}
             compose["services"]["game"]["volumes"].append(f"{self.directory}:/m5")
+            apply_short_trace_guid(compose, args, frozen["guid"])
             self.compose.write_text(json.dumps(compose))
 
         def start_database(self):
@@ -417,9 +558,17 @@ async def execute(args):
             return value
 
         initial = await asyncio.to_thread(inspect_epoch)
-        clock = Store(configuration.state_file).get("run_clock", "start")
-        if not clock or type(clock.get("monotonic")) not in (int, float):
-            raise ValueError("opt-in capture lacks the observed worker clock")
+        state = None
+
+        def read_clock():
+            nonlocal state
+            if state is None:
+                state = Store(configuration.state_file)
+            return state.get("run_clock", "start")
+
+        clock, clock_ready_at = await short_clock_ready(
+            read_clock, first_periodic,
+        )
         epoch = ExternalEpoch(
             run_id=f"{experiment.name}:{args.mode}:0",
             world_sha256=frozen["world_sha256"],
@@ -433,7 +582,7 @@ async def execute(args):
             actual = inspect_epoch()
             if (actual["id"] != epoch.game_container_id
                     or actual["started"] != epoch.game_started_at
-                    or benchmark.file_hash(WORLD) != epoch.world_sha256):
+                    or benchmark.file_hash(world) != epoch.world_sha256):
                 raise ValueError("external world or game epoch changed")
 
         def query(sql):
@@ -448,10 +597,26 @@ async def execute(args):
             configuration.state_file.parent / "phase-status.jsonl",
             clock["monotonic"],
         )
-        driver = CaptureDriver(epoch, ExactProcessedTransport(query, verify_epoch), sink,
-                               start_mono=clock["monotonic"])
-        sink({"event": "trace_source_start", "external_epoch": epoch.__dict__,
-              "at_mono": time.monotonic(), "source": "docker_logs_follow"})
+        transport = ExactProcessedTransport(query, verify_epoch)
+        held = HeldFetchAfterFence(transport, sink) if args.status_hold_first_fetch else None
+        trace_loss_ready = asyncio.Event()
+
+        def record(row):
+            sink(row)
+            if row.get("event") == "status_observed":
+                trace_loss_ready.set()
+
+        driver = CaptureDriver(epoch, held or transport, record,
+                               start_mono=clock["monotonic"],
+                               first_periodic=first_periodic, period=period)
+        if held is not None:
+            original_shutdown = driver.shutdown
+
+            def shutdown_and_release():
+                original_shutdown()
+                held.release_after_shutdown()
+
+            driver.shutdown = shutdown_and_release
         stderr_path = configuration.state_file.parent / "status-trace-source.stderr"
         with stderr_path.open("xb") as stderr:
             try:
@@ -470,11 +635,13 @@ async def execute(args):
                     sink.close()
                 raise
             wake = asyncio.Event()
+            trace_observed = asyncio.Event()
+            trace_observed_at = None
             trace_lines = 0
             matched_hints = 0
 
             async def read_trace():
-                nonlocal trace_lines, matched_hints
+                nonlocal trace_lines, matched_hints, trace_observed_at
                 while True:
                     line = await process.stdout.readline()
                     if not line:
@@ -484,6 +651,14 @@ async def execute(args):
                                                process_exit=process.returncode)
                         return
                     trace_lines += 1
+                    if trace_observed_at is None:
+                        trace_observed_at = time.monotonic()
+                        sink({"event": "trace_stream_observed",
+                              "at_mono": trace_observed_at,
+                              "game_container_id": epoch.game_container_id,
+                              "boundary": "first_complete_log_line",
+                              "attach_acknowledged": False})
+                        trace_observed.set()
                     if driver.hint(line.decode("utf-8", errors="replace")) is not None:
                         matched_hints += 1
                         wake.set()
@@ -503,11 +678,23 @@ async def execute(args):
                     wake.clear()
                     await driver.drain()
 
-            tasks = [asyncio.create_task(coro()) for coro in
-                     (read_trace, schedule_periodic, drain_capture)]
+            tasks = []
             stop_task = asyncio.create_task(stopped.wait())
             completed_normally = False
             try:
+                sink({"event": "trace_process_started", "external_epoch": epoch.__dict__,
+                      "at_mono": time.monotonic(), "clock_ready_at_mono": clock_ready_at,
+                      "source": "docker_logs_follow", "process_pid": process.pid,
+                      "attach_acknowledged": False})
+                tasks.append(asyncio.create_task(read_trace()))
+                await wait_for_trace_boundary(
+                    trace_observed, clock["monotonic"], first_periodic,
+                    lambda: trace_observed_at)
+                tasks.extend((asyncio.create_task(schedule_periodic()),
+                              asyncio.create_task(drain_capture())))
+                if args.status_terminate_log_after_observed:
+                    tasks.append(asyncio.create_task(terminate_owned_log_after_observed(
+                        trace_loss_ready, stopped, process, sink, epoch.game_container_id)))
                 done, _ = await asyncio.wait((*tasks, stop_task),
                                              return_when=asyncio.FIRST_COMPLETED)
                 for task in done:
@@ -550,7 +737,7 @@ async def execute(args):
         + hashlib.sha256(str(work).encode()).hexdigest()[:10],
         output=work / "runs",
         fixture=fixture_root / "fixture",
-        world_map=WORLD,
+        world_map=world,
         budget_file=work / "offline-ledger.sqlite3",
         game_image=frozen["image_id"],
         database_image=frozen["database_image_id"],
@@ -637,6 +824,14 @@ def main():
                         help="write separate command-correlated diagnostic evidence; not a qualification input")
     parser.add_argument("--status-script-id", type=int, default=77,
                         help="frozen fixture hunt identity for opt-in diagnostics")
+    parser.add_argument("--world-map", type=Path,
+                        help="private world copy for opt-in native 10s capture")
+    parser.add_argument("--status-first-periodic", type=float)
+    parser.add_argument("--status-period", type=float)
+    parser.add_argument("--status-hold-first-fetch", action="store_true",
+                        help="test-only: release first processed reply after capture shutdown")
+    parser.add_argument("--status-terminate-log-after-observed", action="store_true",
+                        help="test-only: terminate only owned docker-logs process")
     parser.add_argument(
         "--require-progress",
         action="store_true",

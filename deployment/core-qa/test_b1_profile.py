@@ -24,6 +24,11 @@ MANIFEST = FIXTURES / "qa-stage2-bundle-manifest-a1d9.json"
 RENDER = FIXTURES / "qa-stage2-full-render-sanitized.json"
 HOST = "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa"
 FUNDING_TARGET = "/canary/data/scripts/globalevents/bot_market_funding.lua"
+MARKET_TARGET = "/canary/data/scripts/globalevents/bot_market.lua"
+NOOPS = {
+    FUNDING_TARGET: "b1/bot_market_funding.lua",
+    MARKET_TARGET: "b1/bot_market.lua",
+}
 STAGE1_PORTS = {17171, 17172, 17173, 18080}
 # The stage-1 Compose files, byte for byte as before CORE_QA_PROFILE and as the a1d9 bundle manifest pins them.
 STAGE1_COMPOSE_SHA256 = {
@@ -206,16 +211,22 @@ def b1_render():
         for mount in services[name]["volumes"]:
             if mount["target"] == target:
                 mount["source"] = f"{HOST}/{source}"
-    services["game"]["volumes"].append(  # compose.b1.yaml: the funding no-op, read-only
-        {
-            "bind": {},
-            "read_only": True,
-            "source": f"{HOST}/b1/bot_market_funding.lua",
-            "target": FUNDING_TARGET,
-            "type": "bind",
-        }
-    )
+    for (
+        target,
+        source,
+    ) in NOOPS.items():  # compose.b1.yaml: the two no-ops, read-only, on game
+        services["game"]["volumes"].append(noop_mount(target, source))
     return render
+
+
+def noop_mount(target, source):
+    return {
+        "bind": {},
+        "read_only": True,
+        "source": f"{HOST}/{source}",
+        "target": target,
+        "type": "bind",
+    }
 
 
 def bind_sources(render, target):
@@ -452,55 +463,98 @@ class B1ProfileTests(unittest.TestCase):
         self.assertEqual((b1["autonomous_bot"], stage1["autonomous_bot"]), (0, 65001))
         self.assertEqual(b1, {**stage1, "autonomous_bot": 0})
 
-    def test_b1_disables_bot_funding_with_a_reviewed_read_only_bind_and_stage1_does_not(
-        self,
-    ):
+    def test_b1_binds_the_funding_and_market_no_ops_on_game_and_stage1_does_not(self):
         text = (HERE / "compose.b1.yaml").read_text()
-        self.assertIn(
-            f"      - ./b1/bot_market_funding.lua:{FUNDING_TARGET}:ro\n", text
-        )
-        noop = (HERE / "b1/bot_market_funding.lua").read_text()
-        self.assertEqual(
-            [line for line in noop.splitlines() if not line.startswith("--")], []
-        )
+        for target, source in NOOPS.items():
+            self.assertIn(f"      - ./{source}:{target}:ro\n", text)
+            noop = (HERE / source).read_text()
+            self.assertEqual(
+                [line for line in noop.splitlines() if not line.startswith("--")], []
+            )
+            self.assertEqual(bind_sources(b1_render(), target), [f"{HOST}/{source}"])
+            self.assertEqual(bind_sources(stage1_render(), target), [])
         for name in STAGE1_COMPOSE_SHA256:
-            self.assertNotIn("bot_market_funding", (HERE / name).read_text())
-        self.assertEqual(
-            bind_sources(b1_render(), FUNDING_TARGET),
-            [f"{HOST}/b1/bot_market_funding.lua"],
-        )
-        self.assertEqual(bind_sources(stage1_render(), FUNDING_TARGET), [])
+            self.assertNotIn("bot_market", (HERE / name).read_text())
         stage1, b1 = preflight.load_profile("stage1"), preflight.load_profile("b1")
-        self.assertEqual(preflight.reviewed_binds(stage1), set())
+        self.assertEqual(preflight.reviewed_targets(stage1), {})
+        self.assertEqual(preflight.reviewed_targets(b1), NOOPS)
         self.assertEqual(
-            preflight.reviewed_binds(b1), {HERE / "b1/bot_market_funding.lua"}
+            preflight.reviewed_binds(b1), {HERE / source for source in NOOPS.values()}
         )
         preflight.assert_profile_render(b1_render(), b1)
-        missing = (
-            b1_render()
-        )  # Compose without the funding bind: B1 would fund every bot
-        missing["services"]["game"]["volumes"].pop()
-        writable = b1_render()
-        writable["services"]["game"]["volumes"][-1]["read_only"] = False
-        other = b1_render()
-        other["services"]["game"]["volumes"][-1]["source"] = f"{HOST}/b1/other.lua"
-        for name, render, message in (
-            ("missing", missing, "lacks its read-only bind at " + FUNDING_TARGET),
-            ("writable", writable, "lacks its read-only bind at " + FUNDING_TARGET),
-            ("other file", other, "binds .*other.lua at " + FUNDING_TARGET),
-        ):
-            with self.subTest(name), self.assertRaisesRegex(RuntimeError, message):
-                preflight.assert_profile_render(render, b1)
-        leaked = (
-            stage1_render()
-        )  # the B1 no-op in a stage-1 render: not a reviewed stage-1 bind
-        leaked["services"]["game"]["volumes"].append(
-            b1_render()["services"]["game"]["volumes"][-1]
-        )
-        self.assertNotIn(
-            Path(leaked["services"]["game"]["volumes"][-1]["source"]),
-            preflight.reviewed_binds(stage1),
-        )
+
+    def test_each_no_op_must_be_on_game_once_read_only_from_its_file(self):
+        b1 = preflight.load_profile("b1")
+        for target, source in NOOPS.items():
+
+            def at(render, target=target):
+                return next(
+                    mount
+                    for mount in render["services"]["game"]["volumes"]
+                    if mount["target"] == target
+                )
+
+            missing = b1_render()
+            missing["services"]["game"]["volumes"].remove(at(missing))
+            writable = b1_render()
+            at(writable)["read_only"] = False
+            other = b1_render()
+            at(other)["source"] = f"{HOST}/b1/other.lua"
+            moved = (
+                b1_render()
+            )  # the bind on web instead of game: the game runs the image's script
+            moved["services"]["web"]["volumes"].append(at(moved))
+            moved["services"]["game"]["volumes"].remove(at(moved))
+            duplicate = b1_render()  # still on game, and placed again on web
+            duplicate["services"]["web"]["volumes"].append(noop_mount(target, source))
+            copied = (
+                b1_render()
+            )  # the same reviewed file at another target in another service
+            copied["services"]["web"]["volumes"].append(
+                noop_mount("/tmp/elsewhere.lua", source)
+            )
+            twice = b1_render()  # twice on game itself
+            twice["services"]["game"]["volumes"].append(noop_mount(target, source))
+            for name, render, message in (
+                ("missing", missing, "not \\[\\]"),
+                ("writable", writable, "'bind', False"),
+                ("other file", other, "binds .*other.lua at " + target),
+                ("wrong service", moved, "'web'"),
+                ("duplicate placement", duplicate, "'web'"),
+                ("copy elsewhere", copied, "/tmp/elsewhere.lua"),
+                ("twice on game", twice, "exactly once"),
+            ):
+                with (
+                    self.subTest(target=target, case=name),
+                    self.assertRaisesRegex(RuntimeError, message),
+                ):
+                    preflight.assert_profile_render(render, b1)
+
+    def test_stage1_refuses_any_b1_no_op_and_the_up_gate_places_it_only_on_game(self):
+        stage1, b1 = preflight.load_profile("stage1"), preflight.load_profile("b1")
+        for target, source in NOOPS.items():
+            for service in ("game", "web"):
+                leaked = stage1_render()
+                leaked["services"][service]["volumes"].append(
+                    noop_mount(target, source)
+                )
+                with (
+                    self.subTest(target=target, service=service),
+                    self.assertRaisesRegex(
+                        RuntimeError, "another profile, never stage1"
+                    ),
+                ):
+                    preflight.assert_profile_render(leaked, stage1)
+            path = HERE / source
+            mount = {"target": target, "read_only": True}
+            self.assertTrue(preflight.reviewed_placement(b1, "game", mount, path))
+            self.assertFalse(preflight.reviewed_placement(b1, "web", mount, path))
+            self.assertFalse(
+                preflight.reviewed_placement(
+                    b1, "game", {**mount, "target": "/tmp/x.lua"}, path
+                )
+            )
+            self.assertEqual(preflight.reviewed_binds(stage1), set())
 
     def test_each_profile_refuses_the_initdb_and_server_config_of_the_other(self):
         stage1, b1 = preflight.load_profile("stage1"), preflight.load_profile("b1")

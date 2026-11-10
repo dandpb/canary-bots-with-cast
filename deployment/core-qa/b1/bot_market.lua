@@ -1,0 +1,6 @@
+-- B1 companion playtest only (CORE_QA_PROFILE=b1, project canary-qa-b1). Never stage 1, never production.
+-- compose.b1.yaml binds this file read-only over /canary/data/scripts/globalevents/bot_market.lua in the B1 game
+-- container, so the B1 server registers none of that file's global events: BotMarketSeller, BotMarketAccept,
+-- BotMarketMonitor, BotMarketPurge, BotMarketDepth and BotMarketTrim. No bot creates or accepts market offers,
+-- so no fee, escrow or payment reaches the pilots' 10000 gp (B1_FIXTURE.md). The image and data/ are unchanged;
+-- the preflight requires this bind on the game service (PROFILES["b1"]["binds"]). This file holds no code on purpose.
