@@ -1104,6 +1104,53 @@ class SliceTests(unittest.TestCase):
                 self.assertNotEqual(lines, good)
                 self.assertTrue(fx.check(lines, "leader")[0], name)
 
+    def test_deaths_counts_reconcile_with_death_rows_in_every_stage(self):
+        good = leader_slice()
+        death = "death\t65001\t1700000000\t20\ta wolf\t0\ta wolf\t0"
+
+        def count(guid, value):
+            return [
+                f"deaths\t{guid}\t{value}" if line == f"deaths\t{guid}\t0" else line
+                for line in good
+            ]
+
+        refused = {
+            "count 0 with a detail row": (
+                good + [death],
+                "character 65001: deaths count 0 but 1 death row(s)",
+            ),
+            "positive count without detail": (
+                count(65003, 1),
+                "character 65003: deaths count 1 but 0 death row(s)",
+            ),
+            "detail without a count": (
+                [l for l in good if l != "deaths\t65004\t0"]
+                + ["death\t65004\t1700000000\t20\ta wolf\t0\ta wolf\t0"],
+                "character 65004: 1 death row(s) without a deaths count",
+            ),
+        }
+        for name, (lines, message) in refused.items():
+            for stage in ("s0", "leader", "ready"):
+                with self.subTest(name, stage=stage):
+                    self.assertIn(message, fx.check(lines, stage)[0])
+        consistent = count(65001, 1) + [death]  # one death, counted and listed
+        problems, observed = fx.check(consistent, "ready")
+        self.assertEqual(problems, [])  # ready keeps observing values, as before
+        self.assertIn(death, observed["pilots"]["65001"])
+        self.assertIn("deaths\t65001\t1", observed["pilots"]["65001"])
+        self.assertEqual(fx.death_problems([l.split("\t") for l in consistent]), [])
+        leader = [
+            line.replace("deaths\t66100\t0", "deaths\t66100\t1") for line in good
+        ] + ["death\t66100\t1700000000\t20\ta wolf\t0\ta wolf\t0"]
+        self.assertEqual(  # consistent: only the leader stage's own zero-deaths policy refuses it
+            fx.check(leader, "leader")[0],
+            [
+                "leader 66100 deaths is not 0 before the game",
+                "unexpected: deaths\t66100\t1",
+                "unexpected: death\t66100\t1700000000\t20\ta wolf\t0\ta wolf\t0",
+            ],
+        )
+
     def test_ready_passes_the_fixture_money_and_records_the_leader(self):
         lines = leader_slice(balance=4321)
         # activation drift (HP, the ring of equipBot) is observed, not refused

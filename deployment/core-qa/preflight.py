@@ -249,8 +249,8 @@ def assert_compose(brain_fake=False, game_pin=None):
     for service_name, service in services.items():
         for mount in service.get("volumes", []):
             source = Path(mount.get("source", "")).resolve()
-            if mount.get("type") == "bind" and not source.is_relative_to(runtime) and not (
-                    source in reviewed and mount.get("read_only") and reviewed_placement(PROFILE, service_name, mount, source)):
+            if mount.get("type") == "bind" and not bind_allowed(PROFILE, service_name, mount, source, runtime,
+                                                                reviewed):
                 raise RuntimeError("Compose has a bind outside the QA runtime")
             if mount.get("type") == "volume" and mount.get("source") not in expected_volumes:
                 raise RuntimeError("Compose mounts a foreign volume")
@@ -440,13 +440,35 @@ def reviewed_targets(profile):
 
 
 def reviewed_binds(profile):
-    return {HERE / source for source in reviewed_targets(profile).values()}
+    return {(HERE / source).resolve() for source in reviewed_targets(profile).values()}
+
+
+def is_reviewed_source(profile, target, source):
+    """True only for the EXACT resolved path of the no-op reviewed for that target (b1/<file> in this directory),
+    never a file of the same name elsewhere (runtime/evil/b1/bot_market.lua) or under another target."""
+    path = reviewed_targets(profile).get(target)
+    return path is not None and Path(source).resolve() == (HERE / path).resolve()
+
+
+def reviewed_mount_ok(profile, service_name, mount):
+    """A reviewed placement: REVIEWED_SERVICE, its own target, the exact no-op file, a read-only bind."""
+    return (service_name == REVIEWED_SERVICE and mount.get("type") == "bind" and bool(mount.get("read_only"))
+            and is_reviewed_source(profile, mount.get("target"), mount.get("source", "")))
 
 
 def reviewed_placement(profile, service_name, mount, source):
-    """A reviewed no-op may sit only on REVIEWED_SERVICE at its own target; other whitelisted files anywhere."""
-    targets = [target for target, path in reviewed_targets(profile).items() if HERE / path == source]
-    return not targets or (service_name == REVIEWED_SERVICE and mount.get("target") == targets[0])
+    """A reviewed no-op file may sit only at its reviewed placement; other whitelisted files anywhere."""
+    return Path(source).resolve() not in reviewed_binds(profile) or reviewed_mount_ok(profile, service_name, mount)
+
+
+def bind_allowed(profile, service_name, mount, source, runtime, whitelist):
+    """The up-gate bind whitelist. A reviewed target or a reviewed no-op file is allowed only as its reviewed
+    placement, whatever the runtime/ allowance says; any other bind lies under runtime/ or is a whitelisted
+    read-only file."""
+    if mount.get("target") in reviewed_targets(profile) or Path(source).resolve() in reviewed_binds(profile):
+        return reviewed_mount_ok(profile, service_name, mount)
+    return Path(source).resolve().is_relative_to(runtime) or (Path(source).resolve() in whitelist
+                                                              and bool(mount.get("read_only")))
 
 
 def assert_profile_binds(data, profile):
@@ -469,6 +491,9 @@ def assert_profile_binds(data, profile):
                                         for path in foreign.values()):
                 raise RuntimeError(f"{name} binds {mount.get('source')} at {target}: a reviewed bind of another "
                                    f"profile, never {profile['name']}; refused")
+            if target in reviewed and not is_reviewed_source(profile, target, source):
+                raise RuntimeError(f"{name} binds {mount.get('source')} at {target}, not exactly "
+                                   f"{(HERE / reviewed[target]).resolve()}; refused")
             for reviewed_target, path in reviewed.items():
                 parts = Path(path).parts
                 if target == reviewed_target or source.parts[-len(parts):] == parts:
