@@ -9,11 +9,13 @@ import time
 import unittest
 
 from m5_status_capture import CaptureHalted, ExternalEpoch
-from m5_status_runner_adapter import CaptureDriver, seal_events
+from m5_status_runner_adapter import (CaptureDriver, StatusEvidence,
+                                      cleanup_observer, seal_events)
 
 
 SOURCE = Path(__file__).with_name("m5_current_qualification.py")
-WANTED = {"short_status_options", "HeldFetchAfterFence", "apply_short_trace_guid",
+WANTED = {"short_status_options", "short_clock_ready", "require_first_periodic_window",
+          "wait_for_trace_boundary", "HeldFetchAfterFence", "apply_short_trace_guid",
           "terminate_owned_log_after_observed"}
 nodes = [node for node in ast.parse(SOURCE.read_text()).body
          if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
@@ -23,6 +25,8 @@ namespace = {"asyncio": asyncio, "Path": Path, "time": time,
              "WORLD": Path("/tmp/canary-lifecycle-qa-world.otbm")}
 exec(compile(ast.Module(body=nodes, type_ignores=[]), str(SOURCE), "exec"), namespace)
 short_status_options = namespace["short_status_options"]
+short_clock_ready = namespace["short_clock_ready"]
+wait_for_trace_boundary = namespace["wait_for_trace_boundary"]
 HeldFetchAfterFence = namespace["HeldFetchAfterFence"]
 apply_short_trace_guid = namespace["apply_short_trace_guid"]
 terminate_owned_log_after_observed = namespace["terminate_owned_log_after_observed"]
@@ -61,6 +65,34 @@ class ShortStatusControls(unittest.IsolatedAsyncioTestCase):
             link.symlink_to(world)
             with self.assertRaises(ValueError):
                 short_status_options(options(root, world_map=link))
+            with self.assertRaisesRegex(ValueError, "separate trials"):
+                short_status_options(options(
+                    root, status_first_periodic=None, status_period=None,
+                    status_hold_first_fetch=True,
+                    status_terminate_log_after_observed=True))
+
+    async def test_short_clock_readiness_is_bounded_and_keeps_worker_origin(self):
+        reads = iter((None, {"monotonic": time.monotonic()}))
+        value, ready = await short_clock_ready(lambda: next(reads), 1.0)
+        self.assertLess(ready, value["monotonic"] + 1.0)
+        with self.assertRaisesRegex(ValueError, "lacks the observed worker clock"):
+            await short_clock_ready(lambda: None, 1.0, timeout=0.02)
+        with self.assertRaisesRegex(ValueError, "missed first periodic window"):
+            await short_clock_ready(lambda: {"monotonic": 10.0}, 1.0,
+                                    clock=lambda: 11.1)
+
+    async def test_first_stream_line_must_precede_original_periodic_deadline(self):
+        ready = asyncio.Event()
+        ready.set()
+        self.assertEqual(await wait_for_trace_boundary(
+            ready, 10.0, 1.0, lambda: 10.4, clock=lambda: 10.5), 11.0)
+        with self.assertRaisesRegex(ValueError, "missed first periodic stream window"):
+            await wait_for_trace_boundary(ready, 10.0, 1.0,
+                                          lambda: 11.01, clock=lambda: 11.02)
+        unobserved = asyncio.Event()
+        with self.assertRaisesRegex(ValueError, "timely observed log stream"):
+            await wait_for_trace_boundary(unobserved, time.monotonic(), 0.02,
+                                          lambda: None)
 
     def test_trace_guid_only_in_native_short_render(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -115,6 +147,58 @@ class ShortStatusControls(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(seal.exists())
         with self.assertRaises(CaptureHalted):
             driver.periodic_due()
+
+    async def test_cleanup_releases_held_reply_only_after_fence_without_sealing(self):
+        class Transport:
+            async def submit(self, _bot):
+                return 502
+            async def fetch(self, _command_id):
+                return "Bot 'Grizzle Alyronia': state=HUNTING pos=(1,2,7) active=yes hunt=[script=77 phase=LEAVING]"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence = StatusEvidence(root / "events.jsonl", root / "phase-status.jsonl", 0)
+            late = asyncio.Event()
+            rows = []
+
+            def record(row):
+                evidence(row)
+                rows.append(row)
+                if row.get("event") == "late_reply":
+                    late.set()
+
+            held = HeldFetchAfterFence(Transport(), record)
+            epoch = ExternalEpoch("short-2", "world-sha", "game-id", "started-at",
+                                  65001, "Grizzle Alyronia", 77)
+            driver = CaptureDriver(epoch, held, record, start_mono=0,
+                                   first_periodic=1, period=3, clock=lambda: 1.1)
+            original_shutdown = driver.shutdown
+
+            def shutdown_and_release():
+                original_shutdown()
+                held.release_after_shutdown()
+
+            driver.shutdown = shutdown_and_release
+            driver.periodic_due()
+            pending = asyncio.create_task(driver.drain())
+            await asyncio.wait_for(held.held.wait(), timeout=1)
+            stopped = asyncio.Event()
+            stop_task = asyncio.create_task(stopped.wait())
+            process = SimpleNamespace(returncode=0)
+            seal = root / "seal.json"
+            with (root / "stderr").open("wb") as stderr:
+                await cleanup_observer(driver, [pending], stop_task, process,
+                                       evidence, stderr, seal, False)
+            await asyncio.wait_for(late.wait(), timeout=1)
+            evidence.close()
+            self.assertFalse(seal.exists())
+            self.assertEqual([row["command_id"] for row in rows
+                              if row.get("event") == "late_reply"], [502])
+            self.assertFalse(any(row.get("event") == "status_observed" for row in rows))
+            self.assertLess(next(i for i, row in enumerate(rows)
+                                 if row.get("event") == "shutdown"),
+                            next(i for i, row in enumerate(rows)
+                                 if row.get("event") == "late_reply"))
 
     async def test_stream_loss_targets_only_own_log_process(self):
         terminated = asyncio.Event()

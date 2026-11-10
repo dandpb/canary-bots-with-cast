@@ -58,13 +58,64 @@ def short_status_options(args):
         raise ValueError("short status world map must be a private fixture file")
     if ((args.status_first_periodic is None) != (args.status_period is None)):
         raise ValueError("short status cadence requires both switches")
+    if args.status_hold_first_fetch and args.status_terminate_log_after_observed:
+        raise ValueError("fault injections are separate trials")
     if args.status_first_periodic is None:
         return world, 540.0, 10.0
     if (args.status_first_periodic, args.status_period) != (1.0, 3.0):
         raise ValueError("short status cadence must be 1/3 seconds")
-    if args.status_hold_first_fetch and args.status_terminate_log_after_observed:
-        raise ValueError("fault injections are separate trials")
     return world, 1.0, 3.0
+
+
+async def short_clock_ready(read_clock, first_periodic, *, clock=time.monotonic,
+                            timeout=0.5):
+    """Bound worker-clock discovery without changing its original time origin."""
+    deadline = clock() + timeout
+    while True:
+        remaining = deadline - clock()
+        if remaining <= 0:
+            raise ValueError("opt-in capture lacks the observed worker clock")
+        try:
+            value = await asyncio.wait_for(asyncio.to_thread(read_clock),
+                                           timeout=remaining)
+        except asyncio.TimeoutError as error:
+            raise ValueError("opt-in capture lacks the observed worker clock") from error
+        now = clock()
+        if value is not None:
+            if (not isinstance(value, dict)
+                    or type(value.get("monotonic")) not in (int, float)):
+                raise ValueError("opt-in capture has an invalid worker clock")
+            due = value["monotonic"] + first_periodic
+            if now >= due:
+                raise ValueError("opt-in capture missed first periodic window before clock readiness")
+            return value, now
+        if now >= deadline:
+            raise ValueError("opt-in capture lacks the observed worker clock")
+        await asyncio.sleep(min(0.02, deadline - now))
+
+
+def require_first_periodic_window(start_mono, first_periodic, observed_at,
+                                  *, clock=time.monotonic):
+    """The first stream line must be observed before the original worker deadline."""
+    due = start_mono + first_periodic
+    if observed_at is None or observed_at >= due or clock() >= due:
+        raise ValueError("opt-in capture missed first periodic stream window")
+    return due
+
+
+async def wait_for_trace_boundary(observed, start_mono, first_periodic,
+                                  observed_at, *, clock=time.monotonic,
+                                  timeout=0.5):
+    """Accept a stream only when its first complete line precedes the first due time."""
+    remaining = start_mono + first_periodic - clock()
+    if remaining <= 0:
+        raise ValueError("opt-in capture missed first periodic stream window")
+    try:
+        await asyncio.wait_for(observed.wait(), timeout=min(remaining, timeout))
+    except asyncio.TimeoutError as error:
+        raise ValueError("opt-in capture lacks a timely observed log stream") from error
+    return require_first_periodic_window(
+        start_mono, first_periodic, observed_at(), clock=clock)
 
 
 class HeldFetchAfterFence:
@@ -507,9 +558,17 @@ async def execute(args):
             return value
 
         initial = await asyncio.to_thread(inspect_epoch)
-        clock = Store(configuration.state_file).get("run_clock", "start")
-        if not clock or type(clock.get("monotonic")) not in (int, float):
-            raise ValueError("opt-in capture lacks the observed worker clock")
+        state = None
+
+        def read_clock():
+            nonlocal state
+            if state is None:
+                state = Store(configuration.state_file)
+            return state.get("run_clock", "start")
+
+        clock, clock_ready_at = await short_clock_ready(
+            read_clock, first_periodic,
+        )
         epoch = ExternalEpoch(
             run_id=f"{experiment.name}:{args.mode}:0",
             world_sha256=frozen["world_sha256"],
@@ -558,8 +617,6 @@ async def execute(args):
                 held.release_after_shutdown()
 
             driver.shutdown = shutdown_and_release
-        sink({"event": "trace_source_start", "external_epoch": epoch.__dict__,
-              "at_mono": time.monotonic(), "source": "docker_logs_follow"})
         stderr_path = configuration.state_file.parent / "status-trace-source.stderr"
         with stderr_path.open("xb") as stderr:
             try:
@@ -578,11 +635,13 @@ async def execute(args):
                     sink.close()
                 raise
             wake = asyncio.Event()
+            trace_observed = asyncio.Event()
+            trace_observed_at = None
             trace_lines = 0
             matched_hints = 0
 
             async def read_trace():
-                nonlocal trace_lines, matched_hints
+                nonlocal trace_lines, matched_hints, trace_observed_at
                 while True:
                     line = await process.stdout.readline()
                     if not line:
@@ -592,6 +651,14 @@ async def execute(args):
                                                process_exit=process.returncode)
                         return
                     trace_lines += 1
+                    if trace_observed_at is None:
+                        trace_observed_at = time.monotonic()
+                        sink({"event": "trace_stream_observed",
+                              "at_mono": trace_observed_at,
+                              "game_container_id": epoch.game_container_id,
+                              "boundary": "first_complete_log_line",
+                              "attach_acknowledged": False})
+                        trace_observed.set()
                     if driver.hint(line.decode("utf-8", errors="replace")) is not None:
                         matched_hints += 1
                         wake.set()
@@ -611,14 +678,23 @@ async def execute(args):
                     wake.clear()
                     await driver.drain()
 
-            tasks = [asyncio.create_task(coro()) for coro in
-                     (read_trace, schedule_periodic, drain_capture)]
-            if args.status_terminate_log_after_observed:
-                tasks.append(asyncio.create_task(terminate_owned_log_after_observed(
-                    trace_loss_ready, stopped, process, sink, epoch.game_container_id)))
+            tasks = []
             stop_task = asyncio.create_task(stopped.wait())
             completed_normally = False
             try:
+                sink({"event": "trace_process_started", "external_epoch": epoch.__dict__,
+                      "at_mono": time.monotonic(), "clock_ready_at_mono": clock_ready_at,
+                      "source": "docker_logs_follow", "process_pid": process.pid,
+                      "attach_acknowledged": False})
+                tasks.append(asyncio.create_task(read_trace()))
+                await wait_for_trace_boundary(
+                    trace_observed, clock["monotonic"], first_periodic,
+                    lambda: trace_observed_at)
+                tasks.extend((asyncio.create_task(schedule_periodic()),
+                              asyncio.create_task(drain_capture())))
+                if args.status_terminate_log_after_observed:
+                    tasks.append(asyncio.create_task(terminate_owned_log_after_observed(
+                        trace_loss_ready, stopped, process, sink, epoch.game_container_id)))
                 done, _ = await asyncio.wait((*tasks, stop_task),
                                              return_when=asyncio.FIRST_COMPLETED)
                 for task in done:
