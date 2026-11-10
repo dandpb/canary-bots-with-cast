@@ -5,3 +5,7 @@ services:
     image: canary-qa-b1-brain:local
     cpus: 0.5
     mem_limit: 512m
+  game:
+    # Same target as compose.brain-fake.yaml (merge by target): B1's server config, autonomous_bot 0.
+    volumes:
+      - ./b1/server.json:/etc/canary-core-qa/brain/server.json:ro

@@ -9,6 +9,10 @@ services:
   database:
     cpus: 1
     mem_limit: 2g
+    # Same target as compose.yaml, so Compose replaces stage 1's runtime/initdb (merge by target): the fresh
+    # canary-qa-b1_database volume runs runtime/initdb plus the B1 companion seed (B1_FIXTURE.md).
+    volumes:
+      - ./runtime/b1/initdb:/docker-entrypoint-initdb.d:ro
 
   game:
     image: canary-qa-b1-game:local

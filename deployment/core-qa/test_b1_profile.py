@@ -194,7 +194,27 @@ def b1_render():
         ("brain", 0.5, 0.5),
     ):
         services[name].update(cpus=cpus, mem_limit=str(int(memory * 2**30)))
+    for (
+        name,
+        target,
+        source,
+    ) in (  # compose.b1.yaml / compose.b1-brain.yaml replace them by target
+        ("database", preflight.INITDB_TARGET, "runtime/b1/initdb"),
+        ("game", preflight.BRAIN_SERVER_TARGET, "b1/server.json"),
+    ):
+        for mount in services[name]["volumes"]:
+            if mount["target"] == target:
+                mount["source"] = f"{HOST}/{source}"
     return render
+
+
+def bind_sources(render, target):
+    return [
+        mount["source"]
+        for service in render["services"].values()
+        for mount in service.get("volumes", [])
+        if mount["target"] == target
+    ]
 
 
 def fake_docker(objects, images=()):
@@ -368,7 +388,11 @@ class B1ProfileTests(unittest.TestCase):
         )
         self.assertEqual(text.count("ports: !override"), 2)
         values = "".join(
-            line for line in (text + brain).splitlines(True) if not line.startswith("#")
+            line
+            for line in (text + brain).splitlines(True)
+            if not line.lstrip().startswith("#")
+        ).replace(  # the in-container path CANARY_BRAIN_CONFIG names, not a stage-1 resource
+            ":/etc/canary-core-qa/brain/server.json:ro", ""
         )
         for stage1 in ("1717", "18080", "canary-core-qa"):
             self.assertNotIn(stage1, values)
@@ -385,6 +409,82 @@ class B1ProfileTests(unittest.TestCase):
         self.assertIn("image: canary-qa-b1-brain:local", brain)
         self.assertEqual((brain.count("cpus:"), brain.count("mem_limit:")), (1, 1))
 
+    def test_b1_render_binds_its_own_initdb_and_server_config_and_stage1_does_not(self):
+        text = (HERE / "compose.b1.yaml").read_text()
+        brain = (HERE / "compose.b1-brain.yaml").read_text()
+        self.assertIn(
+            "      - ./runtime/b1/initdb:/docker-entrypoint-initdb.d:ro\n", text
+        )
+        self.assertIn(
+            "      - ./b1/server.json:/etc/canary-core-qa/brain/server.json:ro\n", brain
+        )
+        for name in STAGE1_COMPOSE_SHA256:
+            self.assertNotIn("b1/", (HERE / name).read_text())
+        self.assertEqual(
+            bind_sources(b1_render(), preflight.INITDB_TARGET),
+            [f"{HOST}/runtime/b1/initdb"],
+        )
+        self.assertEqual(
+            bind_sources(b1_render(), preflight.BRAIN_SERVER_TARGET),
+            [f"{HOST}/b1/server.json"],
+        )
+        self.assertEqual(
+            bind_sources(stage1_render(), preflight.INITDB_TARGET),
+            [f"{HOST}/runtime/initdb"],
+        )
+        # the real stage-1 render (a1d9 bundle copy of brain/server.json), never b1/server.json
+        self.assertEqual(
+            bind_sources(stage1_render(), preflight.BRAIN_SERVER_TARGET),
+            [f"{HOST}/runtime/stage2-bundle-a1d9/brain/server.json"],
+        )
+        b1 = json.loads((HERE / "b1/server.json").read_text())
+        stage1 = json.loads((HERE / "brain/server.json").read_text())
+        self.assertEqual((b1["autonomous_bot"], stage1["autonomous_bot"]), (0, 65001))
+        self.assertEqual(b1, {**stage1, "autonomous_bot": 0})
+
+    def test_each_profile_refuses_the_initdb_and_server_config_of_the_other(self):
+        stage1, b1 = preflight.load_profile("stage1"), preflight.load_profile("b1")
+        preflight.assert_profile_render(stage1_render(), stage1)
+        preflight.assert_profile_render(b1_render(), b1)
+        for target, wrong_b1, wrong_stage1 in (
+            (preflight.INITDB_TARGET, "runtime/initdb", "runtime/b1/initdb"),
+            (preflight.BRAIN_SERVER_TARGET, "brain/server.json", "b1/server.json"),
+        ):
+            for render, profile, source in (
+                (b1_render(), b1, wrong_b1),
+                (stage1_render(), stage1, wrong_stage1),
+            ):
+                for service in render["services"].values():
+                    for mount in service.get("volumes", []):
+                        if mount["target"] == target:
+                            mount["source"] = f"{HOST}/{source}"
+                with (
+                    self.subTest(profile=profile["name"], target=target),
+                    self.assertRaisesRegex(
+                        RuntimeError,
+                        f"binds {HOST}/{source} at {target}, not the {profile['name']}",
+                    ),
+                ):
+                    preflight.assert_profile_render(render, profile)
+        merged = b1_render()  # a Compose that kept both binds at the same target
+        merged["services"]["database"]["volumes"].append(
+            {
+                "type": "bind",
+                "source": f"{HOST}/runtime/initdb",
+                "target": preflight.INITDB_TARGET,
+            }
+        )
+        with self.assertRaisesRegex(RuntimeError, "not the b1 runtime/b1/initdb"):
+            preflight.assert_profile_render(merged, b1)
+
+    def test_preflight_reviews_only_the_profile_server_config(self):
+        for name, server in (("stage1", "brain/server.json"), ("b1", "b1/server.json")):
+            result = run_profile(
+                "import preflight as qa; print(qa.PROFILE['binds'][qa.BRAIN_SERVER_TARGET])",
+                name,
+            )
+            self.assertEqual(result.stdout.strip(), server, result.stderr)
+
     def test_unknown_or_unisolated_profiles_are_refused(self):
         with self.assertRaisesRegex(RuntimeError, "unknown CORE_QA_PROFILE 'b2'"):
             preflight.load_profile("b2")
@@ -397,6 +497,19 @@ class B1ProfileTests(unittest.TestCase):
             ("port", {"ports": {**b1["ports"], "web": 18080}}),
             ("evidence", {"evidence": "runtime/evidence"}),
             ("overlay", {"overlays": ()}),
+            (
+                "initdb",
+                {"binds": {**b1["binds"], preflight.INITDB_TARGET: "runtime/initdb"}},
+            ),
+            (
+                "server config",
+                {
+                    "binds": {
+                        **b1["binds"],
+                        preflight.BRAIN_SERVER_TARGET: "brain/server.json",
+                    }
+                },
+            ),
         ):
             with (
                 self.subTest(name),
