@@ -229,6 +229,30 @@ def shape_problems(rows):
     problems += [
         f"malformed: {' '.join(fields)}" for fields in rows if named(fields) is None
     ]
+    return problems + death_problems(rows)
+
+
+def death_problems(rows):
+    """The slice counts (deaths) and lists (death) every death in the same snapshot: each character's count
+    equals its detail rows, and no detail row is without a count. Slice consistency only, in every stage; how
+    many deaths a stage accepts is that stage's policy."""
+    counts, details = {}, {}
+    for fields in rows:
+        row = named(fields)
+        if row and fields[0] == "deaths":
+            counts[row["player_id"]] = int(row["count"])
+        elif row and fields[0] == "death":
+            details[row["player_id"]] = details.get(row["player_id"], 0) + 1
+    problems = []
+    for guid in sorted(set(counts) | set(details), key=int):
+        if guid not in counts:
+            problems.append(
+                f"character {guid}: {details[guid]} death row(s) without a deaths count"
+            )
+        elif counts[guid] != details.get(guid, 0):
+            problems.append(
+                f"character {guid}: deaths count {counts[guid]} but {details.get(guid, 0)} death row(s)"
+            )
     return problems
 
 

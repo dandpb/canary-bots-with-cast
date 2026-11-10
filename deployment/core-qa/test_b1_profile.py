@@ -223,7 +223,9 @@ def noop_mount(target, source):
     return {
         "bind": {},
         "read_only": True,
-        "source": f"{HOST}/{source}",
+        "source": str(
+            HERE / source
+        ),  # the exact no-op of this checkout, as Compose resolves ./b1/<file>
         "target": target,
         "type": "bind",
     }
@@ -471,7 +473,7 @@ class B1ProfileTests(unittest.TestCase):
             self.assertEqual(
                 [line for line in noop.splitlines() if not line.startswith("--")], []
             )
-            self.assertEqual(bind_sources(b1_render(), target), [f"{HOST}/{source}"])
+            self.assertEqual(bind_sources(b1_render(), target), [str(HERE / source)])
             self.assertEqual(bind_sources(stage1_render(), target), [])
         for name in STAGE1_COMPOSE_SHA256:
             self.assertNotIn("bot_market", (HERE / name).read_text())
@@ -546,7 +548,12 @@ class B1ProfileTests(unittest.TestCase):
                 ):
                     preflight.assert_profile_render(leaked, stage1)
             path = HERE / source
-            mount = {"target": target, "read_only": True}
+            mount = {
+                "target": target,
+                "read_only": True,
+                "type": "bind",
+                "source": str(path),
+            }
             self.assertTrue(preflight.reviewed_placement(b1, "game", mount, path))
             self.assertFalse(preflight.reviewed_placement(b1, "web", mount, path))
             self.assertFalse(
@@ -985,6 +992,116 @@ with patch("subprocess.run", side_effect=AssertionError("subprocess.run")), \\
             self.assertRaisesRegex(RuntimeError, REFUSED_STAGE1),
         ):
             stage1_baseline.load_baseline()
+
+
+def full_b1_render():
+    """A whole B1 brain-fake render that passes the full assert_compose: b1_render with this checkout's paths,
+    the B1 tags and the reviewed builds, game environment and fake brain."""
+    from test_offline import FAKE_PIN, QA_GAME_ENV
+
+    render = json.loads(json.dumps(b1_render()).replace(HOST, str(HERE)))
+    services, revision = render["services"], "0" * 40
+    services["database"].update(
+        image=preflight.IMAGE_LOCK["database"]["ref"], pull_policy="never"
+    )
+    services["game"].update(
+        image="canary-qa-b1-game:local",
+        build={
+            "dockerfile": "deployment/wsl/Dockerfile",
+            "args": {"SOURCE_REVISION": revision, "BASE_IMAGE": FAKE_PIN},
+        },
+        environment={
+            **QA_GAME_ENV,
+            "GAME_LOGIN_PORT": "27171",
+            "GAME_PROTOCOL_PORT": "27172",
+            "GAME_STATUS_PORT": "27173",
+            "CANARY_BRAIN_CONFIG": "/etc/canary-core-qa/brain/server.json",
+        },
+    )
+    services["web"].update(
+        image="canary-qa-b1-web:local",
+        build={"dockerfile": "deployment/wsl/Web.Dockerfile"},
+    )
+    services["brain"].update(
+        image="canary-qa-b1-brain:local",
+        build={"pull": False, "args": {"SOURCE_REVISION": revision}},
+    )
+    services["brain"].pop("pull_policy")
+    return render
+
+
+class FullComposeNoOpTests(unittest.TestCase):
+    """The whole assert_compose of B1 (Compose render mocked, never run): a no-op from any other path, even
+    one under runtime/ that the general runtime allowance accepts, is refused at the funding and market
+    targets; the exact b1/<file> of this checkout passes."""
+
+    def setUp(self):
+        from test_stage1_baseline import FAKE_GAME_BASE
+
+        b1 = preflight.load_profile("b1")
+        self.enterContext(
+            patch.multiple(
+                preflight,
+                PROFILE=b1,
+                PROJECT=b1["project"],
+                GAME_TAG="canary-qa-b1-game:local",
+                WEB_TAG="canary-qa-b1-web:local",
+                BRAIN_IMAGE="canary-qa-b1-brain:local",
+            )
+        )
+        self.enterContext(patch.dict(os.environ, {"SOURCE_REVISION": "0" * 40}))
+        self.enterContext(patch.dict(preflight.IMAGE_LOCK["game_base"], FAKE_GAME_BASE))
+
+    def compose(self, render):
+        with patch("preflight.command", return_value=json.dumps(render)):
+            return preflight.assert_compose(True)
+
+    def test_the_exact_no_ops_pass_the_full_compose_gate(self):
+        self.assertRegex(self.compose(full_b1_render()), r"^[0-9a-f]{64}$")
+
+    def test_a_no_op_from_another_path_is_refused_by_the_full_gate(self):
+        for target, source in NOOPS.items():
+            for name, path in (
+                (
+                    "runtime/evil",
+                    HERE / "runtime/evil" / source,
+                ),  # under runtime/: the general allowance
+                (
+                    "other checkout",
+                    Path("/tmp/other-checkout/deployment/core-qa") / source,
+                ),
+                ("dot-dot", HERE / "runtime/../b1/../runtime/evil" / source),
+            ):
+                render = full_b1_render()
+                for mount in render["services"]["game"]["volumes"]:
+                    if mount["target"] == target:
+                        mount["source"] = str(path)
+                with self.subTest(target=target, path=name):
+                    with self.assertRaisesRegex(
+                        RuntimeError, f"at {target}, not exactly {HERE / source}"
+                    ):
+                        self.compose(render)
+                    # the up-gate whitelist refuses it too, without the profile check before it
+                    with (
+                        patch("preflight.assert_profile_render"),
+                        self.assertRaisesRegex(
+                            RuntimeError, "Compose has a bind outside the QA runtime"
+                        ),
+                    ):
+                        self.compose(render)
+
+    def test_the_shared_check_is_the_exact_resolved_path(self):
+        b1 = preflight.load_profile("b1")
+        for target, source in NOOPS.items():
+            self.assertTrue(preflight.is_reviewed_source(b1, target, HERE / source))
+            self.assertTrue(
+                preflight.is_reviewed_source(b1, target, HERE / "runtime/.." / source)
+            )
+            self.assertFalse(
+                preflight.is_reviewed_source(b1, target, HERE / "runtime/evil" / source)
+            )
+            other = next(t for t in NOOPS if t != target)
+            self.assertFalse(preflight.is_reviewed_source(b1, other, HERE / source))
 
 
 if __name__ == "__main__":

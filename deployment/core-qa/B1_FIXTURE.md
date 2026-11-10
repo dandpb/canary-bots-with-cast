@@ -116,7 +116,9 @@ Como:
 - O preflight exige cada bind exatamente uma vez: no `game`, no alvo certo, da origem certa,
   só leitura (`reviewed_targets`, `assert_profile_binds`). Recusa: bind ausente, gravável, de
   outro arquivo, em outro serviço, repetido em outro serviço ou o arquivo em outro alvo.
-  A lista de binds do up-gate também só aceita esses arquivos no `game` (`reviewed_placement`).
+  A origem tem de ser o caminho EXATO, resolvido, de `b1/<arquivo>` deste diretório
+  (`is_reviewed_source`). Um arquivo de mesmo nome em outro lugar, mesmo em `runtime/`, é recusado.
+  A lista de binds do up-gate usa a mesma checagem (`bind_allowed`), acima da permissão de `runtime/`.
 - A etapa 1 recusa qualquer bind desses alvos ou desses arquivos.
 - `render-overlays` e `install-plan` mostram o hash de cada no-op e o do original (`binds`,
   `noop_binds`).
@@ -217,6 +219,9 @@ python3 b1_fixture.py check s0|leader|ready <ponto>.tsv
 - Hash: SHA-256 das linhas, na ordem, cada uma com `\n`.
 - Toda linha tem a forma da sua marca (número de colunas, números onde há números) e aparece
   uma vez por chave. Linha fora da forma é `malformed`, em todo `check`.
+- Mortes: em todo `check`, o `deaths` de cada personagem é igual ao número de linhas `death` dele,
+  e não há linha `death` sem `deaths`. Isso é só consistência do recorte; quantas mortes cada etapa
+  aceita continua sendo regra da etapa.
 - `check s0`: igual a `python3 b1_fixture.py expected`. Hash S0 esperado:
   `170a78f86420ab6abefaf0d837284a932f2c5867580ee3c466e5f506f90b8b05`.
   É do B1. Não é o `BASELINE_SHA256` da etapa 1.
