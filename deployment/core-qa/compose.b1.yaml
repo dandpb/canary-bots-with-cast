@@ -9,11 +9,21 @@ services:
   database:
     cpus: 1
     mem_limit: 2g
+    # Same target as compose.yaml, so Compose replaces stage 1's runtime/initdb (merge by target): the fresh
+    # canary-qa-b1_database volume runs runtime/initdb plus the B1 companion seed (B1_FIXTURE.md).
+    volumes:
+      - ./runtime/b1/initdb:/docker-entrypoint-initdb.d:ro
 
   game:
     image: canary-qa-b1-game:local
     cpus: 2
     mem_limit: 6g
+    # B1 common budget: reviewed no-ops replace the image's bot_market_funding.lua (bank 100000000000 for every
+    # bot at each start) and bot_market.lua (bot market offers that charge or pay bots), only in this project;
+    # compose.yaml's binds and volumes stay (merge by target).
+    volumes:
+      - ./b1/bot_market_funding.lua:/canary/data/scripts/globalevents/bot_market_funding.lua:ro
+      - ./b1/bot_market.lua:/canary/data/scripts/globalevents/bot_market.lua:ro
     environment:
       GAME_LOGIN_PORT: 27171
       GAME_PROTOCOL_PORT: 27172

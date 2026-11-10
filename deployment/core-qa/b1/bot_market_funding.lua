@@ -1,0 +1,6 @@
+-- B1 companion playtest only (CORE_QA_PROFILE=b1, project canary-qa-b1). Never stage 1, never production.
+-- compose.b1.yaml binds this file read-only over /canary/data/scripts/globalevents/bot_market_funding.lua in the
+-- B1 game container, so the B1 server registers no BotMarketFunding global event: the bot bank balances are
+-- not set to 100000000000 at startup, in memory or by raw SQL. The B1 pilots keep the fixture's common budget
+-- (10000 gp in coins, balance 0, B1_FIXTURE.md). The image and data/ are unchanged; the preflight checks this
+-- bind (PROFILES["b1"]["binds"]). This file holds no code on purpose.

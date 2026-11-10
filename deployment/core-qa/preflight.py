@@ -22,10 +22,10 @@ HERE = Path(__file__).resolve().parent
 PROFILES = {
     "stage1": {"project": "canary-core-qa", "overlays": (), "brain_overlays": (), "evidence": "runtime/evidence",
                "ports": {"login": 17171, "game": 17172, "status": 17173, "web": 18080}, "limits": False,
-               "server_name": "Canary core QA"},
+               "server_name": "Canary core QA", "binds": {"/docker-entrypoint-initdb.d": "runtime/initdb", "/etc/canary-core-qa/brain/server.json": "brain/server.json"}},
     "b1": {"project": "canary-qa-b1", "overlays": ("compose.b1.yaml",), "brain_overlays": ("compose.b1-brain.yaml",),
            "evidence": "runtime/b1/evidence", "ports": {"login": 27171, "game": 27172, "status": 27173, "web": 28080},
-           "limits": True, "server_name": "Canary QA B1"},
+           "limits": True, "server_name": "Canary QA B1", "binds": {"/docker-entrypoint-initdb.d": "runtime/b1/initdb", "/etc/canary-core-qa/brain/server.json": "b1/server.json", "/canary/data/scripts/globalevents/bot_market_funding.lua": "b1/bot_market_funding.lua", "/canary/data/scripts/globalevents/bot_market.lua": "b1/bot_market.lua"}},
 }
 
 
@@ -37,9 +37,9 @@ def load_profile(name):
     if name != "stage1" and (
             profile["project"].startswith(stage1["project"]) or stage1["project"].startswith(profile["project"])
             or set(profile["ports"].values()) & set(stage1["ports"].values())
-            or profile["evidence"] == stage1["evidence"] or not profile["overlays"]):
-        raise RuntimeError(f"profile {name} is not isolated from stage 1 (project prefix, ports, evidence or "
-                           "overlay); refused")
+            or profile["evidence"] == stage1["evidence"] or not profile["overlays"] or set(profile["binds"].values()) & set(stage1["binds"].values())):
+        raise RuntimeError(f"profile {name} is not isolated from stage 1 (project prefix, ports, evidence, "
+                           "overlay or binds); refused")
     return {"name": name, **profile}
 
 
@@ -245,12 +245,12 @@ def assert_compose(brain_fake=False, game_pin=None):
     if f"FROM {IMAGE_LOCK['web_base']['ref']}" not in dockerfile.read_text().splitlines():
         raise RuntimeError("QA web base image differs from the image lock")
     runtime = (HERE / "runtime").resolve()
-    reviewed = {HERE / "brain/server.json", HERE / "brain/worker.json"} if brain_fake else set()
-    for service in services.values():
+    reviewed = ({HERE / PROFILE["binds"][BRAIN_SERVER_TARGET], HERE / "brain/worker.json"} if brain_fake else set()) | reviewed_binds(PROFILE)
+    for service_name, service in services.items():
         for mount in service.get("volumes", []):
             source = Path(mount.get("source", "")).resolve()
-            if mount.get("type") == "bind" and not source.is_relative_to(runtime) and not (
-                    source in reviewed and mount.get("read_only")):
+            if mount.get("type") == "bind" and not bind_allowed(PROFILE, service_name, mount, source, runtime,
+                                                                reviewed):
                 raise RuntimeError("Compose has a bind outside the QA runtime")
             if mount.get("type") == "volume" and mount.get("source") not in expected_volumes:
                 raise RuntimeError("Compose mounts a foreign volume")
@@ -268,9 +268,8 @@ def assert_compose(brain_fake=False, game_pin=None):
 
 
 def assert_profile_render(data, profile=None):
-    """The render belongs to this profile: its project, host ports only from its own set (the game listens on
-    the port it publishes and MyAAC advertises), and CPU/memory limits where the profile requires them.
-    A stage-1 render under another profile, or another profile's render under stage 1, is refused."""
+    """The render belongs to this profile: its project, host ports only from its own set (the game listens on the port it publishes and MyAAC
+    advertises), CPU/memory limits where required and its own binds. A stage-1 render under another profile, or the reverse, is refused."""
     profile = profile or PROFILE
     ports, services = profile["ports"], data.get("services", {})
     if data.get("name") != profile["project"]:
@@ -296,6 +295,7 @@ def assert_profile_render(data, profile=None):
             raise RuntimeError(f"{name} {', '.join(wrong)} differ from profile {profile['name']}; refused")
         if profile["limits"] and not (service.get("cpus") and service.get("mem_limit")):
             raise RuntimeError(f"profile {profile['name']} needs CPU and memory limits on {name}; refused")
+    assert_profile_binds(data, profile)
 
 
 def assert_image_lock(brain=False):
@@ -420,6 +420,88 @@ def run_preflight(resources_only=False, approved_revision=None, receipt_path=Non
     map_sha = assert_map()
     return write_receipt(receipt_path or (UPGRADE_RECEIPT if upgrade or brain_fake else RECEIPT), source_sha,
                          compose_sha, images, myaac, map_sha, brain_fake or upgrade, stage1, game_pin)
+
+
+# Profile "binds" (defined here, after the stage-1 code, so no stage-1 line moves): the host file or directory
+# (relative to this directory, matched as a path suffix) a bind at that container target must come from. B1 seeds
+# its own fresh DB (runtime/b1/initdb, B1_FIXTURE.md) and runs b1/server.json (autonomous_bot 0); stage 1 keeps
+# runtime/initdb and brain/server.json (or its a1d9 bundle copy).
+INITDB_TARGET = "/docker-entrypoint-initdb.d"
+BRAIN_SERVER_TARGET = "/etc/canary-core-qa/brain/server.json"
+
+
+REVIEWED_SERVICE = "game"  # the only service a reviewed B1 no-op may be bound into
+
+
+def reviewed_targets(profile):
+    """{container target: source} of the reviewed files a profile binds read-only from outside runtime/ besides
+    the brain config (B1: the bot_market_funding.lua and bot_market.lua no-ops, on game). Stage 1 has none."""
+    return {target: source for target, source in profile["binds"].items() if target not in (INITDB_TARGET, BRAIN_SERVER_TARGET)}
+
+
+def reviewed_binds(profile):
+    return {(HERE / source).resolve() for source in reviewed_targets(profile).values()}
+
+
+def is_reviewed_source(profile, target, source):
+    """True only for the EXACT resolved path of the no-op reviewed for that target (b1/<file> in this directory),
+    never a file of the same name elsewhere (runtime/evil/b1/bot_market.lua) or under another target."""
+    path = reviewed_targets(profile).get(target)
+    return path is not None and Path(source).resolve() == (HERE / path).resolve()
+
+
+def reviewed_mount_ok(profile, service_name, mount):
+    """A reviewed placement: REVIEWED_SERVICE, its own target, the exact no-op file, a read-only bind."""
+    return (service_name == REVIEWED_SERVICE and mount.get("type") == "bind" and bool(mount.get("read_only"))
+            and is_reviewed_source(profile, mount.get("target"), mount.get("source", "")))
+
+
+def reviewed_placement(profile, service_name, mount, source):
+    """A reviewed no-op file may sit only at its reviewed placement; other whitelisted files anywhere."""
+    return Path(source).resolve() not in reviewed_binds(profile) or reviewed_mount_ok(profile, service_name, mount)
+
+
+def bind_allowed(profile, service_name, mount, source, runtime, whitelist):
+    """The up-gate bind whitelist. A reviewed target or a reviewed no-op file is allowed only as its reviewed
+    placement, whatever the runtime/ allowance says; any other bind lies under runtime/ or is a whitelisted
+    read-only file."""
+    if mount.get("target") in reviewed_targets(profile) or Path(source).resolve() in reviewed_binds(profile):
+        return reviewed_mount_ok(profile, service_name, mount)
+    return Path(source).resolve().is_relative_to(runtime) or (Path(source).resolve() in whitelist
+                                                              and bool(mount.get("read_only")))
+
+
+def assert_profile_binds(data, profile):
+    """Each bind at a profile target comes from that profile's source. Each reviewed bind (reviewed_targets) is
+    placed exactly once in the whole render: on the game service, at its target, from its source, read-only.
+    A placement on another service, a second placement or a copy of the source elsewhere is refused, and so is
+    any bind of another profile's reviewed target or source (stage 1 never runs a B1 no-op)."""
+    reviewed = reviewed_targets(profile)
+    foreign = {target: source for other in PROFILES.values() for target, source in reviewed_targets(other).items()
+               if target not in reviewed}
+    placed = {target: [] for target in reviewed}
+    for name, service in data.get("services", {}).items():
+        for mount in service.get("volumes", []):
+            target, source = mount.get("target"), Path(mount.get("source", ""))
+            expected = Path(profile["binds"].get(target, ""))
+            if expected.parts and source.parts[-len(expected.parts):] != expected.parts:
+                raise RuntimeError(f"{name} binds {mount.get('source')} at {target}, not the "
+                                   f"{profile['name']} {expected}; refused")
+            if target in foreign or any(source.parts[-len(Path(path).parts):] == Path(path).parts
+                                        for path in foreign.values()):
+                raise RuntimeError(f"{name} binds {mount.get('source')} at {target}: a reviewed bind of another "
+                                   f"profile, never {profile['name']}; refused")
+            if target in reviewed and not is_reviewed_source(profile, target, source):
+                raise RuntimeError(f"{name} binds {mount.get('source')} at {target}, not exactly "
+                                   f"{(HERE / reviewed[target]).resolve()}; refused")
+            for reviewed_target, path in reviewed.items():
+                parts = Path(path).parts
+                if target == reviewed_target or source.parts[-len(parts):] == parts:
+                    placed[reviewed_target].append((name, target, mount.get("type"), bool(mount.get("read_only"))))
+    for target, placements in sorted(placed.items()):
+        if placements != [(REVIEWED_SERVICE, target, "bind", True)]:
+            raise RuntimeError(f"the {profile['name']} render must bind {reviewed[target]} read-only exactly once, on "
+                               f"{REVIEWED_SERVICE} at {target}, not {placements}; refused")
 
 
 def require_stage1(action):

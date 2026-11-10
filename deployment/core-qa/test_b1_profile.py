@@ -23,6 +23,12 @@ FIXTURES = HERE / "fixtures/stage2-handoff"
 MANIFEST = FIXTURES / "qa-stage2-bundle-manifest-a1d9.json"
 RENDER = FIXTURES / "qa-stage2-full-render-sanitized.json"
 HOST = "/home/daniel/canary-core-qa-playable-20261106/deployment/core-qa"
+FUNDING_TARGET = "/canary/data/scripts/globalevents/bot_market_funding.lua"
+MARKET_TARGET = "/canary/data/scripts/globalevents/bot_market.lua"
+NOOPS = {
+    FUNDING_TARGET: "b1/bot_market_funding.lua",
+    MARKET_TARGET: "b1/bot_market.lua",
+}
 STAGE1_PORTS = {17171, 17172, 17173, 18080}
 # The stage-1 Compose files, byte for byte as before CORE_QA_PROFILE and as the a1d9 bundle manifest pins them.
 STAGE1_COMPOSE_SHA256 = {
@@ -194,7 +200,44 @@ def b1_render():
         ("brain", 0.5, 0.5),
     ):
         services[name].update(cpus=cpus, mem_limit=str(int(memory * 2**30)))
+    for (
+        name,
+        target,
+        source,
+    ) in (  # compose.b1.yaml / compose.b1-brain.yaml replace them by target
+        ("database", preflight.INITDB_TARGET, "runtime/b1/initdb"),
+        ("game", preflight.BRAIN_SERVER_TARGET, "b1/server.json"),
+    ):
+        for mount in services[name]["volumes"]:
+            if mount["target"] == target:
+                mount["source"] = f"{HOST}/{source}"
+    for (
+        target,
+        source,
+    ) in NOOPS.items():  # compose.b1.yaml: the two no-ops, read-only, on game
+        services["game"]["volumes"].append(noop_mount(target, source))
     return render
+
+
+def noop_mount(target, source):
+    return {
+        "bind": {},
+        "read_only": True,
+        "source": str(
+            HERE / source
+        ),  # the exact no-op of this checkout, as Compose resolves ./b1/<file>
+        "target": target,
+        "type": "bind",
+    }
+
+
+def bind_sources(render, target):
+    return [
+        mount["source"]
+        for service in render["services"].values()
+        for mount in service.get("volumes", [])
+        if mount["target"] == target
+    ]
 
 
 def fake_docker(objects, images=()):
@@ -368,7 +411,11 @@ class B1ProfileTests(unittest.TestCase):
         )
         self.assertEqual(text.count("ports: !override"), 2)
         values = "".join(
-            line for line in (text + brain).splitlines(True) if not line.startswith("#")
+            line
+            for line in (text + brain).splitlines(True)
+            if not line.lstrip().startswith("#")
+        ).replace(  # the in-container path CANARY_BRAIN_CONFIG names, not a stage-1 resource
+            ":/etc/canary-core-qa/brain/server.json:ro", ""
         )
         for stage1 in ("1717", "18080", "canary-core-qa"):
             self.assertNotIn(stage1, values)
@@ -385,6 +432,180 @@ class B1ProfileTests(unittest.TestCase):
         self.assertIn("image: canary-qa-b1-brain:local", brain)
         self.assertEqual((brain.count("cpus:"), brain.count("mem_limit:")), (1, 1))
 
+    def test_b1_render_binds_its_own_initdb_and_server_config_and_stage1_does_not(self):
+        text = (HERE / "compose.b1.yaml").read_text()
+        brain = (HERE / "compose.b1-brain.yaml").read_text()
+        self.assertIn(
+            "      - ./runtime/b1/initdb:/docker-entrypoint-initdb.d:ro\n", text
+        )
+        self.assertIn(
+            "      - ./b1/server.json:/etc/canary-core-qa/brain/server.json:ro\n", brain
+        )
+        for name in STAGE1_COMPOSE_SHA256:
+            self.assertNotIn("b1/", (HERE / name).read_text())
+        self.assertEqual(
+            bind_sources(b1_render(), preflight.INITDB_TARGET),
+            [f"{HOST}/runtime/b1/initdb"],
+        )
+        self.assertEqual(
+            bind_sources(b1_render(), preflight.BRAIN_SERVER_TARGET),
+            [f"{HOST}/b1/server.json"],
+        )
+        self.assertEqual(
+            bind_sources(stage1_render(), preflight.INITDB_TARGET),
+            [f"{HOST}/runtime/initdb"],
+        )
+        # the real stage-1 render (a1d9 bundle copy of brain/server.json), never b1/server.json
+        self.assertEqual(
+            bind_sources(stage1_render(), preflight.BRAIN_SERVER_TARGET),
+            [f"{HOST}/runtime/stage2-bundle-a1d9/brain/server.json"],
+        )
+        b1 = json.loads((HERE / "b1/server.json").read_text())
+        stage1 = json.loads((HERE / "brain/server.json").read_text())
+        self.assertEqual((b1["autonomous_bot"], stage1["autonomous_bot"]), (0, 65001))
+        self.assertEqual(b1, {**stage1, "autonomous_bot": 0})
+
+    def test_b1_binds_the_funding_and_market_no_ops_on_game_and_stage1_does_not(self):
+        text = (HERE / "compose.b1.yaml").read_text()
+        for target, source in NOOPS.items():
+            self.assertIn(f"      - ./{source}:{target}:ro\n", text)
+            noop = (HERE / source).read_text()
+            self.assertEqual(
+                [line for line in noop.splitlines() if not line.startswith("--")], []
+            )
+            self.assertEqual(bind_sources(b1_render(), target), [str(HERE / source)])
+            self.assertEqual(bind_sources(stage1_render(), target), [])
+        for name in STAGE1_COMPOSE_SHA256:
+            self.assertNotIn("bot_market", (HERE / name).read_text())
+        stage1, b1 = preflight.load_profile("stage1"), preflight.load_profile("b1")
+        self.assertEqual(preflight.reviewed_targets(stage1), {})
+        self.assertEqual(preflight.reviewed_targets(b1), NOOPS)
+        self.assertEqual(
+            preflight.reviewed_binds(b1), {HERE / source for source in NOOPS.values()}
+        )
+        preflight.assert_profile_render(b1_render(), b1)
+
+    def test_each_no_op_must_be_on_game_once_read_only_from_its_file(self):
+        b1 = preflight.load_profile("b1")
+        for target, source in NOOPS.items():
+
+            def at(render, target=target):
+                return next(
+                    mount
+                    for mount in render["services"]["game"]["volumes"]
+                    if mount["target"] == target
+                )
+
+            missing = b1_render()
+            missing["services"]["game"]["volumes"].remove(at(missing))
+            writable = b1_render()
+            at(writable)["read_only"] = False
+            other = b1_render()
+            at(other)["source"] = f"{HOST}/b1/other.lua"
+            moved = (
+                b1_render()
+            )  # the bind on web instead of game: the game runs the image's script
+            moved["services"]["web"]["volumes"].append(at(moved))
+            moved["services"]["game"]["volumes"].remove(at(moved))
+            duplicate = b1_render()  # still on game, and placed again on web
+            duplicate["services"]["web"]["volumes"].append(noop_mount(target, source))
+            copied = (
+                b1_render()
+            )  # the same reviewed file at another target in another service
+            copied["services"]["web"]["volumes"].append(
+                noop_mount("/tmp/elsewhere.lua", source)
+            )
+            twice = b1_render()  # twice on game itself
+            twice["services"]["game"]["volumes"].append(noop_mount(target, source))
+            for name, render, message in (
+                ("missing", missing, "not \\[\\]"),
+                ("writable", writable, "'bind', False"),
+                ("other file", other, "binds .*other.lua at " + target),
+                ("wrong service", moved, "'web'"),
+                ("duplicate placement", duplicate, "'web'"),
+                ("copy elsewhere", copied, "/tmp/elsewhere.lua"),
+                ("twice on game", twice, "exactly once"),
+            ):
+                with (
+                    self.subTest(target=target, case=name),
+                    self.assertRaisesRegex(RuntimeError, message),
+                ):
+                    preflight.assert_profile_render(render, b1)
+
+    def test_stage1_refuses_any_b1_no_op_and_the_up_gate_places_it_only_on_game(self):
+        stage1, b1 = preflight.load_profile("stage1"), preflight.load_profile("b1")
+        for target, source in NOOPS.items():
+            for service in ("game", "web"):
+                leaked = stage1_render()
+                leaked["services"][service]["volumes"].append(
+                    noop_mount(target, source)
+                )
+                with (
+                    self.subTest(target=target, service=service),
+                    self.assertRaisesRegex(
+                        RuntimeError, "another profile, never stage1"
+                    ),
+                ):
+                    preflight.assert_profile_render(leaked, stage1)
+            path = HERE / source
+            mount = {
+                "target": target,
+                "read_only": True,
+                "type": "bind",
+                "source": str(path),
+            }
+            self.assertTrue(preflight.reviewed_placement(b1, "game", mount, path))
+            self.assertFalse(preflight.reviewed_placement(b1, "web", mount, path))
+            self.assertFalse(
+                preflight.reviewed_placement(
+                    b1, "game", {**mount, "target": "/tmp/x.lua"}, path
+                )
+            )
+            self.assertEqual(preflight.reviewed_binds(stage1), set())
+
+    def test_each_profile_refuses_the_initdb_and_server_config_of_the_other(self):
+        stage1, b1 = preflight.load_profile("stage1"), preflight.load_profile("b1")
+        preflight.assert_profile_render(stage1_render(), stage1)
+        preflight.assert_profile_render(b1_render(), b1)
+        for target, wrong_b1, wrong_stage1 in (
+            (preflight.INITDB_TARGET, "runtime/initdb", "runtime/b1/initdb"),
+            (preflight.BRAIN_SERVER_TARGET, "brain/server.json", "b1/server.json"),
+        ):
+            for render, profile, source in (
+                (b1_render(), b1, wrong_b1),
+                (stage1_render(), stage1, wrong_stage1),
+            ):
+                for service in render["services"].values():
+                    for mount in service.get("volumes", []):
+                        if mount["target"] == target:
+                            mount["source"] = f"{HOST}/{source}"
+                with (
+                    self.subTest(profile=profile["name"], target=target),
+                    self.assertRaisesRegex(
+                        RuntimeError,
+                        f"binds {HOST}/{source} at {target}, not the {profile['name']}",
+                    ),
+                ):
+                    preflight.assert_profile_render(render, profile)
+        merged = b1_render()  # a Compose that kept both binds at the same target
+        merged["services"]["database"]["volumes"].append(
+            {
+                "type": "bind",
+                "source": f"{HOST}/runtime/initdb",
+                "target": preflight.INITDB_TARGET,
+            }
+        )
+        with self.assertRaisesRegex(RuntimeError, "not the b1 runtime/b1/initdb"):
+            preflight.assert_profile_render(merged, b1)
+
+    def test_preflight_reviews_only_the_profile_server_config(self):
+        for name, server in (("stage1", "brain/server.json"), ("b1", "b1/server.json")):
+            result = run_profile(
+                "import preflight as qa; print(qa.PROFILE['binds'][qa.BRAIN_SERVER_TARGET])",
+                name,
+            )
+            self.assertEqual(result.stdout.strip(), server, result.stderr)
+
     def test_unknown_or_unisolated_profiles_are_refused(self):
         with self.assertRaisesRegex(RuntimeError, "unknown CORE_QA_PROFILE 'b2'"):
             preflight.load_profile("b2")
@@ -397,6 +618,19 @@ class B1ProfileTests(unittest.TestCase):
             ("port", {"ports": {**b1["ports"], "web": 18080}}),
             ("evidence", {"evidence": "runtime/evidence"}),
             ("overlay", {"overlays": ()}),
+            (
+                "initdb",
+                {"binds": {**b1["binds"], preflight.INITDB_TARGET: "runtime/initdb"}},
+            ),
+            (
+                "server config",
+                {
+                    "binds": {
+                        **b1["binds"],
+                        preflight.BRAIN_SERVER_TARGET: "brain/server.json",
+                    }
+                },
+            ),
         ):
             with (
                 self.subTest(name),
@@ -758,6 +992,116 @@ with patch("subprocess.run", side_effect=AssertionError("subprocess.run")), \\
             self.assertRaisesRegex(RuntimeError, REFUSED_STAGE1),
         ):
             stage1_baseline.load_baseline()
+
+
+def full_b1_render():
+    """A whole B1 brain-fake render that passes the full assert_compose: b1_render with this checkout's paths,
+    the B1 tags and the reviewed builds, game environment and fake brain."""
+    from test_offline import FAKE_PIN, QA_GAME_ENV
+
+    render = json.loads(json.dumps(b1_render()).replace(HOST, str(HERE)))
+    services, revision = render["services"], "0" * 40
+    services["database"].update(
+        image=preflight.IMAGE_LOCK["database"]["ref"], pull_policy="never"
+    )
+    services["game"].update(
+        image="canary-qa-b1-game:local",
+        build={
+            "dockerfile": "deployment/wsl/Dockerfile",
+            "args": {"SOURCE_REVISION": revision, "BASE_IMAGE": FAKE_PIN},
+        },
+        environment={
+            **QA_GAME_ENV,
+            "GAME_LOGIN_PORT": "27171",
+            "GAME_PROTOCOL_PORT": "27172",
+            "GAME_STATUS_PORT": "27173",
+            "CANARY_BRAIN_CONFIG": "/etc/canary-core-qa/brain/server.json",
+        },
+    )
+    services["web"].update(
+        image="canary-qa-b1-web:local",
+        build={"dockerfile": "deployment/wsl/Web.Dockerfile"},
+    )
+    services["brain"].update(
+        image="canary-qa-b1-brain:local",
+        build={"pull": False, "args": {"SOURCE_REVISION": revision}},
+    )
+    services["brain"].pop("pull_policy")
+    return render
+
+
+class FullComposeNoOpTests(unittest.TestCase):
+    """The whole assert_compose of B1 (Compose render mocked, never run): a no-op from any other path, even
+    one under runtime/ that the general runtime allowance accepts, is refused at the funding and market
+    targets; the exact b1/<file> of this checkout passes."""
+
+    def setUp(self):
+        from test_stage1_baseline import FAKE_GAME_BASE
+
+        b1 = preflight.load_profile("b1")
+        self.enterContext(
+            patch.multiple(
+                preflight,
+                PROFILE=b1,
+                PROJECT=b1["project"],
+                GAME_TAG="canary-qa-b1-game:local",
+                WEB_TAG="canary-qa-b1-web:local",
+                BRAIN_IMAGE="canary-qa-b1-brain:local",
+            )
+        )
+        self.enterContext(patch.dict(os.environ, {"SOURCE_REVISION": "0" * 40}))
+        self.enterContext(patch.dict(preflight.IMAGE_LOCK["game_base"], FAKE_GAME_BASE))
+
+    def compose(self, render):
+        with patch("preflight.command", return_value=json.dumps(render)):
+            return preflight.assert_compose(True)
+
+    def test_the_exact_no_ops_pass_the_full_compose_gate(self):
+        self.assertRegex(self.compose(full_b1_render()), r"^[0-9a-f]{64}$")
+
+    def test_a_no_op_from_another_path_is_refused_by_the_full_gate(self):
+        for target, source in NOOPS.items():
+            for name, path in (
+                (
+                    "runtime/evil",
+                    HERE / "runtime/evil" / source,
+                ),  # under runtime/: the general allowance
+                (
+                    "other checkout",
+                    Path("/tmp/other-checkout/deployment/core-qa") / source,
+                ),
+                ("dot-dot", HERE / "runtime/../b1/../runtime/evil" / source),
+            ):
+                render = full_b1_render()
+                for mount in render["services"]["game"]["volumes"]:
+                    if mount["target"] == target:
+                        mount["source"] = str(path)
+                with self.subTest(target=target, path=name):
+                    with self.assertRaisesRegex(
+                        RuntimeError, f"at {target}, not exactly {HERE / source}"
+                    ):
+                        self.compose(render)
+                    # the up-gate whitelist refuses it too, without the profile check before it
+                    with (
+                        patch("preflight.assert_profile_render"),
+                        self.assertRaisesRegex(
+                            RuntimeError, "Compose has a bind outside the QA runtime"
+                        ),
+                    ):
+                        self.compose(render)
+
+    def test_the_shared_check_is_the_exact_resolved_path(self):
+        b1 = preflight.load_profile("b1")
+        for target, source in NOOPS.items():
+            self.assertTrue(preflight.is_reviewed_source(b1, target, HERE / source))
+            self.assertTrue(
+                preflight.is_reviewed_source(b1, target, HERE / "runtime/.." / source)
+            )
+            self.assertFalse(
+                preflight.is_reviewed_source(b1, target, HERE / "runtime/evil" / source)
+            )
+            other = next(t for t in NOOPS if t != target)
+            self.assertFalse(preflight.is_reviewed_source(b1, other, HERE / source))
 
 
 if __name__ == "__main__":
