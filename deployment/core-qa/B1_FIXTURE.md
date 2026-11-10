@@ -13,6 +13,7 @@ Aqui só há arquivos para revisar e testes offline. Nenhum SQL e nenhum Docker 
 | `b1/slice.sql` | Recorte do banco. Só leitura. Método `b1-fixture-slice-v2`. |
 | `b1/server.json` | Config do servidor do brain no B1. Igual à da etapa 1, com `autonomous_bot: 0`. |
 | `b1/bot_market_funding.lua` | No-op revisado. Desliga o BotMarketFunding só no B1. |
+| `b1/bot_market.lua` | No-op revisado. Desliga o mercado dos bots só no B1. |
 | `b1_fixture.py` | Monta o initdb do B1, gera o SQL do líder e os overlays, imprime a instalação, confere o recorte. |
 | `test_b1_fixture.py` | Testes offline: números contra a fonte, guarda do seed, overlays, recorte e caminho. |
 
@@ -96,26 +97,38 @@ Cada piloto tem 10000 gp no total: 100 platinum coins (3035), banco 0.
   (`bot_brain.cpp:911-920`): knight 1084 gp, paladin 1060 gp, druid 1036 gp. Saem 11 platinum;
   o troco volta em gold.
 
-O BotMarketFunding fica desligado só no B1:
-- `data/scripts/globalevents/bot_market_funding.lua:15-38` põe `balance = 100000000000` em
-  todo bot da conta 65000, 30 s depois de cada start: na memória e por SQL.
-- O arquivo está na imagem (`/canary/data/scripts/globalevents`). Não está no volume
-  `authored-data` (`/canary/data/bot/authored`). Por isso não vai pelo overlay de authored-data.
-- Vai por um bind só leitura em `compose.b1.yaml`: `b1/bot_market_funding.lua`, só comentários,
-  no lugar do original. O loader lê todo `.lua` de `data/scripts` (`scripts.cpp:76`); um arquivo
-  sem código carrega e não registra nada.
-- O preflight exige esse bind no render do B1, só leitura, com essa origem
-  (`PROFILES["b1"]["binds"]`, `reviewed_binds`, `assert_profile_binds`). Sem ele, recusa.
-  A etapa 1 não tem esse bind, e um bind desse arquivo não é revisado para ela.
-- `render-overlays` e `install-plan` mostram o hash do no-op e o do original.
+Dois scripts da imagem ficam desligados só no B1:
+- `bot_market_funding.lua:15-38` põe `balance = 100000000000` em todo bot da conta 65000,
+  30 s depois de cada start: na memória e por SQL.
+- `bot_market.lua` registra os eventos `BotMarketSeller` (30-120 s, `:169-185`),
+  `BotMarketAccept` (`:455-474`), `BotMarketMonitor`, `BotMarketPurge`, `BotMarketDepth` e
+  `BotMarketTrim`. O seller escolhe qualquer bot da conta 65000, pilotos incluídos, e cobra
+  taxa (≥20 gp) ou reserva preço + taxa com `removeMoney`, moedas primeiro
+  (`game_bot_market.cpp:147-166`). O accept paga ou cobra o bot (`game_bot_market.cpp:249`,
+  `278-282`). Com o no-op, nenhum desses eventos existe no B1.
+
+Como:
+- Os dois estão na imagem (`/canary/data/scripts/globalevents`), fora do volume `authored-data`
+  (`/canary/data/bot/authored`). Por isso não vão pelo overlay de authored-data.
+- Cada um é trocado por um bind só leitura no serviço `game` de `compose.b1.yaml`:
+  `b1/bot_market_funding.lua` e `b1/bot_market.lua`, só comentários. O loader lê todo `.lua`
+  de `data/scripts` (`scripts.cpp:76`); um arquivo sem código carrega e não registra nada.
+- O preflight exige cada bind exatamente uma vez: no `game`, no alvo certo, da origem certa,
+  só leitura (`reviewed_targets`, `assert_profile_binds`). Recusa: bind ausente, gravável, de
+  outro arquivo, em outro serviço, repetido em outro serviço ou o arquivo em outro alvo.
+  A lista de binds do up-gate também só aceita esses arquivos no `game` (`reviewed_placement`).
+- A etapa 1 recusa qualquer bind desses alvos ou desses arquivos.
+- `render-overlays` e `install-plan` mostram o hash de cada no-op e o do original (`binds`,
+  `noop_binds`).
+
+Busca por outros eventos de mercado: só `bot_market.lua` registra eventos `BotMarket*` (além do
+funding) e só ele chama `Game.botCreateMarketOffer`/`botAcceptMarketOffer`. Em C++, só a ligação
+Lua chama essas funções (`game_functions.cpp:1187,1197`). Teste fixa isso.
 
 Outros caminhos de dinheiro (busca na fonte):
-- **Mercado dos bots, ainda ligado no B1.** `bot_market.lua` (seller a cada 30-120 s,
-  `bot_market.lua:169-184`; 5% dos bots, `bot_market_data.lua:88`) escolhe qualquer bot da conta
-  65000, pilotos incluídos. Uma oferta cobra taxa (≥20 gp) ou reserva preço + taxa com
-  `removeMoney` (`game_bot_market.cpp:147-166`): primeiro as moedas. Pode gastar moedas dos pilotos.
-  Aceitar oferta de humano paga no banco (`game_bot_market.cpp:249`, `278-282`). Oferta de compra
-  vencida devolve no banco (`iomarket.cpp:227`). Não desligado aqui: decisão de Socrates.
+- **Ofertas vencidas.** No start, `IOMarket::checkExpiredOffers` (`canary_server.cpp:91`) devolve
+  no banco o valor de ofertas de compra vencidas (`iomarket.cpp:~224`). O banco novo do B1 não tem
+  ofertas dos pilotos, e o mercado dos bots não cria mais. Sem efeito.
 - **Aluguel de casa.** Os pilotos têm casas (`database/bots/14_houses.sql`) com aluguel não pago.
   `Houses::payHouses` só cobra se `balance >= rent` (`house.cpp:1017`). Com banco 0, não cobra.
   Manda cartas de aviso e, depois de 7, tira a casa. O dinheiro não muda.
@@ -174,7 +187,7 @@ docker run --rm --pull never --network none -v canary-qa-b1_authored-data:/canar
 ```
 
 O `sha256sum` tem de dar os hashes de `overlay-manifest.json`.
-O no-op do funding não precisa de cópia: o bind de `compose.b1.yaml` já o põe no lugar.
+Os dois no-ops não precisam de cópia: os binds de `compose.b1.yaml` já os põem no lugar.
 
 ## Líder (depois que Daniel cria o personagem)
 
@@ -222,15 +235,19 @@ python3 b1_fixture.py check s0|leader|ready <ponto>.tsv
 
 `install-plan` imprime os comandos em `readiness` (NÃO executados). Com o `game` saudável há
 pelo menos 60 s (o funding esperaria 30 s) e antes do `brain`:
-1. `exec -T game sha256sum /canary/data/scripts/globalevents/bot_market_funding.lua` dá o hash do no-op.
-2. O log do `game` não tem linha `[BotMarketFunding]`.
+1. `exec -T game sha256sum` dos dois alvos dá o hash de cada no-op.
+2. O log do `game` vai para `runtime/b1/evidence/ready/game.log`. `check-log` recusa qualquer
+   linha `[BotMarket...]` (funding incluído) ou `[MARKET_...]`.
 3. Recorte em `runtime/b1/evidence/ready/db-slice.tsv` e `check ready`.
 
-`check ready` recusa:
+`check ready` olha o elenco: os 3 pilotos e o líder. Recusa:
+- linha de qualquer outro personagem, em qualquer marca (`player`, `slot`, `stock`, `deaths`, `death`);
+- personagem do elenco sem exatamente uma linha `player`, as sete linhas de stock e uma `deaths`;
 - piloto com banco 100000000000 (o funding rodou de novo) ou qualquer banco diferente de 0;
 - piloto com moedas diferentes da fixture (3031 = 0, 3035 = 100, 3043 = 0);
-- piloto sem linha, marca que não seja a do B1 com um líder, linhas fora da forma ou repetidas.
-O resto dos pilotos (HP, anel do `equipBot`, posição) só é observado.
+- marca que não seja a do B1 com um líder, linhas fora da forma ou repetidas.
+Os valores do resto (HP, anel do `equipBot`, posição) só são observados. Não exige o S0 inteiro.
+Marca, `humans` e a escolha do líder são o mesmo código do `check leader` (`identify`).
 Do líder, grava banco e stock REAIS como observados, com `recorded_sha256`. Nada é esperado.
 
 Limite: o recorte lê o banco. Um valor só na memória aparece depois que o servidor salva.
@@ -260,8 +277,8 @@ Ordem:
 
 ## Em aberto
 
-- **Mercado dos bots.** Continua ligado no B1 e pode gastar moedas dos pilotos (veja "Ouro").
-  Desligar seria outro no-op como o do funding. Decisão de Socrates.
+- **Mercado desligado para todos os bots do B1.** O no-op tira o mercado de todos, não só dos
+  pilotos (decisão do revisor).
 - **Outros bots.** O overlay vale para todo bot do B1 de nível 20 a 29 que for ativado.
 - **Docker e MariaDB não executados.** Ordem do initdb, `DELIMITER`, `SIGNAL`, parada no
   primeiro erro, troca do bind pelo alvo e cópia da imagem para o volume vazio. Nos testes,

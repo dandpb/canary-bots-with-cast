@@ -489,13 +489,105 @@ class EquipmentOverlayTests(unittest.TestCase):
             )
         self.assertEqual(manifest["loadout_scope"], fx.LOADOUT_SCOPE)
         self.assertIn("every B1 bot of level 20-29", fx.LOADOUT_SCOPE)
-        bind = manifest["binds"][fx.FUNDING_TARGET]
-        self.assertEqual(bind["source"], "b1/bot_market_funding.lua")
-        self.assertEqual(bind["sha256"], fx.sha256(fx.FUNDING_NOOP.read_bytes()))
         self.assertEqual(
-            bind["replaces_sha256"], fx.sha256(fx.FUNDING_SOURCE.read_bytes())
+            sorted(manifest["binds"]), sorted([fx.FUNDING_TARGET, fx.MARKET_TARGET])
         )
-        self.assertIn("not authored-data", bind["via"])
+        for target, name in (
+            (fx.FUNDING_TARGET, "bot_market_funding.lua"),
+            (fx.MARKET_TARGET, "bot_market.lua"),
+        ):
+            bind = manifest["binds"][target]
+            self.assertEqual(target, f"/canary/data/scripts/globalevents/{name}")
+            self.assertEqual(bind["source"], f"b1/{name}")
+            self.assertEqual(bind["service"], "game")
+            self.assertEqual(
+                bind["sha256"], fx.sha256((HERE / "b1" / name).read_bytes())
+            )
+            self.assertEqual(
+                bind["replaces_sha256"],
+                fx.sha256((SOURCE / "data/scripts/globalevents" / name).read_bytes()),
+            )
+            self.assertIn("not authored-data", bind["via"])
+        import preflight
+
+        self.assertEqual(
+            preflight.reviewed_targets(preflight.PROFILES["b1"]),
+            {target: bind["source"] for target, bind in manifest["binds"].items()},
+        )
+
+    def test_the_market_no_op_replaces_the_only_file_with_market_passes(self):
+        # bot_market.lua registers every bot market global event; no other script registers one or calls the
+        # bot offer functions, and only its Lua binding calls them in C++.
+        events, callers = [], []
+        for root in (SOURCE / "data", SOURCE / "data-otservbr-global"):
+            for path in root.rglob("*.lua"):
+                text = path.read_text(errors="replace")
+                rel = str(path.relative_to(SOURCE))
+                events += [
+                    (rel, name)
+                    for name in re.findall(r'GlobalEvent\("(BotMarket\w*)"\)', text)
+                ]
+                if re.search(r"Game\.bot(Create|Accept|Cancel)MarketOffer\(", text):
+                    callers.append(rel)
+        market = "data/scripts/globalevents/bot_market.lua"
+        self.assertEqual(
+            sorted(events),
+            sorted(
+                [
+                    (market, f"BotMarket{name}")
+                    for name in (
+                        "Seller",
+                        "Accept",
+                        "Monitor",
+                        "Purge",
+                        "Depth",
+                        "Trim",
+                    )
+                ]
+                + [
+                    (
+                        "data/scripts/globalevents/bot_market_funding.lua",
+                        "BotMarketFunding",
+                    )
+                ]
+            ),
+        )
+        self.assertEqual(callers, [market])
+        cpp = [
+            str(path.relative_to(SOURCE))
+            for path in (SOURCE / "src").rglob("*.cpp")
+            if re.search(
+                r"\bbot(Create|Accept|Cancel)MarketOffer\(",
+                path.read_text(errors="replace"),
+            )
+        ]
+        self.assertEqual(
+            sorted(cpp),
+            [
+                "src/game/game_bot_market.cpp",
+                "src/lua/functions/core/game/game_functions.cpp",
+            ],
+        )
+
+    def test_check_log_refuses_funding_and_market_lines(self):
+        clean = "[info] Server online\n[info] [BotEngine] Equipped 6 items\n"
+        self.assertEqual(fx.market_log_lines(clean), [])
+        for line in (
+            "[info] [BotMarketFunding] Funded 200 in-memory bots",
+            "[info] [MARKET_PASS] pass=seller picks=3",
+            "[info] [MARKET_ACCEPT] qlat=1ms rows=0",
+            "[warning] [BotMarketSeller] pass error: x",
+        ):
+            with self.subTest(line):
+                self.assertEqual(fx.market_log_lines(clean + line + "\n"), [line])
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "game.log"
+            log.write_text(clean)
+            with patch("sys.stdout"):
+                self.assertEqual(fx.main(["check-log", str(log)]), 0)
+            log.write_text(clean + "[info] [MARKET_TRIM] batch<=5\n")
+            with patch("sys.stdout"):
+                self.assertEqual(fx.main(["check-log", str(log)]), 1)
 
     def test_install_plan_targets_only_the_b1_volume_and_is_never_run(self):
         with b1_env():
@@ -527,11 +619,20 @@ class EquipmentOverlayTests(unittest.TestCase):
         with b1_env():
             readiness = fx.readiness_commands()
         self.assertTrue(
-            readiness[0].endswith(f"exec -T game sha256sum {fx.FUNDING_TARGET}")
+            readiness[0].endswith(
+                f"exec -T game sha256sum {fx.FUNDING_TARGET} {fx.MARKET_TARGET}"
+            )
         )
-        self.assertIn("docker exec -i canary-qa-b1-database-1 mariadb", readiness[2])
+        self.assertIn(
+            "logs --no-color game > runtime/b1/evidence/ready/game.log", readiness[1]
+        )
         self.assertEqual(
-            readiness[3],
+            readiness[2],
+            "python3 b1_fixture.py check-log runtime/b1/evidence/ready/game.log",
+        )
+        self.assertIn("docker exec -i canary-qa-b1-database-1 mariadb", readiness[3])
+        self.assertEqual(
+            readiness[4],
             "python3 b1_fixture.py check ready runtime/b1/evidence/ready/db-slice.tsv",
         )
         for command in readiness:
@@ -553,7 +654,12 @@ class EquipmentOverlayTests(unittest.TestCase):
         self.assertIs(printed["executed"], False)
         self.assertEqual(printed["loadout_scope"], fx.LOADOUT_SCOPE)
         self.assertEqual(printed["readiness"]["commands"], readiness)
-        self.assertIn(fx.FUNDING_TARGET, printed["funding_bind"])
+        self.assertEqual(printed["noop_binds"], fx.noop_binds())
+        for target, bind in fx.noop_binds().items():
+            self.assertIn(
+                f"sha256sum prints {bind['sha256']} for {target}",
+                printed["readiness"]["expect"],
+            )
 
 
 class SeedGuardTests(unittest.TestCase):
@@ -1072,6 +1178,45 @@ class SliceTests(unittest.TestCase):
                 "stock rows are not exactly",
             ),
             "duplicate": (good + ["stock\t65001\t3035\t100"], "duplicate"),
+            # roster: all seven STOCK rows per character, and nothing outside the 3 pilots + the leader
+            "pilot potion row removed": (
+                [l for l in good if l != "stock\t65001\t266\t14"],
+                "character 65001: stock rows are not exactly",
+            ),
+            "leader potion row removed": (
+                [l for l in good if l != "stock\t66100\t266\t7"],
+                "character 66100: stock rows are not exactly",
+            ),
+            "foreign stock row": (
+                good + ["stock\t65002\t266\t20"],
+                "not a roster character: stock\t65002",
+            ),
+            "foreign slot row": (
+                good + ["slot\t65002\t1\t3351\t1"],
+                "not a roster character: slot\t65002",
+            ),
+            "foreign death row": (
+                good + ["death\t65002\t1\t20\ta wolf\t0\ta wolf\t0"],
+                "not a roster character: death\t65002",
+            ),
+            "foreign deaths row": (
+                good + ["deaths\t66101\t0"],
+                "not a roster character: deaths\t66101",
+            ),
+            "foreign player row": (
+                good
+                + [
+                    "player\t65002"
+                    + good[[l.startswith("player\t65001") for l in good].index(True)][
+                        12:
+                    ]
+                ],
+                "not a roster character: player\t65002",
+            ),
+            "pilot deaths row removed": (
+                [l for l in good if l != "deaths\t65003\t0"],
+                "character 65003: not exactly one deaths row",
+            ),
         }
         for name, (lines, message) in cases.items():
             with self.subTest(name):

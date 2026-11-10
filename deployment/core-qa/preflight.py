@@ -25,7 +25,7 @@ PROFILES = {
                "server_name": "Canary core QA", "binds": {"/docker-entrypoint-initdb.d": "runtime/initdb", "/etc/canary-core-qa/brain/server.json": "brain/server.json"}},
     "b1": {"project": "canary-qa-b1", "overlays": ("compose.b1.yaml",), "brain_overlays": ("compose.b1-brain.yaml",),
            "evidence": "runtime/b1/evidence", "ports": {"login": 27171, "game": 27172, "status": 27173, "web": 28080},
-           "limits": True, "server_name": "Canary QA B1", "binds": {"/docker-entrypoint-initdb.d": "runtime/b1/initdb", "/etc/canary-core-qa/brain/server.json": "b1/server.json", "/canary/data/scripts/globalevents/bot_market_funding.lua": "b1/bot_market_funding.lua"}},
+           "limits": True, "server_name": "Canary QA B1", "binds": {"/docker-entrypoint-initdb.d": "runtime/b1/initdb", "/etc/canary-core-qa/brain/server.json": "b1/server.json", "/canary/data/scripts/globalevents/bot_market_funding.lua": "b1/bot_market_funding.lua", "/canary/data/scripts/globalevents/bot_market.lua": "b1/bot_market.lua"}},
 }
 
 
@@ -246,11 +246,11 @@ def assert_compose(brain_fake=False, game_pin=None):
         raise RuntimeError("QA web base image differs from the image lock")
     runtime = (HERE / "runtime").resolve()
     reviewed = ({HERE / PROFILE["binds"][BRAIN_SERVER_TARGET], HERE / "brain/worker.json"} if brain_fake else set()) | reviewed_binds(PROFILE)
-    for service in services.values():
+    for service_name, service in services.items():
         for mount in service.get("volumes", []):
             source = Path(mount.get("source", "")).resolve()
             if mount.get("type") == "bind" and not source.is_relative_to(runtime) and not (
-                    source in reviewed and mount.get("read_only")):
+                    source in reviewed and mount.get("read_only") and reviewed_placement(PROFILE, service_name, mount, source)):
                 raise RuntimeError("Compose has a bind outside the QA runtime")
             if mount.get("type") == "volume" and mount.get("source") not in expected_volumes:
                 raise RuntimeError("Compose mounts a foreign volume")
@@ -430,27 +430,53 @@ INITDB_TARGET = "/docker-entrypoint-initdb.d"
 BRAIN_SERVER_TARGET = "/etc/canary-core-qa/brain/server.json"
 
 
+REVIEWED_SERVICE = "game"  # the only service a reviewed B1 no-op may be bound into
+
+
+def reviewed_targets(profile):
+    """{container target: source} of the reviewed files a profile binds read-only from outside runtime/ besides
+    the brain config (B1: the bot_market_funding.lua and bot_market.lua no-ops, on game). Stage 1 has none."""
+    return {target: source for target, source in profile["binds"].items() if target not in (INITDB_TARGET, BRAIN_SERVER_TARGET)}
+
+
 def reviewed_binds(profile):
-    """The reviewed files of a profile bound read-only from outside runtime/ besides the brain config (B1: the
-    no-op bot_market_funding.lua). Stage 1 has none."""
-    return {HERE / source for target, source in profile["binds"].items() if target not in (INITDB_TARGET, BRAIN_SERVER_TARGET)}
+    return {HERE / source for source in reviewed_targets(profile).values()}
+
+
+def reviewed_placement(profile, service_name, mount, source):
+    """A reviewed no-op may sit only on REVIEWED_SERVICE at its own target; other whitelisted files anywhere."""
+    targets = [target for target, path in reviewed_targets(profile).items() if HERE / path == source]
+    return not targets or (service_name == REVIEWED_SERVICE and mount.get("target") == targets[0])
 
 
 def assert_profile_binds(data, profile):
-    """Each bind at a profile target comes from that profile's source, and each reviewed bind of the profile
-    (reviewed_binds; B1: the funding no-op) is present and read-only. Stage 1 has no reviewed bind."""
-    mounted = set()
+    """Each bind at a profile target comes from that profile's source. Each reviewed bind (reviewed_targets) is
+    placed exactly once in the whole render: on the game service, at its target, from its source, read-only.
+    A placement on another service, a second placement or a copy of the source elsewhere is refused, and so is
+    any bind of another profile's reviewed target or source (stage 1 never runs a B1 no-op)."""
+    reviewed = reviewed_targets(profile)
+    foreign = {target: source for other in PROFILES.values() for target, source in reviewed_targets(other).items()
+               if target not in reviewed}
+    placed = {target: [] for target in reviewed}
     for name, service in data.get("services", {}).items():
         for mount in service.get("volumes", []):
-            expected = Path(profile["binds"].get(mount.get("target"), ""))
-            if expected.parts and Path(mount.get("source", "")).parts[-len(expected.parts):] != expected.parts:
-                raise RuntimeError(f"{name} binds {mount.get('source')} at {mount.get('target')}, not the "
+            target, source = mount.get("target"), Path(mount.get("source", ""))
+            expected = Path(profile["binds"].get(target, ""))
+            if expected.parts and source.parts[-len(expected.parts):] != expected.parts:
+                raise RuntimeError(f"{name} binds {mount.get('source')} at {target}, not the "
                                    f"{profile['name']} {expected}; refused")
-            if expected.parts and (mount.get("type") == "bind" and mount.get("read_only")):
-                mounted.add(mount.get("target"))
-    missing = sorted(set(profile["binds"]) - {INITDB_TARGET, BRAIN_SERVER_TARGET} - mounted)
-    if missing:
-        raise RuntimeError(f"the {profile['name']} render lacks its read-only bind at {', '.join(missing)}; refused")
+            if target in foreign or any(source.parts[-len(Path(path).parts):] == Path(path).parts
+                                        for path in foreign.values()):
+                raise RuntimeError(f"{name} binds {mount.get('source')} at {target}: a reviewed bind of another "
+                                   f"profile, never {profile['name']}; refused")
+            for reviewed_target, path in reviewed.items():
+                parts = Path(path).parts
+                if target == reviewed_target or source.parts[-len(parts):] == parts:
+                    placed[reviewed_target].append((name, target, mount.get("type"), bool(mount.get("read_only"))))
+    for target, placements in sorted(placed.items()):
+        if placements != [(REVIEWED_SERVICE, target, "bind", True)]:
+            raise RuntimeError(f"the {profile['name']} render must bind {reviewed[target]} read-only exactly once, on "
+                               f"{REVIEWED_SERVICE} at {target}, not {placements}; refused")
 
 
 def require_stage1(action):
