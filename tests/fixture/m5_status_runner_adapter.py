@@ -1,4 +1,4 @@
-"""Opt-in transport for native status replies; no qualification gate consumes this file.
+"""Opt-in transport for native status replies and the canonical status consumer.
 
 The runner provides its private fixture SQL transport and an externally verified
 epoch. A trace line can enqueue a command, but only an exact processed reply can
@@ -44,13 +44,43 @@ class DurableEvents:
             self.fd = None
 
 
+class StatusEvidence:
+    """Write only accepted native replies to the historical status shape."""
+
+    def __init__(self, events_path, canonical_path, start_mono, clock=time.monotonic):
+        self.events = DurableEvents(events_path)
+        try:
+            self.canonical = DurableEvents(canonical_path)
+        except BaseException:
+            self.events.close()
+            raise
+        self.path = self.events.path
+        self.canonical_path = self.canonical.path
+        self.start_mono = start_mono
+        self.clock = clock
+
+    def __call__(self, row):
+        self.events(row)
+        if row.get("event") == "status_observed":
+            self.canonical({"elapsed": self.clock() - self.start_mono,
+                            "command_id": row["command_id"], "status": row["status"]})
+
+    def close(self):
+        self.events.close()
+        self.canonical.close()
+
+
 def seal_events(driver, sink, seal_path):
-    """Seal only a completed attempt with no SQL command still outstanding."""
-    if driver.capture.active is not None:
+    """Seal only a completed attempt with no SQL or queued request outstanding."""
+    if (driver.capture.active is not None or driver.capture.queue
+            or driver.capture._task is not None):
         return False
     sink.close()
-    digest = hashlib.sha256(sink.path.read_bytes()).hexdigest()
-    payload = (json.dumps({"events_sha256": digest}, sort_keys=True) + "\n").encode()
+    hashes = {"events_sha256": hashlib.sha256(sink.path.read_bytes()).hexdigest()}
+    if hasattr(sink, "canonical_path"):
+        hashes["canonical_sha256"] = hashlib.sha256(
+            sink.canonical_path.read_bytes()).hexdigest()
+    payload = (json.dumps(hashes, sort_keys=True) + "\n").encode()
     fd = os.open(seal_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         if os.write(fd, payload) != len(payload):
@@ -64,6 +94,62 @@ def seal_events(driver, sink, seal_path):
     finally:
         os.close(directory)
     return True
+
+
+async def cleanup_observer(driver, tasks, stop_task, process, sink, stderr,
+                           seal_path, completed_normally, *, lines=0, matched_hints=0):
+    """Always stop the log stream and tasks, even when persistence fails."""
+    errors = []
+    try:
+        driver.shutdown()
+    except BaseException as error:
+        errors.append(error)
+    for task in (*tasks, stop_task):
+        if not task.done():
+            task.cancel()
+    try:
+        results = await asyncio.gather(*tasks, stop_task, return_exceptions=True)
+        errors.extend(value for value in results if isinstance(value, BaseException)
+                      and not isinstance(value, asyncio.CancelledError))
+    except BaseException as error:
+        errors.append(error)
+    if process.returncode is None:
+        try:
+            process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=2)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+        except BaseException as error:
+            errors.append(error)
+    try:
+        sink({"event": "trace_source_closed", "at_mono": time.monotonic(),
+              "process_exit": process.returncode,
+              "lines": lines, "matched_hints": matched_hints,
+              "pending_command_id": driver.capture.command_id})
+    except BaseException as error:
+        errors.append(error)
+    try:
+        stderr.flush()
+        os.fsync(stderr.fileno())
+    except BaseException as error:
+        errors.append(error)
+    if driver.capture.active is None:
+        if completed_normally and not errors:
+            try:
+                if not seal_events(driver, sink, seal_path):
+                    errors.append(CaptureHalted("queued status work was discarded at stop"))
+                    sink.close()
+            except BaseException as error:
+                errors.append(error)
+        else:
+            try:
+                sink.close()
+            except BaseException as error:
+                errors.append(error)
+    if errors:
+        raise errors[0]
 
 
 class ExactProcessedTransport:

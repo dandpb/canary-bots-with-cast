@@ -2,8 +2,9 @@
 
 `m5_current_qualification.py` keeps its original observer and `hunt_cycle`
 qualifier unless `--status-capture-opt-in` is supplied. The opt-in branch writes
-`status-capture-events.jsonl` separately; it does not feed those events into the
-historical `phase-status.jsonl`. An unsealed opt-in capture rejects the run;
+`status-capture-events.jsonl` and writes only real, accepted `status_observed`
+replies to the historical `phase-status.jsonl` shape (`elapsed`, `command_id`,
+`status`). Phase hints alone never enter that file. An unsealed opt-in capture rejects the run;
 it does not relax any historical qualification check. No runtime or 1800-second
 qualification has been exercised for this adapter.
 
@@ -24,9 +25,9 @@ miss, sink failure, cancellation or timeout make the attempt fail closed. The
 JSONL sink is created exclusively with mode 0600 and fsyncs every event. On
 timeout/shutdown, the SQL operation can continue; its command ID stays linked
 to that attempt, and a late reply cannot be used by another request.
-The event file is sealed with a separate fsynced digest only when no command
-remains outstanding. An unresolved command leaves the file unsealed and the
-result carries no event hash. A cleanup failure is recorded and rejects the
+Both files are sealed with separate fsynced digests only when no command or
+queued request remains outstanding. Unresolved or discarded work leaves them
+unsealed and the result carries no accepted hash. A cleanup failure is recorded and rejects the
 attempt even if the worker stopped at the same time.
 
 The adapter's queue limit 4, age 35 s, command timeout 30 s and the runner's

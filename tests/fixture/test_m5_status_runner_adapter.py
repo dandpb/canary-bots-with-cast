@@ -5,11 +5,14 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import time
 import unittest
 
 from m5_status_capture import CaptureHalted, ExternalEpoch
+from m5_qualification_gates import native_phase_cycle
 from m5_status_runner_adapter import (CaptureDriver, DurableEvents,
-                                     ExactProcessedTransport, seal_events)
+                                     ExactProcessedTransport, StatusEvidence,
+                                     cleanup_observer, seal_events)
 
 
 EPOCH = ExternalEpoch("run-1", "world-sha", "container-id", "started-at", 42,
@@ -159,6 +162,112 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
                              hashlib.sha256(events_path.read_bytes()).hexdigest())
             with self.assertRaises(FileExistsError):
                 seal_events(driver, sink, seal_path)
+
+    async def test_only_accepted_native_reply_reaches_historical_consumer(self):
+        command_ids = iter((110, 111, 112, 113))
+        phases = {110: "PATROLLING", 111: "LEAVING",
+                  112: "RESUPPLYING", 113: "PATROLLING"}
+
+        async def submit(_bot):
+            return next(command_ids)
+
+        async def fetch(command_id):
+            return STATUS.replace("phase=LEAVING", f"phase={phases[command_id]}")
+
+        with tempfile.TemporaryDirectory() as directory:
+            events = Path(directory) / "events.jsonl"
+            canonical = Path(directory) / "phase-status.jsonl"
+            seal = Path(directory) / "seal.json"
+            sink = StatusEvidence(events, canonical, time.monotonic())
+            driver = CaptureDriver(EPOCH, type("T", (), {"submit": staticmethod(submit),
+                                                         "fetch": staticmethod(fetch)})(), sink)
+            driver.hint(HINT)
+            self.assertEqual(canonical.read_bytes(), b"")
+            await driver.drain()
+            for _ in range(3):
+                driver.hint(HINT)
+                await driver.drain()
+            driver.shutdown()
+            self.assertTrue(seal_events(driver, sink, seal))
+            accepted = [row for row in map(json.loads, events.read_text().splitlines())
+                        if row["event"] == "status_observed"]
+            status_rows = [json.loads(line) for line in canonical.read_text().splitlines()]
+            self.assertEqual(len(accepted), 4)
+            self.assertEqual(len(status_rows), 4)
+            for canonical_row, accepted_row in zip(status_rows, accepted):
+                self.assertEqual(canonical_row["command_id"], accepted_row["command_id"])
+                self.assertEqual(canonical_row["status"], accepted_row["status"])
+                self.assertGreaterEqual(canonical_row["elapsed"], 0)
+            cycle = native_phase_cycle(status_rows)
+            self.assertTrue(cycle["complete"])
+            self.assertEqual([row["command_id"] for row in cycle["transitions"]],
+                             [110, 111, 112, 113])
+            self.assertEqual(json.loads(seal.read_text())["canonical_sha256"],
+                             hashlib.sha256(canonical.read_bytes()).hexdigest())
+
+    async def test_stop_with_queued_hint_cannot_seal(self):
+        async def forbidden(_value):
+            self.fail("queued command must not be dispatched")
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.jsonl"
+            sink = DurableEvents(path)
+            driver = CaptureDriver(EPOCH, type("T", (), {"submit": staticmethod(forbidden),
+                                                         "fetch": staticmethod(forbidden)})(), sink)
+            driver.hint(HINT)
+            driver.shutdown()
+            self.assertFalse(seal_events(driver, sink, Path(directory) / "seal.json"))
+            self.assertFalse((Path(directory) / "seal.json").exists())
+            sink.close()
+            shutdown = [json.loads(line) for line in path.read_text().splitlines()
+                        if json.loads(line)["event"] == "shutdown"]
+            self.assertEqual(shutdown[0]["queued"], 1)
+
+    async def test_shutdown_sink_failure_still_cleans_tasks_and_log_process(self):
+        class FailingSink:
+            def __init__(self, path):
+                self.inner = DurableEvents(path)
+                self.path = path
+
+            def __call__(self, row):
+                if row.get("event") == "shutdown":
+                    raise OSError("simulated sink failure")
+                self.inner(row)
+
+            def close(self):
+                self.inner.close()
+
+        class Process:
+            returncode = None
+            terminated = False
+
+            def terminate(self):
+                self.terminated = True
+                self.returncode = 0
+
+            async def wait(self):
+                return self.returncode
+
+        async def forbidden(_value):
+            self.fail("cleanup must not dispatch SQL")
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.jsonl"
+            sink = FailingSink(path)
+            driver = CaptureDriver(EPOCH, type("T", (), {"submit": staticmethod(forbidden),
+                                                         "fetch": staticmethod(forbidden)})(), sink)
+            task = asyncio.create_task(asyncio.sleep(100))
+            stop_task = asyncio.create_task(asyncio.sleep(100))
+            process = Process()
+            with (Path(directory) / "stderr").open("wb") as stderr:
+                with self.assertRaisesRegex(OSError, "simulated sink failure"):
+                    await cleanup_observer(driver, [task], stop_task, process, sink,
+                                           stderr, Path(directory) / "seal.json", True)
+            self.assertTrue(process.terminated)
+            self.assertTrue(task.cancelled())
+            self.assertTrue(stop_task.cancelled())
+            self.assertIsNone(sink.inner.fd)
+            self.assertFalse((Path(directory) / "seal.json").exists())
 
     async def test_trace_source_loss_fences_without_synthetic_status(self):
         events = []

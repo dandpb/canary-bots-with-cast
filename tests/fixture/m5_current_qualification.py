@@ -20,8 +20,8 @@ from pathlib import Path
 from m5_current_lowstock import cleanup_evidence, native_build_contract
 from m5_qualification_gates import qualify_run
 from m5_status_capture import ExternalEpoch
-from m5_status_runner_adapter import (BOT_NAME, CaptureDriver, DurableEvents,
-                                      ExactProcessedTransport, seal_events)
+from m5_status_runner_adapter import (BOT_NAME, CaptureDriver, ExactProcessedTransport,
+                                      StatusEvidence, cleanup_observer)
 
 from canary_brain import benchmark, runtime
 from canary_brain.recording import ReplayReader
@@ -269,7 +269,7 @@ async def execute(args):
                 name: hashlib.sha256((Path(__file__).parent / name).read_bytes()).hexdigest()
                 for name in ("m5_status_capture.py", "m5_status_runner_adapter.py")
             },
-            "qualification_input": False,
+            "qualification_input": True,
         }
     (work / "attestation.json").write_text(json.dumps(attestation, indent=2))
     runtime.read_credential = forbidden
@@ -443,7 +443,11 @@ async def execute(args):
                 "sh", sql, timeout=10,
             )
 
-        sink = DurableEvents(configuration.state_file.parent / "status-capture-events.jsonl")
+        sink = StatusEvidence(
+            configuration.state_file.parent / "status-capture-events.jsonl",
+            configuration.state_file.parent / "phase-status.jsonl",
+            clock["monotonic"],
+        )
         driver = CaptureDriver(epoch, ExactProcessedTransport(query, verify_epoch), sink,
                                start_mono=clock["monotonic"])
         sink({"event": "trace_source_start", "external_epoch": epoch.__dict__,
@@ -457,9 +461,13 @@ async def execute(args):
                     stdout=asyncio.subprocess.PIPE, stderr=stderr,
                     limit=65536,
                 )
-            except BaseException:
-                driver.shutdown()
-                sink.close()
+            except BaseException as original:
+                try:
+                    driver.shutdown()
+                except BaseException as cleanup_error:
+                    original.add_note(f"status shutdown also failed: {type(cleanup_error).__name__}")
+                finally:
+                    sink.close()
                 raise
             wake = asyncio.Event()
             trace_lines = 0
@@ -509,43 +517,20 @@ async def execute(args):
                     raise RuntimeError("opt-in status capture ended before worker")
                 completed_normally = True
             finally:
-                driver.shutdown()
-                for task in (*tasks, stop_task):
-                    if not task.done():
-                        task.cancel()
-                task_results = await asyncio.gather(
-                    *tasks, stop_task, return_exceptions=True
-                )
-                if process.returncode is None:
-                    process.terminate()
-                    try:
-                        await asyncio.wait_for(process.wait(), timeout=2)
-                    except asyncio.TimeoutError:
-                        process.kill()
-                        await process.wait()
-                sink({"event": "trace_source_closed", "at_mono": time.monotonic(),
-                      "lines": trace_lines, "matched_hints": matched_hints,
-                      "process_exit": process.returncode,
-                      "pending_command_id": driver.capture.command_id})
-                stderr.flush()
-                os.fsync(stderr.fileno())
-                # On cancellation/timeout the SQL thread may still finish. Keep
-                # its durable sink alive for a late_reply until process exit.
-                if driver.capture.active is None:
-                    if completed_normally and not any(
-                        isinstance(value, BaseException)
-                        and not isinstance(value, asyncio.CancelledError)
-                        for value in task_results
-                    ):
-                        seal_events(driver, sink,
-                                    configuration.state_file.parent /
-                                    "status-capture-seal.json")
-                    else:
-                        sink.close()
-                for value in task_results:
-                    if (isinstance(value, BaseException)
-                            and not isinstance(value, asyncio.CancelledError)):
-                        raise value
+                original = sys.exc_info()[1]
+                try:
+                    await cleanup_observer(
+                        driver, tasks, stop_task, process, sink, stderr,
+                        configuration.state_file.parent / "status-capture-seal.json",
+                        completed_normally,
+                        lines=trace_lines, matched_hints=matched_hints,
+                    )
+                except BaseException as cleanup_error:
+                    if original is None:
+                        raise
+                    original.add_note(
+                        f"status cleanup also failed: {type(cleanup_error).__name__}"
+                    )
 
     original_run = benchmark.run
 
@@ -606,15 +591,20 @@ async def execute(args):
     result["accepted"] = all(result["checks"].values())
     if args.status_capture_opt_in:
         capture_path = directory / "status-capture-events.jsonl"
+        canonical_path = directory / "phase-status.jsonl"
         seal_path = directory / "status-capture-seal.json"
-        sealed = seal_path.exists() and capture_path.exists()
-        digest = json.loads(seal_path.read_text()).get("events_sha256") if sealed else None
-        sealed = sealed and digest == hashlib.sha256(capture_path.read_bytes()).hexdigest()
+        sealed = seal_path.exists() and capture_path.exists() and canonical_path.exists()
+        hashes = json.loads(seal_path.read_text()) if sealed else {}
+        digest = hashes.get("events_sha256")
+        canonical_digest = hashes.get("canonical_sha256")
+        sealed = (sealed and digest == hashlib.sha256(capture_path.read_bytes()).hexdigest()
+                  and canonical_digest == hashlib.sha256(canonical_path.read_bytes()).hexdigest())
         result["checks"]["status_capture_sealed"] = sealed
         result["accepted"] = all(result["checks"].values())
         result["status_capture_diagnostic"] = {
             "path": str(capture_path),
             "sha256": digest if sealed else None,
+            "canonical_sha256": canonical_digest if sealed else None,
             "seal_path": str(seal_path) if sealed else None,
             "sealed": sealed,
             "qualification_input": False,
