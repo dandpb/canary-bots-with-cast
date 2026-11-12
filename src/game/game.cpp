@@ -2976,7 +2976,7 @@ ReturnValue Game::internalTeleport(const std::shared_ptr<Thing> &thing, const Po
 	return RETURNVALUE_NOTPOSSIBLE;
 }
 
-void Game::playerQuickLootCorpse(const std::shared_ptr<Player> &player, const std::shared_ptr<Container> &corpse, const Position &position) {
+void Game::playerQuickLootCorpse(const std::shared_ptr<Player> &player, const std::shared_ptr<Container> &corpse, const Position &position, bool notify) {
 	if (!player || !corpse) {
 		return;
 	}
@@ -3114,12 +3114,20 @@ void Game::playerQuickLootCorpse(const std::shared_ptr<Player> &player, const st
 		ss << "No loot";
 	}
 	ss << ".";
-	player->sendTextMessage(MESSAGE_STATUS, ss.str());
+	if (notify) {
+		player->sendTextMessage(MESSAGE_STATUS, ss.str());
+	}
 
 	if (shouldNotifyCapacity) {
+		if (!notify) {
+			return;
+		}
 		ss.str(std::string());
 		ss << "Attention! The loot you are trying to pick up is too heavy for you to carry.";
 	} else if (shouldNotifyNotEnoughRoom != OBJECTCATEGORY_NONE) {
+		if (!notify) {
+			return;
+		}
 		ss.str(std::string());
 		ss << "Attention! The container assigned to category " << getObjectCategoryName(shouldNotifyNotEnoughRoom) << " is full.";
 	} else {
@@ -5748,6 +5756,14 @@ void Game::playerQuickLoot(uint32_t playerId, const Position &pos, uint16_t item
 		player->setNextActionTask(nullptr);
 	}
 
+	if (autoLoot) {
+		// "Loot nearby corpses": the client sends no usable position for this
+		// variant, so scan the tiles around the player instead of cancelling.
+		constexpr uint16_t QUICKLOOT_NEARBY_RADIUS = 5;
+		playerLootNearbyCorpses(player, QUICKLOOT_NEARBY_RADIUS);
+		return;
+	}
+
 	std::shared_ptr<Item> item = nullptr;
 	if (!defaultItem) {
 		const std::shared_ptr<Thing> &thing = internalGetThing(player, pos, stackPos, itemId, STACKPOS_FIND_THING);
@@ -5891,6 +5907,62 @@ void Game::playerLootAllCorpses(const std::shared_ptr<Player> &player, const Pos
 	}
 
 	browseField = false;
+}
+
+void Game::playerLootNearbyCorpses(const std::shared_ptr<Player> &player, uint16_t radius) {
+	const Position center = player->getPosition();
+	constexpr uint16_t maxCorpses = 50;
+	uint16_t corpses = 0;
+
+	for (int32_t dx = -radius; dx <= radius && corpses < maxCorpses; ++dx) {
+		for (int32_t dy = -radius; dy <= radius && corpses < maxCorpses; ++dy) {
+			const int32_t x = center.x + dx;
+			const int32_t y = center.y + dy;
+			if (x <= 0 || y <= 0 || x > 0xFFFF || y > 0xFFFF || center.z >= MAP_MAX_LAYERS) {
+				continue;
+			}
+
+			const auto &tile = map.getTile(static_cast<uint16_t>(x), static_cast<uint16_t>(y), center.z);
+			if (!tile) {
+				continue;
+			}
+
+			const TileItemVector* itemVector = tile->getItemList();
+			if (!itemVector) {
+				continue;
+			}
+
+			for (const auto &tileItem : *itemVector) {
+				if (!tileItem) {
+					continue;
+				}
+
+				const auto &corpse = tileItem->getContainer();
+				if (!corpse || !corpse->isCorpse() || corpse->hasAttribute(ItemAttribute_t::UNIQUEID)
+				    || corpse->hasAttribute(ItemAttribute_t::ACTIONID)) {
+					continue;
+				}
+
+				if (!corpse->isRewardCorpse() && corpse->getCorpseOwner() != 0
+				    && !player->canOpenCorpse(corpse->getCorpseOwner())) {
+					continue;
+				}
+
+				playerQuickLootCorpse(player, corpse, corpse->getPosition(), false);
+				if (++corpses >= maxCorpses) {
+					break;
+				}
+			}
+		}
+	}
+
+	if (corpses == 0) {
+		return;
+	}
+
+	std::stringstream ss;
+	ss << "You looted " << corpses << " corpse" << (corpses == 1 ? "" : "s") << " nearby.";
+	player->sendTextMessage(MESSAGE_STATUS, ss.str());
 }
 
 void Game::playerSetManagedContainer(uint32_t playerId, ObjectCategory_t category, const Position &pos, uint16_t itemId, uint8_t stackPos, bool isLootContainer) {
