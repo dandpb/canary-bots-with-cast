@@ -1137,7 +1137,7 @@ botFidgetMaxItemValueGp = 1000  -- max NPC buy price (gp): item drops if 0 < buy
 -- bounded by the 5% skull cap. 50/50 per gang: open with a nuke, or engage+trap first then nuke.
 botGangEnable            = true
 botGangRequireObserver   = true   -- only form near a real player / cast-viewer (spectacle gating)
-botGangTargetPlayers     = true   -- include real players as victims (false = bots-only)
+botGangTargetPlayers     = false  -- include real players as victims (false = bots-only)
 botGangMinSize           = 5      -- attackers required for a raid (incl. initiator); summoned from town
 botGangMaxSize           = 6      -- (unused — raids gather exactly botGangMinSize)
 botGangRecruitRadius     = 5      -- tiles: pull idle bots in the same PZ to join

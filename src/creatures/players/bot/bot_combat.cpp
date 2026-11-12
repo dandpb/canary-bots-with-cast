@@ -241,6 +241,7 @@ void BotEngine::doSelfDefense(BotState& bot) {
 		if (creature->isRemoved() || creature->getHealth() <= 0) continue;
 		auto p = creature->getPlayer();
 		if (!p) continue;
+		if (!p->isBotPlayer()) continue; // never fight back against a real player
 		if (!p->isPzLocked()) continue;  // Stale target — PZ-lock expired, not actively PvPing
 		auto target = creature->getAttackedCreature();
 		if (!target || target->getID() != player->getID()) continue;
@@ -2402,8 +2403,21 @@ void BotEngine::castAoeSpell(BotState& bot, const ResolvedSpell* spell, Directio
 	if (preCastCount == 0) return;
 
 	bool hitPlayer = false;
+	bool hitRealPlayer = false;
 	for (const auto& t : preCastTargets) {
-		if (t->getPlayer()) { hitPlayer = true; break; }
+		const auto &targetPlayer = t->getPlayer();
+		if (!targetPlayer) {
+			continue;
+		}
+		hitPlayer = true;
+		if (!targetPlayer->isBotPlayer()) {
+			hitRealPlayer = true;
+		}
+	}
+
+	if (hitRealPlayer) {
+		// Never splash a real player with a hunt AOE.
+		return;
 	}
 
 	// Cast via server spell system — handles area damage, effects, cooldowns, mana, everything
@@ -2477,6 +2491,15 @@ std::tuple<Position, int32_t, double> BotEngine::findBestRunePosition(BotState& 
 
 	if (monsters.empty()) return {{}, 0, 0};
 
+	// Never land a rune on a square whose 3x3 area splashes a real player.
+	std::vector<Position> realPlayerPositions;
+	for (const auto &spectator : Spectators().find<Player>(bot.currentPos, false, RUNE_RANGE, RUNE_RANGE, RUNE_RANGE, RUNE_RANGE)) {
+		const auto &spectatorPlayer = spectator->getPlayer();
+		if (spectatorPlayer && !spectatorPlayer->isBotPlayer()) {
+			realPlayerPositions.push_back(spectator->getPosition());
+		}
+	}
+
 	Position bestPos;
 	int32_t bestCount = 0;
 	double bestWeighted = 0;
@@ -2490,6 +2513,17 @@ std::tuple<Position, int32_t, double> BotEngine::findBestRunePosition(BotState& 
 
 		// Check LOS from bot to rune landing position
 		if (!g_game().map.isSightClear(bot.currentPos, candidate.pos, true)) continue;
+
+		bool splashesRealPlayer = false;
+		for (const auto &rpos : realPlayerPositions) {
+			const int32_t pdx = std::abs(static_cast<int32_t>(candidate.pos.x) - static_cast<int32_t>(rpos.x));
+			const int32_t pdy = std::abs(static_cast<int32_t>(candidate.pos.y) - static_cast<int32_t>(rpos.y));
+			if (std::max(pdx, pdy) <= 1) {
+				splashesRealPlayer = true;
+				break;
+			}
+		}
+		if (splashesRealPlayer) continue;
 
 		// Count monsters in 3x3 area (Chebyshev distance ≤ 1 from center)
 		int32_t count = 0;
@@ -3751,6 +3785,7 @@ void BotEngine::checkVigilante(BotState& bot) {
 		if (creature->isRemoved() || creature->getHealth() <= 0) continue;
 		auto p = creature->getPlayer();
 		if (!p) continue;
+		if (!p->isBotPlayer()) continue; // never vigilante a real player
 		if (p->getGroup() && p->getGroup()->access) continue;
 		// Never vigilante a recent gang-mate (a raid leaves all members white-skulled — without this
 		// they'd hunt each other after the kill). Bots DO still vigilante any other skulled bot.
@@ -3904,6 +3939,7 @@ void BotEngine::checkRandomPK(BotState& bot) {
 		if (creature->isRemoved() || creature->getHealth() <= 0) continue;
 		auto p = creature->getPlayer();
 		if (!p) continue;
+		if (!p->isBotPlayer()) continue; // never initiate PK against a real player
 		if (p->getGroup() && p->getGroup()->access) continue;
 		if (gangIsRecentAlly(bot.guid, p->getGUID())) continue; // never PK a recent gang-mate
 		auto tpos = creature->getPosition();
