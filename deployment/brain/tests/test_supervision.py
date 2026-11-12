@@ -463,3 +463,112 @@ async def test_http_console_rejects_cross_origin_and_arbitrary_commands(
         assert sent[-1]["candidate_id"] == "hold"
     finally:
         await api.close()
+
+
+def _seed_hunt_stats(c, snapshot, candidate, mean, count):
+    context = c.context(snapshot)
+    c.store.put(
+        "policy",
+        f"7:{context}",
+        {
+            "version": "bandit-v1",
+            "actions": {candidate: {"count": count, "mean": mean, "updated": 0.0}},
+        },
+    )
+    return context
+
+
+def _hunt_episode(c, snapshot, candidate, action_id, context):
+    c.store.put(
+        "episode",
+        action_id,
+        {
+            "bot": 7,
+            "world": snapshot.world,
+            "context": context,
+            "candidate": candidate,
+            "selection": None,
+            "started": 0.0,
+            "status": "proposed",
+            "terminal": False,
+            "tool_call": None,
+        },
+    )
+
+
+def _hunt_outcome(c, snapshot, action_id, status="completed"):
+    c.supervisor.outcome(
+        Outcome(
+            world=snapshot.world,
+            bot_id=7,
+            action_id=action_id,
+            status=status,
+            reason="hunt_progress",
+            metrics={"elapsed_seconds": 60.0, "xp_delta": 10.0, "defeats_delta": 1.0},
+        )
+    )
+
+
+def test_reward_hiatus_excludes_a_sustainably_low_reward_hunt(tmp_path, monkeypatch):
+    c, snapshot, _sent, _clock = console(tmp_path, monkeypatch)
+    context = _seed_hunt_stats(c, snapshot, "hunt:1", mean=0.12, count=40)
+    _hunt_episode(c, snapshot, "hunt:1", "act-1", context)
+    _hunt_outcome(c, snapshot, "act-1")
+    assert "hunt:1" in c.supervisor.blocked(7)
+    offered = {a.id for a in c.supervisor.offers(snapshot).actions}
+    assert "hunt:1" not in offered
+    assert "hunt:2" in offered
+
+
+def test_reward_hiatus_leaves_a_healthy_hunt_alone(tmp_path, monkeypatch):
+    c, snapshot, _sent, _clock = console(tmp_path, monkeypatch)
+    context = _seed_hunt_stats(c, snapshot, "hunt:1", mean=0.9, count=40)
+    _hunt_episode(c, snapshot, "hunt:1", "act-1", context)
+    _hunt_outcome(c, snapshot, "act-1")
+    assert c.supervisor.blocked(7) == {}
+
+
+def test_reward_hiatus_ignores_unsampled_hunts(tmp_path, monkeypatch):
+    c, snapshot, _sent, _clock = console(tmp_path, monkeypatch)
+    context = _seed_hunt_stats(c, snapshot, "hunt:1", mean=0.1, count=3)
+    _hunt_episode(c, snapshot, "hunt:1", "act-1", context)
+    _hunt_outcome(c, snapshot, "act-1")
+    assert c.supervisor.blocked(7) == {}
+
+
+def test_reward_hiatus_escalates_on_repeat_offense(tmp_path, monkeypatch):
+    c, snapshot, _sent, clock = console(tmp_path, monkeypatch)
+    context = _seed_hunt_stats(c, snapshot, "hunt:1", mean=0.12, count=40)
+    _hunt_episode(c, snapshot, "hunt:1", "act-1", context)
+    _hunt_outcome(c, snapshot, "act-1")
+    first = c.supervisor.blocked(7)["hunt:1"]["until"] - clock[0]
+    clock[0] += first + 1
+    assert c.supervisor.blocked(7) == {}
+    _hunt_episode(c, snapshot, "hunt:1", "act-2", context)
+    _hunt_outcome(c, snapshot, "act-2")
+    second = c.supervisor.blocked(7)["hunt:1"]["until"] - clock[0]
+    assert second > first
+
+
+def test_reward_hiatus_resets_when_a_hunt_recovers(tmp_path, monkeypatch):
+    c, snapshot, _sent, clock = console(tmp_path, monkeypatch)
+    context = _seed_hunt_stats(c, snapshot, "hunt:1", mean=0.12, count=40)
+    _hunt_episode(c, snapshot, "hunt:1", "act-1", context)
+    _hunt_outcome(c, snapshot, "act-1")
+    assert c.supervisor.state(7)["reward_hiatus_offenses"]["hunt:1"] == 1
+    _seed_hunt_stats(c, snapshot, "hunt:1", mean=0.8, count=50)
+    clock[0] += 7201
+    _hunt_episode(c, snapshot, "hunt:1", "act-2", context)
+    _hunt_outcome(c, snapshot, "act-2")
+    assert "hunt:1" not in c.supervisor.state(7).get("reward_hiatus_offenses", {})
+    assert c.supervisor.blocked(7) == {}
+
+
+def test_reward_hiatus_does_not_touch_party_companions(tmp_path, monkeypatch):
+    c, snapshot, _sent, _clock = console(tmp_path, monkeypatch)
+    party_snap = snapshot.model_copy(update={"autonomous": False})
+    c.latest[7] = party_snap
+    context = _seed_hunt_stats(c, party_snap, "hunt:1", mean=0.12, count=40)
+    _hunt_episode(c, party_snap, "hunt:1", "act-1", context)
+    _hunt_outcome(c, party_snap, "act-1")
+    assert c.supervisor.blocked(7) == {}

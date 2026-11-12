@@ -17,6 +17,17 @@ if TYPE_CHECKING:
     from .controller import Controller
 
 
+# Reward-aware hiatus: a hunt whose learned reward stays low over a meaningful
+# sample is temporarily excluded so the explorer stops grinding it and can
+# idle/retreat/relocate instead. Reuses the operator avoid machinery (it only
+# REMOVES a candidate, never unlocks an unsafe hunt) and expires on its own.
+REWARD_HIATUS_MIN_SAMPLES = 8
+REWARD_HIATUS_LOW_MEAN = 0.25
+REWARD_HIATUS_RECOVERY_MEAN = 0.5
+REWARD_HIATUS_BASE_SECONDS = 1800
+REWARD_HIATUS_MAX_SECONDS = 7200
+
+
 class Supervisor:
     def __init__(self, controller: "Controller") -> None:
         self.controller = controller
@@ -288,6 +299,58 @@ class Supervisor:
             candidate=candidate,
         )
 
+    def reward_hiatus(
+        self,
+        outcome: Outcome,
+        episode: dict[str, Any],
+        state: dict[str, Any],
+        snapshot: Observation,
+    ) -> None:
+        """Exclude a sustainably low-reward hunt for a bounded, escalating hiatus.
+
+        Only the autonomous solo explorer with automatic supervision is affected;
+        party companions, operator control and unsampled hunts are left alone. The
+        learned mean is read after the controller has already settled the episode
+        reward, so a hunt that recovers welcomes itself back by clearing its
+        offense counter. This never adds a candidate — it only removes a bad one.
+        """
+        candidate = str(episode.get("candidate", ""))
+        if not (
+            snapshot.autonomous
+            and snapshot.party is None
+            and state.get("automatic", True)
+            and self.controller.memory_mode != "frozen"
+            and candidate.startswith("hunt:")
+            and outcome.status in {"completed", "failed"}
+        ):
+            return
+        context = str(episode.get("context", ""))
+        stats = self.controller.policy.statistics(outcome.bot_id, context).get(
+            candidate, {}
+        )
+        if int(stats.get("count", 0)) < REWARD_HIATUS_MIN_SAMPLES:
+            return
+        mean = float(stats.get("mean", 0.5))
+        offenses = state.setdefault("reward_hiatus_offenses", {})
+        if mean >= REWARD_HIATUS_RECOVERY_MEAN:
+            if offenses.pop(candidate, None) is not None:
+                self.save(outcome.bot_id)
+            return
+        if mean > REWARD_HIATUS_LOW_MEAN:
+            return
+        level = int(offenses.get(candidate, 0)) + 1
+        offenses[candidate] = level
+        seconds = min(
+            REWARD_HIATUS_BASE_SECONDS * (2 ** (level - 1)),
+            REWARD_HIATUS_MAX_SECONDS,
+        )
+        self.avoid(
+            outcome.bot_id,
+            candidate,
+            seconds,
+            f"Recompensa aprendida baixa ({mean:.2f}); hiato de {seconds // 60} min",
+        )
+
     def outcome(self, outcome: Outcome) -> None:
         acknowledgement = (outcome.action_id, outcome.status, outcome.reason)
         if acknowledgement in self.acknowledged:
@@ -323,6 +386,8 @@ class Supervisor:
                 1800,
                 "Caça encerrada pelo servidor sem resultado após cinco minutos",
             )
+        if snapshot is not None:
+            self.reward_hiatus(outcome, episode, state, snapshot)
         if (
             state.get("world") != outcome.world
             or state.get("action_id") != outcome.action_id
