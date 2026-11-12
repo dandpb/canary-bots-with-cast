@@ -113,9 +113,9 @@ services:
       - 127.0.0.1:7172:7172
       - 127.0.0.1:7173:7173
     volumes:
-      - ./runtime/config:/etc/canary-brain:ro
+      - /home/daniel/canary-bots-wsl/deployment/wsl/runtime/config:/etc/canary-brain:ro
       - brain-socket:/run/canary-brain-wsl
-      - ./runtime/world/otservbr.otbm:/canary/data-otservbr-global/world/otservbr.otbm:ro
+      - /home/daniel/canary-bots-wsl/deployment/wsl/runtime/world/otservbr.otbm:/canary/data-otservbr-global/world/otservbr.otbm:ro
       - game-logs:/canary/logs
       - authored-data:/canary/data/bot/authored
     healthcheck:
@@ -140,8 +140,8 @@ services:
       game:
         condition: service_healthy
     volumes:
-      - ./runtime/config/worker.json:/etc/canary-brain/worker.json:ro
-      - ./runtime/secrets/openai.env:/etc/canary-brain/openai.env:ro
+      - /home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/worker.json:/etc/canary-brain/worker.json:ro
+      - /home/daniel/canary-bots-wsl/deployment/wsl/runtime/secrets/openai.env:/etc/canary-brain/openai.env:ro
       - brain-socket:/run/canary-brain-wsl
       - brain-state:/var/lib/canary-brain
   web:
@@ -167,6 +167,7 @@ services:
         condition: service_healthy
     volumes:
       - website-cache:/var/www/html/system/cache
+      - ./runtime/store-images:/var/www/html/images/store:ro
     healthcheck:
       test: [CMD, curl, -fsS, http://127.0.0.1/]
       interval: 30s
