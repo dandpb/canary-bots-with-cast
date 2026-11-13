@@ -1500,7 +1500,7 @@ partyShareRangeMultiplier = 3.0
 botPartyMaxPct = 10
 botPopulationReferenceBots = ""  -- coloque GUIDs de bots perto do seu level
 
-botPlayersOnline = 150
+botPlayersOnline = 500
 botDensityCapInnerLimitPct = 2.0
 botDensityCapMidLimitPct = 6.7
 botAdvStoneChestDummyCapPct = 8
