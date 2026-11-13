@@ -1487,7 +1487,7 @@ botKiteCooldownMs = 12000
 -- Cole no FINAL do config.lua: em Lua a ultima atribuicao vence.
 rateUseStages = true
 rateLoot = 3
-rateSpawn = 3
+rateSpawn = 1
 rateKillingInTheNameOfPoints = 3
 lowLevelBonusExp = 50
 
@@ -1501,15 +1501,15 @@ botPartyMaxPct = 10
 botPopulationReferenceBots = ""  -- coloque GUIDs de bots perto do seu level
 
 botPlayersOnline = 500
-botDensityCapInnerLimitPct = 2.0
-botDensityCapMidLimitPct = 6.7
+botDensityCapInnerLimitPct = 0.6
+botDensityCapMidLimitPct = 2.0
 botAdvStoneChestDummyCapPct = 8
 
 worldType = "pvp"
 botGangEnable = false
 botGangTargetPlayers = false
 
-freePremium = true
+freePremium = false
 toggleTravelsFree = true
 houseLoseAfterInactivity = 0
 houseRentPeriod = "never"
@@ -1525,13 +1525,13 @@ staminaTrainer = true
 rateOfflineTrainingSpeed = 3.0
 rateExerciseTrainingSpeed = 2.0
 kickIdlePlayerAfterMinutes = 60
-toggleReceiveReward = true
+toggleReceiveReward = false
 
-autoLoot = true
-autoBank = true
+autoLoot = false
+autoBank = false
 toggleFreeQuest = true
-preyFreeThirdSlot = true
-taskHuntingFreeThirdSlot = true
+preyFreeThirdSlot = false
+taskHuntingFreeThirdSlot = false
 preyRerollPricePerLevel = 50
 
 bossDefaultTimeToFightAgain = 2 * 60 * 60
