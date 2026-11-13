@@ -501,16 +501,16 @@ sortLootByChance = false
 -- NOTE: rateExp, rateSkill and rateMagic is used when 'rateUseStages = false' - or a fallback only
 -- To configure rates see file data/stages.lua
 -- lowLevelBonusExp works up to level 50
-rateUseStages = false
+rateUseStages = true
 lowLevelBonusExp = 50
 rateExp = 1
 rateSkill = 1
-rateLoot = 1
+rateLoot = 2
 rateMagic = 1
-rateSpawn = 1
+rateSpawn = 2
 
 -- Killing in the name of Quest
-rateKillingInTheNameOfPoints = 1
+rateKillingInTheNameOfPoints = 2
 
 -- Today regeneration condition over an loop every 1 second,
 -- So values which should regenerated less then 1 second or won't will work
