@@ -103,7 +103,7 @@ services:
     environment:
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
       GAME_PUBLIC_IP: ${GAME_PUBLIC_IP:-127.0.0.1}
-      BOT_PLAYERS_ONLINE: ${BOT_PLAYERS_ONLINE:-997}
+      BOT_PLAYERS_ONLINE: ${BOT_PLAYERS_ONLINE:-150}
       CANARY_BRAIN_CONFIG: /etc/canary-brain/server.json
     depends_on:
       database:

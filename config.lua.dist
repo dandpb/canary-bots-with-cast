@@ -1482,3 +1482,62 @@ botKiteCooldownMs = 12000
 -- ############################################################################
 -- #                     CAST & BOT CUSTOMIZATION  —  END                     #
 -- ############################################################################
+
+-- ===== Solo + bots: preset CASUAL =====
+-- Cole no FINAL do config.lua: em Lua a ultima atribuicao vence.
+rateUseStages = true
+rateLoot = 3
+rateSpawn = 3
+rateKillingInTheNameOfPoints = 3
+lowLevelBonusExp = 50
+
+deathLosePercent = 0
+playerLoseItemsOnDeath = false
+leavePartyOnDeath = false
+
+partyAutoShareExperience = true
+partyShareRangeMultiplier = 3.0
+botPartyMaxPct = 10
+botPopulationReferenceBots = ""  -- coloque GUIDs de bots perto do seu level
+
+botPlayersOnline = 150
+botDensityCapInnerLimitPct = 2.0
+botDensityCapMidLimitPct = 6.7
+botAdvStoneChestDummyCapPct = 8
+
+worldType = "pvp"
+botGangEnable = false
+botGangTargetPlayers = false
+
+freePremium = true
+toggleTravelsFree = true
+houseLoseAfterInactivity = 0
+houseRentPeriod = "never"
+houseBuyLevel = 0
+daysToCloseBid = 1
+botMarketAcceptChancePct = 60
+botMarketAcceptIntervalMinSec = 600
+botMarketAcceptIntervalMaxSec = 1800
+
+staminaSystem = true
+staminaPz = true
+staminaTrainer = true
+rateOfflineTrainingSpeed = 3.0
+rateExerciseTrainingSpeed = 2.0
+kickIdlePlayerAfterMinutes = 60
+toggleReceiveReward = true
+
+autoLoot = true
+autoBank = true
+toggleFreeQuest = true
+preyFreeThirdSlot = true
+taskHuntingFreeThirdSlot = true
+preyRerollPricePerLevel = 50
+
+bossDefaultTimeToFightAgain = 2 * 60 * 60
+rateBossHealth = 0.6
+
+saveIntervalType = "minute"
+saveIntervalTime = 30
+toggleSaveIntervalCleanMap = true
+maxPacketsPerSecond = 50
