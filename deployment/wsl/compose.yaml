@@ -114,6 +114,7 @@ services:
       - 127.0.0.1:7173:7173
     volumes:
       - /home/daniel/canary-bots-wsl/deployment/wsl/runtime/config:/etc/canary-brain:ro
+      - /home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/lua/config.lua.dist:/canary/config.lua.dist:ro
       - brain-socket:/run/canary-brain-wsl
       - /home/daniel/canary-bots-wsl/deployment/wsl/runtime/world/otservbr.otbm:/canary/data-otservbr-global/world/otservbr.otbm:ro
       - game-logs:/canary/logs
