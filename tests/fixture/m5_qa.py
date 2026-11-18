@@ -451,7 +451,7 @@ def run(mode):
     server.write_text(json.dumps(value))
     compose = json.loads(harness.compose.read_text())
     compose["services"]["database"]["image"] = manifest["database_image_id"]
-    compose["networks"] = {"default": {"internal": True}}
+    compose["networks"]["default"]["internal"] = True
     compose["services"]["game"]["volumes"].append(f"{directory}:/m5")
     harness.compose.write_text(json.dumps(compose))
     config = worker_configuration(directory, mode, manifest)

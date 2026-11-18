@@ -121,7 +121,7 @@ def docker_metadata(*arguments: str) -> str:
 
 
 def project_ids(project: str, kind: str) -> list[str]:
-    if re.fullmatch(r"canary-bench-[a-f0-9]{20}", project) is None:
+    if re.fullmatch(r"canary-bench-[a-f0-9]{32}", project) is None:
         raise ValueError("attestation requires an exact owned trial project")
     arguments = (
         ["container", "ls", "--all", "--quiet", "--no-trunc"]
@@ -218,10 +218,7 @@ class TrialAttestation:
             for repetition in range(experiment.repetitions)
         }
         self.run_id = runs[fixture.directory]
-        expected = (
-            "canary-bench-" + hashlib.sha256(self.run_id.encode()).hexdigest()[:20]
-        )
-        if fixture.project != expected:
+        if fixture.run_id != self.run_id:
             raise ValueError("trial project does not match its run identity")
         self.data: dict[str, Any] = {
             "run_id": self.run_id,
@@ -381,7 +378,8 @@ class TrialAttestation:
                 {"phase": "canonical_close", "error_type": type(close_error).__name__}
             )
         try:
-            containers, networks = self.resources()
+            # An absent project means preparation could not reach Docker.
+            containers, networks = self.resources() if self.fixture.project else ([], [])
             self.data["remaining_containers"], self.data["remaining_networks"] = (
                 containers,
                 networks,
@@ -1406,7 +1404,8 @@ async def run_attested_campaign(experiment: benchmark.Experiment) -> Any:
             active = self
             super().prepare(participant)
             compose = json.loads(self.compose.read_text())
-            compose["networks"] = {"default": {"internal": True}}
+            compose["networks"]["default"]["internal"] = True
+            self.attestation.data["project"] = self.read_ownership()["project_name"]
             compose["services"]["game"]["volumes"].append(f"{self.directory}:/m5")
             self.compose.write_text(json.dumps(compose))
             self.attestation.persist()

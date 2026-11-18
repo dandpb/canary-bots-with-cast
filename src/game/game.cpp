@@ -633,7 +633,10 @@ void Game::removeTeamFinderListed(uint32_t leaderGuid) {
 
 void Game::setGameState(GameState_t newState) {
 	if (gameState == GAME_STATE_SHUTDOWN) {
-		return; // this cannot be stopped
+		if (newState == GAME_STATE_SHUTDOWN && awaitingFinalSave_) {
+			finishNormalShutdown();
+		}
+		return;
 	}
 
 	if (gameState == newState) {
@@ -677,6 +680,7 @@ void Game::setGameState(GameState_t newState) {
 		case GAME_STATE_SHUTDOWN: {
 			g_globalEvents().save();
 			g_globalEvents().shutdown();
+			g_saveManager().beginFinalSave();
 
 			// kick all players that are still online
 			auto it = players.begin();
@@ -685,10 +689,7 @@ void Game::setGameState(GameState_t newState) {
 				it = players.begin();
 			}
 
-			saveMotdNum();
-			g_saveManager().saveAll();
-
-			g_dispatcher().addEvent([this] { shutdown(); }, __FUNCTION__);
+			finishNormalShutdown();
 
 			break;
 		}
@@ -8621,6 +8622,19 @@ void Game::dieSafely(const std::string &errorMsg /* = "" */) {
 	shutdown();
 }
 
+void Game::finishNormalShutdown() {
+	awaitingFinalSave_ = false;
+	for (unsigned int attempt = 1; attempt <= 3; ++attempt) {
+		if (saveMotdNum() && g_saveManager().saveFinal()) {
+			g_dispatcher().addEvent([this] { shutdown(); }, __FUNCTION__);
+			return;
+		}
+		if (g_saveManager().finalCommitUncertain()) break;
+	}
+	awaitingFinalSave_ = true;
+	g_logger().error("SHUTDOWN_SAVE_FAILED: gameplay closed; checkpoint retained for an authorized retry");
+}
+
 void Game::shutdown() {
 	// Stop the dispatcher from firing scheduled events BEFORE we clear collections
 	// whose elements are referenced by [this]-capturing lambdas in queued tasks
@@ -8763,16 +8777,16 @@ void Game::loadMotdNum() {
 	}
 }
 
-void Game::saveMotdNum() const {
+bool Game::saveMotdNum() const {
 	Database &db = Database::getInstance();
 
 	std::ostringstream query;
 	query << "UPDATE `server_config` SET `value` = '" << motdNum << "' WHERE `config` = 'motd_num'";
-	db.executeQuery(query.str());
+	if (!db.executeQuery(query.str())) return false;
 
 	query.str(std::string());
 	query << "UPDATE `server_config` SET `value` = '" << transformToSHA1(g_configManager().getString(SERVER_MOTD)) << "' WHERE `config` = 'motd_hash'";
-	db.executeQuery(query.str());
+	return db.executeQuery(query.str());
 }
 
 void Game::checkPlayersRecord() {
@@ -9479,7 +9493,7 @@ namespace {
 		return true;
 	}
 
-	void processItemInsertion(const std::shared_ptr<Player> &recipient, uint16_t itemId, uint16_t &amount, uint8_t tier, uint64_t &totalPrice, uint32_t pricePerItem) {
+	void processItemInsertion(const std::shared_ptr<Player> &recipient, uint16_t itemId, uint16_t &amount, uint8_t tier, uint64_t &totalPrice, uint64_t pricePerItem) {
 		uint32_t actuallyAdded = 0;
 		ReturnValue returnValue = recipient->addItemBatchToPaginedContainer(
 			recipient->getInbox(),
@@ -9590,15 +9604,7 @@ void Game::playerCreateMarketOffer(uint32_t playerId, uint8_t type, uint16_t ite
 	}
 
 	uint64_t totalPrice = price * amount;
-	uint64_t totalFee = totalPrice * 0.02; // 2% fee
-	uint64_t minFee = 20; // Min fee is 20gp
-	uint64_t maxFee = std::min<uint64_t>(1000000, totalFee); // Max fee is 1kk
-	// Prevent std::clamp from hitting an invalid range (min > max), which in MSVC debug builds triggers an assertion failure
-	if (maxFee < minFee) {
-		maxFee = minFee;
-	}
-
-	uint64_t fee = std::clamp(totalFee, uint64_t(20), maxFee); // Limit between 20 and maxFee
+	const uint64_t fee = IOMarket::feeFor(totalPrice);
 
 	if (type == MARKETACTION_SELL) {
 		if (fee > (player->getMoney() + player->getBankBalance())) {
@@ -9685,7 +9691,7 @@ void Game::playerCancelMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 	}
 
 	MarketOfferEx offer = IOMarket::getOfferByCounter(timestamp, counter);
-	if (offer.id == 0 || offer.playerId != player->getGUID()) {
+	if (unresolvedMarketOffers_.contains(offer.id) || offer.id == 0 || offer.playerId != player->getGUID()) {
 		return;
 	}
 
@@ -9776,7 +9782,7 @@ void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 	}
 
 	MarketOfferEx offer = IOMarket::getOfferByCounter(timestamp, counter);
-	if (offer.id == 0) {
+	if (offer.id == 0 || unresolvedMarketOffers_.contains(offer.id)) {
 		offerStatus << "Failed to load offer id";
 		return;
 	}
@@ -9827,8 +9833,6 @@ void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 			return;
 		}
 
-		const auto &buyerPlayerInbox = buyerPlayer->getInbox();
-
 		if (it.id == ITEM_STORE_COIN) {
 			auto [transferableCoins, error] = playerAccount->getCoins(CoinType::Transferable);
 
@@ -9848,10 +9852,20 @@ void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 				"Sold on Market"
 			);
 		} else {
-			if (!removeOfferItems(player, depotLocker, it, amount, offerTier, offerStatus)) {
-				g_logger().error("[{}] failed to remove item with id {}, from player {}, errorcode: {}", __FUNCTION__, it.id, player->getName(), offerStatus.str());
+			const auto inbox = buyerPlayer->getInbox();
+			if (!inbox) return;
+			std::vector<std::shared_ptr<Item>> staged;
+			uint32_t delivered = 0;
+			buyerPlayer->addItemBatchToPaginedContainer(inbox, it.id, amount, delivered, FLAG_NOLIMIT, offerTier, &staged);
+			if (delivered == 0) return;
+			if (!removeOfferItems(player, depotLocker, it, static_cast<uint16_t>(delivered), offerTier, offerStatus)) {
+				for (const auto &item : staged) inbox->removeThingSilently(item, item->getItemCount());
+				g_logger().error("[{}] could not remove delivered market items: {}", __FUNCTION__, offerStatus.str());
 				return;
 			}
+			for (const auto &item : staged) inbox->notifyStagedAddition(item);
+			amount = static_cast<uint16_t>(delivered);
+			totalPrice = offer.price * delivered;
 		}
 
 		// If there is any error, then we will send the log and block the creation of the offer to avoid clone of items
@@ -9867,18 +9881,13 @@ void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 			return;
 		}
 
-		player->setBankBalance(player->getBankBalance() + totalPrice);
-		g_metrics().addCounter("balance_increase", totalPrice, { { "player", player->getName() }, { "context", "market_sale" } });
-
 		if (it.id == ITEM_STORE_COIN) {
 			buyerPlayer->getAccount()->addCoins(CoinType::Transferable, amount, "Purchased on Market");
-		} else {
-			uint16_t processedAmount = amount;
-			uint64_t effectivePrice = offer.price * processedAmount;
-			processItemInsertion(buyerPlayer, it.id, processedAmount, offer.tier, effectivePrice, offer.price);
-			amount = processedAmount;
-			totalPrice = effectivePrice;
 		}
+
+		if (amount == 0) return;
+		player->setBankBalance(player->getBankBalance() + totalPrice);
+		g_metrics().addCounter("balance_increase", totalPrice, { { "player", player->getName() }, { "context", "market_sale" } });
 
 		if (buyerPlayer->isOffline()) {
 			g_saveManager().savePlayer(buyerPlayer);
@@ -9899,16 +9908,6 @@ void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 			return;
 		}
 
-		// Have enough money on the bank
-		if (totalPrice <= player->getBankBalance()) {
-			player->setBankBalance(player->getBankBalance() - totalPrice);
-		} else {
-			uint64_t remainsPrice = 0;
-			remainsPrice = totalPrice - player->getBankBalance();
-			player->setBankBalance(0);
-			g_game().removeMoney(player, remainsPrice);
-		}
-		g_metrics().addCounter("balance_decrease", totalPrice, { { "player", player->getName() }, { "context", "market_purchase" } });
 
 		if (it.id == ITEM_STORE_COIN) {
 			player->getAccount()->addCoins(CoinType::Transferable, amount, "Purchased on Market");
@@ -9919,6 +9918,18 @@ void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 			amount = processedAmount;
 			totalPrice = effectivePrice;
 		}
+
+		if (amount == 0) return;
+		// Have enough money on the bank
+		if (totalPrice <= player->getBankBalance()) {
+			player->setBankBalance(player->getBankBalance() - totalPrice);
+		} else {
+			uint64_t remainsPrice = 0;
+			remainsPrice = totalPrice - player->getBankBalance();
+			player->setBankBalance(0);
+			g_game().removeMoney(player, remainsPrice);
+		}
+		g_metrics().addCounter("balance_decrease", totalPrice, { { "player", player->getName() }, { "context", "market_purchase" } });
 
 		sellerPlayer->setBankBalance(sellerPlayer->getBankBalance() + totalPrice);
 		g_metrics().addCounter("balance_increase", totalPrice, { { "player", sellerPlayer->getName() }, { "context", "market_sale" } });

@@ -807,6 +807,18 @@ void Container::replaceThing(uint32_t index, const std::shared_ptr<Thing> &thing
 }
 
 void Container::removeThing(const std::shared_ptr<Thing> &thing, uint32_t count) {
+	removeThing(thing, count, true);
+}
+
+void Container::removeThingSilently(const std::shared_ptr<Thing> &thing, uint32_t count) {
+	removeThing(thing, count, false);
+}
+
+void Container::notifyStagedAddition(const std::shared_ptr<Item> &item) {
+	if (getParent()) onAddContainerItem(item);
+}
+
+void Container::removeThing(const std::shared_ptr<Thing> &thing, uint32_t count, bool notify) {
 	const auto &item = thing->getItem();
 	if (item == nullptr) {
 		return /*RETURNVALUE_NOTPOSSIBLE*/;
@@ -824,14 +836,14 @@ void Container::removeThing(const std::shared_ptr<Thing> &thing, uint32_t count)
 		updateItemWeight(-oldWeight + item->getWeight());
 
 		// send change to client
-		if (getParent()) {
+		if (notify && getParent()) {
 			onUpdateContainerItem(index, item, item);
 		}
 	} else {
 		updateItemWeight(-static_cast<int32_t>(item->getWeight()));
 
 		// send change to client
-		if (getParent()) {
+		if (notify && getParent()) {
 			onRemoveContainerItem(index, item);
 		}
 

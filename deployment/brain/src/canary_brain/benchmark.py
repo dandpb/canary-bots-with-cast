@@ -11,6 +11,7 @@ import secrets
 import shutil
 import signal
 import sqlite3
+import stat
 import subprocess
 import time
 from collections.abc import Iterator
@@ -214,17 +215,142 @@ def preflight(experiment: Experiment) -> dict[str, Any]:
     }
 
 
+class ComposeOwnershipInvalid(ValueError):
+    code = "compose_ownership_invalid"
+
+    def __init__(self) -> None:
+        super().__init__(self.code)
+
+
+class LegacyCleanupRequired(ValueError):
+    code = "legacy_cleanup_required"
+
+    def __init__(self) -> None:
+        super().__init__(self.code)
+
+
+COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
+BENCHMARK_OWNER_LABEL = "org.canary.benchmark.owner"
+
+
 class DockerFixture:
     """Owns only one newly created experiment project; never targets production."""
 
     def __init__(self, experiment: Experiment, directory: Path, identity: str) -> None:
         self.experiment, self.directory = experiment, directory
-        self.project = "canary-bench-" + identity[:20]
+        self.run_id = identity
+        self.owner_file = directory / "compose-ownership.json"
+        self.project = ""
         self.compose = directory / "compose.json"
         self.env_file = directory / "database.env"
         self.started = False
+        self.stop_requested = False
+
+    def ownership_record(self, owner_id: str) -> dict[str, Any]:
+        return {
+            "version": 1,
+            "run_id": self.run_id,
+            "project_name": "canary-bench-" + owner_id,
+            "owner_id": owner_id,
+            "output_path_sha256": hashlib.sha256(
+                os.fsencode(self.experiment.output.resolve())
+            ).hexdigest(),
+        }
+
+    def create_ownership(self) -> dict[str, Any]:
+        record = self.ownership_record(secrets.token_hex(16))
+        temporary = self.owner_file.with_suffix(".tmp")
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(canonical(record))
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(self.owner_file)
+        directory_fd = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        self.project = record["project_name"]
+        return record
+
+    def read_ownership(self) -> dict[str, Any]:
+        try:
+            if self.directory.is_symlink():
+                raise ComposeOwnershipInvalid()
+            fd = os.open(self.owner_file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(fd, "r", encoding="utf-8") as stream:
+                record = json.loads(stream.read(4097))
+                mode = os.fstat(stream.fileno()).st_mode
+                if not stat.S_ISREG(mode) or mode & 0o077:
+                    raise ComposeOwnershipInvalid()
+            owner_id = record["owner_id"]
+            if (
+                type(record["version"]) is not int
+                or not re.fullmatch(r"[a-f0-9]{32}", owner_id)
+                or record != self.ownership_record(owner_id)
+            ):
+                raise ComposeOwnershipInvalid()
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            raise ComposeOwnershipInvalid() from error
+        if self.project and self.project != record["project_name"]:
+            raise ComposeOwnershipInvalid()
+        self.project = record["project_name"]
+        return record
+
+    @staticmethod
+    def docker_metadata(*arguments: str) -> str:
+        try:
+            result = subprocess.run(
+                ("docker", *arguments), cwd="/", capture_output=True,
+                text=True, timeout=20, check=True,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise ComposeOwnershipInvalid() from error
+        return result.stdout.strip()
+
+    def validate_docker_ownership(self) -> None:
+        owner = self.read_ownership()["owner_id"]
+        required = {COMPOSE_PROJECT_LABEL: self.project, BENCHMARK_OWNER_LABEL: owner}
+        if self.compose.is_file():
+            try:
+                compose = json.loads(self.compose.read_text())
+                services = compose["services"]
+                networks = compose["networks"]
+                if (
+                    set(services) != {"database", "game"} or set(networks) != {"default"}
+                    or compose.get("name", self.project) != self.project
+                    or compose.get("volumes") or networks["default"].get("external")
+                    or networks["default"].get("name", self.project + "_default") != self.project + "_default"
+                    or any(spec["labels"].get(BENCHMARK_OWNER_LABEL) != owner
+                           for spec in [*services.values(), networks["default"]])
+                ):
+                    raise ComposeOwnershipInvalid()
+            except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+                raise ComposeOwnershipInvalid() from error
+        for resource in ("container", "network", "volume"):
+            listing = [resource, "ls", "-q"]
+            if resource == "container":
+                listing.append("-a")
+            ids = set()
+            for label, value in required.items():
+                ids.update(self.docker_metadata(*listing, "--filter", f"label={label}={value}").split())
+            if resource == "network":
+                ids.update(self.docker_metadata(*listing, "--filter", "name=" + self.project + "_default").split())
+            label_field = ".Config.Labels" if resource == "container" else ".Labels"
+            for resource_id in sorted(ids):
+                try:
+                    labels = json.loads(self.docker_metadata(
+                        resource, "inspect", "--format", "{{json " + label_field + "}}", resource_id,
+                    ))
+                except ValueError as error:
+                    raise ComposeOwnershipInvalid() from error
+                if not isinstance(labels, dict) or any(labels.get(k) != v for k, v in required.items()):
+                    raise ComposeOwnershipInvalid()
 
     def command(self, *arguments: str, timeout: int = 900) -> str:
+        if arguments[0] in {"up", "create", "start", "down", "stop", "kill", "exec", "logs", "wait"}:
+            self.validate_docker_ownership()
         result = subprocess.run(
             [
                 "docker",
@@ -264,6 +390,7 @@ class DockerFixture:
 
     def prepare(self, participant: Participant) -> None:
         self.directory.mkdir(parents=True, exist_ok=False, mode=0o700)
+        owner = self.create_ownership()["owner_id"]
         config = self.directory / "config"
         config.mkdir(mode=0o700)
         socket_dir = self.directory / "socket"
@@ -354,7 +481,13 @@ class DockerFixture:
             "game": game,
         }
         # No host game/database ports; a dedicated project network and bind directories.
-        self.compose.write_text(canonical({"services": services}))
+        labels = {BENCHMARK_OWNER_LABEL: owner}
+        for service in services.values():
+            service["labels"] = labels
+        self.compose.write_text(canonical({
+            "services": services,
+            "networks": {"default": {"labels": labels}},
+        }))
 
     def character(self) -> dict[str, int]:
         query = f"SELECT id,level,experience,posx,posy,posz FROM players WHERE id={self.experiment.bot_id};"
@@ -388,7 +521,15 @@ class DockerFixture:
         self.command("up", "-d", "--wait", "game")
 
     def stop_game(self) -> None:
-        self.command("stop", "--timeout", "180", "game", timeout=210)
+        self.stop_requested = True
+        if self.game_running():
+            # Compose stop escalates to SIGKILL. A wait timeout only ends this
+            # client and leaves the closed server available for explicit retry.
+            self.command("kill", "-s", "SIGTERM", "game", timeout=20)
+        self.command("wait", "game", timeout=210)
+
+    def game_running(self) -> bool:
+        return bool(self.command("ps", "--status", "running", "--quiet", "game", timeout=20).strip())
 
     def close(self) -> None:
         if self.started:
@@ -413,16 +554,34 @@ class DockerFixture:
                     except OSError:
                         pass  # Cleanup still runs if the evidence disk cannot accept writes.
             finally:
+                if self.game_running():
+                    if self.stop_requested:
+                        raise RuntimeError("final save pending; the game and database are still available")
+                    self.stop_game()
                 self.command(
                     "down", "--remove-orphans", "--timeout", "180", timeout=240
                 )
 
-    def recover(self) -> None:
-        # Preparation completes both artifacts before any `up`. On resume the
-        # in-memory started flag is gone, but the deterministic project is ours.
+    def recover(self, *, ownership_expected: bool = False) -> None:
+        if not self.owner_file.exists() and not self.owner_file.is_symlink():
+            if ownership_expected:
+                raise ComposeOwnershipInvalid()
+            if self.compose.is_file() and self.env_file.is_file():
+                try:
+                    compose = json.loads(self.compose.read_text())
+                    labels = compose.get("networks", {}).get("default", {}).get("labels", {})
+                except (OSError, ValueError, AttributeError) as error:
+                    raise ComposeOwnershipInvalid() from error
+                if BENCHMARK_OWNER_LABEL in labels:
+                    raise ComposeOwnershipInvalid()
+                raise LegacyCleanupRequired()
+            return
+        self.read_ownership()
         if self.compose.is_file() and self.env_file.is_file():
             self.started = True
             self.close()
+        elif self.compose.exists() or self.env_file.exists():
+            raise ComposeOwnershipInvalid()
 
 
 async def settle_teardown(
@@ -515,17 +674,20 @@ async def _run_campaign(
         mode="json", exclude={"gateway_credential", "budget_file"}
     )
     fingerprint = digest(experiment.model_dump(mode="json"))
-    if (
-        plan_file.exists()
-        and json.loads(plan_file.read_text())["configuration_sha256"] != fingerprint
-    ):
-        raise ValueError("an existing campaign has a different configuration")
+    if plan_file.exists():
+        previous_plan = json.loads(plan_file.read_text())
+        if previous_plan["configuration_sha256"] != fingerprint:
+            raise ValueError("an existing campaign has a different configuration")
+        ownership_expected = previous_plan.get("compose_ownership_version") == 1
+    else:
+        ownership_expected = not (experiment.output / "recording.sqlite3").exists()
     plan_file.write_text(
         canonical(
             {
                 "configuration_sha256": fingerprint,
                 "plan": public_plan,
                 "preflight": check,
+                **({"compose_ownership_version": 1} if ownership_expected else {}),
             }
         )
     )
@@ -551,11 +713,11 @@ async def _run_campaign(
                     harness = DockerFixture(
                         experiment,
                         experiment.output / (participant.name + f"-{repetition}"),
-                        hashlib.sha256(identity.encode()).hexdigest(),
+                        identity,
                     )
                     # Cleanup must succeed before declaring interruption handled
                     # or starting another independent attempt.
-                    await asyncio.to_thread(harness.recover)
+                    await asyncio.to_thread(harness.recover, ownership_expected=ownership_expected)
                     # Never restart a completed attempt, or silently turn an interrupted one into a new trial.
                     if existing["status"] == "running":
                         RecordingStore(recording).finish(identity, "interrupted")
@@ -584,7 +746,7 @@ async def _run_campaign(
             )  # Durable attempt exists before any game/provider action.
             directory = experiment.output / (participant.name + f"-{repetition}")
             harness = DockerFixture(
-                experiment, directory, hashlib.sha256(identity.encode()).hexdigest()
+                experiment, directory, identity
             )
             worker: asyncio.Task[None] | None = None
             stopped = asyncio.Event()

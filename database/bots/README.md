@@ -15,9 +15,9 @@ reference, and bot house ownership + furniture.
 ## Interface
 - `[import.sh:FILES]` — Automated bash importer executing the numbered SQL dumps in foreign-key dependency order (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`).
 - `[00_bot_schema.sql:bot_market_item_prices]`, `[00_bot_schema.sql:bot_hunt_script_stats]` — Bot runtime table DDL (`CREATE TABLE IF NOT EXISTS`).
-- `[01_accounts.sql:accounts]` — Seeds the default admin account (`@god` / `god12345`) and the bot account (`id = 65000`).
-- `[02_players.sql:players]` — Seeds the `GOD` character and 997 bot player rows.
-- `[03_player_storage.sql:player_storage]` — Seeds bot and `GOD` storage grants (mount and outfit unlocks).
+- `[01_accounts.sql:accounts]` � Seeds the bot account (`id = 65000`).
+- `[02_players.sql:players]` � Seeds 997 bot player rows.
+- `[03_player_storage.sql:player_storage]` � Seeds bot storage grants.
 - `[11_bot_market_item_prices.sql:bot_market_item_prices]` — Seeds item market/NPC price reference rows.
 - `[14_houses.sql:houses]` — Seeds house ownership and metadata (bots own 794 of 993 houses).
 - `[15_tile_store.sql:tile_store]` — Seeds serialized house furniture/item tile blobs.
@@ -40,8 +40,23 @@ Defaults if you omit the variables: host `127.0.0.1`, port `3306`, user `root`,
 empty password, database `canary`. Import into a **fresh** database (the data
 files use plain `INSERT`s and will conflict on a re-import).
 
-After import, the default admin login is account **`@god`** / password
-**`god12345`** — change it after first login.
+The fresh seed creates the bot account and 997 bot characters.
+
+### Administrator provisioning and rotation
+
+Create an account and character through the deployment's normal registration.
+Set a unique password in the protected MyAAC account flow. An authorized
+database operator can elevate the selected account and character by their
+numeric IDs. The shipped data packs use account type 6 and character group 6
+for the GOD role.
+
+On upgrade, rotate the legacy administrator's password through the existing
+protected MyAAC password reset or local account administration path. Keep the
+account ID, character ownership, account type and character group. Revoke old
+sessions for that account. Use a trusted local or HTTPS session for rotation
+and leave credentials and password hashes out of command arguments, terminal
+history, logs and QA records. Verify ordinary and administrator logins
+separately and record only their outcomes.
 
 ## Manual import (e.g. MySQL Workbench, no shell)
 
@@ -50,9 +65,9 @@ Run the files in this exact order (foreign-key / dependency order):
 | # | File | Contents |
 |---|------|----------|
 | 00 | `00_bot_schema.sql` | bot table DDL (`CREATE TABLE IF NOT EXISTS`) |
-| 01 | `01_accounts.sql` | god account (`@god` / `god12345`) + bot account |
-| 02 | `02_players.sql` | the GOD character + 997 bot players |
-| 03 | `03_player_storage.sql` | bot/GOD storage (mount & outfit unlocks, etc.) |
+| 01 | `01_accounts.sql` | bot account |
+| 02 | `02_players.sql` | 997 bot players |
+| 03 | `03_player_storage.sql` | bot storage grants |
 | 11 | `11_bot_market_item_prices.sql` | market price reference (see header) |
 | 14 | `14_houses.sql` | house ownership + metadata (bots own 794 of 993 houses) |
 | 15 | `15_tile_store.sql` | house furniture/items (per-house serialized tile blobs) |
@@ -85,7 +100,6 @@ ALTER TABLE `players`  AUTO_INCREMENT = 66100;
 ## Notes
 
 - **No personal data.** The god account ships with the documented default
-  login (account `@god` / password `god12345`), emails are placeholders, and
   last-login IPs are zeroed. Change the password after first login.
 - **Data provenance** (`source` / `source_file`) is generic in the distributed
   authored CSVs; the functional `source_name` routing key on city routes is kept.

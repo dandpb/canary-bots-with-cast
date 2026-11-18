@@ -12,7 +12,7 @@
 
 LOCK TABLES `accounts` WRITE;
 /*!40000 ALTER TABLE `accounts` DISABLE KEYS */;
-INSERT INTO `accounts` (`id`, `name`, `password`, `email`, `premdays`, `premdays_purchased`, `lastday`, `type`, `coins`, `coins_transferable`, `tournament_coins`, `creation`, `recruiter`, `house_bid_id`) VALUES (1,'god','00f81fcfd2966e9cc8e81c0a22eb1c4bf530953a','@god',0,0,0,6,20000,18200,0,1740296572,0,0),(65000,'botaccount','21298df8a3277357ee55b01df9530b535cf08ec1','bot@localhost',99999,0,1771439348,1,0,0,0,1771439348,0,0);
+INSERT INTO `accounts` (`id`, `name`, `password`, `email`, `premdays`, `premdays_purchased`, `lastday`, `type`, `coins`, `coins_transferable`, `tournament_coins`, `creation`, `recruiter`, `house_bid_id`) VALUES (65000,'botaccount','21298df8a3277357ee55b01df9530b535cf08ec1','bot@localhost',99999,0,1771439348,1,0,0,0,1771439348,0,0);
 /*!40000 ALTER TABLE `accounts` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;

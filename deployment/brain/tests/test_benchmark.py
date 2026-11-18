@@ -40,6 +40,7 @@ def test_failed_docker_diagnostics_are_retained_with_credentials_redacted(
             returncode=1, stdout="failed", stderr="private: " + private_value
         ),
     )
+    monkeypatch.setattr(harness, "docker_metadata", lambda *args: "")
     with pytest.raises(RuntimeError, match="isolated Docker"):
         harness.command("up")
     diagnostics = (harness.directory / "command-errors.log").read_text()
@@ -267,14 +268,14 @@ def test_service_logs_are_redacted_and_retained_before_container_teardown(
 
     def command(*args, **kwargs):
         calls.append(args)
-        return "database failure " + private_value
+        return "database failure " + private_value if args[0] == "logs" else ""
 
     monkeypatch.setattr(harness, "command", command)
     harness.started = True
     harness.close()
     logs = (harness.directory / "services.log").read_text()
     assert "[redacted]" in logs and private_value not in logs
-    assert calls[0][0] == "logs" and calls[1][0] == "down"
+    assert calls[0][0] == "logs" and calls[-1][0] == "down"
 
 
 def test_teardown_still_runs_when_diagnostic_storage_fails(tmp_path, monkeypatch):
@@ -285,7 +286,7 @@ def test_teardown_still_runs_when_diagnostic_storage_fails(tmp_path, monkeypatch
 
     def command(*args, **kwargs):
         calls.append(args)
-        return "logs"
+        return "logs" if args[0] == "logs" else ""
 
     def fail(*args):
         raise OSError("isolated full disk")
@@ -379,6 +380,25 @@ async def test_live_execution_is_explicit_and_failed_attempts_are_preserved(
     assert starts == ["database", "closed", "closed"]
 
 
+def test_identical_runs_in_distinct_output_directories_own_distinct_projects(tmp_path):
+    (tmp_path / "first").mkdir()
+    (tmp_path / "second").mkdir()
+    first, second = experiment(tmp_path / "first"), experiment(tmp_path / "second")
+    fixtures = [
+        DockerFixture(config, config.output / "native-0", "qa:native:0")
+        for config in (first, second)
+    ]
+    for config, fixture in zip((first, second), fixtures, strict=True):
+        fixture.prepare(config.participants[0])
+    assert fixtures[0].project != fixtures[1].project
+    for fixture in fixtures:
+        owner = fixture.directory / "compose-ownership.json"
+        assert owner.stat().st_mode & 0o777 == 0o600
+        record = json.loads(owner.read_text())
+        assert record["run_id"] == "qa:native:0"
+        assert record["project_name"] == fixture.project
+
+
 def test_isolated_compose_has_no_production_ports_or_named_volumes(tmp_path):
     config = experiment(tmp_path)
     harness = DockerFixture(config, config.output / "native-0", "qa-only")
@@ -388,8 +408,54 @@ def test_isolated_compose_has_no_production_ports_or_named_volumes(tmp_path):
     assert harness.project.startswith("canary-bench-")
     assert "volumes" not in compose
     assert all("ports" not in service for service in compose["services"].values())
+
     native = json.loads((harness.directory / "config/server.json").read_text())
     assert native["mode"] == "shadow" and native["keep_awake"] is True
+
+@pytest.mark.parametrize("fault", ["missing", "foreign_record", "conflicting_label"])
+def test_invalid_ownership_precedes_any_compose_mutation(tmp_path, monkeypatch, fault):
+    from canary_brain.benchmark import ComposeOwnershipInvalid
+
+    config = experiment(tmp_path)
+    fixture = DockerFixture(config, config.output / "native-0", "qa:native:0")
+    fixture.prepare(config.participants[0])
+    if fault == "missing":
+        fixture.owner_file.unlink()
+    elif fault == "foreign_record":
+        copied_output = config.model_copy(update={"output": config.output / "foreign"})
+        other = DockerFixture(copied_output, copied_output.output / "native-0", "qa:native:0")
+        other.prepare(config.participants[0])
+        fixture.owner_file.write_bytes(other.owner_file.read_bytes())
+    else:
+        def conflicting(*args):
+            if args[:2] == ("container", "ls"):
+                return "foreign-container"
+            return "{}"
+
+        monkeypatch.setattr(fixture, "docker_metadata", conflicting)
+    monkeypatch.setattr(
+        "canary_brain.benchmark.subprocess.run",
+        lambda *a, **kw: pytest.fail("attempted Compose mutation"),
+    )
+    with pytest.raises(ComposeOwnershipInvalid, match="compose_ownership_invalid"):
+        fixture.start_database()
+
+
+def test_legacy_prepared_attempt_requires_operator_cleanup(tmp_path, monkeypatch):
+    from canary_brain.benchmark import LegacyCleanupRequired
+
+    config = experiment(tmp_path)
+    fixture = DockerFixture(config, config.output / "native-0", "qa:native:0")
+    fixture.directory.mkdir(parents=True)
+    fixture.compose.write_text('{"services":{"game":{},"database":{}}}')
+    fixture.env_file.touch()
+    monkeypatch.setattr(
+        "canary_brain.benchmark.subprocess.run",
+        lambda *a, **kw: pytest.fail("attempted legacy Docker cleanup"),
+    )
+    with pytest.raises(LegacyCleanupRequired, match="legacy_cleanup_required"):
+        fixture.recover()
+
 
 
 def test_synthetic_demo_is_labeled_and_portable_report_is_offline(tmp_path):
@@ -491,7 +557,7 @@ async def test_resume_cleans_the_same_project_before_closing_an_interrupted_atte
     config = experiment(tmp_path)
     recording = RecordingStore(config.output / "recording.sqlite3")
     recording.begin(attempt(config))
-    harness = DockerFixture(config, config.output / "native-0", "unused")
+    harness = DockerFixture(config, config.output / "native-0", "qa:native:0")
     harness.prepare(config.participants[0])
     closed = []
 
@@ -512,7 +578,7 @@ async def test_failed_orphan_cleanup_keeps_attempt_pending_for_next_resume(
     config = experiment(tmp_path)
     recording = RecordingStore(config.output / "recording.sqlite3")
     recording.begin(attempt(config))
-    DockerFixture(config, config.output / "native-0", "unused").prepare(
+    DockerFixture(config, config.output / "native-0", "qa:native:0").prepare(
         config.participants[0]
     )
 

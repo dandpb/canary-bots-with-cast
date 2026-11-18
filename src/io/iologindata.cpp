@@ -211,9 +211,9 @@ bool IOLoginData::persistPlayerSave(const PlayerSaveSnapshot& snapshot) {
 	constexpr unsigned int maxAttempts = 5;
 	for (unsigned int attempt = 1; attempt <= maxAttempts; ++attempt) {
 		auto& db = Database::getInstance();
-		const auto connection = db.transactionContext();
 		bool rolledBackDeadlock = false;
 		const bool saved = DBTransaction::executeWithinTransaction([&] {
+			const auto connection = db.transactionContext();
 			auto row = db.storeQuery(fmt::format("SELECT `save` FROM `players` WHERE `id`={}", snapshot.guid));
 			if (!row || snapshot.statements.empty()) throw DatabaseException("Checkpoint player is unavailable");
 			const bool full = row->getNumber<uint16_t>("save") != 0;

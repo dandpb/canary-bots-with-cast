@@ -652,6 +652,10 @@ void ProtocolGame::release() {
 }
 
 void ProtocolGame::login(const std::string &name, uint32_t accountId, OperatingSystem_t operatingSystem) {
+	if (g_game().getGameState() == GAME_STATE_SHUTDOWN) {
+		disconnectClient("Server is currently closed.");
+		return;
+	}
 	// OTCV8 features
 	if (otclientV8 > 0) {
 		sendFeatures();
@@ -685,6 +689,10 @@ void ProtocolGame::login(const std::string &name, uint32_t accountId, OperatingS
 			return;
 		}
 
+		if (IOMarket::playerHasPendingFill(player->getGUID())) {
+			disconnectClient("A market settlement is being reconciled. Please try again later.");
+			return;
+		}
 		if (IOBan::isPlayerNamelocked(player->getGUID())) {
 			disconnectClient("Your character has been namelocked.");
 			return;
@@ -695,7 +703,8 @@ void ProtocolGame::login(const std::string &name, uint32_t accountId, OperatingS
 			return;
 		}
 
-		if (g_game().getGameState() == GAME_STATE_CLOSED && !player->hasFlag(PlayerFlags_t::CanAlwaysLogin)) {
+		if (g_game().getGameState() == GAME_STATE_SHUTDOWN ||
+			(g_game().getGameState() == GAME_STATE_CLOSED && !player->hasFlag(PlayerFlags_t::CanAlwaysLogin))) {
 			auto maintainMessage = g_configManager().getString(MAINTAIN_MODE_MESSAGE);
 			if (!maintainMessage.empty()) {
 				disconnectClient(maintainMessage);

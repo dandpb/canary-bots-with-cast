@@ -236,8 +236,7 @@ cd database/bots && DB_USER=root DB_PASS=yourpass DB_NAME=canary ./import.sh
 ```
 
 See [database/bots/README.md](database/bots/README.md) for the manual import
-order and details. Default admin login afterwards is account **`@god`** /
-password **`god12345`** — change it after first login.
+order and the protected administrator provisioning procedure.
 
 ### 3. Configure
 

@@ -5,6 +5,7 @@ import asyncio
 import json
 from pathlib import Path
 
+from .benchmark import ComposeOwnershipInvalid, LegacyCleanupRequired
 from .learning import VERSION, Policy
 from .replay_cli import configure, execute
 from .runtime import Configuration, run
@@ -40,6 +41,8 @@ def main() -> None:
             execute(args)
         except KeyboardInterrupt:
             pass
+        except (ComposeOwnershipInvalid, LegacyCleanupRequired) as error:
+            parser.exit(1, error.code + "\n")
         except Exception as error:  # noqa: BLE001 - private runtime errors may carry credentials
             parser.exit(1, f"Replay/benchmark stopped: {type(error).__name__}\n")
     elif args.command == "serve":

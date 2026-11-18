@@ -73,19 +73,45 @@ RUN --mount=type=secret,id=github_token \
 
 # Stage 2: create build
 FROM dependencies AS build
-WORKDIR /srv/build
+WORKDIR /srv
 COPY src ./src
 COPY cmake ./cmake
-COPY recompile.sh CMakeLists.txt CMakePresets.json vcpkg.json ./
-# Copy the vcpkg_installed directory from dependencies stage
-COPY --from=dependencies /opt/vcpkg_installed ./vcpkg_installed
+COPY CMakeLists.txt CMakePresets.json vcpkg.json ./
+COPY tests/CMakeLists.txt ./tests/
+COPY --from=dependencies /opt/vcpkg_installed /srv/vcpkg_installed
 
-RUN export VCPKG_MANIFEST_INSTALL=OFF && export VCPKG_INSTALLED_DIR=/srv/build/vcpkg_installed && ./recompile.sh "/opt"
+RUN export VCPKG_ROOT=/opt/vcpkg/ && \
+    cmake --preset linux-release -DCANARY_BUILD_TESTS=OFF -DTOGGLE_BIN_FOLDER=ON -DVCPKG_MANIFEST_INSTALL=OFF -DVCPKG_INSTALLED_DIR=/srv/vcpkg_installed && \
+    cmake --build --preset linux-release
 
-
-# Stage 3: execute
+# Stage 3: load data and execute
 FROM ubuntu:24.04 AS prod
-COPY --from=build /srv/build/build/linux-release/bin/canary /bin/canary
-WORKDIR /srv/canary
-ENTRYPOINT ["/srv/canary/start.sh", "canary"]
+ARG DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
+ENV TZ=Etc/UTC
+VOLUME [ "/data" ]
 
+COPY --from=build /srv/build/linux-release/bin/canary /srv/build/linux-release/bin/libbot_engine.so /canary/
+COPY LICENSE *.sql key.pem /canary/
+COPY database/bots /canary/database/bots
+COPY data /canary/data
+COPY data-canary /canary/data-canary
+COPY data-otservbr-global /canary/data-otservbr-global
+COPY config.lua.dist /canary/config.lua
+
+WORKDIR /canary
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+	apt-get update && apt-get install -y --no-install-recommends \
+	mariadb-client curl wget tzdata python3 \
+	&& ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime \
+	&& echo "${TZ}" > /etc/timezone \
+	&& apt-get clean \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY docker/data/01-test_account.sql 01-test_account.sql
+COPY docker/data/02-test_account_players.sql 02-test_account_players.sql
+COPY docker/data/start.sh start.sh
+
+ENTRYPOINT ["/canary/start.sh"]

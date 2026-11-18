@@ -11,7 +11,15 @@ services:
       - '$MYSQL_PORT:3306'
     volumes:
       - 'db-volume:/var/lib/mysql'
-      - ../schema.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../schema.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
+      - ../database/bots/00_bot_schema.sql:/docker-entrypoint-initdb.d/10-00_bot_schema.sql:ro
+      - ../database/bots/01_accounts.sql:/docker-entrypoint-initdb.d/10-01_accounts.sql:ro
+      - ../database/bots/02_players.sql:/docker-entrypoint-initdb.d/10-02_players.sql:ro
+      - ../database/bots/03_player_storage.sql:/docker-entrypoint-initdb.d/10-03_player_storage.sql:ro
+      - ../database/bots/11_bot_market_item_prices.sql:/docker-entrypoint-initdb.d/10-11_bot_market_item_prices.sql:ro
+      - ../database/bots/14_houses.sql:/docker-entrypoint-initdb.d/10-14_houses.sql:ro
+      - ../database/bots/15_tile_store.sql:/docker-entrypoint-initdb.d/10-15_tile_store.sql:ro
+      - ../database/bots/16_runtime_compatibility.sql:/docker-entrypoint-initdb.d/10-16_runtime_compatibility.sql:ro
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect"]
       interval: 10s
@@ -33,8 +41,18 @@ services:
     ports:
       - '$gameProtocolPort:$gameProtocolPort'
       - '$statusProtocolPort:$statusProtocolPort'
+    environment:
+      OT_DB_HOST: database
+      OT_DB_PORT: "3306"
+      OT_DB_USER: ${MYSQL_USER}
+      OT_DB_PASSWORD: ${MYSQL_PASSWORD}
+      OT_DB_DATABASE: ${MYSQL_DATABASE}
+      OT_SERVER_GAME_PORT: ${gameProtocolPort}
+      OT_SERVER_STATUS_PORT: ${statusProtocolPort}
     volumes:
-      - '../:/srv/canary'
+      - '../data:/canary/data'
+      - '../data-canary:/canary/data-canary'
+      - '../data-otservbr-global:/canary/data-otservbr-global'
     depends_on:
       database:
         condition: service_healthy

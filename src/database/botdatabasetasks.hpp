@@ -64,7 +64,6 @@ private:
 	std::condition_variable cv_;
 	std::deque<Job> queue_;
 	bool started_ = false;
-	bool connected_ = false;
 	std::jthread worker_;
 };
 

@@ -68,6 +68,7 @@ public:
 	 * \returns true if the map was saved successfully
 	 */
 	static bool save();
+	static bool saveOnce();
 
 	/**
 	 * Get a single tile.

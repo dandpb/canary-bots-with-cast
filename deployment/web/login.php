@@ -258,7 +258,10 @@ switch ($action) {
 		}
 
 		$current_password = encrypt((USE_ACCOUNT_SALT ? $account->salt : '') . $request->password);
-		if (!$account || $account->password != $current_password) {
+		$blocked_seed = (int)$account->id === 1 &&
+			(sha1(strtolower($account->password)) === 'f45ca43bc9b20edf28d705024aac6c0b2c67072f' ||
+				sha1(sha1($request->password)) === 'f45ca43bc9b20edf28d705024aac6c0b2c67072f');
+		if ($blocked_seed || $account->password != $current_password) {
 			$limiter->increment($ip);
 			if ($limiter->exceeded($ip)) {
 				sendError($ban_msg);

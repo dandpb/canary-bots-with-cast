@@ -427,6 +427,10 @@ public:
 	void updatePlayerHelpers(const std::shared_ptr<Player> &player);
 
 	void shutdown();
+	void finishNormalShutdown();
+	bool awaitingFinalSave_ = false;
+	std::unordered_set<uint32_t> unresolvedMarketOffers_;
+	void reconcileBotMarketFill(uint32_t offerId, std::function<bool()> resolve);
 	void dieSafely(const std::string &errorMsg);
 	void addBestiaryList(uint16_t raceid, const std::string &name);
 	const std::map<uint16_t, std::string> &getBestiaryList() const {
@@ -514,7 +518,7 @@ public:
 	void loadItemsPrice();
 
 	void loadMotdNum();
-	void saveMotdNum() const;
+	bool saveMotdNum() const;
 	const std::string &getMotdHash() const {
 		return motdHash;
 	}

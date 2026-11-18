@@ -157,6 +157,7 @@ void IOMarket::processExpiredOffers(const DBResult_ptr &result, bool) {
 	}
 
 	do {
+		if (playerHasPendingFill(result->getNumber<uint32_t>("player_id"))) continue;
 		if (!IOMarket::moveOfferToHistory(result->getNumber<uint32_t>("id"), OFFERSTATE_EXPIRED)) {
 			continue;
 		}
@@ -320,6 +321,57 @@ void IOMarket::createOffer(uint32_t playerId, MarketAction_t action, uint32_t it
 	std::ostringstream query;
 	query << "INSERT INTO `market_offers` (`player_id`, `sale`, `itemtype`, `amount`, `created`, `anonymous`, `price`, `tier`) VALUES (" << playerId << ',' << action << ',' << itemId << ',' << amount << ',' << getTimeNow() << ',' << anonymous << ',' << price << ',' << std::to_string(tier) << ')';
 	Database::getInstance().executeQuery(query.str());
+}
+
+bool IOMarket::lockFillOffer(const MarketOfferEx &offer) {
+	const auto row = g_database().storeQuery(fmt::format(
+		"SELECT amount FROM market_offers WHERE id={} AND player_id={} AND price={} AND sale={} AND itemtype={} FOR UPDATE",
+		offer.id, offer.playerId, offer.price, static_cast<unsigned>(offer.type), offer.itemId));
+	return row && row->getNumber<uint16_t>("amount") == offer.amount;
+}
+
+uint64_t IOMarket::writeFill(const MarketOfferEx &offer, uint32_t takerId, uint16_t amount) {
+	if (amount == 0 || amount > offer.amount) return 0;
+	auto &database = g_database();
+	const bool updated = amount == offer.amount
+		? database.executeQuery(fmt::format("DELETE FROM market_offers WHERE id={}", offer.id))
+		: database.executeQuery(fmt::format("UPDATE market_offers SET amount={} WHERE id={}", offer.amount - amount, offer.id));
+	if (!updated) return 0;
+
+	const auto now = getTimeNow();
+	const auto opposite = offer.type == MARKETACTION_BUY ? MARKETACTION_SELL : MARKETACTION_BUY;
+	const bool written = database.executeQuery(fmt::format(
+		"INSERT INTO market_history (player_id, sale, itemtype, amount, price, expires_at, inserted, state, tier)"
+		" VALUES ({},{},{},{},{},{},{},{},{}), ({},{},{},{},{},{},{},{},{})",
+		takerId, static_cast<unsigned>(opposite), offer.itemId, amount, offer.price, now, now,
+		static_cast<unsigned>(OFFERSTATE_ACCEPTEDEX), offer.tier,
+		offer.playerId, static_cast<unsigned>(offer.type), offer.itemId, amount, offer.price, now, now,
+		static_cast<unsigned>(OFFERSTATE_ACCEPTED), offer.tier));
+	return written ? database.getLastInsertId() : 0;
+}
+
+std::optional<bool> IOMarket::fillCommitted(uint64_t historyId) {
+	bool readSucceeded = false;
+	const auto row = g_database().storeQuery(fmt::format(
+		"SELECT id FROM market_history WHERE id={} FOR UPDATE", historyId), readSucceeded);
+	if (!readSucceeded) return std::nullopt;
+	return row != nullptr;
+}
+
+namespace {
+std::mutex pendingMarketPlayersMutex;
+std::unordered_set<uint32_t> pendingMarketPlayers;
+}
+
+bool IOMarket::playerHasPendingFill(uint32_t guid) {
+	std::lock_guard lock(pendingMarketPlayersMutex);
+	return pendingMarketPlayers.contains(guid);
+}
+
+void IOMarket::setPlayerFillPending(uint32_t guid, bool pending) {
+	std::lock_guard lock(pendingMarketPlayersMutex);
+	if (pending) pendingMarketPlayers.insert(guid);
+	else pendingMarketPlayers.erase(guid);
 }
 
 void IOMarket::acceptOffer(uint32_t offerId, uint16_t amount) {

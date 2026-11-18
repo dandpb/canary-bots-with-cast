@@ -332,7 +332,7 @@ with tempfile.TemporaryDirectory(prefix="brain-outbox-build-") as directory:
     (temporary / "delivery.cpp").write_text(source)
     subprocess.run(
         [
-            "g++",
+            os.environ.get("BOT_TEST_CXX", "g++"),
             "-std=c++20",
             "-O0",
             f"-DHAS_NATIVE_OUTBOX={int(native)}",

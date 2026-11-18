@@ -25,13 +25,15 @@ if arguments[0] == 'compose':
             assert path.is_absolute() and path.is_file(), 'Compose paths must be absolute'
     if 'exec' in arguments:
         print('65001\t20\t98800\t100\t100\t7')
+    elif 'wait' in arguments:
+        print('0')
     elif 'logs' in arguments:
         print('offline synthetic service log')
 elif arguments[0] == 'inspect':
     print('[]' if '{{json .Mounts}}' in arguments else 'sha256:'+'1'*64)
 elif arguments[0] == 'stop':
     print('a'*64)
-elif arguments[0] in ('container','network'):
+elif arguments[0] in ('container','network','volume'):
     if arguments[1] == 'inspect':
         print(json.dumps({'id':arguments[-1],'project':'canary-bench-'+'e'*20}))
     else:
@@ -110,7 +112,7 @@ elif mode == 'pilot_attestation':
         assert live
         config.output.mkdir()
         run_id = f'{config.name}:native:0'
-        harness = benchmark.DockerFixture(config,config.output/'native-0',hashlib.sha256(run_id.encode()).hexdigest())
+        harness = benchmark.DockerFixture(config,config.output/'native-0',run_id)
         harness.prepare(config.participants[0])
         harness.start_database()
         harness.close()
@@ -170,7 +172,7 @@ def test_docker_subprocesses_use_stable_cwd_from_invalid_parent(tmp_path, mode):
     calls = [row["arguments"] for row in report["commands"]]
     if mode == "fixture":
         assert any("config" in args and "--quiet" in args for args in calls)
-        assert any("stop" in args for args in calls)
+        assert any("wait" in args for args in calls)
         assert any("exec" in args for args in calls)
         assert any("logs" in args for args in calls)
         assert any("down" in args for args in calls)

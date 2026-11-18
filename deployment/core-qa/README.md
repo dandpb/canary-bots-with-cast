@@ -148,13 +148,15 @@ revise e carregue o digest do recibo do host antes de buildar.
 
 ## Coleta e rollback
 
-Execute no diretório deste QA. `stop -t 180` permite salvar personagens antes
-de interromper o jogo. Colete o estado e os logs antes de remover os
-containers; `down` preserva todos os volumes para análise ou nova subida.
+Execute no diretório deste QA. Envie SIGTERM ao jogo com o banco ativo.
+O prazo abaixo encerra a espera do operador. Em caso de SHUTDOWN_SAVE_FAILED
+ou timeout, preserve o PID e o banco e reconcilie qualquer resultado incerto.
+Repita SIGTERM após recuperação e use down após saída 0 e o log Server saved.
 
 ```bash
 export SOURCE_REVISION="$(git rev-parse HEAD)" # somente para renderizar o Compose no rollback
-env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env stop -t 180
+env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env kill -s SIGTERM game
+timeout 210s env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env wait game
 mkdir -p runtime/evidence
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env ps -a > runtime/evidence/containers.txt
 env -u MARIADB_PASSWORD -u MARIADB_ROOT_PASSWORD -u BOT_PLAYERS_ONLINE docker compose -p canary-core-qa -f compose.yaml --env-file .env logs --no-color --timestamps database game web > runtime/evidence/services.log 2>&1

@@ -20,7 +20,6 @@ echo ""
 echo "OT_DB_HOST:[$OT_DB_HOST]"
 echo "OT_DB_PORT:[$OT_DB_PORT]"
 echo "OT_DB_USER:[$OT_DB_USER]"
-echo "OT_DB_PASSWORD:[$OT_DB_PASSWORD]"
 echo "OT_DB_DATABASE:[$OT_DB_DATABASE]"
 echo "OT_SERVER_IP:[$OT_SERVER_IP]"
 echo "OT_SERVER_LOGIN_PORT:[$OT_SERVER_LOGIN_PORT]"
@@ -58,7 +57,8 @@ echo ""
 echo "===== Wait For The DB To Be Up ====="
 echo ""
 
-until mysql -u "$OT_DB_USER" -p"$OT_DB_PASSWORD" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -e "SHOW DATABASES;"; do
+export MYSQL_PWD="$OT_DB_PASSWORD"
+until mysql -u "$OT_DB_USER" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -e "SHOW DATABASES;"; do
 	echo "DB offline, trying again"
 	sleep 5s
 done
@@ -70,14 +70,14 @@ echo ""
 echo ""
 echo "===== Check If DB Already Exists ====="
 echo ""
-if mysql -u "$OT_DB_USER" -p"$OT_DB_PASSWORD" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -e "use $OT_DB_DATABASE"; then
+if mysql -u "$OT_DB_USER" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -e "use $OT_DB_DATABASE"; then
 	echo "Creating Database Backup"
 	echo "Saving database to all_databases.sql"
-	mysqldump -u "$OT_DB_USER" -p"$OT_DB_PASSWORD" -h "$OT_DB_HOST" --port="$OT_DB_PORT" --all-databases >/data/all_databases.sql
+	mysqldump -u "$OT_DB_USER" -h "$OT_DB_HOST" --port="$OT_DB_PORT" "$OT_DB_DATABASE" >/data/all_databases.sql
 else
 	echo "Creating Database"
-	mysql -u "$OT_DB_USER" -p"$OT_DB_PASSWORD" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -e "CREATE DATABASE $OT_DB_DATABASE;"
-	mysql -u "$OT_DB_USER" -p"$OT_DB_PASSWORD" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -e "SHOW DATABASES;"
+	mysql -u "$OT_DB_USER" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -e "CREATE DATABASE $OT_DB_DATABASE;"
+	mysql -u "$OT_DB_USER" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -e "SHOW DATABASES;"
 fi
 echo ""
 echo "================================"
@@ -87,11 +87,13 @@ echo ""
 echo "===== Check If We Need To Import Schema.sql ====="
 echo ""
 
-if [[ $(mysql -u "$OT_DB_USER" -p"$OT_DB_PASSWORD" -h "$OT_DB_HOST" -e 'SHOW TABLES LIKE "server_config"' -D "$OT_DB_DATABASE") ]]; then
+if [[ $(mysql -u "$OT_DB_USER" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -e 'SHOW TABLES LIKE "server_config"' -D "$OT_DB_DATABASE") ]]; then
 	echo "Table server_config exists so we don't need to import"
 else
 	echo "Import Canary-Server Schema"
-	mysql -u "$OT_DB_USER" -p"$OT_DB_PASSWORD" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -D "$OT_DB_DATABASE" <schema.sql
+	mysql -u "$OT_DB_USER" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -D "$OT_DB_DATABASE" <schema.sql
+	DB_HOST="$OT_DB_HOST" DB_PORT="$OT_DB_PORT" DB_USER="$OT_DB_USER" \
+		DB_PASS="$OT_DB_PASSWORD" DB_NAME="$OT_DB_DATABASE" bash database/bots/import.sh
 
 	echo ""
 	echo "===== Test Accounts ====="
@@ -99,8 +101,8 @@ else
 
 	if [ "$OT_SERVER_TEST_ACCOUNTS" = "true" ]; then
 		echo "Creating Test Accounts..."
-		mysql -u "$OT_DB_USER" -p"$OT_DB_PASSWORD" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -D "$OT_DB_DATABASE" </canary/01-test_account.sql
-		mysql -u "$OT_DB_USER" -p"$OT_DB_PASSWORD" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -D "$OT_DB_DATABASE" </canary/02-test_account_players.sql
+		mysql -u "$OT_DB_USER" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -D "$OT_DB_DATABASE" </canary/01-test_account.sql
+		mysql -u "$OT_DB_USER" -h "$OT_DB_HOST" --port="$OT_DB_PORT" -D "$OT_DB_DATABASE" </canary/02-test_account_players.sql
 	else
 		echo "Skip Test Account creation!"
 	fi
@@ -136,7 +138,22 @@ echo ""
 
 sed -i "/mysqlHost = .*$/c\mysqlHost = \"$OT_DB_HOST\"" config.lua
 sed -i "/mysqlUser = .*$/c\mysqlUser = \"$OT_DB_USER\"" config.lua
-sed -i "/mysqlPass = .*$/c\mysqlPass = \"$OT_DB_PASSWORD\"" config.lua
+OT_DB_PASSWORD="$OT_DB_PASSWORD" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+import re
+
+try:
+    password = json.dumps(os.environ["OT_DB_PASSWORD"], ensure_ascii=False)
+    config = Path("config.lua")
+    updated, count = re.subn(r"(?m)^mysqlPass\s*=.*$", lambda _: "mysqlPass = " + password, config.read_text())
+    if count != 1:
+        raise ValueError("unexpected config layout")
+    config.write_text(updated)
+except Exception:
+    raise SystemExit("Could not configure the database password") from None
+PY
 sed -i "/mysqlPort = .*$/c\mysqlPort = $OT_DB_PORT" config.lua
 sed -i "/mysqlDatabase = .*$/c\mysqlDatabase = \"$OT_DB_DATABASE\"" config.lua
 sed -i "/ip = .*$/c\ip = \"$OT_SERVER_IP\"" config.lua
@@ -145,7 +162,6 @@ sed -i "/gameProtocolPort = .*$/c\gameProtocolPort = $OT_SERVER_GAME_PORT" confi
 sed -i "/statusProtocolPort = .*$/c\statusProtocolPort = $OT_SERVER_STATUS_PORT" config.lua
 sed -i "/dataPackDirectory = .*$/c\dataPackDirectory = \"$OT_SERVER_DATA\"" config.lua
 
-cat config.lua
 
 echo ""
 echo "================================"
@@ -170,4 +186,5 @@ echo "===== Start Server ====="
 echo ""
 
 ulimit -c unlimited
-exec canary
+unset MYSQL_PWD
+exec ./canary

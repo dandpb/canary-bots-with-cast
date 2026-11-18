@@ -341,3 +341,18 @@ published sequentially; consume the export only when both MP4 and JSON are prese
 The renderer streams history and bounds its displayed trail to recent samples.
 
 Validate changes with the existing pytest, ruff and strict mypy commands, plus the gateway smoke tool and native library build. Browser checks cover the initial page, comparing two runs, seeking, floor changes, playback, milestone alignment, console health and a narrow viewport. Real model rankings require a separately selected, budgeted pilot with multiple independent runs. Native client capture/clips can later be attached separately to these sampled-map videos.
+
+### Resume and legacy Docker cleanup
+
+Keep compose-ownership.json with its original attempt directory. It binds the
+replay run ID and canonical output path to the project and owner labels on
+Docker resources. A missing, copied or conflicting record causes
+compose_ownership_invalid before Compose changes resources.
+
+Older replays remain readable offline. When the runner returns
+legacy_cleanup_required, identify the exact container and network IDs using
+their Compose labels, the old Compose definition and the attempt's bind paths.
+Verify that the paths still identify the original attempt. Send SIGTERM to
+the positively identified game and wait for Server saved and exit status 0
+before removing the identified resources. Keep the game and database available
+for an authorized retry when the final save is unresolved.

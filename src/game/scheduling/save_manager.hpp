@@ -10,6 +10,8 @@
 #pragma once
 
 #include "lib/thread/thread_pool.hpp"
+
+#include <atomic>
 #include "game/scheduling/serial_save_queue.hpp"
 #include "game/movement/position.hpp"
 
@@ -30,6 +32,9 @@ public:
 	static SaveManager &getInstance();
 
 	void saveAll();
+	void beginFinalSave();
+	bool saveFinal();
+	bool finalCommitUncertain() const { return finalCommitUncertain_.load(); }
 	void scheduleAll();
 
 	bool savePlayer(std::shared_ptr<Player> player, std::optional<Position> position = std::nullopt);
@@ -37,7 +42,7 @@ public:
 	// Reuse unsaved bot state instead of loading older progression from the database.
 	std::shared_ptr<Player> getPendingBotPlayer(uint32_t guid) const;
 	std::shared_ptr<Player> getPendingBotPlayer(const std::string &name) const;
-	void saveGuild(std::shared_ptr<Guild> guild);
+	bool saveGuild(std::shared_ptr<Guild> guild);
 
 private:
 	struct BotSave {
@@ -51,14 +56,18 @@ private:
 		std::vector<std::shared_ptr<Guild>> guilds;
 	};
 	SaveBatch captureBatch(); // Dispatcher only; workers never inspect the engine.
-	void saveBatch(SaveBatch batch);
+	bool saveBatch(SaveBatch batch);
 	std::shared_future<bool> enqueueBot(BotSave save);
 	void runBotSave(uint32_t guid);
 	SerialSaveQueue<BotSave> botSaves_;
 	// Bound DB connections and keep bot SQL from occupying the general worker pool.
 	BS::thread_pool<BS::tp::none> botSavePool_ {4};
-	void saveMap();
-	void saveKV();
+	bool saveMap();
+	bool saveKV();
+	void observeFinalOutcome();
+	std::atomic_bool finalSaving_ = false;
+	std::atomic_bool finalCommitUncertain_ = false;
+	std::vector<BotSave> finalPlayers_;
 
 	void schedulePlayer(std::weak_ptr<Player> player);
 	bool doSavePlayer(std::shared_ptr<Player> player, std::optional<Position> position = std::nullopt);

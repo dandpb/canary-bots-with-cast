@@ -15,6 +15,7 @@
 #include "creatures/players/bot/bot_engine.hpp"
 #include "io/ioguild.hpp"
 #include "io/iologindata.hpp"
+#include "io/iomarket.hpp"
 #include "kv/kv.hpp"
 #include "lib/di/container.hpp"
 #include "creatures/players/player.hpp"
@@ -61,9 +62,10 @@ SaveManager::SaveBatch SaveManager::captureBatch() {
 		}
 	}
 	for (const auto& pending : botSaves_.snapshot()) captured.try_emplace(pending.guid, pending);
+	for (const auto& final : finalPlayers_) captured[final.guid] = final;
 	SaveBatch batch;
 	for (const auto& [guid, save] : captured) {
-		if (!save.player || save.player->isBotPlayer()) {
+		if (finalSaving_ || !save.player || save.player->isBotPlayer()) {
 			batch.players.emplace_back(enqueueBot(save), save.player ? save.player->getName() : std::to_string(guid));
 		} else {
 			save.player->loginPosition = save.position;
@@ -77,7 +79,7 @@ SaveManager::SaveBatch SaveManager::captureBatch() {
 	return batch;
 }
 
-void SaveManager::saveBatch(SaveBatch batch) {
+bool SaveManager::saveBatch(SaveBatch batch) {
 	Benchmark timer;
 	size_t failures = 0;
 	for (auto& [future, name] : batch.players) {
@@ -88,16 +90,65 @@ void SaveManager::saveBatch(SaveBatch batch) {
 			logger.error("Failed to durably save player {}: {}", name, error.what());
 		}
 	}
-	for (const auto& guild : batch.guilds) saveGuild(guild);
-	saveMap();
-	saveKV();
-	if (failures) logger.error("Server save completed with {} player failures; bot state remains pending", failures);
+	for (const auto& guild : batch.guilds) failures += !saveGuild(guild);
+	failures += !saveMap();
+	observeFinalOutcome();
+	failures += !saveKV();
+	observeFinalOutcome();
+	if (finalSaving_ && finalCommitUncertain_) return false;
+	if (failures) logger.error("Server save completed with {} failed writes", failures);
 	else logger.info("Server saved {} players in {} milliseconds", batch.players.size(), timer.duration());
+	return failures == 0;
 }
 
-void SaveManager::saveAll() { saveBatch(captureBatch()); }
+void SaveManager::saveAll() {
+	if (!finalSaving_) saveBatch(captureBatch());
+}
+
+void SaveManager::beginFinalSave() {
+	finalSaving_ = true;
+	std::unordered_map<uint32_t, BotSave> frozen;
+	for (const auto& entry : botSaves_.snapshot()) frozen.emplace(entry.guid, entry);
+	if (auto* engine = getBotEngineIfLoaded()) {
+		for (const auto& entry : engine->capturePersistentPlayers()) {
+			const auto guid = entry.player->getGUID();
+			frozen[guid] = {guid, entry.player, entry.loginPosition};
+		}
+	}
+	for (const auto& [_, player] : game.getPlayers()) {
+		frozen[player->getGUID()] = {player->getGUID(), player, player->getPosition()};
+	}
+	for (auto& [_, entry] : frozen) {
+		if (entry.player && !entry.checkpoint) {
+			try {
+				Player::PlayerLock lock(entry.player);
+				entry.checkpoint = std::make_shared<const PlayerSaveSnapshot>(
+					IOLoginData::capturePlayerSave(entry.player, entry.position));
+			} catch (const std::exception& error) {
+				logger.error("Could not freeze player {} checkpoint: {}", entry.guid, error.what());
+			}
+		}
+		finalPlayers_.push_back(std::move(entry));
+	}
+}
+
+bool SaveManager::saveFinal() {
+	finalCommitUncertain_ = false;
+	if (saveBatch(captureBatch()) && !finalCommitUncertain_) {
+		finalPlayers_.clear();
+		return true;
+	}
+	return false;
+}
+
+void SaveManager::observeFinalOutcome() {
+	if (finalSaving_ && DBTransaction::lastOutcome() == DBTransaction::Outcome::Uncertain) {
+		finalCommitUncertain_ = true;
+	}
+}
 
 void SaveManager::scheduleAll() {
+	if (finalSaving_) return;
 	// Dependencies are queued before the batch waiter on the FIFO worker pool.
 	// Neither the waiter nor a save worker consults the unloadable bot engine.
 	auto batch = captureBatch();
@@ -108,7 +159,7 @@ void SaveManager::scheduleAll() {
 std::shared_future<bool> SaveManager::enqueueBot(BotSave save) {
 	// This runs on the dispatcher before any reactivation can mutate the object.
 	// Retain Player only for failed-save recovery and dispatcher-owned acknowledgement.
-	if (save.player) {
+	if (save.player && !save.checkpoint) {
 		try {
 			save.checkpoint = std::make_shared<const PlayerSaveSnapshot>(IOLoginData::capturePlayerSave(save.player, save.position));
 		} catch (const std::exception& error) {
@@ -137,7 +188,9 @@ void SaveManager::runBotSave(uint32_t guid) {
 			Database::ScopedConnection route(*connection);
 			if (work->value.player && !work->value.checkpoint) throw std::runtime_error("bot checkpoint capture failed");
 			if (work->value.checkpoint) {
+				if (IOMarket::playerHasPendingFill(guid)) throw std::runtime_error("market settlement is awaiting reconciliation");
 				success = IOLoginData::persistPlayerSave(*work->value.checkpoint);
+				observeFinalOutcome();
 				if (success) threadPool.detach_task([player = work->value.player, snapshot = work->value.checkpoint] {
 					// Dispatcher has slots for its general pool, not these dedicated SQL
 					// workers. Relay only the tiny acknowledgement through a known producer;
@@ -160,11 +213,13 @@ void SaveManager::runBotSave(uint32_t guid) {
 }
 
 void SaveManager::saveBotPosition(uint32_t guid, const Position& position) {
+	if (finalSaving_) return;
 	// Dispatcher only. Preserve a pending full character save when updating position.
 	enqueueBot({guid, getPendingBotPlayer(guid), position});
 }
 
 void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
+	if (finalSaving_) return;
 	auto playerToSave = playerPtr.lock();
 	if (!playerToSave) {
 		logger.debug("Skipping save for player because player is no longer online.");
@@ -198,7 +253,7 @@ void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
 			logger.warn("Skipping save for player because another save has been scheduled.");
 			return;
 		}
-		doSavePlayer(player);
+		if (!finalSaving_) doSavePlayer(player);
 	});
 }
 
@@ -210,12 +265,14 @@ bool SaveManager::doSavePlayer(std::shared_ptr<Player> player, std::optional<Pos
 
 	Benchmark bm_savePlayer;
 	Player::PlayerLock lock(player);
+	if (IOMarket::playerHasPendingFill(player->getGUID())) return false;
 	m_playerMap.erase(player->getGUID());
 	if (g_game().getGameState() == GAME_STATE_NORMAL) {
 		logger.debug("Saving player {}.", player->getName());
 	}
 
 	bool saveSuccess = IOLoginData::savePlayer(player, position);
+	observeFinalOutcome();
 	if (!saveSuccess) {
 		logger.error("Failed to save player {}.", player->getName());
 	}
@@ -227,6 +284,7 @@ bool SaveManager::doSavePlayer(std::shared_ptr<Player> player, std::optional<Pos
 
 bool SaveManager::savePlayer(std::shared_ptr<Player> player, std::optional<Position> position) {
 	if (!player) return false;
+	if (finalSaving_) return true; // Owned by the final batch.
 	if (player->isBotPlayer()) {
 		enqueueBot({player->getGUID(), player, position.value_or(player->getLoginPosition())});
 		return true; // queued, never an acknowledgement of SQL durability
@@ -239,33 +297,37 @@ bool SaveManager::savePlayer(std::shared_ptr<Player> player, std::optional<Posit
 	return doSavePlayer(player);
 }
 
-void SaveManager::saveGuild(std::shared_ptr<Guild> guild) {
+bool SaveManager::saveGuild(std::shared_ptr<Guild> guild) {
 	if (!guild) {
 		logger.debug("Failed to save guild because guild is null.");
-		return;
+		return false;
 	}
 
 	Benchmark bm_saveGuild;
 	logger.debug("Saving guild {}...", guild->getName());
-	IOGuild::saveGuild(guild);
+	const bool saved = IOGuild::saveGuild(guild);
 
 	auto duration = bm_saveGuild.duration();
 	logger.debug("Saving guild {} took {} milliseconds.", guild->getName(), duration);
+	return saved;
 }
 
-void SaveManager::saveMap() {
+bool SaveManager::saveMap() {
+	DBTransaction::clearOutcome();
 	Benchmark bm_saveMap;
 	logger.debug("Saving map...");
-	bool saveSuccess = Map::save();
+	bool saveSuccess = finalSaving_ ? Map::saveOnce() : Map::save();
 	if (!saveSuccess) {
 		logger.error("Failed to save map.");
 	}
 
 	auto duration = bm_saveMap.duration();
 	logger.debug("Map saved in {} milliseconds.", duration);
+	return saveSuccess;
 }
 
-void SaveManager::saveKV() {
+bool SaveManager::saveKV() {
+	DBTransaction::clearOutcome();
 	Benchmark bm_saveKV;
 	logger.debug("Saving key-value store...");
 	bool saveSuccess = kv.saveAll();
@@ -275,4 +337,5 @@ void SaveManager::saveKV() {
 
 	auto duration = bm_saveKV.duration();
 	logger.debug("Key-value store saved in {} milliseconds.", duration);
+	return saveSuccess;
 }

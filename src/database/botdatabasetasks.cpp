@@ -11,6 +11,8 @@
 
 #include "game/scheduling/dispatcher.hpp"
 
+#include <chrono>
+
 BotDatabaseTasks &g_botDatabaseTasks() {
 	static BotDatabaseTasks instance;
 	return instance;
@@ -51,15 +53,10 @@ void BotDatabaseTasks::store(const std::string &query, const std::function<void(
 }
 
 void BotDatabaseTasks::run(const std::stop_token &token) {
-	// Connect on the worker thread with the same credentials as the main
-	// connection. Config is loaded long before bot systems enqueue anything.
-	connected_ = db_.connect();
-	if (!connected_) {
-		g_logger().error("[BotDatabaseTasks] dedicated DB connection FAILED — bot async queries will be dropped (check MySQL max_connections)");
-	} else {
-		g_logger().info("[BotDatabaseTasks] dedicated bot-DB worker online (own connection, off the shared pool)");
-	}
-
+	using Clock = std::chrono::steady_clock;
+	constexpr auto reconnectInterval = std::chrono::seconds(2);
+	auto nextConnect = Clock::now();
+	bool connected = false;
 	while (true) {
 		Job job;
 		{
@@ -68,24 +65,36 @@ void BotDatabaseTasks::run(const std::stop_token &token) {
 			if (token.stop_requested()) {
 				return; // process teardown — drop any remainder, mirrors DatabaseTasks pool teardown
 			}
+			if (!connected && Clock::now() < nextConnect) {
+				cv_.wait_until(lock, nextConnect, [&] { return token.stop_requested(); });
+				if (token.stop_requested()) return;
+			}
 			job = std::move(queue_.front());
 			queue_.pop_front();
 		}
 
-		if (!connected_) {
-			continue;
+		if (!connected && Clock::now() >= nextConnect) {
+			connected = db_.connect();
+			nextConnect = Clock::now() + reconnectInterval;
+			if (connected) {
+				g_logger().info("[BotDatabaseTasks] dedicated database connection ready");
+			}
 		}
 
-		if (job.isStore) {
-			DBResult_ptr result = db_.storeQuery(job.query);
-			if (job.callback != nullptr) {
-				g_dispatcher().addEvent([callback = std::move(job.callback), result]() { callback(result, true); }, "BotDatabaseTasks::store");
+		DBResult_ptr result;
+		bool success = false;
+		if (connected) {
+			if (job.isStore) {
+				result = db_.storeQuery(job.query, success);
+			} else {
+				success = db_.executeQuery(job.query);
 			}
-		} else {
-			bool success = db_.executeQuery(job.query);
-			if (job.callback != nullptr) {
-				g_dispatcher().addEvent([callback = std::move(job.callback), success]() { callback(nullptr, success); }, "BotDatabaseTasks::execute");
-			}
+			connected = db_.isConnected();
+		}
+		if (job.callback) {
+			g_dispatcher().addEvent([callback = std::move(job.callback), result = std::move(result), success]() {
+				callback(result, success);
+			}, "BotDatabaseTasks::complete");
 		}
 	}
 }

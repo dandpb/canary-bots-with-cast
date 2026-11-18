@@ -10,6 +10,8 @@
 #pragma once
 
 #include "declarations.hpp"
+#include <atomic>
+#include <optional>
 #include <utility>
 #include <string>
 #include <stdexcept>
@@ -75,7 +77,6 @@ public:
 	 */
 	void createDatabaseBackup(bool compress) const;
 
-	bool retryQuery(std::string_view query, int retries);
 	bool executeQuery(std::string_view query);
 	struct TransactionContext {
 		const Database* owner;
@@ -89,13 +90,16 @@ public:
 	bool canRetryDeadlock(const TransactionContext& context) const;
 
 	DBResult_ptr storeQuery(std::string_view query);
+	DBResult_ptr storeQuery(std::string_view query, bool &success);
+	bool isConnected() const;
 
 	std::string escapeString(const std::string &s) const;
 
 	std::string escapeBlob(const char* s, uint32_t length) const;
 
 	uint64_t getLastInsertId() const {
-		return static_cast<uint64_t>(mysql_insert_id(handle));
+		std::unique_lock lock(databaseLock, std::defer_lock);
+		return lockForOperation(lock) && handle ? mysql_insert_id(handle) : 0;
 	}
 
 	static const char* getClientVersion() {
@@ -112,15 +116,28 @@ private:
 	static thread_local std::pair<const Database*, unsigned int> lastExecuteError_;
 	static thread_local uint64_t recoveryEpoch_;
 	unsigned int getLastExecuteError() const;
+	struct ConnectionOptions {
+		std::string host, user, password, database, socket;
+		uint32_t port;
+	};
+	enum class TransactionOutcome { Committed, Failed, Uncertain };
+	bool lockForOperation(std::unique_lock<std::recursive_mutex> &lock) const;
+	bool openConnection();
+	void discardConnection();
+	bool readyForQuery();
+	bool sendQuery(std::string_view query);
+	void recordQueryFailure(unsigned int error);
 	bool beginTransaction();
-	bool rollback();
-	bool commit();
+	TransactionOutcome finishTransaction(bool commit);
 
 	static bool isRecoverableError(unsigned int error);
 
 	MYSQL* handle = nullptr;
-	std::recursive_mutex databaseLock;
-	uint64_t maxPacketSize = 1048576;
+	mutable std::recursive_mutex databaseLock;
+	std::atomic<uint64_t> maxPacketSize = 1048576;
+	std::optional<ConnectionOptions> connectionOptions;
+	bool transactionActive = false;
+	bool transactionFailed = false;
 
 	friend class DBTransaction;
 };
@@ -264,6 +281,9 @@ private:
 
 class DBTransaction {
 public:
+	using Outcome = Database::TransactionOutcome;
+	static Outcome lastOutcome() { return lastOutcome_; }
+	static void clearOutcome() { lastOutcome_ = Outcome::Failed; }
 	explicit DBTransaction() = default;
 
 	~DBTransaction() = default;
@@ -280,98 +300,33 @@ public:
 	static bool executeWithinTransaction(const Func &callback)
 		requires std::invocable<Func>
 	{
-		DBTransaction transaction;
+		return executeWithOutcome(callback) == Outcome::Committed;
+	}
+
+	template <typename Func>
+	static Outcome executeWithOutcome(const Func &callback)
+		requires std::invocable<Func>
+	{
+		auto &database = Database::getInstance();
+		std::unique_lock lock(database.databaseLock, std::defer_lock);
+		clearOutcome();
+		if (!database.lockForOperation(lock) || !database.beginTransaction()) {
+			return Outcome::Failed;
+		}
 		try {
-			if (!transaction.begin()) {
-				g_logger().error("[{}] Failed to begin transaction", __FUNCTION__);
-				return false;
-			}
-
-			const bool result = callback();
-
-			if (!transaction.commit()) {
-				return false;
-			}
-
-			return result;
-		} catch (const std::exception &exception) {
-			transaction.rollback();
-			g_logger().error("[{}] Error occurred during transaction, error: {}", __FUNCTION__, exception.what());
-			return false;
+			return lastOutcome_ = database.finishTransaction(callback());
+		} catch (const std::exception &error) {
+			database.finishTransaction(false);
+			g_logger().error("[DBTransaction] {}", error.what());
+			return Outcome::Failed;
+		} catch (...) {
+			database.finishTransaction(false);
+			throw;
 		}
 	}
 
 private:
-	bool begin() {
-		// Ensure that the transaction has not already been started
-		if (state != STATE_NO_START) {
-			return false;
-		}
-
-		try {
-			// Start the transaction
-			state = STATE_START;
-			return Database::getInstance().beginTransaction();
-		} catch (const std::exception &exception) {
-			// An error occurred while starting the transaction
-			state = STATE_NO_START;
-			g_logger().error("[{}] An error occurred while starting the transaction, error: {}", __FUNCTION__, exception.what());
-			return false;
-		}
-	}
-
-	void rollback() {
-		// Ensure that the transaction has been started
-		if (state != STATE_START) {
-			return;
-		}
-
-		try {
-			// Rollback the transaction
-			state = STATE_NO_START;
-			Database::getInstance().rollback();
-		} catch (const std::exception &exception) {
-			// An error occurred while rolling back the transaction
-			g_logger().error("[{}] An error occurred while rolling back the transaction, error: {}", __FUNCTION__, exception.what());
-		}
-	}
-
-	bool commit() {
-		// Ensure that the transaction has been started
-		if (state != STATE_START) {
-			g_logger().error("Transaction not started");
-			return false;
-		}
-
-		try {
-			// Commit the transaction
-			state = STATE_COMMIT;
-			if (!Database::getInstance().commit()) {
-				state = STATE_NO_START;
-				g_logger().error("[{}] Commit returned false", __FUNCTION__);
-				return false;
-			}
-
-			return true;
-		} catch (const std::exception &exception) {
-			// An error occurred while committing the transaction
-			state = STATE_NO_START;
-			g_logger().error("[{}] An error occurred while committing the transaction, error: {}", __FUNCTION__, exception.what());
-			return false;
-		}
-	}
-
-	bool isStarted() const {
-		return state == STATE_START;
-	}
-	bool isCommitted() const {
-		return state == STATE_COMMIT;
-	}
-	bool isRolledBack() const {
-		return state == STATE_NO_START;
-	}
-
-	TransactionStates_t state = STATE_NO_START;
+	inline static thread_local Outcome lastOutcome_ = Outcome::Failed;
 };
 
 class DatabaseException : public std::exception {

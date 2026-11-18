@@ -613,14 +613,13 @@ async def test_attested_hook_is_common_and_restored_after_failure(
             harness = pilot.benchmark.DockerFixture(
                 config,
                 config.output / f"{participant.name}-0",
-                hashlib.sha256(
-                    f"{config.name}:{participant.name}:0".encode()
-                ).hexdigest(),
+                f"{config.name}:{participant.name}:0",
             )
             harness.prepare(participant)
             compose = json.loads(harness.compose.read_text())
             seen.append(
-                (compose["networks"], compose["services"]["game"]["volumes"][-1])
+                ({"default": {"internal": compose["networks"]["default"]["internal"]}},
+                 compose["services"]["game"]["volumes"][-1])
             )
         raise RuntimeError("offline simulated failure")
 
@@ -1379,7 +1378,7 @@ async def test_attestation_failure_preserves_admitted_bytes_results_and_releases
         trial = pilot.benchmark.DockerFixture(
             config,
             config.output / "native-0",
-            hashlib.sha256(run_id.encode()).hexdigest(),
+            run_id,
         )
         config.output.mkdir()
         trial.prepare(config.participants[0])

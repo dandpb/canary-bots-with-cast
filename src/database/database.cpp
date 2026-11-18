@@ -18,6 +18,9 @@
 #include <atomic>
 #include <cstdlib>
 
+#ifndef _WIN32
+	#include <poll.h>
+#endif
 #include <chrono> // dbMonoMs (JITTER FIX 2026-06-10) — explicit, don't rely on PCH
 
 thread_local std::pair<const Database*, unsigned int> Database::lastExecuteError_ {nullptr, 0};
@@ -36,10 +39,6 @@ bool dbPerfTelemetryEnabled() {
 	return enabled;
 }
 
-std::atomic<uint32_t> s_dispatcherStoreQueryCount{0};
-std::atomic<uint32_t> s_dispatcherExecuteQueryCount{0};
-constexpr uint32_t MAX_LOGGED_DISPATCHER_QUERIES = 300;
-
 int64_t dbMonoUs() {
 	return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 }
@@ -52,6 +51,44 @@ std::atomic<int64_t> s_dispatcherSyncDbUs { 0 };
 // for the whole process lifetime whenever a sync query issued FROM THE DISPATCHER
 // THREAD takes >10ms — measured across databaseLock acquisition + the query, so
 // head-of-line blocking behind a worker-thread transaction shows up here too.
+using SqlClock = std::chrono::steady_clock;
+constexpr auto DispatcherSqlBudget = std::chrono::milliseconds(1500);
+
+template <typename Continue>
+bool awaitSql(MYSQL *connection, int waiting, SqlClock::time_point deadline, Continue resume) {
+	while (waiting) {
+		auto remaining = std::chrono::ceil<std::chrono::milliseconds>(deadline - SqlClock::now()).count();
+		if (remaining <= 0) return false;
+		if (waiting & MYSQL_WAIT_TIMEOUT) {
+			remaining = std::min(remaining, static_cast<decltype(remaining)>(mysql_get_timeout_value_ms(connection)));
+		}
+		short events = 0;
+		if (waiting & MYSQL_WAIT_READ) events |= POLLIN;
+		if (waiting & MYSQL_WAIT_WRITE) events |= POLLOUT;
+		if (waiting & MYSQL_WAIT_EXCEPT) events |= POLLPRI;
+#ifdef _WIN32
+		WSAPOLLFD descriptor { mysql_get_socket(connection), events, 0 };
+		const int ready = WSAPoll(&descriptor, 1, static_cast<int>(remaining));
+#else
+		pollfd descriptor { mysql_get_socket(connection), events, 0 };
+		const int ready = poll(&descriptor, 1, static_cast<int>(remaining));
+#endif
+		if (ready < 0 || SqlClock::now() >= deadline) return false;
+		int activity = 0;
+		if (ready == 0) {
+			if (!(waiting & MYSQL_WAIT_TIMEOUT)) return false;
+			activity = MYSQL_WAIT_TIMEOUT;
+		} else {
+			if (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) return false;
+			if (descriptor.revents & POLLIN) activity |= MYSQL_WAIT_READ;
+			if (descriptor.revents & POLLOUT) activity |= MYSQL_WAIT_WRITE;
+			if (descriptor.revents & POLLPRI) activity |= MYSQL_WAIT_EXCEPT;
+		}
+		waiting = resume(activity);
+	}
+	return true;
+}
+
 struct SyncDbTimer {
 	const char* kind;
 	std::string_view query;
@@ -113,36 +150,81 @@ bool Database::connect() {
 }
 
 bool Database::connect(const std::string* host, const std::string* user, const std::string* password, const std::string* database, uint32_t port, const std::string* sock) {
-	// connection handle initialization
-	handle = mysql_init(nullptr);
-	if (!handle) {
-		g_logger().error("Failed to initialize MySQL connection handle.");
+	std::unique_lock lock(databaseLock, std::defer_lock);
+	if (!lockForOperation(lock) || transactionActive) {
 		return false;
 	}
-
-	if (host->empty() || user->empty() || password->empty() || database->empty() || port <= 0) {
-		g_logger().warn("MySQL host, user, password, database or port not provided");
-	}
-
-	// automatic reconnect
-	bool reconnect = true;
-	mysql_options(handle, MYSQL_OPT_RECONNECT, &reconnect);
-
-	// Remove ssl verification
-	bool ssl_enabled = false;
-	mysql_options(handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &ssl_enabled);
-
-	// connects to database
-	if (!mysql_real_connect(handle, host->c_str(), user->c_str(), password->c_str(), database->c_str(), port, sock->c_str(), 0)) {
-		g_logger().error("MySQL Error Message: {}", mysql_error(handle));
+	discardConnection();
+	connectionOptions = ConnectionOptions { *host, *user, *password, *database, *sock, port };
+	if (!openConnection()) {
 		return false;
 	}
-
-	DBResult_ptr result = storeQuery("SHOW VARIABLES LIKE 'max_allowed_packet'");
-	if (result) {
+	if (const auto result = storeQuery("SHOW VARIABLES LIKE 'max_allowed_packet'")) {
 		maxPacketSize = result->getNumber<uint64_t>("Value");
 	}
+	return handle != nullptr;
+}
+
+bool Database::openConnection() {
+	if (!connectionOptions || transactionActive) {
+		return false;
+	}
+	const auto &options = *connectionOptions;
+	handle = mysql_init(nullptr);
+	if (!handle) {
+		g_logger().error("Failed to initialize MySQL connection handle");
+		return false;
+	}
+
+	// Replacing the transport must be explicit. Implicit reconnect can execute
+	// a later statement in autocommit after the server has rolled back the transaction.
+	bool disabled = false;
+	unsigned int timeoutSeconds = 1;
+	mysql_options(handle, MYSQL_OPT_RECONNECT, &disabled);
+	mysql_options(handle, MYSQL_OPT_NONBLOCK, nullptr);
+	mysql_options(handle, MYSQL_OPT_CONNECT_TIMEOUT, &timeoutSeconds);
+	mysql_options(handle, MYSQL_OPT_READ_TIMEOUT, &timeoutSeconds);
+	mysql_options(handle, MYSQL_OPT_WRITE_TIMEOUT, &timeoutSeconds);
+	mysql_options(handle, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &disabled);
+	if (!mysql_real_connect(handle, options.host.c_str(), options.user.c_str(), options.password.c_str(),
+		options.database.c_str(), options.port, options.socket.c_str(), 0)) {
+		g_logger().error("MySQL connection failed [{}]", mysql_errno(handle));
+		discardConnection();
+		return false;
+	}
 	return true;
+}
+
+void Database::discardConnection() {
+	if (handle) {
+		mysql_close(std::exchange(handle, nullptr));
+		++recoveryEpoch_;
+	}
+}
+
+bool Database::lockForOperation(std::unique_lock<std::recursive_mutex> &lock) const {
+	if (Dispatcher::isOnDispatcherThread()) {
+		return lock.try_lock();
+	}
+	lock.lock();
+	return true;
+}
+
+bool Database::isConnected() const {
+	std::unique_lock lock(databaseLock, std::defer_lock);
+	return lockForOperation(lock) && handle;
+}
+
+bool Database::readyForQuery() {
+	if (transactionActive) {
+		return handle && !transactionFailed;
+	}
+	if (handle) {
+		return true;
+	}
+	// Reserve the dispatcher's current operation for recovery. A subsequent
+	// invocation can use the new connection without spending two I/O budgets.
+	return openConnection() && !Dispatcher::isOnDispatcherThread();
 }
 
 void Database::createDatabaseBackup(bool compress) const {
@@ -242,45 +324,36 @@ void Database::createDatabaseBackup(bool compress) const {
 }
 
 bool Database::beginTransaction() {
-	if (!executeQuery("BEGIN")) {
+	if (transactionActive || !readyForQuery() || !sendQuery("BEGIN")) {
 		return false;
 	}
-	metrics::lock_latency measureLock("database");
-	databaseLock.lock();
-	measureLock.stop();
-
+	transactionActive = true;
+	transactionFailed = false;
 	return true;
 }
 
-bool Database::rollback() {
+Database::TransactionOutcome Database::finishTransaction(bool commit) {
+	transactionActive = false;
 	if (!handle) {
-		g_logger().error("Database not initialized!");
-		return false;
+		// The body lost its connection before we sent COMMIT.
+		return TransactionOutcome::Failed;
 	}
-
-	if (mysql_rollback(handle) != 0) {
-		g_logger().error("Message: {}", mysql_error(handle));
-		databaseLock.unlock();
-		return false;
+	if (!commit || transactionFailed) {
+		if (mysql_rollback(handle) != 0) {
+			discardConnection();
+		}
+		return TransactionOutcome::Failed;
 	}
-
-	databaseLock.unlock();
-	return true;
-}
-
-bool Database::commit() {
-	if (!handle) {
-		g_logger().error("Database not initialized!");
-		return false;
+	if (mysql_commit(handle) == 0) {
+		return TransactionOutcome::Committed;
 	}
-	if (mysql_commit(handle) != 0) {
-		g_logger().error("Message: {}", mysql_error(handle));
-		databaseLock.unlock();
-		return false;
+	const auto error = mysql_errno(handle);
+	const bool uncertain = isRecoverableError(error);
+	g_logger().error("MySQL commit failed [{}], outcome {}", error, uncertain ? "uncertain" : "failed");
+	if (uncertain || mysql_rollback(handle) != 0) {
+		discardConnection();
 	}
-
-	databaseLock.unlock();
-	return true;
+	return uncertain ? TransactionOutcome::Uncertain : TransactionOutcome::Failed;
 }
 
 bool Database::isRecoverableError(unsigned int error) {
@@ -292,36 +365,36 @@ unsigned int Database::getLastExecuteError() const {
 }
 
 Database::TransactionContext Database::transactionContext() const {
+	std::unique_lock lock(databaseLock, std::defer_lock);
+	if (!lockForOperation(lock)) {
+		return {this, 0, recoveryEpoch_};
+	}
 	return {this, handle ? static_cast<uint64_t>(mysql_thread_id(handle)) : 0, recoveryEpoch_};
 }
 
 bool Database::canRetryDeadlock(const TransactionContext& context) const {
-	return context.owner == this && context.connectionId != 0 && handle
+	std::unique_lock lock(databaseLock, std::defer_lock);
+	return lockForOperation(lock) && context.owner == this && context.connectionId != 0 && handle
 		&& context.connectionId == static_cast<uint64_t>(mysql_thread_id(handle))
 		&& context.recoveryEpoch == recoveryEpoch_ && getLastExecuteError() == 1213;
 }
 
-bool Database::retryQuery(std::string_view query, int retries) {
-	lastExecuteError_ = {this, 0};
-	while (retries > 0 && mysql_query(handle, query.data()) != 0) {
-		const auto error = mysql_errno(handle);
-		lastExecuteError_ = {this, error};
-		g_logger().error("Query: {}", query.substr(0, 256));
-		g_logger().error("MySQL error [{}]: {}", error, mysql_error(handle));
-		if (!isRecoverableError(error)) {
-			return false;
-		}
-		++recoveryEpoch_;
-		std::this_thread::sleep_for(std::chrono::seconds(1));
-		retries--;
+void Database::recordQueryFailure(unsigned int error) {
+	lastExecuteError_ = {this, error};
+	transactionFailed = transactionActive;
+	g_logger().error("MySQL statement failed [{}]", error);
+	if (isRecoverableError(error)) {
+		discardConnection();
 	}
-	if (retries == 0) {
-		g_logger().error("Query {} failed after {} retries.", query, 10);
-		return false;
-	}
+}
 
+bool Database::sendQuery(std::string_view query) {
 	lastExecuteError_ = {this, 0};
-	return true;
+	if (mysql_real_query(handle, query.data(), query.size()) == 0) {
+		return true;
+	}
+	recordQueryFailure(mysql_errno(handle));
+	return false;
 }
 
 bool Database::executeQuery(std::string_view query) {
@@ -329,79 +402,85 @@ bool Database::executeQuery(std::string_view query) {
 		statements_->emplace_back(query);
 		return true;
 	}
-	if (!handle) {
-		g_logger().error("Database not initialized!");
+
+	SyncDbTimer syncTimer("execute", query);
+	metrics::lock_latency measureLock("database");
+	std::unique_lock lock(databaseLock, std::defer_lock);
+	if (!lockForOperation(lock)) {
 		return false;
 	}
-
-	// PERF telemetry: log first N sync queries from the dispatcher thread.
-	if (dbPerfTelemetryEnabled() && Dispatcher::isOnDispatcherThread()) {
-		uint32_t c = s_dispatcherExecuteQueryCount.fetch_add(1, std::memory_order_relaxed);
-		if (c < MAX_LOGGED_DISPATCHER_QUERIES) {
-			g_logger().warn("[DB_SYNC_DISPATCHER] kind=execute count={} query=\"{}\"",
-				c + 1, query.substr(0, 160));
-		}
-	}
-
-	g_logger().trace("Executing Query: {}", query);
-
-	SyncDbTimer syncTimer("execute", query); // JITTER FIX: uncapped >10ms dispatcher-thread log
-	metrics::lock_latency measureLock("database");
-	std::scoped_lock lock { databaseLock };
 	measureLock.stop();
 
 	metrics::query_latency measure(query.substr(0, 50));
-	bool success = retryQuery(query, 10);
-	mysql_free_result(mysql_store_result(handle));
-
-	return success;
+	if (!readyForQuery() || !sendQuery(query)) {
+		return false;
+	}
+	if (auto *result = mysql_store_result(handle)) {
+		mysql_free_result(result);
+	} else if (mysql_field_count(handle) != 0) {
+		recordQueryFailure(mysql_errno(handle));
+		return false;
+	}
+	return true;
 }
 
 DBResult_ptr Database::storeQuery(std::string_view query) {
-	if (statements_) throw std::logic_error("A player checkpoint cannot perform database reads");
-	if (!handle) {
-		g_logger().error("Database not initialized!");
+	bool success;
+	return storeQuery(query, success);
+}
+
+DBResult_ptr Database::storeQuery(std::string_view query, bool &success) {
+	const auto deadline = SqlClock::now() + DispatcherSqlBudget;
+	success = false;
+	if (statements_) {
+		throw std::logic_error("A player checkpoint cannot perform database reads");
+	}
+	SyncDbTimer syncTimer("store", query);
+	metrics::lock_latency measureLock("database");
+	std::unique_lock lock(databaseLock, std::defer_lock);
+	if (!lockForOperation(lock)) {
 		return nullptr;
 	}
-
-	// PERF telemetry: log first N sync queries from the dispatcher thread.
-	if (dbPerfTelemetryEnabled() && Dispatcher::isOnDispatcherThread()) {
-		uint32_t c = s_dispatcherStoreQueryCount.fetch_add(1, std::memory_order_relaxed);
-		if (c < MAX_LOGGED_DISPATCHER_QUERIES) {
-			g_logger().warn("[DB_SYNC_DISPATCHER] kind=store count={} query=\"{}\"",
-				c + 1, query.substr(0, 160));
-		}
-	}
-
-	g_logger().trace("Storing Query: {}", query);
-
-	SyncDbTimer syncTimer("store", query); // JITTER FIX: uncapped >10ms dispatcher-thread log
-	metrics::lock_latency measureLock("database");
-	std::scoped_lock lock { databaseLock };
 	measureLock.stop();
 
 	metrics::query_latency measure(query.substr(0, 50));
-retry:
-	if (mysql_query(handle, query.data()) != 0) {
-		g_logger().error("Query: {}", query);
-		g_logger().error("Message: {}", mysql_error(handle));
-		if (!isRecoverableError(mysql_errno(handle))) {
+	if (!readyForQuery()) return nullptr;
+	MYSQL_RES *result = nullptr;
+	if (Dispatcher::isOnDispatcherThread()) {
+		int status = 0;
+		lastExecuteError_ = {this, 0};
+		int waiting = mysql_real_query_start(&status, handle, query.data(), query.size());
+		if (!awaitSql(handle, waiting, deadline, [&](int activity) {
+			return mysql_real_query_cont(&status, handle, activity);
+		})) {
+			recordQueryFailure(CR_SERVER_LOST);
 			return nullptr;
 		}
-		++recoveryEpoch_;
-		std::this_thread::sleep_for(std::chrono::seconds(1));
-		goto retry;
-	}
-
-	// Retrieving results of query
-	MYSQL_RES* res = mysql_store_result(handle);
-	if (res != nullptr) {
-		DBResult_ptr result = std::make_shared<DBResult>(res);
-		if (!result->hasNext()) {
+		if (status != 0) {
+			recordQueryFailure(mysql_errno(handle));
 			return nullptr;
 		}
-		return result;
+		waiting = mysql_store_result_start(&result, handle);
+		if (!awaitSql(handle, waiting, deadline, [&](int activity) {
+			return mysql_store_result_cont(&result, handle, activity);
+		})) {
+			recordQueryFailure(CR_SERVER_LOST);
+			return nullptr;
+		}
+	} else {
+		if (!sendQuery(query)) return nullptr;
+		result = mysql_store_result(handle);
 	}
+	if (result) {
+		auto rows = std::make_shared<DBResult>(result);
+		success = true;
+		return rows->hasNext() ? rows : nullptr;
+	}
+	if (mysql_field_count(handle) != 0) {
+		recordQueryFailure(mysql_errno(handle));
+		return nullptr;
+	}
+	success = true;
 	return nullptr;
 }
 
@@ -416,7 +495,8 @@ std::string Database::escapeString(const std::string &s) const {
 }
 
 std::string Database::escapeBlob(const char* s, uint32_t length) const {
-	if (statements_) {
+	std::unique_lock lock(databaseLock, std::defer_lock);
+	if (statements_ || !lockForOperation(lock) || !handle) {
 		// Hex literals preserve arbitrary bytes without a connection, charset state,
 		// SQL-mode-dependent escaping, or a lock on the dispatcher's live connection.
 		constexpr char hex[] = "0123456789ABCDEF";

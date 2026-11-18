@@ -90,8 +90,9 @@ ENV DEBIAN_FRONTEND=${DEBIAN_FRONTEND}
 ENV TZ=Etc/UTC
 VOLUME [ "/data" ]
 
-COPY --from=build /srv/build/linux-release/bin/canary /bin/canary
+COPY --from=build /srv/build/linux-release/bin/canary /srv/build/linux-release/bin/libbot_engine.so /canary/
 COPY LICENSE *.sql key.pem /canary/
+COPY database/bots /canary/database/bots
 COPY data /canary/data
 COPY data-canary /canary/data-canary
 COPY data-otservbr-global /canary/data-otservbr-global
@@ -102,7 +103,7 @@ WORKDIR /canary
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 	apt-get update && apt-get install -y --no-install-recommends \
-	mariadb-client curl tzdata \
+	mariadb-client curl wget tzdata python3 \
 	&& ln -snf "/usr/share/zoneinfo/${TZ}" /etc/localtime \
 	&& echo "${TZ}" > /etc/timezone \
 	&& apt-get clean \

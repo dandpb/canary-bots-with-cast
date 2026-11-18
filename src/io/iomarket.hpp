@@ -34,6 +34,14 @@ public:
 	static MarketOfferEx getOfferById(uint32_t offerId);
 
 	static void createOffer(uint32_t playerId, MarketAction_t action, uint32_t itemId, uint16_t amount, uint64_t price, uint8_t tier, bool anonymous);
+	static constexpr uint64_t feeFor(uint64_t total) {
+		return std::clamp<uint64_t>(total / 50, 20, 1'000'000);
+	}
+	static bool lockFillOffer(const MarketOfferEx &offer);
+	static uint64_t writeFill(const MarketOfferEx &offer, uint32_t takerId, uint16_t amount);
+	static std::optional<bool> fillCommitted(uint64_t historyId);
+	static bool playerHasPendingFill(uint32_t guid);
+	static void setPlayerFillPending(uint32_t guid, bool pending);
 	static void acceptOffer(uint32_t offerId, uint16_t amount);
 	static void deleteOffer(uint32_t offerId);
 

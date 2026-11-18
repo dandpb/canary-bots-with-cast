@@ -159,7 +159,7 @@ async def run_trial(monkeypatch, experiment, action):
         trial = pilot.benchmark.DockerFixture(
             config,
             config.output / "native-0",
-            hashlib.sha256(identity.encode()).hexdigest(),
+            identity,
         )
         trial.prepare(config.participants[0])
         trial.start_database()
@@ -311,7 +311,7 @@ async def test_prepare_fails_before_attempt_directory_and_keeps_aggregate_eviden
         trial = pilot.benchmark.DockerFixture(
             config,
             config.output / "native-0",
-            hashlib.sha256(identity.encode()).hexdigest(),
+            identity,
         )
         engine.owner = trial
         try:

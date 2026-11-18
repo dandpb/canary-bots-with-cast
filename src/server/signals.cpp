@@ -39,10 +39,6 @@ Signals::Signals(asio::io_service &service) :
 }
 
 void Signals::asyncWait() {
-	if (g_game().getGameState() == GAME_STATE_SHUTDOWN) {
-		return;
-	}
-
 	set.async_wait([this](std::error_code err, int signal) {
 		if (err) {
 			g_logger().error("[Signals::asyncWait] - "
@@ -59,7 +55,11 @@ void Signals::asyncWait() {
 // as it is called in a new thread.
 // https://github.com/otland/forgottenserver/pull/2473
 void Signals::dispatchSignalHandler(int signal) {
-	if (g_game().getGameState() == GAME_STATE_SHUTDOWN) {
+	if (g_game().getGameState() == GAME_STATE_SHUTDOWN && signal != SIGTERM && signal != SIGINT
+#ifdef _WIN32
+		&& signal != SIGBREAK
+#endif
+	) {
 		return;
 	}
 

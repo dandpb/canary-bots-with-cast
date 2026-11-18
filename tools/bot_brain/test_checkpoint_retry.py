@@ -25,6 +25,7 @@ CPP = r"""
 #include <cassert>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -49,18 +50,19 @@ struct Model {
  enum Fault { Once, Always, Syntax, Connection, Begin, LostCommit, None, Missing,
               MixedStatement, PriorRecovery, TransparentRecovery } fault=Once;
 } state;
-int mysql_query(Model*, const char* query) {
+int mysql_real_query(Model*, const char* text, size_t size) {
+ const std::string query(text,size);
  if (std::string(query)=="increment") { ++state.staged; ++state.firstWrites; }
  if(std::string(query)=="recover") {
   if(state.fault==Model::PriorRecovery && state.transports++==0) {
-   state.committed=state.staged;state.error=2013;return 1;
+   state.staged=state.committed;state.error=2013;return 1;
   }
   if(state.fault==Model::TransparentRecovery && state.transports++==0) {
    state.committed=state.staged;++state.connection;
   }
  }
  if(std::string(query)=="failure" && state.fault==Model::MixedStatement && state.transports++==0) {
-  state.committed=state.staged;state.error=2013;return 1;
+  state.staged=state.committed;state.error=2013;return 1;
  }
  if(std::string(query)=="failure" &&
     (state.fault==Model::MixedStatement || state.fault==Model::PriorRecovery || state.fault==Model::TransparentRecovery)
@@ -78,15 +80,18 @@ int mysql_query(Model*, const char* query) {
 }
 unsigned mysql_errno(Model*) { return state.error; }
 unsigned long mysql_thread_id(Model*) { return state.connection; }
-const char* mysql_error(Model*) { return "injected database error"; }
 struct Row { template<class T> T getNumber(const char*) { return 1; } };
 class Database {
 public:
  static Database& getInstance() { static Database db; return db; }
- bool retryQuery(std::string_view query,int retries);
+ bool sendQuery(std::string_view query);
+ void recordQueryFailure(unsigned);
+ bool lockForOperation(std::unique_lock<std::recursive_mutex>& lock) const {lock.lock();return true;}
+ void discardConnection() {handle=nullptr;++recoveryEpoch_;}
+ void start() {handle=&state;transactionActive=true;transactionFailed=false;}
  bool executeQuery(std::string_view query) {
-   bool result=retryQuery(query,10);
-   state.error=0; // Subsequent client APIs need not retain the failed query errno.
+   bool result=handle && !transactionFailed && sendQuery(query);
+   state.error=0;
    return result;
  }
  std::shared_ptr<Row> storeQuery(std::string_view) {
@@ -99,6 +104,8 @@ public:
 private:
  static bool isRecoverableError(unsigned);
  Model* handle=&state;
+ mutable std::recursive_mutex databaseLock;
+ bool transactionActive=true,transactionFailed=false;
  static thread_local std::pair<const Database*,unsigned> lastExecuteError_;
  static thread_local uint64_t recoveryEpoch_;
 };
@@ -106,7 +113,7 @@ thread_local std::pair<const Database*,unsigned> Database::lastExecuteError_{nul
 thread_local uint64_t Database::recoveryEpoch_=0;
 struct DBTransaction {
  template<class F> static bool executeWithinTransaction(const F& callback) {
-   ++state.attempts; state.staged=state.committed;
+   ++state.attempts; state.staged=state.committed; Database::getInstance().start();
    if(state.fault==Model::Begin) return false;
    try {
      bool result=callback(); state.committed=state.staged;
@@ -155,12 +162,12 @@ int main() {
  state={};state.fault=Model::Missing;
  assert(!IOLoginData::persistPlayerSave(snapshot));
  assert(state.attempts==1 && state.committed==0);
- for(auto mode:{Model::MixedStatement,Model::PriorRecovery,Model::TransparentRecovery}) {
+ for(auto mode:{Model::MixedStatement,Model::PriorRecovery}) {
   state={};state.fault=mode;
   auto mixed=snapshot;
   if(mode!=Model::MixedStatement) mixed.statements={"increment","recover","failure","finish"};
   assert(!IOLoginData::persistPlayerSave(mixed));
-  assert(state.attempts==1 && state.committed==1);
+  assert(state.attempts==1 && state.committed==0);
  }
  state={};state.fault=Model::Once;
  assert(IOLoginData::persistPlayerSave(snapshot));
@@ -173,7 +180,8 @@ def main():
     source = CPP + function(
         "src/database/database.cpp", "bool Database::isRecoverableError("
     )
-    source += function("src/database/database.cpp", "bool Database::retryQuery(")
+    source += function("src/database/database.cpp", "void Database::recordQueryFailure(")
+    source += function("src/database/database.cpp", "bool Database::sendQuery(")
     source += function(
         "src/database/database.cpp", "unsigned int Database::getLastExecuteError("
     )

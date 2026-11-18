@@ -9141,7 +9141,8 @@ ReturnValue Player::addItemBatchToPaginedContainer(
 	uint32_t totalCount,
 	uint32_t &actuallyAdded,
 	uint32_t flags /*= 0*/,
-	uint8_t tier /*= 0*/
+	uint8_t tier /*= 0*/,
+	std::vector<std::shared_ptr<Item>> *staged
 ) {
 	actuallyAdded = 0;
 
@@ -9182,7 +9183,12 @@ ReturnValue Player::addItemBatchToPaginedContainer(
 			return rv;
 		}
 
-		container->addThing(newItem);
+		if (staged) {
+			staged->push_back(newItem);
+			container->internalAddThing(newItem);
+		} else {
+			container->addThing(newItem);
+		}
 
 		actuallyAdded += toStack;
 		remaining -= toStack;

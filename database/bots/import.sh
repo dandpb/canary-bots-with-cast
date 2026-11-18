@@ -4,7 +4,7 @@
 # ----------------------------------------------------------------------------
 # Prerequisite: the main `schema.sql` (repo root) must already be imported into
 # the target database. This script then creates the bot tables and loads the
-# bundled bot data (god account, bot account, GOD character, and all bot players
+# bundled bot data (bot account and all bot players
 # + market price reference and house data), in foreign-key order.
 #
 # NOTE: hunt scripts, waypoints, city routes, POIs, equipment and town mapping are
@@ -29,13 +29,17 @@ DB_NAME="${DB_NAME:-canary}"
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-mysql_args=(-h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER")
+client="$(command -v mariadb || command -v mysql)"
+mysql_args=(--skip-reconnect -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER")
 [ -n "$DB_PASS" ] && mysql_args+=("-p$DB_PASS")
 mysql_args+=("$DB_NAME")
 
 run() {
   echo ">> importing $1"
-  mysql "${mysql_args[@]}" < "$DIR/$1"
+  if ! MYSQL_PWD="$DB_PASS" "$client" "${mysql_args[@]}" < "$DIR/$1" 2>/dev/null; then
+    echo "Bot import failed at $1" >&2
+    return 1
+  fi
 }
 
 # Order matters: schema first, then parents before children (FKs).
@@ -54,9 +58,9 @@ for f in "${FILES[@]}"; do run "$f"; done
 
 # Keep new account/character registrations clear of the seeded bot id space.
 echo ">> bumping AUTO_INCREMENT past the bot id range"
-mysql "${mysql_args[@]}" <<'SQL'
+MYSQL_PWD="$DB_PASS" "$client" "${mysql_args[@]}" <<'SQL'
 ALTER TABLE `accounts` AUTO_INCREMENT = 65001;
 ALTER TABLE `players`  AUTO_INCREMENT = 66100;
 SQL
 
-echo "Done. Bot data imported into '$DB_NAME'. Default admin login: @god / god12345 (change it)."
+echo "Done. Bot data imported into $DB_NAME."

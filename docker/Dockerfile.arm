@@ -90,8 +90,9 @@ ENV TZ=Etc/UTC
 
 VOLUME [ "/data" ]
 
-COPY --from=build /srv/build/linux-release/bin/canary /bin/canary
+COPY --from=build /srv/build/linux-release/bin/canary /srv/build/linux-release/bin/libbot_engine.so /canary/
 COPY LICENSE *.sql key.pem /canary/
+COPY database/bots /canary/database/bots
 COPY data /canary/data
 COPY data-canary /canary/data-canary
 COPY data-otservbr-global /canary/data-otservbr-global

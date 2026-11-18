@@ -40,65 +40,13 @@
 #include "creatures/players/player.hpp"
 #include "database/botdatabasetasks.hpp" // bundle 6: dedicated bot-DB worker
 #include "game/scheduling/save_manager.hpp"
-#include "io/iologindata.hpp"
+#include "game/scheduling/dispatcher.hpp"
+#include "io/functions/iologindata_save_player.hpp"
 #include "io/iomarket.hpp"
 #include "items/containers/inbox/inbox.hpp"
 #include "items/items.hpp"
 #include "lib/metrics/metrics.hpp"
 #include "lua/scripts/lua_environment.hpp"
-
-namespace {
-
-// Inline equivalent of game.cpp's anonymous-namespace processItemInsertion (line 9310).
-// Keeps the bot path independent of game.cpp's translation unit.
-// Cross-reference: keep this in sync with src/game/game.cpp:9310.
-void botProcessItemInsertion(
-	const std::shared_ptr<Player> &recipient,
-	uint16_t itemId,
-	uint16_t &amount,
-	uint8_t tier,
-	uint64_t &totalPrice,
-	uint32_t pricePerItem
-) {
-	if (!recipient) {
-		return;
-	}
-	uint32_t actuallyAdded = 0;
-	const auto &inbox = recipient->getInbox();
-	if (!inbox) {
-		amount = 0;
-		totalPrice = 0;
-		return;
-	}
-	ReturnValue rv = recipient->addItemBatchToPaginedContainer(inbox, itemId, amount, actuallyAdded, FLAG_NOLIMIT, tier);
-	if (rv != RETURNVALUE_NOERROR) {
-		g_logger().warn(
-			"[botProcessItemInsertion] add to inbox returned {} for player {} item {} amount {}",
-			static_cast<int>(rv),
-			recipient->getName(),
-			itemId,
-			amount
-		);
-	}
-	if (actuallyAdded < amount) {
-		totalPrice = pricePerItem * actuallyAdded;
-		amount = actuallyAdded;
-	}
-}
-
-// Compute the server's standard market fee for a given total price.
-// Mirrors game.cpp:9420-9429 (2% fee, clamped 20gp..1Mgp).
-uint64_t botComputeMarketFee(uint64_t totalPrice) {
-	uint64_t totalFee = static_cast<uint64_t>(totalPrice * 0.02);
-	uint64_t minFee = 20;
-	uint64_t maxFee = std::min<uint64_t>(1000000, totalFee);
-	if (maxFee < minFee) {
-		maxFee = minFee;
-	}
-	return std::clamp(totalFee, uint64_t(20), maxFee);
-}
-
-} // namespace
 
 bool Game::botCreateMarketOffer(uint32_t botGuid, uint8_t action, uint16_t itemId, uint16_t amount, uint64_t price, uint8_t tier, bool anonymous) {
 	// JITTER FIX 2026-06-11 (bundle 3): this function used to perform THREE
@@ -141,7 +89,7 @@ bool Game::botCreateMarketOffer(uint32_t botGuid, uint8_t action, uint16_t itemI
 	}
 
 	const uint64_t totalPrice = price * static_cast<uint64_t>(amount);
-	const uint64_t fee = botComputeMarketFee(totalPrice);
+	const uint64_t fee = IOMarket::feeFor(totalPrice);
 
 	// Money theater only for AWAKE bots (present in the online map). Hibernated
 	// bots skip it: their temp-player debit was discarded unpersisted anyway.
@@ -202,143 +150,101 @@ bool Game::botCreateMarketOffer(uint32_t botGuid, uint8_t action, uint16_t itemI
 }
 
 bool Game::botAcceptMarketOffer(uint32_t botGuid, uint32_t offerId, uint16_t amount) {
-	const auto &bot = getPlayerByGUID(botGuid, true);
-	if (!bot) {
-		g_logger().warn("[botAcceptMarketOffer] bot {} not found", botGuid);
+	if (unresolvedMarketOffers_.contains(offerId)) return false;
+
+	auto offer = IOMarket::getOfferById(offerId);
+	if (!offer.id || amount == 0 || amount > offer.amount || offer.playerId == botGuid
+		|| (offer.type != MARKETACTION_BUY && offer.type != MARKETACTION_SELL)) {
 		return false;
 	}
-
-	MarketOfferEx offer = IOMarket::getOfferById(offerId);
-	if (offer.id == 0) {
-		// Offer no longer exists (raced, expired, cancelled). Caller can skip.
-		return false;
-	}
-
-	const ItemType &it = Item::items[offer.itemId];
-	if (it.id == 0 || it.wareId == 0) {
-		g_logger().warn("[botAcceptMarketOffer] offer {} item {} not marketable", offerId, offer.itemId);
-		return false;
-	}
-
+	const auto &itemType = Item::items[offer.itemId];
+	if (!itemType.id || !itemType.wareId) return false;
 	const uint8_t maxTier = static_cast<uint8_t>(g_configManager().getNumber(FORGE_MAX_ITEM_TIER));
-	const uint8_t offerTier = it.upgradeClassification > 0 ? std::min<uint8_t>(offer.tier, maxTier) : 0;
-	offer.tier = offerTier;
+	offer.tier = itemType.upgradeClassification > 0 ? std::min(offer.tier, maxTier) : 0;
 
-	if (amount == 0 || amount > offer.amount) {
-		return false;
+	const auto bot = getPlayerByGUID(botGuid, true);
+	const auto counterparty = getPlayerByGUID(offer.playerId, true);
+	if (!bot || !counterparty || counterparty->isBotPlayer() || IOMarket::playerHasPendingFill(offer.playerId)) return false;
+
+	const bool humanBuying = offer.type == MARKETACTION_BUY;
+	if (!humanBuying && offer.price * amount > bot->getMoney() + bot->getBankBalance()) return false;
+	const auto &recipient = humanBuying ? counterparty : bot;
+	const auto inbox = recipient->getInbox();
+	if (!inbox) return false;
+
+	std::vector<std::shared_ptr<Item>> staged;
+	uint32_t delivered = 0;
+	uint64_t total = 0;
+	uint64_t historyId = 0;
+	DBTransaction::Outcome outcome;
+	{
+		Player::PlayerLock lock(counterparty);
+		outcome = DBTransaction::executeWithOutcome([&] {
+			if (!IOMarket::lockFillOffer(offer)) return false;
+			recipient->addItemBatchToPaginedContainer(inbox, itemType.id, amount, delivered, FLAG_NOLIMIT, offer.tier, &staged);
+			if (delivered == 0) return false;
+			total = offer.price * delivered;
+			const bool checkpoint = humanBuying ? IOLoginDataSave::savePlayerInbox(counterparty)
+				: g_database().executeQuery(fmt::format("UPDATE players SET balance={} WHERE id={}",
+					counterparty->getBankBalance() + total, offer.playerId));
+			if (!checkpoint) return false;
+			historyId = IOMarket::writeFill(offer, botGuid, static_cast<uint16_t>(delivered));
+			return historyId != 0;
+		});
+		if (outcome == DBTransaction::Outcome::Committed && !humanBuying) {
+			counterparty->setBankBalance(counterparty->getBankBalance() + total);
+		}
+		if (outcome != DBTransaction::Outcome::Committed) {
+			for (const auto &item : staged) inbox->removeThingSilently(item, item->getItemCount());
+		}
+		if (outcome == DBTransaction::Outcome::Uncertain) {
+			IOMarket::setPlayerFillPending(offer.playerId, true);
+		}
 	}
 
-	uint64_t totalPrice = offer.price * static_cast<uint64_t>(amount);
-
-	// Skip self-accept (account 65000 vs same account). The scheduler should filter bot-bot
-	// pairs at SQL level; this is a defensive check.
-	if (offer.playerId == bot->getGUID()) {
-		return false;
-	}
-
-	if (offer.type == MARKETACTION_BUY) {
-		// Real player has a BUY offer; bot fulfills as seller. Items are conjured (no depot debit).
-		// Mirrors game.cpp:9633-9713 (BUY-acceptance branch) but without removeOfferItems.
-		const auto &realBuyer = getPlayerByGUID(offer.playerId, true);
-		if (!realBuyer) {
-			g_logger().warn("[botAcceptMarketOffer] offer {} buyer {} not loadable", offerId, offer.playerId);
-			return false;
-		}
-
-		// Bot receives the escrow money (debited from buyer at offer creation time)
-		bot->setBankBalance(bot->getBankBalance() + totalPrice);
-		g_metrics().addCounter("balance_increase", totalPrice, { { "player", bot->getName() }, { "context", "market_sale_bot" } });
-
-		// Items delivered to real buyer's inbox via the same primitive as the user-facing path
-		uint16_t processedAmount = amount;
-		uint64_t effectivePrice = offer.price * processedAmount;
-		botProcessItemInsertion(realBuyer, it.id, processedAmount, offer.tier, effectivePrice, offer.price);
-		amount = processedAmount;
-		totalPrice = effectivePrice;
-
-		if (realBuyer->isOffline()) {
-			g_saveManager().savePlayer(realBuyer);
-		}
-	} else { // MARKETACTION_SELL
-		// Real player has a SELL offer; bot accepts as buyer. Bot pays bank, items go to bot inbox.
-		// Mirrors game.cpp:9714-9763 (SELL-acceptance branch).
-		const auto &realSeller = getPlayerByGUID(offer.playerId, true);
-		if (!realSeller) {
-			g_logger().warn("[botAcceptMarketOffer] offer {} seller {} not loadable", offerId, offer.playerId);
-			return false;
-		}
-
-		if (totalPrice > (bot->getMoney() + bot->getBankBalance())) {
-			g_logger().warn("[botAcceptMarketOffer] bot {} insufficient funds for SELL acceptance: needed {}", bot->getName(), totalPrice);
-			return false;
-		}
-
-		// Debit bot — prefer bank
-		if (totalPrice <= bot->getBankBalance()) {
-			bot->setBankBalance(bot->getBankBalance() - totalPrice);
+	auto publish = [this, counterparty, bot, recipient, inbox, staged, total, humanBuying](bool restoreInbox) {
+		if (humanBuying) {
+			bot->setBankBalance(bot->getBankBalance() + total);
 		} else {
-			uint64_t remains = totalPrice - bot->getBankBalance();
-			bot->setBankBalance(0);
-			removeMoney(bot, remains);
+			if (restoreInbox) counterparty->setBankBalance(counterparty->getBankBalance() + total);
+			const auto debit = std::min(total, bot->getBankBalance());
+			bot->setBankBalance(bot->getBankBalance() - debit);
+			removeMoney(bot, total - debit);
 		}
-		g_metrics().addCounter("balance_decrease", totalPrice, { { "player", bot->getName() }, { "context", "market_purchase_bot" } });
-
-		// Items delivered to bot's inbox (will sit there harmlessly; bot never retrieves them)
-		uint16_t processedAmount = amount;
-		uint64_t effectivePrice = offer.price * processedAmount;
-		botProcessItemInsertion(bot, it.id, processedAmount, offer.tier, effectivePrice, offer.price);
-		amount = processedAmount;
-		totalPrice = effectivePrice;
-
-		// Credit real seller's bank
-		realSeller->setBankBalance(realSeller->getBankBalance() + totalPrice);
-		g_metrics().addCounter("balance_increase", totalPrice, { { "player", realSeller->getName() }, { "context", "market_sale" } });
-
-		if (realSeller->isOffline()) {
-			g_saveManager().savePlayer(realSeller);
+		for (const auto &item : staged) {
+			if (restoreInbox) inbox->internalAddThing(item);
+			inbox->notifyStagedAddition(item);
 		}
+		if (recipient->isOnline()) recipient->onReceiveMail();
+	};
+	if (outcome == DBTransaction::Outcome::Uncertain) {
+		unresolvedMarketOffers_.insert(offerId);
+		g_logger().error("MARKET_COMMIT_UNCERTAIN offer_id={} history_id={}", offerId, historyId);
+		if (counterparty->isOnline()) counterparty->removePlayer(true);
+		reconcileBotMarketFill(offerId, [counterparty, historyId, publish = std::move(publish)] {
+			const auto committed = IOMarket::fillCommitted(historyId);
+			if (!committed.has_value()) return false;
+			if (*committed) publish(true);
+			IOMarket::setPlayerFillPending(counterparty->getGUID(), false);
+			g_saveManager().savePlayer(counterparty);
+			return true;
+		});
+		return false;
 	}
-
-	// History rows for both sides (same call sequence as game.cpp:9777-9787)
-	IOMarket::appendHistory(
-		bot->getGUID(),
-		(offer.type == MARKETACTION_BUY ? MARKETACTION_SELL : MARKETACTION_BUY),
-		offer.itemId,
-		amount,
-		offer.price,
-		time(nullptr),
-		offer.tier,
-		OFFERSTATE_ACCEPTEDEX
-	);
-	IOMarket::appendHistory(
-		offer.playerId,
-		offer.type,
-		offer.itemId,
-		amount,
-		offer.price,
-		time(nullptr),
-		offer.tier,
-		OFFERSTATE_ACCEPTED
-	);
-
-	const uint16_t remaining = offer.amount - amount;
-	if (remaining == 0) {
-		IOMarket::deleteOffer(offer.id);
-	} else {
-		IOMarket::acceptOffer(offer.id, amount);
-	}
-
-	// PERF FIX (2026-05-27): skip bot save (see botCreateMarketOffer above).
-	// Bot's money/inventory state on this temp Player is discarded when the
-	// shared_ptr goes out of scope — accepted per user 2026-05-27. The offer
-	// history rows above (IOMarket::appendHistory) and the offer deletion/accept
-	// (IOMarket::deleteOffer / acceptOffer) ARE persisted, so the real-player
-	// counterparty sees the correct outcome.
-
+	if (outcome != DBTransaction::Outcome::Committed) return false;
+	publish(false);
 	return true;
 }
 
+void Game::reconcileBotMarketFill(uint32_t offerId, std::function<bool()> resolve) {
+	g_dispatcher().scheduleEvent(1000, [this, offerId, resolve = std::move(resolve)]() {
+		if (resolve()) unresolvedMarketOffers_.erase(offerId);
+		else reconcileBotMarketFill(offerId, resolve);
+	}, "Game::reconcileBotMarketFill");
+}
+
 bool Game::botCancelMarketOffer(uint32_t botGuid, uint32_t offerId) {
+	if (unresolvedMarketOffers_.contains(offerId)) return false;
 	const auto &bot = getPlayerByGUID(botGuid, true);
 	if (!bot) {
 		return false;

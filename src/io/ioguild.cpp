@@ -32,16 +32,16 @@ std::shared_ptr<Guild> IOGuild::loadGuild(uint32_t guildId) {
 	return nullptr;
 }
 
-void IOGuild::saveGuild(const std::shared_ptr<Guild> &guild) {
+bool IOGuild::saveGuild(const std::shared_ptr<Guild> &guild) {
 	if (!guild) {
-		return;
+		return false;
 	}
 	Database &db = Database::getInstance();
 	std::ostringstream updateQuery;
 	updateQuery << "UPDATE `guilds` SET ";
 	updateQuery << "`balance` = " << guild->getBankBalance();
 	updateQuery << " WHERE `id` = " << guild->getId();
-	db.executeQuery(updateQuery.str());
+	return db.executeQuery(updateQuery.str());
 }
 
 uint32_t IOGuild::getGuildIdByName(const std::string &name) {

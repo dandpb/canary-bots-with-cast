@@ -262,6 +262,8 @@ public:
 	void replaceThing(uint32_t index, const std::shared_ptr<Thing> &thing) final;
 
 	void removeThing(const std::shared_ptr<Thing> &thing, uint32_t count) final;
+	void removeThingSilently(const std::shared_ptr<Thing> &thing, uint32_t count);
+	void notifyStagedAddition(const std::shared_ptr<Item> &item);
 
 	int32_t getThingIndex(const std::shared_ptr<Thing> &thing) const final;
 	size_t getFirstIndex() const final;
@@ -326,6 +328,7 @@ private:
 	void onAddContainerItem(const std::shared_ptr<Item> &item);
 	void onUpdateContainerItem(uint32_t index, const std::shared_ptr<Item> &oldItem, const std::shared_ptr<Item> &newItem);
 	void onRemoveContainerItem(uint32_t index, const std::shared_ptr<Item> &item);
+	void removeThing(const std::shared_ptr<Thing> &thing, uint32_t count, bool notify);
 
 	std::shared_ptr<Container> getParentContainer();
 	std::shared_ptr<Container> getTopParentContainer();

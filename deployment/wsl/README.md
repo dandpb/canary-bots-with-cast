@@ -290,11 +290,18 @@ não são utilizados. O volume `canary-bots-wsl_database` da primeira tentativa
 incompleta foi preservado; o banco operacional usa
 `canary-bots-wsl_database-seeded`.
 
-Para parar sem excluir dados, use os mesmos arquivos Compose/overrides ativos
-e `docker compose --profile ai --profile gateway stop -t 180`; os perfis incluem
-os serviços opcionais. Encerre antes os harnesses/gateways temporários por seus
-launchers, preservando logs e verificando a remoção dos CIDs próprios. Os logs
-de build ficam neste diretório. Não use `down -v` para uma parada normal.
+Na parada planejada, mantenha o banco ativo enquanto o jogo salva. Com os
+mesmos arquivos e overrides ativos, envie SIGTERM por
+docker compose kill -s SIGTERM game e acompanhe com
+timeout 210s docker compose wait game. Após a saída 0 e o log Server saved,
+pare os demais serviços.
+
+Quando ocorrer SHUTDOWN_SAVE_FAILED ou a espera expirar, preserve o mesmo
+processo e o banco. Reconcilie qualquer commit incerto pela conexão
+administrativa e envie outro SIGTERM quando o banco estiver disponível.
+Configure supervisores externos para preservar o processo em recuperação.
+Os comandos stop e down podem escalar para SIGKILL e só entram na parada
+normal depois da saída do jogo.
 
 As edições de rotas feitas dentro do jogo são preservadas no volume
 `authored-data`. Uma atualização dos CSVs da imagem não substitui automaticamente

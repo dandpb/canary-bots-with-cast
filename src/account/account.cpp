@@ -272,7 +272,18 @@ bool Account::authenticate(const std::string &secret) {
 	return authenticatePassword(secret);
 }
 
+namespace {
+constexpr uint32_t LegacySeedAccount = 1;
+constexpr std::string_view LegacySeedFingerprint = "f45ca43bc9b20edf28d705024aac6c0b2c67072f";
+}
+
 bool Account::authenticateSession() {
+	if (m_account->id == LegacySeedAccount) {
+		const auto stored = getPassword();
+		if (stored.empty() || transformToSHA1(asLowerCaseString(stored)) == LegacySeedFingerprint) {
+			return false;
+		}
+	}
 	if (m_account->sessionExpires < getTimeNow()) {
 		g_logger().error("Session expired for account[{}] expired at [{}] current time [{}]!", m_account->id, m_account->sessionExpires, getTimeNow());
 		return false;
@@ -281,11 +292,18 @@ bool Account::authenticateSession() {
 }
 
 bool Account::authenticatePassword(const std::string &password) {
-	if (Argon2 {}.argon(password.c_str(), getPassword())) {
+	const auto stored = getPassword();
+	const auto passwordHash = transformToSHA1(password);
+	if (m_account->id == LegacySeedAccount
+		&& (transformToSHA1(asLowerCaseString(stored)) == LegacySeedFingerprint
+			|| transformToSHA1(passwordHash) == LegacySeedFingerprint)) {
+		return false;
+	}
+	if (Argon2 {}.argon(password.c_str(), stored)) {
 		return true;
 	}
 
-	if (transformToSHA1(password) == getPassword()) {
+	if (passwordHash == stored) {
 		return true;
 	}
 

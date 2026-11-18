@@ -123,6 +123,16 @@ endfunction()
 add_subdirectory(unit)
 add_subdirectory(integration)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME bot_brain_telemetry_delivery
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/bot_brain/test_telemetry_delivery.py
+            --include "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include")
+    set_tests_properties(bot_brain_telemetry_delivery PROPERTIES
+        ENVIRONMENT "BOT_TEST_CXX=${CMAKE_CXX_COMPILER}"
+        TIMEOUT 240)
+endif()
+
 if(UNIX AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME bot_engine_loader_regression
