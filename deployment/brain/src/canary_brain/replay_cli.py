@@ -32,6 +32,7 @@ from .runtime import Configuration, read_credential, recording_failure
 from .store import USD, Store
 from .testing import FakeProvider
 from .timelapse import export_video
+from .visual_replay import export_visual_video, pack_visual, stage_visual_client
 
 
 def configure(commands: Any) -> None:
@@ -39,6 +40,23 @@ def configure(commands: Any) -> None:
         "replay", help="read-only historical playback and archives"
     )
     operations = replay.add_subparsers(dest="operation", required=True)
+    visual_pack = operations.add_parser("visual-pack")
+    visual_pack.add_argument("--capture", type=Path, required=True)
+    visual_pack.add_argument("--recording", type=Path, required=True)
+    visual_pack.add_argument("--run", required=True)
+    visual_pack.add_argument("--output", type=Path, required=True)
+    visual_pack.add_argument("--offset-ms", type=int, default=0)
+    visual_stage = operations.add_parser("visual-stage")
+    visual_stage.add_argument("--package", type=Path, required=True)
+    visual_stage.add_argument("--runtime", type=Path, required=True)
+    visual_stage.add_argument("--output", type=Path, required=True)
+    visual_stage.add_argument("--mode", choices=("watch", "frames"), default="watch")
+    visual_video = operations.add_parser("visual-video")
+    visual_video.add_argument("--package", type=Path, required=True)
+    visual_video.add_argument("--frames", type=Path, required=True)
+    visual_video.add_argument("--output", type=Path, required=True)
+    visual_video.add_argument("--speed", type=float, default=8)
+    visual_video.add_argument("--fps", type=int, default=24)
     for name in (
         "list",
         "summary",
@@ -213,6 +231,24 @@ def execute(args: argparse.Namespace) -> None:
         result = {"synthetic_runs": demo(args.recording)}
     elif args.operation == "import":
         result = {"run": import_archive(args.archive, args.recording)}
+    elif args.operation == "visual-pack":
+        result = pack_visual(
+            args.capture,
+            ReplayReader(args.recording),
+            args.run,
+            args.output,
+            offset_ms=args.offset_ms,
+        )
+    elif args.operation == "visual-video":
+        result = export_visual_video(
+            args.package,
+            args.frames,
+            args.output,
+            speed=args.speed,
+            fps=args.fps,
+        )
+    elif args.operation == "visual-stage":
+        result = stage_visual_client(args.package, args.runtime, args.output, args.mode)
     else:
         reader = ReplayReader(args.recording)
         if args.operation == "serve":

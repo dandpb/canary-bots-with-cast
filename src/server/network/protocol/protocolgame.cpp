@@ -8,6 +8,7 @@
  */
 
 #include "server/network/protocol/protocolgame.hpp"
+#include "server/network/protocol/visual_replay.hpp"
 
 #include "account/account.hpp"
 #include "config/configmanager.hpp"
@@ -955,6 +956,42 @@ void ProtocolGame::castViewerLogin(const std::string &characterName) {
 	}
 }
 
+std::shared_ptr<ProtocolGame> ProtocolGame::startVisualReplay(const std::shared_ptr<Player> &bot) {
+	if (!bot || !bot->isBotPlayer() || bot->isRemoved() || !bot->getTile()) {
+		return {};
+	}
+
+	std::shared_ptr<VisualReplay> capture;
+	try {
+		capture = VisualReplay::start(bot->getGUID(), CLIENT_VERSION);
+		if (!capture) {
+			return {};
+		}
+		auto encoder = std::make_shared<ProtocolGame>(nullptr);
+		encoder->m_visualReplay = capture;
+		encoder->player = bot;
+		encoder->clientVersion = CLIENT_VERSION;
+		encoder->isOTC = true;
+		encoder->sendOTCRFeatures();
+		encoder->sendCastViewerInit();
+		return encoder;
+	} catch (const std::exception &error) {
+		if (capture) {
+			capture->finish();
+		}
+		g_logger().error("[VisualReplay] Could not initialize capture for bot {}: {}", bot->getGUID(), error.what());
+		return {};
+	}
+}
+
+bool ProtocolGame::visualReplayActive() const {
+	return m_visualReplay && m_visualReplay->active();
+}
+
+void ProtocolGame::stopVisualReplay() {
+	m_visualReplay->finish();
+}
+
 void ProtocolGame::sendCastViewerInit() {
 	if (!player) {
 		return;
@@ -977,7 +1014,7 @@ void ProtocolGame::sendCastViewerInit() {
 
 	msg.addByte(0x00); // can change pvp framing option
 	msg.addByte(0x00); // expert mode button enabled
-	msg.addString(g_configManager().getString(STORE_IMAGES_URL));
+	msg.addString(m_visualReplay ? "" : g_configManager().getString(STORE_IMAGES_URL));
 	msg.add<uint16_t>(static_cast<uint16_t>(g_configManager().getNumber(STORE_COIN_PACKET)));
 
 	if (!oldProtocol) {
@@ -1031,10 +1068,13 @@ void ProtocolGame::sendCastViewerInit() {
 		}
 	}
 
-	// Open Cast Chat channel for viewer
-	sendChannel(CHANNEL_CAST, "Cast Chat", nullptr, nullptr);
-
-	g_logger().info("[Cast] Viewer init complete for {}", player->getName());
+	if (m_visualReplay) {
+		g_logger().info("[VisualReplay] Initialized packet encoder for bot {}", player->getGUID());
+	} else {
+		// Open Cast Chat channel for viewer
+		sendChannel(CHANNEL_CAST, "Cast Chat", nullptr, nullptr);
+		g_logger().info("[Cast] Viewer init complete for {}", player->getName());
+	}
 }
 
 void ProtocolGame::logout(bool displayEffect, bool forced) {
@@ -1325,6 +1365,10 @@ void ProtocolGame::disconnectClient(const std::string &message) const {
 }
 
 void ProtocolGame::writeToOutputBuffer(NetworkMessage &msg) {
+	if (m_visualReplay) {
+		m_visualReplay->record({ msg.getBuffer() + NetworkMessage::INITIAL_BUFFER_POSITION, msg.getLength() });
+		return;
+	}
 	m_castPacketsSent++;
 	if (g_dispatcher().context().isAsync()) {
 		g_dispatcher().addEvent([self = getThis(), msg] {
@@ -5200,6 +5244,9 @@ void ProtocolGame::sendPremiumTrigger() {
 }
 
 void ProtocolGame::sendTextMessage(const TextMessage &message) {
+	if (m_visualReplay) {
+		return;
+	}
 	if (message.type == MESSAGE_NONE) {
 		g_logger().error("[ProtocolGame::sendTextMessage] - Message type is wrong, missing or invalid for player with name {}, on position {}", player->getName(), player->getPosition().toString());
 		player->sendTextMessage(MESSAGE_ADMINISTRATOR, "There was a problem requesting your message, please contact the administrator");
@@ -5342,6 +5389,9 @@ void ProtocolGame::sendChannelsDialog() {
 }
 
 void ProtocolGame::sendChannel(uint16_t channelId, const std::string &channelName, const UsersMap* channelUsers, const InvitedMap* invitedUsers) {
+	if (m_visualReplay) {
+		return;
+	}
 	NetworkMessage msg;
 	msg.addByte(0xAC);
 
@@ -5369,6 +5419,9 @@ void ProtocolGame::sendChannel(uint16_t channelId, const std::string &channelNam
 }
 
 void ProtocolGame::sendChannelMessage(const std::string &author, const std::string &text, SpeakClasses type, uint16_t channel) {
+	if (m_visualReplay) {
+		return;
+	}
 	NetworkMessage msg;
 	msg.addByte(0xAA);
 	msg.add<uint32_t>(0x00);
@@ -7051,6 +7104,9 @@ void ProtocolGame::sendCreatureTurn(const std::shared_ptr<Creature> &creature, u
 }
 
 void ProtocolGame::sendCreatureSay(const std::shared_ptr<Creature> &creature, SpeakClasses type, const std::string &text, const Position* pos /* = nullptr*/) {
+	if (m_visualReplay) {
+		return;
+	}
 	NetworkMessage msg;
 	msg.addByte(0xAA);
 
@@ -7129,6 +7185,9 @@ void ProtocolGame::sendToChannel(const std::shared_ptr<Creature> &creature, Spea
 }
 
 void ProtocolGame::sendPrivateMessage(const std::shared_ptr<Player> &speaker, SpeakClasses type, const std::string &text) {
+	if (m_visualReplay) {
+		return;
+	}
 	NetworkMessage msg;
 	msg.addByte(0xAA);
 	static uint32_t statementId = 0;

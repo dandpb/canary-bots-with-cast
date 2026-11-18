@@ -1682,6 +1682,9 @@ private:
 
 	// Cast viewer system — viewers share this Player via weak_ptr to their ProtocolGame
 	std::vector<std::weak_ptr<ProtocolGame>> castViewers;
+	std::shared_ptr<ProtocolGame> visualReplayEncoder;
+	bool hasVisualReplayOutput() const;
+	void stopVisualReplay();
 	// Fake viewer count for perf-harness probe bots. Never populated by a real connection, so
 	// packet construction stays on its castViewers.empty() early-outs -- see getCastViewerCount.
 	uint32_t syntheticCastViewers = 0;
@@ -1718,6 +1721,9 @@ private:
 
 	template <typename Func>
 	void forwardToCastViewers(Func &&fn) const {
+		if (visualReplayEncoder && hasVisualReplayOutput()) {
+			fn(visualReplayEncoder.get());
+		}
 		for (auto it = castViewers.begin(); it != castViewers.end();) {
 			if (auto viewer = it->lock()) {
 				fn(viewer.get());

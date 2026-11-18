@@ -7,6 +7,7 @@ target_sources(
             network/protocol/protocolgame.cpp
             network/protocol/protocollogin.cpp
             network/protocol/protocolstatus.cpp
+            network/protocol/visual_replay.cpp
             network/webhook/webhook.cpp
             server.cpp
             signals.cpp

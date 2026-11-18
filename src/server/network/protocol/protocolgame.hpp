@@ -91,6 +91,8 @@ struct TextMessage {
 	} primary, secondary;
 };
 
+class VisualReplay;
+
 class ProtocolGame final : public Protocol {
 public:
 	// Static protocol information.
@@ -109,6 +111,9 @@ public:
 	void logout(bool displayEffect, bool forced);
 	void castViewerLogin(const std::string &characterName);
 	void sendCastViewerInit();
+	static std::shared_ptr<ProtocolGame> startVisualReplay(const std::shared_ptr<Player> &bot);
+	bool visualReplayActive() const;
+	void stopVisualReplay();
 	size_t getKnownCreatureCount() const { return knownCreatureSet.size(); }
 	uint64_t getCastPacketsSent() const { return m_castPacketsSent; }
 	uint32_t getCastViewerNumber() const { return m_castViewerNumber; }
@@ -604,6 +609,7 @@ private:
 	void sendTakeScreenshot(Screenshot_t screenshotType);
 	void sendDisableLoginMusic();
 
+	std::shared_ptr<VisualReplay> m_visualReplay;
 	bool m_isCastViewer = false;
 	uint32_t m_castViewerNumber = 0;
 	uint64_t m_castPacketsSent = 0;

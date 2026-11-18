@@ -2158,7 +2158,7 @@ void Player::sendClosePrivate(uint16_t channelId) {
 }
 
 void Player::sendIcons() {
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 	// Iterates over the Bakragore icons to check if the player has any
@@ -6668,7 +6668,7 @@ size_t Player::getMaxDepotItems() const {
 // send methods
 
 void Player::sendAddTileItem(const std::shared_ptr<Tile> &itemTile, const Position &pos, const std::shared_ptr<Item> &item) {
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 	int32_t stackpos = itemTile->getStackposOfItem(static_self_cast<Player>(), item);
@@ -6681,7 +6681,7 @@ void Player::sendAddTileItem(const std::shared_ptr<Tile> &itemTile, const Positi
 }
 
 void Player::sendUpdateTileItem(const std::shared_ptr<Tile> &updateTile, const Position &pos, const std::shared_ptr<Item> &item) {
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 	int32_t stackpos = updateTile->getStackposOfItem(static_self_cast<Player>(), item);
@@ -6694,7 +6694,7 @@ void Player::sendUpdateTileItem(const std::shared_ptr<Tile> &updateTile, const P
 }
 
 void Player::sendRemoveTileThing(const Position &pos, int32_t stackpos) const {
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 	if (stackpos != -1 && client) {
@@ -6706,7 +6706,7 @@ void Player::sendRemoveTileThing(const Position &pos, int32_t stackpos) const {
 }
 
 void Player::sendUpdateTileCreature(const std::shared_ptr<Creature> &creature) {
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 	auto creaturePos = creature->getPosition();
@@ -8444,7 +8444,7 @@ void Player::sendCreatureTurn(const std::shared_ptr<Creature> &creature) {
 	if (!creature) {
 		return;
 	}
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 
@@ -8502,7 +8502,7 @@ void Player::sendCreatureChangeVisible(const std::shared_ptr<Creature> &creature
 	if (!creature) {
 		return;
 	}
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 
@@ -8658,7 +8658,7 @@ void Player::closeAllExternalContainers() {
 // container
 
 void Player::sendAddContainerItem(const std::shared_ptr<Container> &container, std::shared_ptr<Item> item) {
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 
@@ -8692,7 +8692,7 @@ void Player::sendAddContainerItem(const std::shared_ptr<Container> &container, s
 }
 
 void Player::sendUpdateContainerItem(const std::shared_ptr<Container> &container, uint16_t slot, const std::shared_ptr<Item> &newItem) {
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 
@@ -8718,7 +8718,7 @@ void Player::sendUpdateContainerItem(const std::shared_ptr<Container> &container
 }
 
 void Player::sendRemoveContainerItem(const std::shared_ptr<Container> &container, uint16_t slot) {
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 
@@ -11692,7 +11692,7 @@ void Player::onRemoveContainerItem(const std::shared_ptr<Container> &container, 
 }
 
 void Player::onCloseContainer(const std::shared_ptr<Container> &container) {
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 
@@ -11710,7 +11710,7 @@ void Player::onSendContainer(const std::shared_ptr<Container> &container) {
 	if (!container) {
 		return;
 	}
-	if (!client && castViewers.empty()) {
+	if (!client && castViewers.empty() && !hasVisualReplayOutput()) {
 		return;
 	}
 
@@ -12628,10 +12628,25 @@ void Player::setCastBroadcasting(bool v) {
 			if (bp && getContainerID(bp) < 0) {
 				addContainer(0, bp);
 			}
+			if (!visualReplayEncoder) {
+				visualReplayEncoder = ProtocolGame::startVisualReplay(getPlayer());
+			}
 		}
 	} else {
+		stopVisualReplay();
 		disconnectAllCastViewers();
 		castNextViewerNumber = 0;
+	}
+}
+
+bool Player::hasVisualReplayOutput() const {
+	return visualReplayEncoder && visualReplayEncoder->visualReplayActive();
+}
+
+void Player::stopVisualReplay() {
+	if (visualReplayEncoder) {
+		visualReplayEncoder->stopVisualReplay();
+		visualReplayEncoder.reset();
 	}
 }
 

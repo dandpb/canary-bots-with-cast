@@ -265,6 +265,8 @@ ZIP archives contain bounded event segments, metadata and SHA-256 checksums. ZIP
 
 ## Offline video / timelapse
 
+For a client-rendered replay from new server captures, see [the OTClient replay plan and QA workflow](REPLAY_VISUAL.pt-BR.md). The recorded-packet pipeline and sampled-map export have separate inputs.
+
 ```sh
 canary-brain replay video --recording /path/to/recording.sqlite3 --run RUN_ID \
   --output /tmp/bot-life.mp4 --speed 60 --fps 24

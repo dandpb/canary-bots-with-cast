@@ -19,7 +19,7 @@ canary-brain = "canary_brain.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-canary_brain = ["dashboard/*.html", "dashboard/*.css", "dashboard/*.js"]
+canary_brain = ["dashboard/*.html", "dashboard/*.css", "dashboard/*.js", "visual_capture.lua"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

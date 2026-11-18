@@ -1280,6 +1280,9 @@ bool Game::removeCreature(const std::shared_ptr<Creature> &creature, bool isLogo
 
 	creature->removeList();
 	creature->setRemoved();
+	if (const auto &player = creature->getPlayer()) {
+		player->stopVisualReplay();
+	}
 
 	removeCreatureCheck(creature);
 
