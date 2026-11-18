@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#172a28" />
+  <meta name="description" content="Explore um lugar em 3D: passeio animado, vista de diorama e caminhada em primeira pessoa." />
+  <title>Thais · Atlas de Tibia</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23172a28'/%3E%3Cpath d='M14 48V19h8v7h6V15h8v11h6v-7h8v29H36V36h-8v12z' fill='%23ebc787'/%3E%3C/svg%3E" />
+</head>
+<body>
+<main id="app" data-mode="tour">
+  <canvas id="world" aria-label="Lugar voxel em três dimensões" tabindex="0"></canvas>
+  <div id="loader"><div class="loader-mark">V</div><p>Preparando seu passeio…</p><span>Centro de Thais · Atlas de Tibia</span><div class="loading-line"></div></div>
+  <div id="unavailable" hidden><section><h1>Não foi possível abrir o cenário</h1><p>Recarregue para tentar novamente ou use o modo de compatibilidade.</p><button id="retry">Tentar novamente</button><button id="retry-software">Abrir modo de compatibilidade</button></section></div>
+  <header class="hud topbar">
+    <div class="identity"><span class="crest" aria-hidden="true">♜</span><div><strong id="place-brand">VOXEL</strong><span class="identity-sub" id="place-subtitle">LUGARES PARA EXPLORAR</span></div></div>
+    <div class="top-actions"><button id="floor-toggle" class="tool" aria-label="Escolher andar"><span aria-hidden="true">▱</span><span>Andar <b id="floor-number">07</b></span></button><button id="map-toggle" class="tool" aria-label="Abrir mapa" aria-expanded="false"><span aria-hidden="true">⌖</span><span class="tool-label">Mapa</span></button><button id="help-toggle" class="tool" aria-label="Abrir controles" aria-expanded="false"><span aria-hidden="true">?</span><span class="tool-label">Controles</span></button><button id="fullscreen" class="tool" aria-label="Tela cheia"><span aria-hidden="true">⛶</span></button></div>
+  </header>
+  <section class="tour-title" id="tour-title"><div class="location-line"><span></span><b id="intro-kicker">UM NOVO PONTO DE VISTA</b></div><h1 id="intro-title">Um lugar para explorar.</h1><p id="intro-description">Descubra os caminhos em uma pequena paisagem de blocos.</p><button id="enter" class="primary"><b id="enter-label">Começar a caminhada</b> <span class="arrow-icon" aria-hidden="true"></span></button><span class="enter-hint"></span></section>
+  <div class="cinematic-caption" id="tour-caption"><span id="chapter-number">01 / 05</span><div><span id="chapter-kicker">A CIDADE</span><strong id="chapter-title">O começo do passeio</strong></div></div>
+  <div id="walk-reticle" aria-hidden="true"><i></i></div>
+  <div id="location-chip"><span class="live-dot"></span><span id="location-name">Ponto de partida</span><small id="world-coords"></small></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="render-note" hidden>Modo de compatibilidade</div>
+  <aside id="map-panel" class="panel" hidden><div class="panel-head"><h2 id="map-title">Explore o lugar</h2><button class="close-panel" data-close="map" aria-label="Fechar mapa">×</button></div><div class="map-wrap"><canvas id="minimap" width="480" height="416" aria-label="Mapa do lugar com sua posição"></canvas><span class="north" id="map-north">N ↑</span><span class="map-credit" id="map-attribution"></span></div><p class="panel-note">Escolha um lugar para começar a caminhada.</p><div id="places"></div><p class="map-footnote" id="fidelity-note">Reconstrução artística baseada em referências.</p><div class="source-links" id="source-links"></div></aside>
+  <aside id="help-panel" class="panel" hidden><div class="panel-head"><h2>Controles</h2><button class="close-panel" data-close="help" aria-label="Fechar controles">×</button></div><div class="help-section"><h3>Caminhar</h3><p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ou setas <span>Mover</span></p><p><kbd>Shift</kbd> <span>Andar mais rápido</span></p><p><kbd>Mouse</kbd> <span>Arraste para olhar</span></p><p><kbd>Esc</kbd> <span>Liberar o mouse / fechar</span></p><p><kbd>M</kbd> <span>Abrir ou fechar o mapa</span></p></div><div class="help-section"><h3>Diorama</h3><p>Arraste para girar. Use a roda do mouse ou dois dedos para aproximar.</p><h3>No celular ou iPad</h3><p>Use o controle à esquerda para caminhar e arraste o lado direito da cena para olhar.</p></div><label class="setting"><span>Qualidade visual</span><select id="quality" aria-label="Qualidade visual"><option value="auto">Automática</option><option value="high">Alta</option><option value="low">Leve</option></select></label><label class="setting"><span>Movimento suave da câmera</span><input id="camera-bob" type="checkbox" checked /></label><label class="setting"><span>Controles de toque</span><input id="touch-mode" type="checkbox" /></label><button id="return-start" class="secondary">Voltar ao início</button></aside>
+  <footer class="hud bottom-bar"><nav class="mode-switch" aria-label="Modo de exploração"><button data-mode="tour" aria-pressed="true"><span aria-hidden="true">▷</span>Passeio</button><button data-mode="orbit" aria-pressed="false"><span aria-hidden="true">◇</span>Diorama</button><button data-mode="walk" aria-pressed="false"><span aria-hidden="true">↟</span>Caminhar</button></nav><div class="tour-progress" id="tour-progress"><button id="tour-pause" aria-label="Pausar passeio">II</button><div class="track"><div id="progress-fill"></div></div><span id="tour-time">00:00</span></div><div id="walk-help"><span class="desktop-hint"><kbd>W A S D</kbd> mover · arraste para olhar</span><button id="lock-mouse">Ativar mouse livre <span class="arrow-icon" aria-hidden="true"></span></button></div><div id="orbit-help">Arraste para girar · role para aproximar</div></footer>
+  <dialog id="floors" aria-labelledby="floors-title"><div class="panel-head"><div><span class="atlas-label">ATLAS DE TIBIA</span><h2 id="floors-title">Andares de Thais</h2></div><form method="dialog"><button class="close-panel" aria-label="Fechar andares" autofocus>×</button></form></div><p>Escolha uma camada do minimapa. O andar 07 é a superfície.</p><div id="floor-grid"></div></dialog>
+  <div id="touch-controls"><div id="joystick" role="group" aria-label="Controle de movimento por toque"><div id="stick"></div></div><div class="touch-look-hint">Arraste para olhar</div></div>
+  <div id="paused-overlay" hidden><div><h2>Caminhada pausada</h2><p>Retome para continuar explorando.</p><button id="resume" class="primary">Continuar</button></div></div>
+  <div id="graphics-recovery" hidden role="alert"><div><h2>A conexão gráfica foi interrompida</h2><p>Você pode continuar a explorar com o modo gráfico leve.</p><button id="recover-graphics" class="primary">Continuar no modo leve</button></div></div>
+</main>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
