@@ -280,7 +280,10 @@ class DockerFixture:
                 raise ComposeOwnershipInvalid()
             fd = os.open(self.owner_file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             with os.fdopen(fd, "r", encoding="utf-8") as stream:
-                record = json.loads(stream.read(4097))
+                decoded: object = json.loads(stream.read(4097))
+                if not isinstance(decoded, dict):
+                    raise ComposeOwnershipInvalid()
+                record: dict[str, Any] = decoded
                 mode = os.fstat(stream.fileno()).st_mode
                 if not stat.S_ISREG(mode) or mode & 0o077:
                     raise ComposeOwnershipInvalid()
