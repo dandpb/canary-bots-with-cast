@@ -51,6 +51,7 @@ class Configuration(BaseModel):
     operator_host: Literal["127.0.0.1", "0.0.0.0"] = "127.0.0.1"
     recording: RecordingConfiguration | None = None
     gateway: GatewayConfiguration | None = None
+    responses_gateway: GatewayConfiguration | None = None
     memory_mode: Literal["existing", "frozen", "independent"] = "existing"
     policy_seed: int = 0
     run_cap_nanousd: int | None = Field(default=None, gt=0)
@@ -89,6 +90,15 @@ class Configuration(BaseModel):
         if self.provider == "litellm" and self.gateway is None:
             raise ValueError(
                 "LiteLLM participant requires an explicit gateway configuration"
+            )
+        if self.responses_gateway is not None and (
+            self.provider != "litellm"
+            or self.gateway is None
+            or self.gateway.decision_api != "decisions"
+            or self.responses_gateway.decision_api != "responses"
+        ):
+            raise ValueError(
+                "responses_gateway requires LiteLLM with separate Decisions and Responses routes"
             )
         if self.run_cap_nanousd is not None and self.recording is None:
             raise ValueError("a run budget requires recording identities")
@@ -193,6 +203,7 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
     transport: asyncio.DatagramTransport | None = None
     controller: Controller | None = None
     client: AsyncOpenAI | None = None
+    responses_client: AsyncOpenAI | None = None
     operator: OperatorServer | None = None
     recorder: Recorder | None = None
     benchmark_stops: Stops | None = None
@@ -273,19 +284,35 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 raise ValueError(
                     "LiteLLM requires a private gateway credential and model mapping"
                 )
+            key = read_credential(configuration.credential_file, "LITELLM_API_KEY")
             client = AsyncOpenAI(
-                api_key=read_credential(
-                    configuration.credential_file, "LITELLM_API_KEY"
-                ),
+                api_key=key,
                 base_url=configuration.gateway.base_url,
                 max_retries=0,
                 timeout=45,
             )
+            responses = None
+            if configuration.responses_gateway is not None:
+                responses_client = AsyncOpenAI(
+                    api_key=key,
+                    base_url=configuration.responses_gateway.base_url,
+                    max_retries=0,
+                    timeout=45,
+                )
+                responses = GatewayProvider(
+                    ledger,
+                    responses_client,
+                    configuration.decision_timeout,
+                    gateway=configuration.responses_gateway,
+                    recorder=recorder,
+                    run_cap=configuration.run_cap_nanousd,
+                )
             provider = GatewayProvider(
                 ledger,
                 client,
                 configuration.decision_timeout,
                 gateway=configuration.gateway,
+                responses=responses,
                 recorder=recorder,
                 run_cap=configuration.run_cap_nanousd,
             )
@@ -536,6 +563,8 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             endpoint.unlink(missing_ok=True)
         if client is not None:
             await client.close()
+        if responses_client is not None:
+            await responses_client.close()
         await asyncio.to_thread(tracing.shutdown_bounded)
         if recorder is not None:
             close_failed = await asyncio.to_thread(recorder.close) is False

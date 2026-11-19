@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import tracing
 from .protocol import Observation
-from .provider import Prices, Provider
+from .provider import Prices, Provider, tactical_choice
 
 
 class GatewayConfiguration(BaseModel):
@@ -67,6 +67,7 @@ class GatewayConfiguration(BaseModel):
             raise ValueError("invalid LiteLLM gateway URL")
         if url.scheme == "http" and url.hostname not in {
             "litellm",
+            "litellm-decisions",
             "127.0.0.1",
             "localhost",
             "gateway",
@@ -79,14 +80,29 @@ class GatewayConfiguration(BaseModel):
 
 class GatewayProvider(Provider):
     def __init__(
-        self, *args: Any, gateway: GatewayConfiguration, **kwargs: Any
+        self,
+        *args: Any,
+        gateway: GatewayConfiguration,
+        responses: GatewayProvider | None = None,
+        **kwargs: Any,
     ) -> None:
         self.gateway = gateway
+        self.responses = responses
         super().__init__(*args, model=gateway.alias, prices=gateway.prices, **kwargs)
 
     async def _request(
-        self, endpoint: str, body: dict[str, Any], timeout: float, *, fast: bool = False
+        self,
+        endpoint: str,
+        body: dict[str, Any],
+        timeout: float,
+        *,
+        fast: bool = False,
+        tactical: bool = False,
     ) -> dict[str, Any]:
+        if endpoint == "responses" and self.responses is not None:
+            return await self.responses._request(
+                endpoint, body, timeout, fast=fast, tactical=tactical
+            )
         if endpoint == "decisions" and isinstance(body.get("input"), list):
             messages = []
             for message in body["input"]:
@@ -109,7 +125,9 @@ class GatewayProvider(Provider):
                     message = {**message, "content": parts}
                 messages.append(message)
             body = {**body, "input": messages}
-        return await super()._request(endpoint, body, timeout, fast=fast)
+        return await super()._request(
+            endpoint, body, timeout, fast=fast, tactical=tactical
+        )
 
     async def _transmit(self, endpoint: str, body: dict[str, Any]) -> dict[str, Any]:
         resource = (
@@ -192,13 +210,16 @@ class GatewayProvider(Provider):
             if observed_model == self.model
             else "provider_response"
         )
+        model_matches = isinstance(observed_model, str) and observed_model in {
+            self.gateway.effective_model,
+            self.model,
+            self.gateway.upstream_model,
+        }
         data["effective_model"] = (
-            self.gateway.effective_model
-            if observed_model == self.model
-            else observed_model
+            self.gateway.effective_model if model_matches else observed_model
         )
         valid = (
-            observed_model in {self.gateway.effective_model, self.model}
+            model_matches
             and data["gateway"]["deployment_id"] == self.gateway.deployment_id
         )
         # The shared request path settles usage first, then rejects a mismatch.
@@ -280,7 +301,9 @@ class GatewayProvider(Provider):
             self.decision_timeout,
             min(item.ttl_ms for item in observation.actions) / 1000,
         )
-        data = await self._request("responses", body, timeout, fast=True)
+        data = await self._request(
+            "responses", body, timeout, fast=True, tactical=tactical_choice(observation)
+        )
         calls = [
             item
             for item in data.get("output", [])

@@ -250,11 +250,29 @@ prepare `runtime/secrets/litellm-client.env` com permissão `0600` e apenas
 `LITELLM_API_KEY`, e preserve o ledger canônico existente em `brain-state`.
 As credenciais OpenAI/Gemini permanecem no gateway.
 
-O template de `setup.py` e a montagem `openai.env` do Compose base pertencem ao
-acesso direto OpenAI legado; `setup.py` não cria esse arquivo. No fluxo LiteLLM,
-substitua essa montagem pela de `litellm-client.env` e ajuste `credential_file`
-conforme o guia antes de iniciar `brain`. Preserve as configurações locais
-existentes. Iniciar o provider real pode gerar consumo. Não envie chaves pelo chat.
+O template de `setup.py` começa em modo nativo até a seleção de uma rota.
+O Compose monta a chave interna em `/etc/canary-brain/litellm-client.env`.
+Ao ativar IA, informe esse caminho em `credential_file` e use a URL
+`http://litellm:4000/v1` no perfil do gateway. Para Luna, selecione
+`decision_api: decisions` e `reasoning: true` para preservar os esforços
+de diálogo, planejamento e reflexão em Responses.
+
+Para usar Gemini Decision 1 nas decisões, o perfil `gemini-decisions` expõe
+o LiteLLM compatível somente na rede interna do Compose. Cadastre o alias
+`canary-gemini-decision-1` com upstream `gemini/gemini-decision-1` e use
+`http://litellm-decisions:4000/v1` no bloco `gateway` do worker. Informe a
+rota do Luna em `responses_gateway`, com `decision_api: responses`, para
+diálogo, planejamento e reflexão. Os dois usam a mesma chave interna do
+worker e o mesmo ledger.
+
+Copie o [exemplo de rota Decisions](../brain/gateway/gateway.decisions.example.json)
+para `runtime/config/litellm-decisions.json`. No arquivo privado
+`runtime/secrets/litellm-decisions.env`, configure `GEMINI_API_KEY`, a chave
+compartilhada `LITELLM_WORKER_KEY` e uma `LITELLM_MASTER_KEY` própria do proxy.
+O container usa um usuário sem privilégios e precisa conseguir ler o arquivo
+de configuração. Use o ID em `model_info.id` e o SHA-256 da configuração no
+perfil do worker. Inicie o proxy com
+`docker compose --profile gemini-decisions up -d --build litellm-decisions`.
 
 As configurações em `runtime/config/` selecionam os bots 65001, 65004 e 65003,
 modo ativo, com o bot 65001 como explorador autônomo. O worker mantém o limite

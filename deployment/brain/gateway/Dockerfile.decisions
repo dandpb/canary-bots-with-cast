@@ -1,0 +1,12 @@
+FROM python:3.13-slim-bookworm@sha256:f3dac913ab53b78c64f26d5518fcd7043d5a1a46522d6a493b598c3ed12f62a6
+
+WORKDIR /app
+RUN python -m pip install --no-cache-dir --pre "litellm[proxy]==1.111.0rc1"
+COPY deployment/brain/src/canary_brain/gateway_policy.py /app/gateway_policy.py
+ENV PYTHONPATH=/app \
+    LITELLM_LOCAL_MODEL_COST_MAP=True \
+    CANARY_GATEWAY_CONFIG=/app/gateway.yaml \
+    CANARY_BENCHMARK_GATEWAY_ONLY=1 \
+    DO_NOT_TRACK=True
+USER 10001:10001
+CMD ["litellm", "--config", "/app/gateway.yaml", "--host", "0.0.0.0", "--port", "4000"]

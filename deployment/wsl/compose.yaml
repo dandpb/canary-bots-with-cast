@@ -28,6 +28,22 @@ services:
       interval: 10s
       timeout: 3s
       retries: 12
+  litellm-decisions:
+    profiles: [gemini-decisions]
+    image: canary-litellm-decisions:1.111.0rc1
+    build:
+      context: ../..
+      dockerfile: deployment/brain/gateway/Dockerfile.decisions
+    restart: unless-stopped
+    env_file:
+      - ./runtime/secrets/litellm-decisions.env
+    volumes:
+      - ./runtime/config/litellm-decisions.json:/app/gateway.yaml:ro
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/readiness',timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
   litellm-redis:
     profiles: [gateway]
     image: redis:7.4-alpine@sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b
@@ -142,7 +158,7 @@ services:
         condition: service_healthy
     volumes:
       - /home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/worker.json:/etc/canary-brain/worker.json:ro
-      - /home/daniel/canary-bots-wsl/deployment/wsl/runtime/secrets/openai.env:/etc/canary-brain/openai.env:ro
+      - /home/daniel/canary-bots-wsl/deployment/wsl/runtime/secrets/litellm-client.env:/etc/canary-brain/litellm-client.env:ro
       - brain-socket:/run/canary-brain-wsl
       - brain-state:/var/lib/canary-brain
   web:

@@ -22,7 +22,7 @@ shutil.copyfile(here / "runtime-schema.sql", here / "initdb/098_runtime.sql")
 for path in (here / "initdb").glob("*.sql"):
     path.chmod(0o644)
 server = {"mode": "active", "bots": [65001, 65004, 65003], "socket_directory": "/run/canary-brain-wsl", "autonomous_bot": 65001}
-worker = {"mode": "active", "bots": server["bots"], "socket_directory": server["socket_directory"], "state_file": "/var/lib/canary-brain/state.sqlite3", "credential_file": "/etc/canary-brain/openai.env", "monthly_usd": 50, "decision_timeout": 1.2, "learning": False, "exploration": 0.15, "operator_port": 8091, "operator_host": "0.0.0.0"}
+worker = {"mode": "active", "provider": "native", "bots": server["bots"], "socket_directory": server["socket_directory"], "state_file": "/var/lib/canary-brain/state.sqlite3", "monthly_usd": 50, "decision_timeout": 1.2, "learning": False, "exploration": 0.15, "operator_port": 8091, "operator_host": "0.0.0.0"}
 for name, value in (("server.json", server), ("worker.json", worker)):
     path = here / "runtime/config" / name
     if not path.exists():

@@ -18,6 +18,16 @@ from .store import Store, month_now
 MODEL = "gpt-6-luna"
 
 
+def tactical_choice(observation: Observation) -> bool:
+    actions = {candidate.action for candidate in observation.actions}
+    return bool(actions & {"target", "retreat"}) and actions <= {
+        "continue",
+        "target",
+        "retreat",
+        "hold",
+    }
+
+
 class Prices(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     version: str = Field(min_length=1, max_length=80)
@@ -89,7 +99,13 @@ class Provider:
         return data
 
     async def _request(
-        self, endpoint: str, body: dict[str, Any], timeout: float, *, fast: bool = False
+        self,
+        endpoint: str,
+        body: dict[str, Any],
+        timeout: float,
+        *,
+        fast: bool = False,
+        tactical: bool = False,
     ) -> dict[str, Any]:
         request_id = uuid.uuid4().hex
         body = {**body, "model": self.model}
@@ -126,12 +142,19 @@ class Provider:
             asyncio.timeout(timeout) as deadline,
             self.fast_slots if endpoint == "decisions" or fast else self.planning_slots,
         ):
-            failures, retry_at = self.backoff.get(endpoint, (0, 0))
-            if time.monotonic() < retry_at:
+            tactical_key = f"{endpoint}:tactical"
+            checks = (endpoint, tactical_key) if tactical else (endpoint,)
+            now = time.monotonic()
+            active_scope = next(
+                (scope for scope in checks if now < self.backoff.get(scope, (0, 0))[1]),
+                None,
+            )
+            if active_scope is not None:
                 record(
                     {
                         "phase": "skipped",
                         "reason": "backoff",
+                        "backoff_scope": active_scope,
                         "deadline_ms": round(timeout * 1000),
                         "reserved_nanousd": 0,
                     }
@@ -233,6 +256,8 @@ class Provider:
                 if data.get("model") != self.model:
                     raise ValueError("unexpected provider model")
                 self.backoff.pop(endpoint, None)
+                if tactical:
+                    self.backoff.pop(tactical_key, None)
                 return data
             except (Exception, asyncio.CancelledError) as error:
                 # The outer scope expires first and cancels the transmission; record
@@ -246,10 +271,13 @@ class Provider:
                 timeout_origin = (
                     "outer_deadline" if deadline_timeout else "provider_error"
                 )
-                self.backoff[endpoint] = (
-                    failures + 1,
-                    time.monotonic() + min(60, 2 ** min(failures, 6)),
-                )
+                scope = tactical_key if tactical and deadline_timeout else endpoint
+                if deadline_timeout or not isinstance(error, asyncio.CancelledError):
+                    failures, _ = self.backoff.get(scope, (0, 0))
+                    self.backoff[scope] = (
+                        failures + 1,
+                        time.monotonic() + min(60, 2 ** min(failures, 6)),
+                    )
                 # Capture the original stage/code before auxiliary storage can fail.
                 diagnostic = {
                     "endpoint": endpoint,
@@ -258,6 +286,7 @@ class Provider:
                     "unsettled": not settled,
                     "deadline_expired_on_error": deadline_expired_on_error,
                     "timeout_origin": timeout_origin,
+                    "backoff_scope": scope,
                     "elapsed_ms": round((time.monotonic() - started) * 1000),
                     **failure_metadata(error, stage),
                 }
@@ -309,7 +338,13 @@ class Provider:
         }
         if len(observation.actions) == 1:
             return observation.actions[0].id
-        data = await self._request("decisions", body, self.decision_timeout)
+        timeout = min(
+            self.decision_timeout,
+            min(item.ttl_ms for item in observation.actions) / 1000,
+        )
+        data = await self._request(
+            "decisions", body, timeout, tactical=tactical_choice(observation)
+        )
         for answer in data.get("answers", []):
             if answer.get("name") == "action" and answer.get("type") == "choice":
                 choice = answer.get("choice")

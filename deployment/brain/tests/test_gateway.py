@@ -82,6 +82,44 @@ async def test_gateway_validates_effective_deployment_and_uses_one_common_contra
     assert store.budget()["spent"] == 14
 
 
+async def test_separate_responses_route_keeps_identity_and_shares_the_ledger(tmp_path):
+    decisions, decision_calls = client("gemini/model-a")
+    decisions.decisions = decisions.responses
+    responses, response_calls = client("model-b", "deployment-b")
+    store = Store(tmp_path / "budget.db")
+    decisions_config = GatewayConfiguration.model_validate(
+        gateway().model_dump()
+        | {
+            "decision_api": "decisions",
+            "decisions_output_nanousd": 0,
+            "upstream_model": "gemini/model-a",
+        }
+    )
+    responses_config = GatewayConfiguration.model_validate(
+        gateway().model_dump()
+        | {
+            "alias": "participant-b",
+            "effective_model": "model-b",
+            "deployment_id": "deployment-b",
+        }
+    )
+    provider = GatewayProvider(
+        store,
+        decisions,
+        gateway=decisions_config,
+        responses=GatewayProvider(store, responses, gateway=responses_config),
+    )
+
+    decided = await provider._request("decisions", {"input": "Decide"}, 1)
+    replied = await provider._request("responses", {"input": "Reply"}, 1)
+
+    assert decided["model"] == decision_calls[0]["model"] == "participant-a"
+    assert decided["effective_model"] == "model-a"
+    assert replied["model"] == response_calls[0]["model"] == "participant-b"
+    assert len(decision_calls) == len(response_calls) == 1
+    assert store.budget()["spent"] == 24
+
+
 @pytest.mark.parametrize(
     "model,deployment",
     [

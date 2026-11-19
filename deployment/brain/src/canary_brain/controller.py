@@ -404,6 +404,12 @@ class Controller:
         if snapshot.autonomous and snapshot.party is None:
             if candidate in self.supervisor.blocked(snapshot.bot.id):
                 return None
+            if (
+                candidate == "retreat"
+                and not operator
+                and self.supervisor.retreat_unavailable(snapshot)
+            ):
+                return None
             if not operator and self.supervisor.managed(snapshot.bot.id):
                 return None
         if len(self.store.records("pending", 25)) >= 24:

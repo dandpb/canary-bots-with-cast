@@ -7,7 +7,7 @@ from test_protocol import observation
 
 from canary_brain.gateway import GatewayProvider
 from canary_brain.protocol import Observation
-from canary_brain.provider import Provider
+from canary_brain.provider import Provider, ProviderBackoff
 from canary_brain.store import Store
 
 
@@ -15,6 +15,37 @@ def recorder(events):
     return SimpleNamespace(
         manifests={}, emit=lambda bot, kind, data, key=None: events.append(data)
     )
+
+
+async def test_expired_combat_choice_does_not_back_off_the_next_objective(tmp_path):
+    fake, calls = client()
+    reply = fake.responses.with_raw_response.create
+
+    async def respond(**request):
+        if "target:123" in str(request["input"]):
+            await asyncio.sleep(1)
+        return await reply(**request)
+
+    fake.responses.with_raw_response.create = respond
+    store = Store(tmp_path / "state.db")
+    provider = GatewayProvider(store, fake, 1, gateway=gateway())
+    tactical = observation()
+    tactical["actions"][1] = {
+        "id": "target:123",
+        "action": "target",
+        "description": "Preferred nearby monster",
+        "ttl_ms": 100,
+    }
+    with pytest.raises(TimeoutError):
+        await provider.decide(Observation.model_validate(tactical))
+    with pytest.raises(ProviderBackoff):
+        await provider.decide(Observation.model_validate(tactical))
+
+    assert (
+        await provider.decide(Observation.model_validate(observation())) == "resupply"
+    )
+    assert len(calls) == 1
+    assert store.budget()["spent"] > 0 and store.budget()["reserved"] > 0
 
 
 def slow_provider(tmp_path, events, seconds):
@@ -82,9 +113,13 @@ async def test_configured_gateway_deadline_is_capped_by_the_server_ttl(
     seen = []
 
     class Probe(GatewayProvider):
-        async def _request(self, endpoint, body, timeout, *, fast=False):
+        async def _request(
+            self, endpoint, body, timeout, *, fast=False, tactical=False
+        ):
             seen.append(timeout)
-            return await super()._request(endpoint, body, timeout, fast=fast)
+            return await super()._request(
+                endpoint, body, timeout, fast=fast, tactical=tactical
+            )
 
     fake, _ = client()
     packet = observation()

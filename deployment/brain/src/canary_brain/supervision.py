@@ -80,17 +80,36 @@ class Supervisor:
             if row["until"] > time.time()
         }
 
-    def offers(self, snapshot: Observation) -> Observation:
+    def offers(
+        self, snapshot: Observation, *, retry_retreat: bool = False
+    ) -> Observation:
         if not snapshot.autonomous or snapshot.party is not None:
             return snapshot
         avoided = self.blocked(snapshot.bot.id)
+        failed_retreat = not retry_retreat and self.retreat_unavailable(snapshot)
         return snapshot.model_copy(
             update={
                 "actions": [
-                    item for item in snapshot.actions if item.id not in avoided
+                    item
+                    for item in snapshot.actions
+                    if item.id not in avoided
+                    and not (item.action == "retreat" and failed_retreat)
                 ],
             }
         )
+
+    def retreat_unavailable(self, snapshot: Observation) -> bool:
+        failure = self.state(snapshot.bot.id).get("retreat_route_failure")
+        if (
+            not failure
+            or snapshot.bot.health < 80
+            or snapshot.world != failure["world"]
+            or time.time() >= failure["until"]
+        ):
+            return False
+        x, y, floor = snapshot.bot.position
+        old_x, old_y, old_floor = failure["position"]
+        return floor == old_floor and max(abs(x - old_x), abs(y - old_y)) <= 3
 
     def managed(self, bot: int) -> bool:
         state = self.state(bot)
@@ -137,8 +156,18 @@ class Supervisor:
                 row.update(status="querying", at=time.monotonic())
                 self.store.put("pending", key, row)
 
-    def send(self, snapshot: Observation, candidate: str, phase: str) -> str:
-        if candidate not in {item.id for item in self.offers(snapshot).actions}:
+    def send(
+        self,
+        snapshot: Observation,
+        candidate: str,
+        phase: str,
+        *,
+        retry_retreat: bool = False,
+    ) -> str:
+        if candidate not in {
+            item.id
+            for item in self.offers(snapshot, retry_retreat=retry_retreat).actions
+        }:
             raise ValueError("Essa ação não está disponível neste momento.")
         action_id = self.controller._apply(
             snapshot,
@@ -260,7 +289,12 @@ class Supervisor:
                 bot, "resume", "Retomada solicitada; aguardando uma oferta atual."
             )
         elif operation == "retreat":
-            self.send(snapshot, "retreat", "waiting_action")
+            self.send(
+                snapshot,
+                "retreat",
+                "waiting_action",
+                retry_retreat=not automatic_recovery,
+            )
         else:
             if operation == "recover":
                 recovering_candidate = self.current_candidate(bot)
@@ -368,6 +402,21 @@ class Supervisor:
         state = self.state(outcome.bot_id)
         snapshot = self.controller.latest.get(outcome.bot_id)
         candidate = str(episode.get("candidate", ""))
+        if (
+            snapshot is not None
+            and snapshot.autonomous
+            and snapshot.party is None
+            and snapshot.world == outcome.world
+            and candidate == "retreat"
+            and outcome.status == "failed"
+            and outcome.reason == "return_route_unavailable"
+        ):
+            state["retreat_route_failure"] = {
+                "world": outcome.world,
+                "position": snapshot.bot.position,
+                "until": time.time() + 300,
+            }
+            self.save(outcome.bot_id)
         if (
             snapshot is not None
             and snapshot.autonomous

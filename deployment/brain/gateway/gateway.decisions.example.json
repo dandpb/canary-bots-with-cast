@@ -1,0 +1,35 @@
+{
+  "model_list": [
+    {
+      "model_name": "canary-gemini-decision-1",
+      "litellm_params": {
+        "model": "gemini/gemini-decision-1",
+        "api_key": "os.environ/GEMINI_API_KEY",
+        "num_retries": 0
+      },
+      "model_info": {
+        "id": "canary-gemini-decision-1",
+        "mode": "decisions"
+      }
+    }
+  ],
+  "router_settings": {
+    "num_retries": 0,
+    "fallbacks": [],
+    "max_fallbacks": 0,
+    "cache_responses": false
+  },
+  "litellm_settings": {
+    "num_retries": 0,
+    "fallbacks": [],
+    "cache": false,
+    "drop_params": false,
+    "turn_off_message_logging": true,
+    "telemetry": false
+  },
+  "general_settings": {
+    "master_key": "os.environ/LITELLM_MASTER_KEY",
+    "custom_auth": "gateway_policy.authenticate",
+    "disable_spend_logs": true
+  }
+}

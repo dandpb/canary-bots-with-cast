@@ -102,6 +102,32 @@ def test_pause_blocks_background_actions_and_renews_native_hold(tmp_path, monkey
     assert c.supervisor.state(7)["paused"]
 
 
+def test_failed_return_is_withheld_from_the_same_safe_position_only(
+    tmp_path, monkeypatch
+):
+    c, snapshot, sent, clock = console(tmp_path, monkeypatch)
+    action_id = c._apply(snapshot, "retreat")
+    accepted(c, action_id, "return_route_unavailable", status="failed")
+    offered = {item.id for item in c.supervisor.offers(snapshot).actions}
+    assert "retreat" not in offered and "hunt:1" in offered
+    assert c._apply(snapshot, "retreat") is None
+
+    for changes in (
+        {"position": [104, 100, 7]},
+        {"position": [100, 100, 8]},
+        {"health": 60},
+    ):
+        updated = snapshot.model_copy(
+            update={"bot": snapshot.bot.model_copy(update=changes)}
+        )
+        assert "retreat" in {item.id for item in c.supervisor.offers(updated).actions}
+
+    c.supervisor.command(7, "retreat", {})
+    assert sent[-1]["candidate_id"] == "retreat"
+    clock[0] += 301
+    assert "retreat" in {item.id for item in c.supervisor.offers(snapshot).actions}
+
+
 def test_stale_state_and_human_party_cannot_be_controlled(tmp_path, monkeypatch):
     c, _snapshot, sent, clock = console(tmp_path, monkeypatch)
     clock[0] += 4
