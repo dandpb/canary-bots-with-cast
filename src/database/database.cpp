@@ -356,6 +356,22 @@ Database::TransactionOutcome Database::finishTransaction(bool commit) {
 	return uncertain ? TransactionOutcome::Uncertain : TransactionOutcome::Failed;
 }
 
+bool DBTransaction::prepareReceipt(Database &database, bool &alreadyCommitted) {
+	const auto key = database.escapeString(receipt_->key);
+	// Lock the same row as the previous attempt before deciding whether it committed.
+	if (!database.executeQuery(fmt::format(
+			"INSERT INTO `server_config` (`config`, `value`) VALUES ({}, '') "
+			"ON DUPLICATE KEY UPDATE `config` = `config`", key))) {
+		return false;
+	}
+	const auto row = database.storeQuery(fmt::format(
+		"SELECT `value` FROM `server_config` WHERE `config` = {} FOR UPDATE", key));
+	if (!row) return false;
+	alreadyCommitted = row->getString("value") == receipt_->token;
+	return alreadyCommitted || database.executeQuery(fmt::format(
+		"UPDATE `server_config` SET `value` = {} WHERE `config` = {}", database.escapeString(receipt_->token), key));
+}
+
 bool Database::isRecoverableError(unsigned int error) {
 	return error == CR_SERVER_LOST || error == CR_SERVER_GONE_ERROR || error == CR_CONN_HOST_ERROR || error == 1053 /*ER_SERVER_SHUTDOWN*/ || error == CR_CONNECTION_ERROR;
 }

@@ -35,6 +35,7 @@
 #include "game/game.hpp"
 #include "game/modal_window/modal_window.hpp"
 #include "game/scheduling/dispatcher.hpp"
+#include "game/scheduling/save_manager.hpp"
 #include "io/functions/iologindata_load_player.hpp"
 #include "io/io_bosstiary.hpp"
 #include "io/iobestiary.hpp"
@@ -691,6 +692,10 @@ void ProtocolGame::login(const std::string &name, uint32_t accountId, OperatingS
 
 		if (IOMarket::playerHasPendingFill(player->getGUID())) {
 			disconnectClient("A market settlement is being reconciled. Please try again later.");
+			return;
+		}
+		if (g_saveManager().hasPendingLogout(player->getGUID())) {
+			disconnectClient("Your last logout is still being saved. Please try again later.");
 			return;
 		}
 		if (IOBan::isPlayerNamelocked(player->getGUID())) {

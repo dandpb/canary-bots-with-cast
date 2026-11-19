@@ -152,17 +152,17 @@ HistoryMarketOfferList IOMarket::getOwnHistory(MarketAction_t action, uint32_t p
 }
 
 void IOMarket::processExpiredOffers(const DBResult_ptr &result, bool) {
-	if (!result) {
+	if (!result || g_game().getGameState() == GAME_STATE_SHUTDOWN) {
 		return;
 	}
 
 	do {
-		if (playerHasPendingFill(result->getNumber<uint32_t>("player_id"))) continue;
+		const auto playerId = result->getNumber<uint32_t>("player_id");
+		if (playerHasPendingFill(playerId) || g_saveManager().hasPendingLogout(playerId)) continue;
 		if (!IOMarket::moveOfferToHistory(result->getNumber<uint32_t>("id"), OFFERSTATE_EXPIRED)) {
 			continue;
 		}
 
-		const auto playerId = result->getNumber<uint32_t>("player_id");
 		const auto amount = result->getNumber<uint16_t>("amount");
 		auto tier = getTierFromDatabaseTable(result->getString("tier"));
 		if (result->getNumber<uint16_t>("sale") == 1) {

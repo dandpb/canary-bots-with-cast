@@ -284,6 +284,20 @@ public:
 	using Outcome = Database::TransactionOutcome;
 	static Outcome lastOutcome() { return lastOutcome_; }
 	static void clearOutcome() { lastOutcome_ = Outcome::Failed; }
+	class ScopedReceipt {
+	public:
+		ScopedReceipt(std::string key, const std::string &token) :
+			key(std::move(key)), token(token), previous(std::exchange(receipt_, this)) { }
+		~ScopedReceipt() { receipt_ = previous; }
+		ScopedReceipt(const ScopedReceipt &) = delete;
+		ScopedReceipt &operator=(const ScopedReceipt &) = delete;
+
+	private:
+		friend class DBTransaction;
+		std::string key;
+		std::string token;
+		const ScopedReceipt *previous;
+	};
 	explicit DBTransaction() = default;
 
 	~DBTransaction() = default;
@@ -314,6 +328,13 @@ public:
 			return Outcome::Failed;
 		}
 		try {
+			if (receipt_) {
+				bool alreadyCommitted = false;
+				if (!prepareReceipt(database, alreadyCommitted) || alreadyCommitted) {
+					database.finishTransaction(false);
+					return lastOutcome_ = alreadyCommitted ? Outcome::Committed : Outcome::Failed;
+				}
+			}
 			return lastOutcome_ = database.finishTransaction(callback());
 		} catch (const std::exception &error) {
 			database.finishTransaction(false);
@@ -326,6 +347,8 @@ public:
 	}
 
 private:
+	static bool prepareReceipt(Database &database, bool &alreadyCommitted);
+	inline static thread_local const ScopedReceipt *receipt_ = nullptr;
 	inline static thread_local Outcome lastOutcome_ = Outcome::Failed;
 };
 

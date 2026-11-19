@@ -1292,11 +1292,12 @@ bool Game::removeCreature(const std::shared_ptr<Creature> &creature, bool isLogo
 		removeCreature(summon);
 	}
 
-	if (creature->getPlayer() && isLogout) {
-		auto it = teamFinderMap.find(creature->getPlayer()->getGUID());
+	if (const auto player = creature->getPlayer(); player && isLogout) {
+		auto it = teamFinderMap.find(player->getGUID());
 		if (it != teamFinderMap.end()) {
 			teamFinderMap.erase(it);
 		}
+		g_saveManager().saveLogoutPlayer(player);
 	}
 
 	return true;
@@ -8625,7 +8626,7 @@ void Game::dieSafely(const std::string &errorMsg /* = "" */) {
 void Game::finishNormalShutdown() {
 	awaitingFinalSave_ = false;
 	for (unsigned int attempt = 1; attempt <= 3; ++attempt) {
-		if (saveMotdNum() && g_saveManager().saveFinal()) {
+		if (g_saveManager().saveFinal([this] { return saveMotdNum(); })) {
 			g_dispatcher().addEvent([this] { shutdown(); }, __FUNCTION__);
 			return;
 		}

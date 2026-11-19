@@ -347,7 +347,9 @@ Validate changes with the existing pytest, ruff and strict mypy commands, plus t
 Keep compose-ownership.json with its original attempt directory. It binds the
 replay run ID and canonical output path to the project and owner labels on
 Docker resources. A missing, copied or conflicting record causes
-compose_ownership_invalid before Compose changes resources.
+compose_ownership_invalid before Compose changes resources. If an attempt ended
+before preparation left any files beyond a temporary ownership record, resume
+records the interruption without calling Docker.
 
 Older replays remain readable offline. When the runner returns
 legacy_cleanup_required, identify the exact container and network IDs using

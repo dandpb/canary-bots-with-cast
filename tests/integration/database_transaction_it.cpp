@@ -52,3 +52,35 @@ TEST(DatabaseTransaction, SecondCallerWaitsUntilFirstTransactionEnds) {
 	EXPECT_TRUE(second.get());
 	EXPECT_EQ(secondEntered.wait_for(std::chrono::seconds(0)), std::future_status::ready);
 }
+
+TEST(DatabaseTransaction, ReceiptRollsBackWithDataAndPreventsReplayingACommit) {
+	auto &database = g_database();
+	ASSERT_TRUE(database.executeQuery("DELETE FROM server_config WHERE config='save:test:receipt'"));
+	ASSERT_TRUE(database.executeQuery("CREATE TEMPORARY TABLE receipt_audit (value INT) ENGINE=InnoDB"));
+	ASSERT_TRUE(database.executeQuery("INSERT INTO receipt_audit VALUES (0)"));
+	{
+		const DBTransaction::ScopedReceipt receipt("save:test:receipt", "first");
+		EXPECT_FALSE(DBTransaction::executeWithinTransaction([&] {
+			database.executeQuery("UPDATE receipt_audit SET value=99");
+			return false;
+		}));
+		ASSERT_TRUE(DBTransaction::executeWithinTransaction([&] {
+			return database.executeQuery("UPDATE receipt_audit SET value=value+1");
+		}));
+		EXPECT_TRUE(DBTransaction::executeWithinTransaction([] {
+			ADD_FAILURE() << "A retry must leave committed data alone";
+			return false;
+		}));
+	}
+	{
+		const DBTransaction::ScopedReceipt receipt("save:test:receipt", "second");
+		ASSERT_TRUE(DBTransaction::executeWithinTransaction([&] {
+			return database.executeQuery("UPDATE receipt_audit SET value=value+1");
+		}));
+	}
+	const auto row = database.storeQuery("SELECT value FROM receipt_audit");
+	ASSERT_TRUE(row);
+	EXPECT_EQ(row->getNumber<int>("value"), 2);
+	EXPECT_TRUE(database.executeQuery("DROP TEMPORARY TABLE receipt_audit"));
+	EXPECT_TRUE(database.executeQuery("DELETE FROM server_config WHERE config='save:test:receipt'"));
+}

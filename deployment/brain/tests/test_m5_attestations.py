@@ -1,7 +1,6 @@
 """Actual Docker metadata is simulated; no daemon, provider or ledger is used."""
 
 import asyncio
-import hashlib
 import json
 import stat
 import subprocess

@@ -15,12 +15,22 @@
 #include "creatures/players/bot/bot_engine.hpp"
 #include "io/ioguild.hpp"
 #include "io/iologindata.hpp"
+#include "io/iomapserialize.hpp"
 #include "io/iomarket.hpp"
 #include "kv/kv.hpp"
 #include "lib/di/container.hpp"
 #include "creatures/players/player.hpp"
 #include "utils/tools.hpp"
 #include "game/scheduling/dispatcher.hpp"
+
+#include <algorithm>
+#include <random>
+
+namespace {
+std::string saveReceiptToken() {
+	return fmt::format("{}-{:08x}", KV::generateUUID(), std::random_device{}());
+}
+}
 
 void checkpointBotReloadPlayers(const BotReloadSnapshot& snapshot) {
 	for (const auto& entry : snapshot.entries) {
@@ -29,16 +39,28 @@ void checkpointBotReloadPlayers(const BotReloadSnapshot& snapshot) {
 }
 
 std::shared_ptr<Player> SaveManager::getPendingBotPlayer(uint32_t guid) const {
-	auto pending = botSaves_.find(guid);
-	return pending ? pending->player : nullptr;
+	auto pending = playerSaves_.find(guid);
+	return pending && pending->player && pending->player->isBotPlayer() ? pending->player : nullptr;
 }
 
 std::shared_ptr<Player> SaveManager::getPendingBotPlayer(const std::string &name) const {
 	const auto normalized = asLowerCaseString(name);
-	for (const auto& pending : botSaves_.snapshot()) {
-		if (pending.player && asLowerCaseString(pending.player->getName()) == normalized) return pending.player;
+	for (const auto& pending : playerSaves_.snapshot()) {
+		if (pending.player && pending.player->isBotPlayer() && asLowerCaseString(pending.player->getName()) == normalized) return pending.player;
 	}
 	return nullptr;
+}
+
+bool SaveManager::hasPendingLogout(uint32_t guid) const {
+	const auto pending = playerSaves_.find(guid);
+	return pending && pending->logout;
+}
+
+bool SaveManager::hasPendingLogout(const std::string &name) const {
+	const auto normalized = asLowerCaseString(name);
+	return std::ranges::any_of(playerSaves_.snapshot(), [&](const auto &pending) {
+		return pending.logout && asLowerCaseString(pending.player->getName()) == normalized;
+	});
 }
 
 SaveManager::SaveManager(ThreadPool &threadPool, KVStore &kvStore, Logger &logger, Game &game) :
@@ -50,23 +72,27 @@ SaveManager &SaveManager::getInstance() {
 
 SaveManager::SaveBatch SaveManager::captureBatch() {
 	Benchmark captureTimer;
-	// Capture strong references and position policy on the dispatcher, before any SQL.
-	std::unordered_map<uint32_t, BotSave> captured;
-	for (const auto& [_, player] : game.getPlayers()) {
-		captured[player->getGUID()] = {player->getGUID(), player, player->getPosition()};
-	}
-	if (auto* engine = getBotEngineIfLoaded()) {
-		for (const auto& snapshot : engine->capturePersistentPlayers()) {
-			const auto guid = snapshot.player->getGUID();
-			captured[guid] = {guid, snapshot.player, snapshot.loginPosition};
-		}
-	}
-	for (const auto& pending : botSaves_.snapshot()) captured.try_emplace(pending.guid, pending);
-	for (const auto& final : finalPlayers_) captured[final.guid] = final;
 	SaveBatch batch;
+	batch.final = finalSaving_;
+	// Capture strong references and position policy on the dispatcher, before any SQL.
+	std::unordered_map<uint32_t, PlayerSave> captured;
+	if (batch.final) {
+		captured = finalPlayers_;
+	} else {
+		for (const auto& [_, player] : game.getPlayers()) {
+			captured[player->getGUID()] = {player->getGUID(), player, player->getPosition()};
+		}
+		if (auto* engine = getBotEngineIfLoaded()) {
+			for (const auto& snapshot : engine->capturePersistentPlayers()) {
+				const auto guid = snapshot.player->getGUID();
+				captured[guid] = {guid, snapshot.player, snapshot.loginPosition};
+			}
+		}
+		for (const auto& pending : playerSaves_.snapshot()) captured.try_emplace(pending.guid, pending);
+	}
 	for (const auto& [guid, save] : captured) {
-		if (finalSaving_ || !save.player || save.player->isBotPlayer()) {
-			batch.players.emplace_back(enqueueBot(save), save.player ? save.player->getName() : std::to_string(guid));
+		if (batch.final || save.logout || !save.player || save.player->isBotPlayer()) {
+			batch.players.emplace_back(enqueuePlayerSave(save), save.player ? save.player->getName() : std::to_string(guid));
 		} else {
 			save.player->loginPosition = save.position;
 			batch.players.emplace_back(threadPool.submit_task([this, player = save.player] {
@@ -90,12 +116,19 @@ bool SaveManager::saveBatch(SaveBatch batch) {
 			logger.error("Failed to durably save player {}: {}", name, error.what());
 		}
 	}
-	for (const auto& guild : batch.guilds) failures += !saveGuild(guild);
-	failures += !saveMap();
-	observeFinalOutcome();
-	failures += !saveKV();
-	observeFinalOutcome();
-	if (finalSaving_ && finalCommitUncertain_) return false;
+	if (batch.final) {
+		failures += !saveFinalStage("guilds", [&] {
+			return DBTransaction::executeWithinTransaction([&] {
+				return std::ranges::all_of(batch.guilds, [this](const auto &guild) { return saveGuild(guild); });
+			});
+		});
+	} else {
+		if (finalSaving_) return false;
+		for (const auto& guild : batch.guilds) failures += !saveGuild(guild);
+	}
+	failures += !saveMap(batch.final);
+	failures += !saveKV(batch.final);
+	if (batch.final && finalCommitUncertain_) return false;
 	if (failures) logger.error("Server save completed with {} failed writes", failures);
 	else logger.info("Server saved {} players in {} milliseconds", batch.players.size(), timer.duration());
 	return failures == 0;
@@ -107,38 +140,43 @@ void SaveManager::saveAll() {
 
 void SaveManager::beginFinalSave() {
 	finalSaving_ = true;
-	std::unordered_map<uint32_t, BotSave> frozen;
-	for (const auto& entry : botSaves_.snapshot()) frozen.emplace(entry.guid, entry);
+	finalSaveToken_ = saveReceiptToken();
+	for (auto& entry : playerSaves_.snapshot()) finalPlayers_.emplace(entry.guid, std::move(entry));
 	if (auto* engine = getBotEngineIfLoaded()) {
 		for (const auto& entry : engine->capturePersistentPlayers()) {
 			const auto guid = entry.player->getGUID();
-			frozen[guid] = {guid, entry.player, entry.loginPosition};
+			finalPlayers_[guid] = {guid, entry.player, entry.loginPosition};
 		}
 	}
 	for (const auto& [_, player] : game.getPlayers()) {
-		frozen[player->getGUID()] = {player->getGUID(), player, player->getPosition()};
-	}
-	for (auto& [_, entry] : frozen) {
-		if (entry.player && !entry.checkpoint) {
-			try {
-				Player::PlayerLock lock(entry.player);
-				entry.checkpoint = std::make_shared<const PlayerSaveSnapshot>(
-					IOLoginData::capturePlayerSave(entry.player, entry.position));
-			} catch (const std::exception& error) {
-				logger.error("Could not freeze player {} checkpoint: {}", entry.guid, error.what());
-			}
-		}
-		finalPlayers_.push_back(std::move(entry));
+		finalPlayers_[player->getGUID()] = {player->getGUID(), player, player->getPosition()};
 	}
 }
 
-bool SaveManager::saveFinal() {
+bool SaveManager::saveFinal(const std::function<bool()> &saveMotd) {
+	// Stable receipts fence retries of the same shutdown at the database.
 	finalCommitUncertain_ = false;
+	if (!saveFinalStage("motd", [&] { return DBTransaction::executeWithinTransaction(saveMotd); })) return false;
+	for (auto& [_, save] : finalPlayers_) {
+		if (save.receipt.empty()) save.receipt = finalSaveToken_;
+		if (save.player && !save.checkpoint) {
+			Player::PlayerLock lock(save.player);
+			captureCheckpoint(save);
+		}
+	}
 	if (saveBatch(captureBatch()) && !finalCommitUncertain_) {
 		finalPlayers_.clear();
 		return true;
 	}
 	return false;
+}
+
+bool SaveManager::saveFinalStage(const std::string &stage, const std::function<bool()> &save) {
+	DBTransaction::ScopedReceipt receipt("save:final:" + stage, finalSaveToken_);
+	DBTransaction::clearOutcome();
+	const bool saved = save();
+	observeFinalOutcome();
+	return saved;
 }
 
 void SaveManager::observeFinalOutcome() {
@@ -156,39 +194,46 @@ void SaveManager::scheduleAll() {
 	threadPool.detach_task([this, batch = std::move(batch)]() mutable { saveBatch(std::move(batch)); });
 }
 
-std::shared_future<bool> SaveManager::enqueueBot(BotSave save) {
+void SaveManager::captureCheckpoint(PlayerSave &save) {
 	// This runs on the dispatcher before any reactivation can mutate the object.
-	// Retain Player only for failed-save recovery and dispatcher-owned acknowledgement.
-	if (save.player && !save.checkpoint) {
+	if (save.player && !save.checkpoint && !IOMarket::playerHasPendingFill(save.guid)) {
 		try {
 			save.checkpoint = std::make_shared<const PlayerSaveSnapshot>(IOLoginData::capturePlayerSave(save.player, save.position));
 		} catch (const std::exception& error) {
-			logger.error("Could not capture bot {} checkpoint: {}", save.guid, error.what());
-			save.checkpoint.reset(); // Retain authoritative Player for an explicit retry.
+			logger.error("Could not capture player {} checkpoint: {}", save.guid, error.what());
 		}
 	}
+}
+
+std::shared_future<bool> SaveManager::enqueuePlayerSave(PlayerSave save) {
+	const auto player = save.player;
+	std::optional<Player::PlayerLock> lock;
+	if (player && !save.checkpoint && !save.receipt.empty()) lock.emplace(player);
+	captureCheckpoint(save);
 	const auto guid = save.guid;
-	auto requested = botSaves_.request(guid, std::move(save));
-	if (requested.start) botSavePool_.detach_task([this, guid] { runBotSave(guid); });
+	auto requested = playerSaves_.request(guid, std::move(save));
+	if (requested.start) playerSavePool_.detach_task([this, guid] { runPlayerSave(guid); });
 	return requested.completed;
 }
 
-void SaveManager::runBotSave(uint32_t guid) {
+void SaveManager::runPlayerSave(uint32_t guid) {
 	// Keep a transaction off the dispatcher's main DB connection. TLS belongs
 	// to the executable and cannot retain an unloaded engine's code.
 	thread_local std::unique_ptr<Database> connection;
-	while (auto work = botSaves_.take(guid)) {
+	while (auto work = playerSaves_.take(guid)) {
 		bool success = false;
 		try {
 			if (!connection) {
 				auto candidate = std::make_unique<Database>();
-				if (!candidate->connect()) throw std::runtime_error("bot save DB connection unavailable");
+				if (!candidate->connect()) throw std::runtime_error("save DB connection unavailable");
 				connection = std::move(candidate);
 			}
 			Database::ScopedConnection route(*connection);
-			if (work->value.player && !work->value.checkpoint) throw std::runtime_error("bot checkpoint capture failed");
+			if (work->value.player && !work->value.checkpoint) throw std::runtime_error("player checkpoint unavailable");
 			if (work->value.checkpoint) {
 				if (IOMarket::playerHasPendingFill(guid)) throw std::runtime_error("market settlement is awaiting reconciliation");
+				std::optional<DBTransaction::ScopedReceipt> receipt;
+				if (!work->value.receipt.empty()) receipt.emplace(fmt::format("save:player:{}", guid), work->value.receipt);
 				success = IOLoginData::persistPlayerSave(*work->value.checkpoint);
 				observeFinalOutcome();
 				if (success) threadPool.detach_task([player = work->value.player, snapshot = work->value.checkpoint] {
@@ -197,25 +242,44 @@ void SaveManager::runBotSave(uint32_t guid) {
 					// never move SQL or mutable character serialization back into that pool.
 					g_dispatcher().addEvent([player, snapshot] {
 						IOLoginData::acknowledgePlayerSave(player, *snapshot);
-					}, "SaveManager::acknowledgeBotCheckpoint");
+					}, "SaveManager::acknowledgeCheckpoint");
 				});
 			}
 			else {
 				const auto& pos = work->value.position;
-				success = Database::getInstance().executeQuery(fmt::format(
-					"UPDATE `players` SET `posx`={}, `posy`={}, `posz`={} WHERE `id`={}", pos.x, pos.y, pos.z, guid));
+				const auto savePosition = [&] {
+					return g_database().executeQuery(fmt::format(
+						"UPDATE `players` SET `posx`={}, `posy`={}, `posz`={} WHERE `id`={}", pos.x, pos.y, pos.z, guid));
+				};
+				if (work->value.receipt.empty()) {
+					success = savePosition();
+				} else {
+					DBTransaction::ScopedReceipt receipt(fmt::format("save:player:{}", guid), work->value.receipt);
+					success = DBTransaction::executeWithinTransaction(savePosition);
+					observeFinalOutcome();
+				}
 			}
 		} catch (const std::exception& error) {
-			logger.error("Bot save failed for {}: {}", guid, error.what());
-		} catch (...) { logger.error("Bot save failed for {} with an unknown exception", guid); }
-		if (!botSaves_.finish(guid, work->generation, success)) break;
+			logger.error("Player checkpoint failed for {}: {}", guid, error.what());
+		} catch (...) { logger.error("Player checkpoint failed for {} with an unknown exception", guid); }
+		if (playerSaves_.finish(guid, work->generation, success)) continue;
+		if (!success && work->value.logout && !finalSaving_) {
+			threadPool.detach_task([this, guid, receipt = work->value.receipt] {
+				g_dispatcher().scheduleEvent(2000, [this, guid, receipt] {
+					if (finalSaving_) return;
+					const auto pending = playerSaves_.find(guid);
+					if (pending && pending->receipt == receipt) enqueuePlayerSave(*pending);
+				}, "SaveManager::retryLogout");
+			});
+		}
+		break;
 	}
 }
 
 void SaveManager::saveBotPosition(uint32_t guid, const Position& position) {
 	if (finalSaving_) return;
 	// Dispatcher only. Preserve a pending full character save when updating position.
-	enqueueBot({guid, getPendingBotPlayer(guid), position});
+	enqueuePlayerSave({guid, getPendingBotPlayer(guid), position});
 }
 
 void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
@@ -227,7 +291,7 @@ void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
 	}
 
 	if (playerToSave->isBotPlayer()) {
-		enqueueBot({playerToSave->getGUID(), playerToSave, playerToSave->getLoginPosition()});
+		enqueuePlayerSave({playerToSave->getGUID(), playerToSave, playerToSave->getLoginPosition()});
 		return;
 	}
 
@@ -265,7 +329,7 @@ bool SaveManager::doSavePlayer(std::shared_ptr<Player> player, std::optional<Pos
 
 	Benchmark bm_savePlayer;
 	Player::PlayerLock lock(player);
-	if (IOMarket::playerHasPendingFill(player->getGUID())) return false;
+	if (finalSaving_ || hasPendingLogout(player->getGUID()) || IOMarket::playerHasPendingFill(player->getGUID())) return false;
 	m_playerMap.erase(player->getGUID());
 	if (g_game().getGameState() == GAME_STATE_NORMAL) {
 		logger.debug("Saving player {}.", player->getName());
@@ -286,7 +350,7 @@ bool SaveManager::savePlayer(std::shared_ptr<Player> player, std::optional<Posit
 	if (!player) return false;
 	if (finalSaving_) return true; // Owned by the final batch.
 	if (player->isBotPlayer()) {
-		enqueueBot({player->getGUID(), player, position.value_or(player->getLoginPosition())});
+		enqueuePlayerSave({player->getGUID(), player, position.value_or(player->getLoginPosition())});
 		return true; // queued, never an acknowledgement of SQL durability
 	}
 	if (player->isOnline() && g_game().getGameState() != GAME_STATE_SHUTDOWN) {
@@ -295,6 +359,33 @@ bool SaveManager::savePlayer(std::shared_ptr<Player> player, std::optional<Posit
 	}
 
 	return doSavePlayer(player);
+}
+
+void SaveManager::saveLogoutPlayer(const std::shared_ptr<Player> &player) {
+	PlayerSave save {player->getGUID(), player, player->getLoginPosition()};
+	save.logout = !player->isBotPlayer();
+	if (finalSaving_) {
+		finalPlayers_[save.guid] = std::move(save);
+		return;
+	}
+	if (save.logout) save.receipt = saveReceiptToken();
+	enqueuePlayerSave(std::move(save));
+}
+
+bool SaveManager::creditPendingLogout(uint32_t guid, uint64_t amount) {
+	auto pending = playerSaves_.find(guid);
+	if (finalSaving_) {
+		if (auto found = finalPlayers_.find(guid); found != finalPlayers_.end()) pending = found->second;
+	}
+	if (!pending || !pending->logout) return false;
+
+	// A direct SQL credit could be overwritten by the queued balance snapshot.
+	pending->player->setBankBalance(pending->player->getBankBalance() + amount);
+	pending->checkpoint.reset();
+	pending->receipt = saveReceiptToken();
+	if (finalSaving_) finalPlayers_[guid] = std::move(*pending);
+	else enqueuePlayerSave(std::move(*pending));
+	return true;
 }
 
 bool SaveManager::saveGuild(std::shared_ptr<Guild> guild) {
@@ -312,11 +403,12 @@ bool SaveManager::saveGuild(std::shared_ptr<Guild> guild) {
 	return saved;
 }
 
-bool SaveManager::saveMap() {
-	DBTransaction::clearOutcome();
+bool SaveManager::saveMap(bool final) {
 	Benchmark bm_saveMap;
 	logger.debug("Saving map...");
-	bool saveSuccess = finalSaving_ ? Map::saveOnce() : Map::save();
+	const bool saveSuccess = final
+		? saveFinalStage("house-info", IOMapSerialize::saveHouseInfo) && saveFinalStage("house-items", IOMapSerialize::saveHouseItems)
+		: Map::save();
 	if (!saveSuccess) {
 		logger.error("Failed to save map.");
 	}
@@ -326,11 +418,10 @@ bool SaveManager::saveMap() {
 	return saveSuccess;
 }
 
-bool SaveManager::saveKV() {
-	DBTransaction::clearOutcome();
+bool SaveManager::saveKV(bool final) {
 	Benchmark bm_saveKV;
 	logger.debug("Saving key-value store...");
-	bool saveSuccess = kv.saveAll();
+	const bool saveSuccess = final ? saveFinalStage("kv", [this] { return kv.saveAll(); }) : kv.saveAll();
 	if (!saveSuccess) {
 		logger.error("Failed to save key-value store.");
 	}

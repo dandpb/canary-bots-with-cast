@@ -145,6 +145,11 @@ if(UNIX AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set_tests_properties(checkpoint_deadlock_retry PROPERTIES
         ENVIRONMENT "BOT_TEST_CXX=${CMAKE_CXX_COMPILER};BOT_TEST_INCLUDES=${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
         TIMEOUT 30)
+    add_test(NAME bot_database_tasks_backoff
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/fixture/bot_database_tasks_offline.py)
+    set_tests_properties(bot_database_tasks_backoff PROPERTIES
+        ENVIRONMENT "BOT_TEST_CXX=${CMAKE_CXX_COMPILER}"
+        TIMEOUT 30)
     find_program(BOT_TEST_LUAJIT luajit HINTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/luajit")
     if(BOT_TEST_LUAJIT)
         foreach(BOT_RELOAD_TEST test_reload test_reload_missing test_reload_failures)

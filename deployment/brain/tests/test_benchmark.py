@@ -572,6 +572,42 @@ async def test_resume_cleans_the_same_project_before_closing_an_interrupted_atte
     assert ReplayReader(recording.path).run("qa:native:0")["status"] == "interrupted"
 
 
+@pytest.mark.parametrize(
+    "preparation", ["none", "directory", "temporary-receipt", "compose", "completed"]
+)
+async def test_resume_before_ownership_was_persisted(tmp_path, monkeypatch, preparation):
+    config = experiment(tmp_path)
+    recording = RecordingStore(config.output / "recording.sqlite3")
+    manifest = attempt(config)
+    recording.begin(manifest)
+    (config.output / "experiment.json").write_text(json.dumps({
+        "configuration_sha256": manifest.configuration_sha256,
+        "compose_ownership_version": 1,
+    }))
+    fixture = DockerFixture(config, config.output / "native-0", manifest.run_id)
+    if preparation == "completed":
+        recording.finish(manifest.run_id, "completed")
+    elif preparation != "none":
+        fixture.directory.mkdir()
+    if preparation == "temporary-receipt":
+        fixture.owner_file.with_suffix(".tmp").touch()
+    if preparation == "compose":
+        fixture.compose.write_text("{}")
+
+    def unexpected_docker(*args, **kwargs):
+        pytest.fail("A missing receipt cannot authorize a Docker operation")
+
+    monkeypatch.setattr(DockerFixture, "command", unexpected_docker)
+    if preparation in {"compose", "completed"}:
+        with pytest.raises(ValueError, match="compose_ownership_invalid"):
+            await run_campaign(config, live=True)
+        expected = "completed" if preparation == "completed" else "running"
+        assert ReplayReader(recording.path).run(manifest.run_id)["status"] == expected
+    else:
+        await run_campaign(config, live=True)
+        assert ReplayReader(recording.path).run(manifest.run_id)["status"] == "interrupted"
+
+
 async def test_failed_orphan_cleanup_keeps_attempt_pending_for_next_resume(
     tmp_path, monkeypatch
 ):

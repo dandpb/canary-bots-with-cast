@@ -565,9 +565,19 @@ class DockerFixture:
                     "down", "--remove-orphans", "--timeout", "180", timeout=240
                 )
 
-    def recover(self, *, ownership_expected: bool = False) -> None:
+    def recover(self, *, ownership_expected: bool = False, allow_unprepared: bool = False) -> None:
         if not self.owner_file.exists() and not self.owner_file.is_symlink():
             if ownership_expected:
+                # Preparation creates only the directory and receipt temp file before ownership.
+                if allow_unprepared and not self.directory.is_symlink():
+                    try:
+                        entries = {entry.name for entry in self.directory.iterdir()}
+                    except FileNotFoundError:
+                        entries = set()
+                    except OSError as error:
+                        raise ComposeOwnershipInvalid() from error
+                    if entries <= {self.owner_file.with_suffix(".tmp").name}:
+                        return
                 raise ComposeOwnershipInvalid()
             if self.compose.is_file() and self.env_file.is_file():
                 try:
@@ -720,7 +730,11 @@ async def _run_campaign(
                     )
                     # Cleanup must succeed before declaring interruption handled
                     # or starting another independent attempt.
-                    await asyncio.to_thread(harness.recover, ownership_expected=ownership_expected)
+                    await asyncio.to_thread(
+                        harness.recover,
+                        ownership_expected=ownership_expected,
+                        allow_unprepared=existing["status"] in {"running", "interrupted", "failed"},
+                    )
                     # Never restart a completed attempt, or silently turn an interrupted one into a new trial.
                     if existing["status"] == "running":
                         RecordingStore(recording).finish(identity, "interrupted")

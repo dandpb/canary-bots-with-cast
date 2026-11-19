@@ -16,10 +16,10 @@ Provides synchronous and asynchronous MySQL database connectivity, query executi
 
 ## Invariants
 - `Database::collectStatements` requires a fresh, unconnected `Database` instance (`handle == nullptr && statements_ == nullptr`) and throws `std::logic_error` otherwise; when capturing statements, `storeQuery` is forbidden and throws `std::logic_error` (`[database.hpp:Database::collectStatements]`, `[database.cpp:Database::storeQuery]`).
-- `Database::beginTransaction` acquires `databaseLock` after executing `BEGIN`, and `commit`/`rollback` release `databaseLock` (`[database.cpp:Database::beginTransaction]`, `[database.cpp:Database::commit]`, `[database.cpp:Database::rollback]`).
+- `DBTransaction::executeWithOutcome` holds the connection lock from before `BEGIN` through commit or rollback. A scoped save receipt is written with the save and checked under a row lock on retry (`[database.hpp:DBTransaction::executeWithOutcome]`, `[database.cpp:DBTransaction::prepareReceipt]`).
 - `Database::canRetryDeadlock` returns `true` only when the transaction occurred on the same `Database` instance, same MySQL thread ID, same `recoveryEpoch_`, and failed with MySQL deadlock error `1213` (`[database.cpp:Database::canRetryDeadlock]`).
 - `DBInsert::execute` splits batched row values so each query never exceeds `Database::MAX_QUERY_SIZE` (8 MB) or `maxPacketSize` (`[database.hpp:Database::MAX_QUERY_SIZE]`, `[database.cpp:Database::addRow]`, `[database.cpp:DBInsert::execute]`).
-- `BotDatabaseTasks` never touches the shared `Database` singleton or `ThreadPool`, isolating all bot async DB I/O onto its own `db_` connection and `worker_` thread (`[botdatabasetasks.hpp:BotDatabaseTasks]`, `[botdatabasetasks.cpp:BotDatabaseTasks::run]`).
+- `BotDatabaseTasks` uses a private database connection and worker. Its queue holds at most 1,024 pending jobs. During reconnect backoff it completes jobs with failure while the connection is unavailable (`[botdatabasetasks.cpp:BotDatabaseTasks::submit]`, `[botdatabasetasks.cpp:BotDatabaseTasks::run]`).
 
 ## Side Effects
 - Opens TCP/Unix socket connections to MySQL and executes SQL queries and transactions via `libmysqlclient` (`[database.cpp:Database::connect]`, `[database.cpp:Database::executeQuery]`, `[database.cpp:Database::storeQuery]`, `[database.cpp:Database::beginTransaction]`, `[database.cpp:Database::commit]`, `[database.cpp:Database::rollback]`).
