@@ -10,6 +10,7 @@ int main(int argc, char** argv) {
 	::testing::InitGoogleTest(&argc, argv);
 
 	static auto injector = std::make_unique<di::extension::injector<>>();
+	injector->install(di::bind<AccountRepository>.to<AccountRepositoryDB>().in(di::singleton));
 	InMemoryLogger::install(*injector);
 	KVMemory::install(*injector);
 	TestLuaEnvironment::install(*injector);

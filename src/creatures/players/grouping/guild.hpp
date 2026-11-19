@@ -9,6 +9,9 @@
 
 #pragma once
 
+#include <atomic>
+#include <mutex>
+
 #include "game/bank/bank.hpp"
 
 class Player;
@@ -62,10 +65,13 @@ public:
 		memberCount = count;
 	}
 	uint64_t getBankBalance() const override {
-		return bankBalance;
+		return bankBalance.load();
 	}
 	void setBankBalance(uint64_t balance) override {
-		bankBalance = balance;
+		bankBalance.store(balance);
+	}
+	[[nodiscard]] std::unique_lock<std::mutex> tryLockBankBalance() const {
+		return std::unique_lock(bankBalanceMutex, std::try_to_lock);
 	}
 
 	const std::vector<GuildRank_ptr> &getRanks() const {
@@ -88,7 +94,8 @@ private:
 	std::list<std::shared_ptr<Player>> membersOnline;
 	std::vector<GuildRank_ptr> ranks;
 	std::string name;
-	uint64_t bankBalance = 0;
+	std::atomic<uint64_t> bankBalance = 0;
+	mutable std::mutex bankBalanceMutex;
 	std::string motd;
 	uint32_t id;
 	uint32_t memberCount = 0;

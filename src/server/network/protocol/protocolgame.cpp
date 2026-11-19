@@ -5868,7 +5868,7 @@ void ProtocolGame::sendMarketEnter(uint32_t depotId) {
 		msg.add<uint64_t>(player->getBankBalance());
 	}
 
-	msg.addByte(static_cast<uint8_t>(std::min<uint32_t>(IOMarket::getPlayerOfferCount(player->getGUID()), std::numeric_limits<uint8_t>::max())));
+	msg.addByte(static_cast<uint8_t>(std::min<uint32_t>(IOMarket::getPlayerOfferCount(player->getGUID()).value_or(0), std::numeric_limits<uint8_t>::max())));
 
 	std::shared_ptr<DepotLocker> depotLocker = player->getDepotLocker(depotId);
 	if (!depotLocker) {

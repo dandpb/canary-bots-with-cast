@@ -29,24 +29,25 @@ public:
 	static void processExpiredOffers(const DBResult_ptr &result, bool);
 	static void checkExpiredOffers();
 
-	static uint32_t getPlayerOfferCount(uint32_t playerId);
+	static std::optional<uint32_t> getPlayerOfferCount(uint32_t playerId);
 	static MarketOfferEx getOfferByCounter(uint32_t timestamp, uint16_t counter);
 	static MarketOfferEx getOfferById(uint32_t offerId);
 
-	static void createOffer(uint32_t playerId, MarketAction_t action, uint32_t itemId, uint16_t amount, uint64_t price, uint8_t tier, bool anonymous);
+	static uint32_t createOffer(uint32_t playerId, MarketAction_t action, uint32_t itemId, uint16_t amount, uint64_t price, uint8_t tier, bool anonymous);
 	static constexpr uint64_t feeFor(uint64_t total) {
 		return std::clamp<uint64_t>(total / 50, 20, 1'000'000);
 	}
 	static bool lockFillOffer(const MarketOfferEx &offer);
 	static uint64_t writeFill(const MarketOfferEx &offer, uint32_t takerId, uint16_t amount);
+	static uint64_t writeClose(const MarketOfferEx &offer, MarketOfferState_t state);
 	static std::optional<bool> fillCommitted(uint64_t historyId);
+	static std::optional<bool> offerCreated(uint32_t offerId);
 	static bool playerHasPendingFill(uint32_t guid);
 	static void setPlayerFillPending(uint32_t guid, bool pending);
 	static void acceptOffer(uint32_t offerId, uint16_t amount);
 	static void deleteOffer(uint32_t offerId);
 
 	static void appendHistory(uint32_t playerId, MarketAction_t type, uint16_t itemId, uint16_t amount, uint64_t price, time_t timestamp, uint8_t tier, MarketOfferState_t state);
-	static bool moveOfferToHistory(uint32_t offerId, MarketOfferState_t state);
 
 	void updateStatistics();
 

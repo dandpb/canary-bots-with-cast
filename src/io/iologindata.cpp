@@ -252,7 +252,7 @@ void IOLoginData::acknowledgePlayerSave(const std::shared_ptr<Player>& player, c
 }
 
 bool IOLoginData::savePlayer(const std::shared_ptr<Player> &player, std::optional<Position> position) {
-	if (!player) return false;
+	if (!player || player->isPersistenceDiscarded()) return false;
 	PlayerStorage::PlayerStorageDelta storageDelta;
 	try {
 		bool success = DBTransaction::executeWithinTransaction([player, position, &storageDelta]() {
@@ -410,13 +410,6 @@ bool IOLoginData::formatPlayerName(std::string &name) {
 
 	name = result->getString("name");
 	return true;
-}
-
-void IOLoginData::increaseBankBalance(uint32_t guid, uint64_t bankBalance) {
-	if (g_saveManager().creditPendingLogout(guid, bankBalance)) return;
-	std::ostringstream query;
-	query << "UPDATE `players` SET `balance` = `balance` + " << bankBalance << " WHERE `id` = " << guid;
-	Database::getInstance().executeQuery(query.str());
 }
 
 std::vector<VIPEntry> IOLoginData::getVIPEntries(uint32_t accountId) {

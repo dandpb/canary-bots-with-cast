@@ -28,6 +28,7 @@ private:
 	static int luaHouseSetNewOwnerGuid(lua_State* L);
 	static int luaHouseHasItemOnTile(lua_State* L);
 	static int luaHouseHasNewOwnership(lua_State* L);
+	static int luaHouseHasAuctionEscrow(lua_State* L);
 	static int luaHouseStartTrade(lua_State* L);
 
 	static int luaHouseGetBeds(lua_State* L);

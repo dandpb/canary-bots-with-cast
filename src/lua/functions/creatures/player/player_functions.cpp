@@ -10,6 +10,7 @@
 #include "lua/functions/creatures/player/player_functions.hpp"
 
 #include "account/account.hpp"
+#include "account/account_repository.hpp"
 #include "creatures/appearance/mounts/mounts.hpp"
 #include "creatures/combat/spells.hpp"
 #include "creatures/creature.hpp"
@@ -255,7 +256,9 @@ void PlayerFunctions::init(lua_State* L) {
 
 	Lua::registerMethod(L, "Player", "getTransferableCoins", PlayerFunctions::luaPlayerGetTransferableCoins);
 	Lua::registerMethod(L, "Player", "addTransferableCoins", PlayerFunctions::luaPlayerAddTransferableCoins);
+	Lua::registerMethod(L, "Player", "redeemStoreCoin", PlayerFunctions::luaPlayerRedeemStoreCoin);
 	Lua::registerMethod(L, "Player", "removeTransferableCoins", PlayerFunctions::luaPlayerRemoveTransferableCoins);
+	Lua::registerMethod(L, "Player", "transferTransferableCoins", PlayerFunctions::luaPlayerTransferTransferableCoins);
 
 	Lua::registerMethod(L, "Player", "sendBlessStatus", PlayerFunctions::luaPlayerSendBlessStatus);
 	Lua::registerMethod(L, "Player", "hasBlessing", PlayerFunctions::luaPlayerHasBlessing);
@@ -814,15 +817,13 @@ int PlayerFunctions::luaPlayerSetAccountType(lua_State* L) {
 		return 1;
 	}
 
-	if (player->getAccount()->setAccountType(Lua::getNumber<AccountType>(L, 2)) != AccountErrors_t::Ok) {
+	const auto accountType = Lua::getNumber<AccountType>(L, 2);
+	const auto &account = player->getAccount();
+	if (!g_accountRepository().setAccountType(account->getID(), accountType)) {
 		lua_pushnil(L);
 		return 1;
 	}
-
-	if (player->getAccount()->save() != AccountErrors_t::Ok) {
-		lua_pushnil(L);
-		return 1;
-	}
+	account->setAccountType(accountType);
 
 	Lua::pushBoolean(L, true);
 	return 1;
@@ -3105,27 +3106,17 @@ int PlayerFunctions::luaPlayerGetPremiumDays(lua_State* L) {
 }
 
 int PlayerFunctions::luaPlayerAddPremiumDays(lua_State* L) {
-	// player:addPremiumDays(days)
+	// player:addPremiumDays(days[, requireExact = false])
 	const auto &player = Lua::getUserdataShared<Player>(L, 1, "Player");
 	if (!player || !player->getAccount()) {
 		lua_pushnil(L);
 		return 1;
 	}
 
-	const auto premiumDays = player->getAccount()->getPremiumRemainingDays();
-
-	if (premiumDays == std::numeric_limits<uint16_t>::max()) {
-		return 1;
-	}
-
-	const int32_t addDays = std::min<int32_t>(0xFFFE - premiumDays, Lua::getNumber<uint16_t>(L, 2));
-	if (addDays <= 0) {
-		return 1;
-	}
-
-	player->getAccount()->addPremiumDays(addDays);
-
-	if (player->getAccount()->save() != AccountErrors_t::Ok) {
+	const auto days = Lua::getNumber<uint16_t>(L, 2);
+	const auto requireExact = Lua::getBoolean(L, 3, false);
+	if (player->getAccount()->changePremiumDays(days, requireExact) != AccountErrors_t::Ok) {
+		lua_pushnil(L);
 		return 1;
 	}
 
@@ -3141,20 +3132,9 @@ int PlayerFunctions::luaPlayerRemovePremiumDays(lua_State* L) {
 		return 1;
 	}
 
-	const auto premiumDays = player->getAccount()->getPremiumRemainingDays();
-
-	if (premiumDays == std::numeric_limits<uint16_t>::max()) {
-		return 1;
-	}
-
-	const int32_t removeDays = std::min<int32_t>(0xFFFE - premiumDays, Lua::getNumber<uint16_t>(L, 2));
-	if (removeDays <= 0) {
-		return 1;
-	}
-
-	player->getAccount()->addPremiumDays(-removeDays);
-
-	if (player->getAccount()->save() != AccountErrors_t::Ok) {
+	const auto days = Lua::getNumber<uint16_t>(L, 2);
+	if (player->getAccount()->changePremiumDays(-static_cast<int32_t>(days)) != AccountErrors_t::Ok) {
+		lua_pushnil(L);
 		return 1;
 	}
 
@@ -3175,6 +3155,8 @@ int PlayerFunctions::luaPlayerGetTibiaCoins(lua_State* L) {
 
 	if (result == AccountErrors_t::Ok) {
 		lua_pushnumber(L, coins);
+	} else {
+		lua_pushnil(L);
 	}
 
 	return 1;
@@ -3195,12 +3177,6 @@ int PlayerFunctions::luaPlayerAddTibiaCoins(lua_State* L) {
 		return 1;
 	}
 
-	if (player->getAccount()->save() != AccountErrors_t::Ok) {
-		Lua::reportErrorFunc("Failed to save account");
-		lua_pushnil(L);
-		return 1;
-	}
-
 	Lua::pushBoolean(L, true);
 
 	return 1;
@@ -3217,11 +3193,6 @@ int PlayerFunctions::luaPlayerRemoveTibiaCoins(lua_State* L) {
 
 	if (player->account->removeCoins(CoinType::Normal, Lua::getNumber<uint32_t>(L, 2)) != AccountErrors_t::Ok) {
 		Lua::reportErrorFunc("Failed to remove coins");
-		return 1;
-	}
-
-	if (player->getAccount()->save() != AccountErrors_t::Ok) {
-		Lua::reportErrorFunc("Failed to save account");
 		lua_pushnil(L);
 		return 1;
 	}
@@ -3244,6 +3215,8 @@ int PlayerFunctions::luaPlayerGetTransferableCoins(lua_State* L) {
 
 	if (result == AccountErrors_t::Ok) {
 		lua_pushnumber(L, coins);
+	} else {
+		lua_pushnil(L);
 	}
 
 	return 1;
@@ -3264,14 +3237,20 @@ int PlayerFunctions::luaPlayerAddTransferableCoins(lua_State* L) {
 		return 1;
 	}
 
-	if (player->getAccount()->save() != AccountErrors_t::Ok) {
-		Lua::reportErrorFunc("failed to save account");
-		lua_pushnil(L);
-		return 1;
-	}
-
 	Lua::pushBoolean(L, true);
 
+	return 1;
+}
+
+int PlayerFunctions::luaPlayerRedeemStoreCoin(lua_State* L) {
+	const auto &player = Lua::getUserdataShared<Player>(L, 1, "Player");
+	const auto &token = Lua::getUserdataShared<Item>(L, 2, "Item");
+	const auto amount = g_game().redeemStoreCoin(player, token);
+	if (amount) {
+		lua_pushnumber(L, *amount);
+	} else {
+		lua_pushnil(L);
+	}
 	return 1;
 }
 
@@ -3290,15 +3269,40 @@ int PlayerFunctions::luaPlayerRemoveTransferableCoins(lua_State* L) {
 		return 1;
 	}
 
-	if (player->getAccount()->save() != AccountErrors_t::Ok) {
-		Lua::reportErrorFunc("failed to save account");
-		lua_pushnil(L);
-		return 1;
-	}
-
 	Lua::pushBoolean(L, true);
 
 	return 1;
+}
+
+int PlayerFunctions::luaPlayerTransferTransferableCoins(lua_State* L) {
+	// player:transferTransferableCoins(receiverAccountId, coins)
+	const auto &player = Lua::getUserdataShared<Player>(L, 1, "Player");
+	if (!player || !player->getAccount()) {
+		Lua::reportErrorFunc(Lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
+		Lua::pushBoolean(L, false);
+		return 1;
+	}
+
+	const auto receiverId = Lua::getNumber<uint32_t>(L, 2);
+	const auto amount = Lua::getNumber<uint32_t>(L, 3);
+	const auto &account = player->getAccount();
+	const auto result = g_accountRepository().transferTransferableCoins(account->getID(), receiverId, amount);
+	Lua::pushBoolean(L, result == AccountErrors_t::Ok);
+	switch (result) {
+		case AccountErrors_t::Ok:
+			if (amount != 0) {
+				account->registerCoinTransaction(CoinTransactionType::Remove, CoinType::Transferable, amount, "REMOVE Coins");
+			}
+			return 1;
+		case AccountErrors_t::RemoveCoins:
+			lua_pushliteral(L, "insufficient");
+			return 2;
+		case AccountErrors_t::CommitUncertain:
+			lua_pushliteral(L, "uncertain");
+			return 2;
+		default:
+			return 1;
+	}
 }
 
 int PlayerFunctions::luaPlayerSendBlessStatus(lua_State* L) {
@@ -4435,18 +4439,38 @@ int PlayerFunctions::luaPlayerGetName(lua_State* L) {
 }
 
 int PlayerFunctions::luaPlayerChangeName(lua_State* L) {
-	// player:changeName(newName)
+	// player:changeName(newName, stage)
 	const auto &player = Lua::getUserdataShared<Player>(L, 1, "Player");
 	if (!player) {
 		Lua::reportErrorFunc(Lua::getErrorDesc(LUA_ERROR_PLAYER_NOT_FOUND));
 		Lua::pushBoolean(L, false);
 		return 0;
 	}
+	const auto newName = Lua::getString(L, 2);
+	if (lua_gettop(L) >= 3 && Lua::getBoolean(L, 3)) {
+		Player::PlayerLock lock(player);
+		if (newName.empty() || !player->isOnline()) {
+			Lua::pushBoolean(L, false);
+			return 1;
+		}
+		bool read = false;
+		const auto existing = g_database().storeQuery(fmt::format(
+			"SELECT id FROM players WHERE name={} AND id<>{}", g_database().escapeString(newName), player->getGUID()), read);
+		if (!read || existing) {
+			Lua::pushBoolean(L, false);
+			return 1;
+		}
+		g_game().removePlayer(player);
+		player->setName(newName);
+		g_game().addPlayer(player);
+		player->kv()->remove("namelock");
+		Lua::pushBoolean(L, true);
+		return 1;
+	}
 	if (player->isOnline()) {
 		player->removePlayer(true, true);
 	}
 	player->kv()->remove("namelock");
-	const auto newName = Lua::getString(L, 2);
 	player->setName(newName);
 	g_saveManager().savePlayer(player);
 	return 1;

@@ -608,6 +608,64 @@ async def test_resume_before_ownership_was_persisted(tmp_path, monkeypatch, prep
         assert ReplayReader(recording.path).run(manifest.run_id)["status"] == "interrupted"
 
 
+@pytest.mark.parametrize("preparation", ["ownership-only", "env-only", "torn-compose"])
+@pytest.mark.parametrize("has_resources", [False, True])
+async def test_resume_during_compose_preparation(
+    tmp_path, monkeypatch, preparation, has_resources
+):
+    config = experiment(tmp_path)
+    recording = RecordingStore(config.output / "recording.sqlite3")
+    manifest = attempt(config)
+    recording.begin(manifest)
+    fixture = DockerFixture(config, config.output / "native-0", manifest.run_id)
+    fixture.directory.mkdir()
+    fixture.create_ownership()
+    if preparation != "ownership-only":
+        fixture.env_file.touch()
+    if preparation == "torn-compose":
+        fixture.compose.write_text('{"services":')
+
+    inspected = []
+
+    def inventory(*arguments):
+        inspected.append(arguments)
+        assert arguments[1] == "ls"
+        return "owned-container" if has_resources and arguments[0] == "container" else ""
+
+    def unexpected_docker(*args, **kwargs):
+        pytest.fail("incomplete Compose inputs cannot authorize a Docker operation")
+
+    monkeypatch.setattr(DockerFixture, "docker_metadata", staticmethod(inventory))
+    monkeypatch.setattr(DockerFixture, "command", unexpected_docker)
+    if has_resources:
+        with pytest.raises(ValueError, match="compose_ownership_invalid"):
+            await run_campaign(config, live=True)
+        expected = "running"
+    else:
+        await run_campaign(config, live=True)
+        expected = "interrupted"
+    assert inspected
+    assert ReplayReader(recording.path).run(manifest.run_id)["status"] == expected
+
+
+def test_interrupted_compose_publication_keeps_previous_definition(tmp_path, monkeypatch):
+    config = experiment(tmp_path)
+    fixture = DockerFixture(config, config.output / "native-0", "qa:native:0")
+    fixture.prepare(config.participants[0])
+    original = fixture.compose.read_bytes()
+
+    def fail_before_rename(path, destination):
+        assert destination == fixture.compose
+        assert fixture.compose.read_bytes() == original
+        raise OSError("interrupted before rename")
+
+    monkeypatch.setattr(type(fixture.compose), "replace", fail_before_rename)
+    with pytest.raises(OSError, match="interrupted before rename"):
+        fixture.write_compose({"replacement": True})
+    assert fixture.compose.read_bytes() == original
+    assert not list(fixture.directory.glob(".compose.json.*"))
+
+
 async def test_failed_orphan_cleanup_keeps_attempt_pending_for_next_resume(
     tmp_path, monkeypatch
 ):

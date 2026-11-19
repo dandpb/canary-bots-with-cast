@@ -44,6 +44,10 @@ function buyHouse.onSay(player, words, param)
 		player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You cannot buy this house, as there are items inside it. Please, contact an administrator.")
 		return true
 	end
+	if house:hasAuctionEscrow() then
+		player:sendCancelMessage("This house has an active auction.")
+		return true
+	end
 
 	local price = house:getPrice()
 	if not player:removeMoneyBank(price) then

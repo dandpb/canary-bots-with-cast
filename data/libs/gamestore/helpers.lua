@@ -2,6 +2,13 @@ local constants = require("gamestore.constants")
 
 local helpers = {}
 
+function helpers.getExpBoostPrice(player)
+	local boosts = tonumber(player:kv():get(GameStore.Kv.expBoostCount)) or 0
+	local tier = math.max(1, boosts)
+	local prices = GameStore.ExpBoostValuesCustom or GameStore.ExpBoostValues
+	return prices[tier], tier
+end
+
 function helpers.convertType(type)
 	local types = {
 		[constants.OfferTypes.OFFER_TYPE_OUTFIT] = constants.ConverType.SHOW_OUTFIT,

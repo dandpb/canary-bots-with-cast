@@ -108,7 +108,7 @@ class Supervisor:
         ):
             return False
         x, y, floor = snapshot.bot.position
-        old_x, old_y, old_floor = failure["position"]
+        old_x, old_y, old_floor = map(int, failure["position"])
         return floor == old_floor and max(abs(x - old_x), abs(y - old_y)) <= 3
 
     def managed(self, bot: int) -> bool:

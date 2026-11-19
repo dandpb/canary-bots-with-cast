@@ -24,7 +24,9 @@
 #include "io/player_storage_repository.hpp"
 #include "kv/kv.hpp"
 
-bool IOLoginDataSave::saveItems(const std::shared_ptr<Player> &player, const ItemBlockList &itemList, DBInsert &query_insert, PropWriteStream &propWriteStream) {
+#include <limits>
+
+bool IOLoginDataSave::saveItems(const std::shared_ptr<Player> &player, const ItemBlockList &itemList, DBInsert &query_insert, PropWriteStream &propWriteStream, int32_t runningId) {
 	if (!player) {
 		g_logger().warn("[IOLoginData::savePlayer] - Player nullptr: {}", __FUNCTION__);
 		return false;
@@ -36,7 +38,6 @@ bool IOLoginDataSave::saveItems(const std::shared_ptr<Player> &player, const Ite
 	// Initialize variables
 	using ContainerBlock = std::pair<std::shared_ptr<Container>, int32_t>;
 	std::list<ContainerBlock> queue;
-	int32_t runningId = 100;
 
 	// Loop through each item in itemList
 	const auto &openContainers = player->getOpenContainers();
@@ -48,6 +49,7 @@ bool IOLoginDataSave::saveItems(const std::shared_ptr<Player> &player, const Ite
 
 		int32_t pid = it.first;
 
+		if (runningId == std::numeric_limits<int32_t>::max()) return false;
 		++runningId;
 
 		// Update container attributes if necessary
@@ -107,6 +109,7 @@ bool IOLoginDataSave::saveItems(const std::shared_ptr<Player> &player, const Ite
 				continue;
 			}
 
+			if (runningId == std::numeric_limits<int32_t>::max()) return false;
 			++runningId;
 
 			// Update sub-container attributes if necessary
@@ -609,6 +612,24 @@ bool IOLoginDataSave::savePlayerInbox(const std::shared_ptr<Player> &player) {
 		return false;
 	}
 	return true;
+}
+
+bool IOLoginDataSave::appendPlayerInbox(const std::shared_ptr<Player> &player) {
+	if (!player || !player->getInbox()) return false;
+	const auto &items = player->getInbox()->getItemList();
+	if (items.empty()) return true;
+	auto &db = g_database();
+	const auto guid = player->getGUID();
+	if (!db.storeQuery(fmt::format("SELECT `id` FROM `players` WHERE `id` = {} FOR UPDATE", guid))) return false;
+	const auto latest = db.storeQuery(fmt::format("SELECT MAX(`sid`) AS `sid`, COUNT(*) AS `item_count` FROM `player_inboxitems` WHERE `player_id` = {}", guid));
+	if (!latest) return false;
+	const auto limit = g_configManager().getNumber(MAX_INBOX_ITEMS);
+	if (limit > 0 && latest->getNumber<uint64_t>("item_count") + player->getInbox()->getItemHoldingCount() > static_cast<uint64_t>(limit)) return false;
+	ItemInboxList inboxList;
+	for (const auto &item : items) inboxList.emplace_back(0, item);
+	DBInsert query("INSERT INTO `player_inboxitems` (`player_id`, `pid`, `sid`, `itemtype`, `count`, `attributes`) VALUES ");
+	PropWriteStream stream;
+	return saveItems(player, inboxList, query, stream, std::max(100, latest->getNumber<int32_t>("sid")));
 }
 
 bool IOLoginDataSave::savePlayerPreyClass(const std::shared_ptr<Player> &player) {

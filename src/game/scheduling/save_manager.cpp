@@ -105,7 +105,7 @@ SaveManager::SaveBatch SaveManager::captureBatch() {
 	return batch;
 }
 
-bool SaveManager::saveBatch(SaveBatch batch) {
+bool SaveManager::saveBatch(SaveBatch batch, const std::function<bool()> &saveMotd) {
 	Benchmark timer;
 	size_t failures = 0;
 	for (auto& [future, name] : batch.players) {
@@ -117,17 +117,24 @@ bool SaveManager::saveBatch(SaveBatch batch) {
 		}
 	}
 	if (batch.final) {
-		failures += !saveFinalStage("guilds", [&] {
-			return DBTransaction::executeWithinTransaction([&] {
-				return std::ranges::all_of(batch.guilds, [this](const auto &guild) { return saveGuild(guild); });
-			});
-		});
+		// Checkpoints deferred by settlement can still contribute to global KV on retry.
+		if (!failures && !finalCommitUncertain_) {
+			const bool saved = saveFinalStage("motd", [&] { return DBTransaction::executeWithinTransaction(saveMotd); })
+				&& saveFinalStage("guilds", [&] {
+					return DBTransaction::executeWithinTransaction([&] {
+						return std::ranges::all_of(batch.guilds, [this](const auto &guild) { return saveGuild(guild); });
+					});
+				})
+				&& saveMap(true)
+				&& saveKV(true);
+			failures += !saved;
+		}
 	} else {
 		if (finalSaving_) return false;
 		for (const auto& guild : batch.guilds) failures += !saveGuild(guild);
+		failures += !saveMap(false);
+		failures += !saveKV(false);
 	}
-	failures += !saveMap(batch.final);
-	failures += !saveKV(batch.final);
 	if (batch.final && finalCommitUncertain_) return false;
 	if (failures) logger.error("Server save completed with {} failed writes", failures);
 	else logger.info("Server saved {} players in {} milliseconds", batch.players.size(), timer.duration());
@@ -156,7 +163,6 @@ void SaveManager::beginFinalSave() {
 bool SaveManager::saveFinal(const std::function<bool()> &saveMotd) {
 	// Stable receipts fence retries of the same shutdown at the database.
 	finalCommitUncertain_ = false;
-	if (!saveFinalStage("motd", [&] { return DBTransaction::executeWithinTransaction(saveMotd); })) return false;
 	for (auto& [_, save] : finalPlayers_) {
 		if (save.receipt.empty()) save.receipt = finalSaveToken_;
 		if (save.player && !save.checkpoint) {
@@ -164,7 +170,7 @@ bool SaveManager::saveFinal(const std::function<bool()> &saveMotd) {
 			captureCheckpoint(save);
 		}
 	}
-	if (saveBatch(captureBatch()) && !finalCommitUncertain_) {
+	if (saveBatch(captureBatch(), saveMotd) && !finalCommitUncertain_) {
 		finalPlayers_.clear();
 		return true;
 	}
@@ -221,6 +227,10 @@ void SaveManager::runPlayerSave(uint32_t guid) {
 	// to the executable and cannot retain an unloaded engine's code.
 	thread_local std::unique_ptr<Database> connection;
 	while (auto work = playerSaves_.take(guid)) {
+		if (work->value.player && work->value.player->isPersistenceDiscarded()) {
+			if (playerSaves_.finish(guid, work->generation, true)) continue;
+			break;
+		}
 		bool success = false;
 		try {
 			if (!connection) {
@@ -305,23 +315,33 @@ void SaveManager::schedulePlayer(std::weak_ptr<Player> playerPtr) {
 	}
 
 	logger.debug("Scheduling player {} for saving.", playerToSave->getName());
-	auto scheduledAt = std::chrono::steady_clock::now();
-	m_playerMap[playerToSave->getGUID()] = scheduledAt;
-	threadPool.detach_task([this, playerPtr, scheduledAt]() {
+	const auto guid = playerToSave->getGUID();
+	uint64_t ticket;
+	{
+		std::lock_guard lock(saveTicketsMutex_);
+		ticket = ++nextSaveTicket_;
+		saveTickets_[guid] = ticket;
+	}
+	threadPool.detach_task([this, playerPtr, guid, ticket]() {
 		auto player = playerPtr.lock();
 		if (!player) {
+			consumeSaveTicket(guid, ticket);
 			logger.debug("Skipping save for player because player is no longer online.");
 			return;
 		}
-		if (m_playerMap[player->getGUID()] != scheduledAt) {
-			logger.warn("Skipping save for player because another save has been scheduled.");
-			return;
-		}
-		if (!finalSaving_) doSavePlayer(player);
+		doSavePlayer(player, ticket);
 	});
 }
 
-bool SaveManager::doSavePlayer(std::shared_ptr<Player> player, std::optional<Position> position) {
+bool SaveManager::consumeSaveTicket(uint32_t guid, uint64_t ticket) {
+	std::lock_guard lock(saveTicketsMutex_);
+	const auto pending = saveTickets_.find(guid);
+	if (pending == saveTickets_.end() || pending->second != ticket) return false;
+	saveTickets_.erase(pending);
+	return true;
+}
+
+bool SaveManager::doSavePlayer(std::shared_ptr<Player> player, std::optional<uint64_t> ticket) {
 	if (!player) {
 		logger.debug("Failed to save player because player is null.");
 		return false;
@@ -329,13 +349,13 @@ bool SaveManager::doSavePlayer(std::shared_ptr<Player> player, std::optional<Pos
 
 	Benchmark bm_savePlayer;
 	Player::PlayerLock lock(player);
-	if (finalSaving_ || hasPendingLogout(player->getGUID()) || IOMarket::playerHasPendingFill(player->getGUID())) return false;
-	m_playerMap.erase(player->getGUID());
+	if (ticket && !consumeSaveTicket(player->getGUID(), *ticket)) return false;
+	if (player->isPersistenceDiscarded() || finalSaving_ || hasPendingLogout(player->getGUID()) || IOMarket::playerHasPendingFill(player->getGUID())) return false;
 	if (g_game().getGameState() == GAME_STATE_NORMAL) {
 		logger.debug("Saving player {}.", player->getName());
 	}
 
-	bool saveSuccess = IOLoginData::savePlayer(player, position);
+	bool saveSuccess = IOLoginData::savePlayer(player);
 	observeFinalOutcome();
 	if (!saveSuccess) {
 		logger.error("Failed to save player {}.", player->getName());
@@ -347,7 +367,7 @@ bool SaveManager::doSavePlayer(std::shared_ptr<Player> player, std::optional<Pos
 }
 
 bool SaveManager::savePlayer(std::shared_ptr<Player> player, std::optional<Position> position) {
-	if (!player) return false;
+	if (!player || player->isPersistenceDiscarded()) return false;
 	if (finalSaving_) return true; // Owned by the final batch.
 	if (player->isBotPlayer()) {
 		enqueuePlayerSave({player->getGUID(), player, position.value_or(player->getLoginPosition())});
@@ -362,6 +382,7 @@ bool SaveManager::savePlayer(std::shared_ptr<Player> player, std::optional<Posit
 }
 
 void SaveManager::saveLogoutPlayer(const std::shared_ptr<Player> &player) {
+	if (player->isPersistenceDiscarded()) return;
 	PlayerSave save {player->getGUID(), player, player->getLoginPosition()};
 	save.logout = !player->isBotPlayer();
 	if (finalSaving_) {
@@ -370,22 +391,6 @@ void SaveManager::saveLogoutPlayer(const std::shared_ptr<Player> &player) {
 	}
 	if (save.logout) save.receipt = saveReceiptToken();
 	enqueuePlayerSave(std::move(save));
-}
-
-bool SaveManager::creditPendingLogout(uint32_t guid, uint64_t amount) {
-	auto pending = playerSaves_.find(guid);
-	if (finalSaving_) {
-		if (auto found = finalPlayers_.find(guid); found != finalPlayers_.end()) pending = found->second;
-	}
-	if (!pending || !pending->logout) return false;
-
-	// A direct SQL credit could be overwritten by the queued balance snapshot.
-	pending->player->setBankBalance(pending->player->getBankBalance() + amount);
-	pending->checkpoint.reset();
-	pending->receipt = saveReceiptToken();
-	if (finalSaving_) finalPlayers_[guid] = std::move(*pending);
-	else enqueuePlayerSave(std::move(*pending));
-	return true;
 }
 
 bool SaveManager::saveGuild(std::shared_ptr<Guild> guild) {

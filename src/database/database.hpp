@@ -78,6 +78,7 @@ public:
 	void createDatabaseBackup(bool compress) const;
 
 	bool executeQuery(std::string_view query);
+	uint64_t insertQuery(std::string_view query);
 	struct TransactionContext {
 		const Database* owner;
 		uint64_t connectionId;
@@ -121,6 +122,7 @@ private:
 		uint32_t port;
 	};
 	enum class TransactionOutcome { Committed, Failed, Uncertain };
+	bool executeQuery(std::string_view query, uint64_t* insertId);
 	bool lockForOperation(std::unique_lock<std::recursive_mutex> &lock) const;
 	bool openConnection();
 	void discardConnection();

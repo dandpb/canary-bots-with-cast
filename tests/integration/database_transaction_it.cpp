@@ -1,8 +1,69 @@
 #include "database/database.hpp"
+#include "database/databasemanager.hpp"
 
 #include <gtest/gtest.h>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <future>
+
+TEST(DatabaseTransaction, InsertQueryReturnsOnlyTheIdFromItsStatement) {
+	auto &database = g_database();
+	ASSERT_TRUE(database.executeQuery("CREATE TEMPORARY TABLE insert_id_audit (id INT AUTO_INCREMENT PRIMARY KEY, value INT UNIQUE) ENGINE=InnoDB"));
+	const auto firstId = database.insertQuery("INSERT INTO insert_id_audit (value) VALUES (4)");
+	ASSERT_NE(firstId, 0);
+	const auto secondId = database.insertQuery("INSERT INTO insert_id_audit (value) VALUES (6)");
+	ASSERT_NE(secondId, 0);
+	EXPECT_NE(firstId, secondId);
+	EXPECT_EQ(database.insertQuery("INSERT INTO insert_id_audit (value) VALUES (6)"), 0);
+	const auto updated = database.storeQuery("SELECT id, value FROM insert_id_audit ORDER BY value");
+	ASSERT_TRUE(updated);
+	EXPECT_EQ(updated->getNumber<uint64_t>("id"), firstId);
+	ASSERT_TRUE(updated->next());
+	EXPECT_EQ(updated->getNumber<uint64_t>("id"), secondId);
+	EXPECT_TRUE(database.executeQuery("DROP TEMPORARY TABLE insert_id_audit"));
+}
+
+TEST(DatabaseTransaction, InsertQueryCannotCollectAStatementWithoutExecutingIt) {
+	Database capture;
+	std::vector<std::string> statements;
+	capture.collectStatements(statements);
+	EXPECT_EQ(capture.insertQuery("INSERT INTO insert_id_audit (value) VALUES (4)"), 0);
+	EXPECT_TRUE(statements.empty());
+}
+
+TEST(DatabaseMigration, RefusalKeepsVersionAndBlocksLaterMigrationsUntilRetry) {
+	auto &database = g_database();
+	const auto directory = std::filesystem::temp_directory_path() / fmt::format("canary-migration-{}", std::chrono::steady_clock::now().time_since_epoch().count());
+	struct Cleanup {
+		std::filesystem::path directory;
+		Database &database;
+		~Cleanup() {
+			std::error_code error;
+			std::filesystem::remove_all(directory, error);
+			database.executeQuery("DROP TEMPORARY TABLE IF EXISTS server_config");
+		}
+	} cleanup { directory, database };
+	ASSERT_TRUE(std::filesystem::create_directory(directory));
+	ASSERT_TRUE(database.executeQuery("CREATE TEMPORARY TABLE server_config (config VARCHAR(50) PRIMARY KEY, value VARCHAR(256) NOT NULL) ENGINE=InnoDB"));
+	ASSERT_TRUE(DatabaseManager::registerDatabaseConfig("db_version", 56));
+	std::ofstream(directory / "57.lua") << "function onUpdateDatabase() return false end\n";
+	std::ofstream(directory / "58.lua") << "function onUpdateDatabase() assert(db.query([[INSERT INTO server_config VALUES ('migration_test', '1')]])) end\n";
+	EXPECT_FALSE(DatabaseManager::updateDatabase(directory));
+	EXPECT_EQ(DatabaseManager::getDatabaseVersion(), 56);
+	int marker = 0;
+	EXPECT_FALSE(DatabaseManager::getDatabaseConfig("migration_test", marker));
+
+	std::ofstream(directory / "57.lua") << "function onUpdateDatabase() return true end\n";
+	std::ofstream(directory / "58.lua") << "-- A loaded script must define its own callback.\n";
+	EXPECT_FALSE(DatabaseManager::updateDatabase(directory));
+	EXPECT_EQ(DatabaseManager::getDatabaseVersion(), 57);
+	std::ofstream(directory / "58.lua") << "function onUpdateDatabase() assert(db.query([[INSERT INTO server_config VALUES ('migration_test', '1')]])) end\n";
+	EXPECT_TRUE(DatabaseManager::updateDatabase(directory));
+	EXPECT_EQ(DatabaseManager::getDatabaseVersion(), 58);
+	EXPECT_TRUE(DatabaseManager::getDatabaseConfig("migration_test", marker));
+	EXPECT_EQ(marker, 1);
+}
 
 TEST(DatabaseTransaction, FalseCallbackRollsBackAllPreviousStatements) {
 	auto &database = g_database();

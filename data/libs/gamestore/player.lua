@@ -114,8 +114,8 @@ local function canBuyOffer(self, offer)
 			end
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST then
 			local playerKV = self:kv()
-			local purchaseExpCount = playerKV:get(GameStore.Kv.expBoostCount) or 0
-			if purchaseExpCount == GameStore.ItemLimit.EXPBOOST then
+			local purchaseExpCount = tonumber(playerKV:get(GameStore.Kv.expBoostCount)) or 0
+			if purchaseExpCount >= GameStore.ItemLimit.EXPBOOST then
 				disabled = 1
 				disabledReason = "You can't buy XP Boost for today."
 			end
@@ -192,21 +192,22 @@ local function canReceiveStoreItems(self, offerId, offerCount)
 end
 
 local function canRemoveCoins(self, coins)
-	return self:getTibiaCoins() >= coins
+	local balance = self:getTibiaCoins()
+	return balance ~= nil and balance >= coins
 end
 
 local function removeCoinsBalance(self, coins)
-	if self:canRemoveCoins(coins) then
-		sendStoreBalanceUpdating(self:getId(), true)
-		self:removeTibiaCoins(coins)
-		return true
+	if not self:removeTibiaCoins(coins) then
+		return false
 	end
-
-	return false
+	sendStoreBalanceUpdating(self:getId(), true)
+	return true
 end
 
 local function addCoinsBalance(self, coins, update)
-	self:addTibiaCoins(coins)
+	if not self:addTibiaCoins(coins) then
+		return false
+	end
 	if update then
 		sendStoreBalanceUpdating(self:getId(), true)
 	end
@@ -214,21 +215,22 @@ local function addCoinsBalance(self, coins, update)
 end
 
 local function canRemoveTransferableCoins(self, coins)
-	return self:getTransferableCoins() >= coins
+	local balance = self:getTransferableCoins()
+	return balance ~= nil and balance >= coins
 end
 
 local function removeTransferableCoinsBalance(self, coins)
-	if self:canRemoveTransferableCoins(coins) then
-		sendStoreBalanceUpdating(self:getId(), true)
-		self:removeTransferableCoins(coins)
-		return true
+	if not self:removeTransferableCoins(coins) then
+		return false
 	end
-
-	return false
+	sendStoreBalanceUpdating(self:getId(), true)
+	return true
 end
 
 local function addTransferableCoinsBalance(self, coins, update)
-	self:addTransferableCoins(coins)
+	if not self:addTransferableCoins(coins) then
+		return false
+	end
 	if update then
 		sendStoreBalanceUpdating(self:getId(), true)
 	end
@@ -244,10 +246,11 @@ local function makeCoinTransaction(self, offer, desc)
 		desc = offer.name
 	end
 
-	local isExpBoost = offer.type == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST
-	if isExpBoost then
-		local playerKV = self:kv()
-		local expBoostCount = tonumber(playerKV:get(GameStore.Kv.expBoostCount)) or 0
+	local price = offer.price
+	local playerKV, expBoostCount
+	if offer.type == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST then
+		playerKV = self:kv()
+		expBoostCount = tonumber(playerKV:get(GameStore.Kv.expBoostCount)) or 0
 		if expBoostCount <= 0 or expBoostCount > 5 then
 			expBoostCount = 1
 		end
@@ -255,18 +258,20 @@ local function makeCoinTransaction(self, offer, desc)
 		if GameStore.ExpBoostValuesCustom then
 			priceTable = GameStore.ExpBoostValuesCustom
 		end
-		offer.price = priceTable[expBoostCount] or priceTable[1]
-		playerKV:set(GameStore.Kv.expBoostCount, expBoostCount + 1)
+		price = priceTable[expBoostCount] or priceTable[1]
 	end
 
-	if offer.coinType == GameStore.CoinType.Coin and self:canRemoveCoins(offer.price) then
-		op = self:removeCoinsBalance(offer.price)
-	elseif offer.coinType == GameStore.CoinType.Transferable and self:canRemoveTransferableCoins(offer.price) then
-		op = self:removeTransferableCoinsBalance(offer.price)
+	if offer.coinType == GameStore.CoinType.Coin then
+		op = self:removeCoinsBalance(price)
+	elseif offer.coinType == GameStore.CoinType.Transferable then
+		op = self:removeTransferableCoinsBalance(price)
 	end
 
 	if op then
-		GameStore.insertHistory(self:getAccountId(), GameStore.HistoryTypes.HISTORY_TYPE_NONE, desc, offer.price * -1, offer.coinType)
+		if playerKV then
+			playerKV:set(GameStore.Kv.expBoostCount, expBoostCount + 1)
+		end
+		GameStore.insertHistory(self:getAccountId(), GameStore.HistoryTypes.HISTORY_TYPE_NONE, desc, -price, offer.coinType)
 	end
 
 	return op

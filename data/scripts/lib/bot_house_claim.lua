@@ -182,6 +182,9 @@ end
 -- recreating, so a retried run (e.g. after a crash mid-restore) doesn't stack
 -- duplicates. Returns the number of items recreated.
 function BotHouseClaim.restore(house, botGuid)
+	if house:hasAuctionEscrow() then
+		error("House has a pending auction or transfer")
+	end
 	BotHouseClaim.ensureSchema()
 	local hid = house:getId()
 

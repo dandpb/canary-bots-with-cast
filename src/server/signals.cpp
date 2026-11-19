@@ -15,7 +15,6 @@
 #include "game/game.hpp"
 #include "game/scheduling/dispatcher.hpp"
 #include "game/scheduling/save_manager.hpp"
-#include "lib/thread/thread_pool.hpp"
 #include "lua/creature/events.hpp"
 #include "lua/global/globalevent.hpp"
 #include "lua/scripts/lua_environment.hpp"
@@ -29,10 +28,7 @@ Signals::Signals(asio::io_service &service) :
 	set.add(SIGUSR1);
 	set.add(SIGHUP);
 #else
-	// This must be a blocking call as Windows calls it in a new thread and terminates
-	// the process when the handler returns (or after 5 seconds, whichever is earlier).
-	// On Windows it is called in a new thread.
-	signal(SIGBREAK, dispatchSignalHandler);
+	set.add(SIGBREAK);
 #endif
 
 	asyncWait();
@@ -51,9 +47,6 @@ void Signals::asyncWait() {
 	});
 }
 
-// On Windows this function does not need to be signal-safe,
-// as it is called in a new thread.
-// https://github.com/otland/forgottenserver/pull/2473
 void Signals::dispatchSignalHandler(int signal) {
 	if (g_game().getGameState() == GAME_STATE_SHUTDOWN && signal != SIGTERM && signal != SIGINT
 #ifdef _WIN32
@@ -80,8 +73,6 @@ void Signals::dispatchSignalHandler(int signal) {
 #else
 		case SIGBREAK: // Shuts the server down
 			g_dispatcher().addEvent(sigbreakHandler, __FUNCTION__);
-			// hold the thread until other threads end
-			g_threadPool().shutdown();
 			break;
 #endif
 		default:

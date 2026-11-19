@@ -1,4 +1,5 @@
 #include "account/account_repository_db.hpp"
+#include "enums/account_errors.hpp"
 #include "enums/account_type.hpp"
 #include "lib/logging/in_memory_logger.hpp"
 #include "test_env.hpp"
@@ -138,6 +139,43 @@ namespace it_account_repo_db {
 			ASSERT_TRUE(accRepo.loadByID(ids.id, acc));
 			EXPECT_EQ(10, acc->premiumDaysPurchased);
 		})();
+	}
+
+	TEST_F(AccountRepositoryDBTest, StaleCharactersExtendTheSameDurablePremiumAndOnlyUpdateTheirCacheOnSuccess) {
+		auto &db = g_database();
+		ASSERT_TRUE(db.executeQuery("CREATE TEMPORARY TABLE `accounts` (`id` int unsigned PRIMARY KEY, `lastday` int unsigned NOT NULL, "
+		                          "`premdays` int NOT NULL, `premdays_purchased` int NOT NULL, `type` tinyint unsigned NOT NULL) ENGINE=InnoDB"));
+		struct DropTemporaryAccounts {
+			Database &db;
+			~DropTemporaryAccounts() { db.executeQuery("DROP TEMPORARY TABLE `accounts`"); }
+		} cleanup { db };
+		const auto expiry = getTimeNow() + 2 * 86400 + 3600;
+		ASSERT_TRUE(db.executeQuery(fmt::format("INSERT INTO `accounts` VALUES (1, {}, 2, 12, 1), (2, 4294967295, 2, 12, 1)", expiry)));
+		AccountInfo first;
+		first.id = 1;
+		first.premiumLastDay = expiry;
+		first.premiumDaysPurchased = 12;
+		AccountInfo second = first;
+		AccountRepositoryDB repository;
+
+		EXPECT_EQ(repository.changePremiumDays(first, 30, true), AccountErrors_t::Ok);
+		EXPECT_EQ(first.premiumLastDay, expiry + 30 * 86400);
+		EXPECT_EQ(first.premiumDaysPurchased, 42);
+		EXPECT_EQ(repository.changePremiumDays(second, 30, true), AccountErrors_t::Ok);
+		EXPECT_EQ(second.premiumLastDay, expiry + 60 * 86400);
+		EXPECT_EQ(second.premiumDaysPurchased, 72);
+		EXPECT_TRUE(repository.setAccountType(first.id, ACCOUNT_TYPE_GOD));
+
+		EXPECT_EQ(repository.changePremiumDays(first, -1, false), AccountErrors_t::Ok);
+		EXPECT_EQ(first.premiumLastDay, expiry + 59 * 86400);
+		EXPECT_EQ(first.premiumDaysPurchased, 71);
+		AccountInfo capped;
+		capped.id = 2;
+		capped.premiumLastDay = expiry;
+		capped.premiumDaysPurchased = 12;
+		EXPECT_EQ(repository.changePremiumDays(capped, 30, true), AccountErrors_t::Storage);
+		EXPECT_EQ(capped.premiumLastDay, expiry);
+		EXPECT_EQ(capped.premiumDaysPurchased, 12);
 	}
 
 	TEST_F(AccountRepositoryDBTest, GetPassword) {

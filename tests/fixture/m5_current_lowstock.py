@@ -188,7 +188,7 @@ async def execute(args, stop):
     compose = json.loads(harness.compose.read_text())
     compose["networks"]["default"]["internal"] = True
     compose["services"]["game"]["volumes"].append(f"{directory}:/m5")
-    harness.compose.write_text(json.dumps(compose))
+    harness.write_compose(compose)
     (work / "proof-plan.json").write_text(
         json.dumps(
             {

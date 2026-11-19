@@ -10,6 +10,7 @@
 #pragma once
 
 #include "creatures/appearance/outfit/outfit.hpp"
+#include "creatures/creatures_definitions.hpp"
 #include "creatures/players/components/player_badge.hpp"
 #include "creatures/players/components/player_title.hpp"
 #include "creatures/players/grouping/familiars.hpp"
@@ -305,7 +306,6 @@ public:
 	void playerCyclopediaHouseCancelTransfer(uint32_t playerId, uint32_t houseId);
 	void playerCyclopediaHouseAcceptTransfer(uint32_t playerId, uint32_t houseId);
 	void playerCyclopediaHouseRejectTransfer(uint32_t playerId, uint32_t houseId);
-	bool processBankAuction(std::shared_ptr<Player> player, const std::shared_ptr<House> &house, uint64_t bid, bool replace = false);
 
 	void updatePlayerSaleItems(uint32_t playerId);
 
@@ -409,6 +409,7 @@ public:
 	void playerCreateMarketOffer(uint32_t playerId, uint8_t type, uint16_t itemId, uint16_t amount, uint64_t price, uint8_t tier, bool anonymous);
 	void playerCancelMarketOffer(uint32_t playerId, uint32_t timestamp, uint16_t counter);
 	void playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16_t counter, uint16_t amount);
+	bool refundMarketOffer(const MarketOfferEx &offer, const std::shared_ptr<Player> &owner, MarketOfferState_t state, bool syntheticBot = false);
 
 	// Bot market wrappers — see src/game/game_bot_market.cpp.
 	// Mirror the inner work of playerCreateMarketOffer / playerAcceptMarketOffer / playerCancelMarketOffer
@@ -417,6 +418,7 @@ public:
 	bool botCreateMarketOffer(uint32_t botGuid, uint8_t action, uint16_t itemId, uint16_t amount, uint64_t price, uint8_t tier, bool anonymous);
 	bool botAcceptMarketOffer(uint32_t botGuid, uint32_t offerId, uint16_t amount);
 	bool botCancelMarketOffer(uint32_t botGuid, uint32_t offerId);
+	std::optional<uint32_t> redeemStoreCoin(const std::shared_ptr<Player> &player, const std::shared_ptr<Item> &token);
 
 	void parsePlayerExtendedOpcode(uint32_t playerId, uint8_t opcode, const std::string &buffer);
 
@@ -430,7 +432,11 @@ public:
 	void finishNormalShutdown();
 	bool awaitingFinalSave_ = false;
 	std::unordered_set<uint32_t> unresolvedMarketOffers_;
-	void reconcileBotMarketFill(uint32_t offerId, std::function<bool()> resolve);
+	void reconcileMarketOffer(uint32_t offerId, std::function<bool()> resolve);
+	bool payMarketGold(const std::shared_ptr<Player> &player, uint64_t gold, bool bankFirst);
+	bool checkpointMarketPlayers(const std::vector<std::shared_ptr<Player>> &players);
+	void reloadMarketPlayers(const std::vector<std::shared_ptr<Player>> &players, uint32_t offerId = 0, std::function<std::optional<bool>()> receipt = {});
+	bool removeMoney(const std::shared_ptr<Cylinder> &cylinder, uint64_t money, uint32_t flags, bool useBalance, bool checked);
 	void dieSafely(const std::string &errorMsg);
 	void addBestiaryList(uint16_t raceid, const std::string &name);
 	const std::map<uint16_t, std::string> &getBestiaryList() const {
@@ -681,8 +687,6 @@ public:
 	std::unique_ptr<AttachedEffects> &getAttachedEffects();
 	const std::unique_ptr<AttachedEffects> &getAttachedEffects() const;
 
-	void setTransferPlayerHouseItems(uint32_t houseId, uint32_t playerId);
-	void transferHouseItemsToDepot();
 
 	const std::unordered_map<uint8_t, std::string> &getHighscoreCategoriesName() const;
 
@@ -858,7 +862,6 @@ private:
 
 	std::map<uint32_t, std::unique_ptr<TeamFinder>> teamFinderMap; // [leaderGUID] = TeamFinder*
 
-	std::map<uint32_t, uint32_t> transferHouseItemsToPlayer;
 
 	// list of items that are in trading state, mapped to the player
 	std::map<std::shared_ptr<Item>, uint32_t> tradeItems;

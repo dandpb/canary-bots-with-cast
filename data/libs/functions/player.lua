@@ -98,8 +98,9 @@ function Player.transferMoneyTo(self, target, amount)
 	if not target then
 		return false
 	end
-	if not Bank.transfer(self, target, amount) then
-		return false
+	local success, pending = Bank.transfer(self, target, amount)
+	if not success then
+		return false, pending
 	end
 
 	local targetPlayer = Player(target)
@@ -405,13 +406,18 @@ end
 
 function Player:addItemStoreInboxEx(item, movable, setOwner)
 	local inbox = self:getStoreInbox()
-	if not movable then
-		item:setOwner(self)
-		item:setAttribute(ITEM_ATTRIBUTE_STORE, systemTime())
-	elseif setOwner then
-		item:setOwner(self)
+	if not inbox or not item then
+		return nil
 	end
-	inbox:addItemEx(item, INDEX_WHEREEVER, FLAG_NOLIMIT)
+	if (not movable or setOwner) and not item:setOwner(self) then
+		return nil
+	end
+	if not movable and not item:setAttribute(ITEM_ATTRIBUTE_STORE, systemTime()) then
+		return nil
+	end
+	if inbox:addItemEx(item, INDEX_WHEREEVER, FLAG_NOLIMIT) ~= RETURNVALUE_NOERROR then
+		return nil
+	end
 	return item
 end
 
@@ -423,14 +429,19 @@ function Player:addItemStoreInbox(itemId, amount, movable, setOwner)
 	end
 
 	local iType = ItemType(itemId)
-	if not iType then
+	if not iType or iType:getId() == 0 then
 		return nil
 	end
 
 	if iType:isStackable() then
 		local stackSize = iType:getStackSize()
+		if stackSize <= 0 then
+			return nil
+		end
 		while amount > stackSize do
-			self:addItemStoreInboxEx(Game.createItem(itemId, stackSize), movable, setOwner)
+			if not self:addItemStoreInboxEx(Game.createItem(itemId, stackSize), movable, setOwner) then
+				return nil
+			end
 			amount = amount - stackSize
 		end
 	end
@@ -438,8 +449,8 @@ function Player:addItemStoreInbox(itemId, amount, movable, setOwner)
 	local item
 	if iType:getCharges() > 0 then
 		item = Game.createItem(itemId, 1)
-		if item then
-			item:setAttribute(ITEM_ATTRIBUTE_CHARGES, amount)
+		if not item or not item:setAttribute(ITEM_ATTRIBUTE_CHARGES, amount) then
+			return nil
 		end
 	else
 		item = Game.createItem(itemId, amount)

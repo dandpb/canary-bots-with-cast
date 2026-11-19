@@ -414,7 +414,19 @@ bool Database::sendQuery(std::string_view query) {
 }
 
 bool Database::executeQuery(std::string_view query) {
+	return executeQuery(query, nullptr);
+}
+
+uint64_t Database::insertQuery(std::string_view query) {
+	uint64_t id = 0;
+	return executeQuery(query, &id) ? id : 0;
+}
+
+bool Database::executeQuery(std::string_view query, uint64_t* insertId) {
 	if (statements_) {
+		if (insertId) {
+			return false;
+		}
 		statements_->emplace_back(query);
 		return true;
 	}
@@ -436,6 +448,9 @@ bool Database::executeQuery(std::string_view query) {
 	} else if (mysql_field_count(handle) != 0) {
 		recordQueryFailure(mysql_errno(handle));
 		return false;
+	}
+	if (insertId) {
+		*insertId = mysql_insert_id(handle);
 	}
 	return true;
 }

@@ -486,7 +486,7 @@ function HirelingsInit()
 end
 
 function PersistHireling(hireling)
-	db.query(
+	local id = db.insert(
 		string.format(
 			"INSERT INTO `player_hirelings` (`player_id`,`name`,`active`,`sex`,`posx`,`posy`,`posz`,`lookbody`,`lookfeet`,`lookhead`,`looklegs`,`looktype`) VALUES (%d, %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d)",
 			hireling.player_id,
@@ -504,24 +504,11 @@ function PersistHireling(hireling)
 		)
 	)
 
-	local hirelings = PLAYER_HIRELINGS[hireling.player_id] or {}
-	local ids = ""
-	for i = 1, #hirelings do
-		if i > 1 then
-			ids = ids .. "','"
-		end
-		ids = ids .. tostring(hirelings[i].id)
-	end
-	local query = string.format("SELECT `id` FROM `player_hirelings` WHERE `player_id`= %d and `id` NOT IN ('%s')", hireling.player_id, ids)
-	local resultId = db.storeQuery(query)
-
-	if resultId then
-		local id = Result.getNumber(resultId, "id")
-		hireling.id = id
-		return true
-	else
+	if not id then
 		return false
 	end
+	hireling.id = id
+	return true
 end
 
 function Player:getHirelings()
@@ -555,8 +542,7 @@ function Player:addNewHireling(name, sex)
 	end
 
 	local inbox = self:getStoreInbox()
-	local inboxItems = inbox:getItems()
-	if not inbox or #inboxItems >= inbox:getMaxCapacity() then
+	if not inbox or #inbox:getItems() >= inbox:getMaxCapacity() then
 		self:getPosition():sendMagicEffect(CONST_ME_POFF)
 		self:sendTextMessage(MESSAGE_FAILURE, "You don't have enough room in your inbox.")
 		return false

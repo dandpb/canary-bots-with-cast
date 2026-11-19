@@ -1407,7 +1407,7 @@ async def run_attested_campaign(experiment: benchmark.Experiment) -> Any:
             compose["networks"]["default"]["internal"] = True
             self.attestation.data["project"] = self.read_ownership()["project_name"]
             compose["services"]["game"]["volumes"].append(f"{self.directory}:/m5")
-            self.compose.write_text(json.dumps(compose))
+            self.write_compose(compose)
             self.attestation.persist()
 
         def start_game(self) -> None:

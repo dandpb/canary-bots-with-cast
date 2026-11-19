@@ -30,6 +30,7 @@ void House::addTile(const std::shared_ptr<HouseTile> &tile) {
 }
 
 void House::setNewOwnerGuid(int32_t newOwnerGuid, bool serverStartup) {
+	if (hasPendingAuctionSettlement() || hasAuctionEscrow()) return;
 	auto isTransferOnRestart = g_configManager().getBoolean(TOGGLE_HOUSE_TRANSFER_ON_SERVER_RESTART);
 	if (!isTransferOnRestart) {
 		setOwner(newOwnerGuid, true);
@@ -91,6 +92,7 @@ bool House::tryTransferOwnership(const std::shared_ptr<Player> &player, bool ser
 }
 
 void House::setOwner(uint32_t guid, bool updateDatabase /* = true*/, const std::shared_ptr<Player> &player /* = nullptr*/) {
+	if (hasPendingAuctionSettlement() || hasAuctionEscrow()) return;
 	if (updateDatabase && owner != guid) {
 		Database &db = Database::getInstance();
 
@@ -150,6 +152,26 @@ void House::setOwner(uint32_t guid, bool updateDatabase /* = true*/, const std::
 	}
 
 	updateDoorDescription();
+}
+
+HouseAuctionState House::getAuctionState() const {
+	return {static_cast<uint32_t>(getBidder()), getBidderName(), getHighestBid(), getInternalBid(), getBidEndDate(), getState(), getTransferStatus(), auctionReservedRent};
+}
+
+bool House::hasAuctionEscrow() const {
+	return getBidder() != 0 && (getState() == CyclopediaHouseState::Available || getTransferStatus());
+}
+
+void House::setAuctionState(HouseAuctionState auction) {
+	setBidder(auction.bidder);
+	setBidderName(auction.bidderName);
+	setHighestBid(auction.highestBid);
+	setInternalBid(auction.internalBid);
+	setBidHolderLimit(auction.internalBid);
+	setBidEndDate(auction.bidEndDate);
+	setState(auction.state);
+	setTransferStatus(auction.transferAccepted);
+	auctionReservedRent = auction.reservedRent;
 }
 
 void House::updateDoorDescription() const {
@@ -324,6 +346,38 @@ bool House::transferToDepot(const std::shared_ptr<Player> &player) const {
 }
 
 bool House::transferToDepot(const std::shared_ptr<Player> &player, const std::shared_ptr<HouseTile> &tile) const {
+	return transferDepotTile(player, tile, nullptr);
+}
+
+std::shared_ptr<Player> House::startupDepotRecipient(uint32_t guid, StartupDepotRecipients &recipients) {
+	if (auto existing = recipients.find(guid); existing != recipients.end()) return existing->second;
+	const auto identity = g_database().storeQuery(fmt::format("SELECT `name` FROM `players` WHERE `id` = {}", guid));
+	if (!identity) return nullptr;
+	auto player = std::make_shared<Player>(nullptr);
+	player->setOnline(false);
+	player->setGUID(guid);
+	player->setName(identity->getString("name"));
+	recipients.emplace(guid, player);
+	return player;
+}
+
+bool House::stageStartupDepotTransfer(uint32_t formerOwner, StartupDepotRecipients &recipients) {
+	const auto player = startupDepotRecipient(formerOwner, recipients);
+	if (!player) return false;
+	// Startup ownership has already changed. Clear sleepers without running a separate character save.
+	const auto beds = bedsList;
+	for (const auto &bed : beds) {
+		if (bed->getSleeper() != 0) bed->forceClearSleeper();
+	}
+	for (const auto &tile : houseTiles) {
+		if (!transferDepotTile(player, tile, &recipients)) return false;
+	}
+	clearHouseInfo(true);
+	m_doorListId.clear();
+	return true;
+}
+
+bool House::transferDepotTile(const std::shared_ptr<Player> &player, const std::shared_ptr<HouseTile> &tile, StartupDepotRecipients *startupRecipients) const {
 	if (townId == 0 || !player) {
 		return false;
 	}
@@ -338,14 +392,17 @@ bool House::transferToDepot(const std::shared_ptr<Player> &player, const std::sh
 	itemsMoved = 0;
 
 	ItemList moveItemList;
+	ItemList detachedSources;
+	auto* stagedSources = startupRecipients ? &detachedSources : nullptr;
 	if (const TileItemVector* items = tile->getItemList()) {
-		for (const auto &item : *items) {
+		const std::vector<std::shared_ptr<Item>> itemsBeforeWrapping(items->begin(), items->end());
+		for (const auto &item : itemsBeforeWrapping) {
 			if (item->isWrapable()) {
-				handleWrapableItem(moveItemList, item, player, tile);
+				if (!handleWrapableItem(moveItemList, item, tile, stagedSources) && startupRecipients) return false;
 			} else if (item->isPickupable()) {
 				moveItemList.push_back(item);
 			} else if (const auto &container = item->getContainer()) {
-				collectMovableItemsFromContainer(moveItemList, container, player, tile);
+				if (!collectMovableItemsFromContainer(moveItemList, container, tile, stagedSources) && startupRecipients) return false;
 			}
 		}
 	}
@@ -355,12 +412,13 @@ bool House::transferToDepot(const std::shared_ptr<Player> &player, const std::sh
 		std::shared_ptr<Player> targetPlayer = player;
 
 		if (item->hasOwner() && !item->isOwner(targetPlayer)) {
-			const auto &itemOwner = g_game().getPlayerByGUID(item->getOwnerId(), true);
+			const auto itemOwner = startupRecipients ? startupDepotRecipient(item->getOwnerId(), *startupRecipients) : g_game().getPlayerByGUID(item->getOwnerId(), true);
 			if (itemOwner) {
 				targetPlayer = itemOwner;
 				playersToSave.insert(targetPlayer);
 			} else {
 				g_logger().warn("[{}] owner of item '{}' (GUID: {}) not found, skipping transfer", __FUNCTION__, item->getName(), item->getOwnerId());
+				if (startupRecipients) return false;
 				continue;
 			}
 		}
@@ -368,15 +426,23 @@ bool House::transferToDepot(const std::shared_ptr<Player> &player, const std::sh
 		const auto &itemParent = item->getParent();
 		if (!itemParent) {
 			g_logger().warn("[{}] item '{}' (id: {}) has no parent (already wrapped or removed), skipping move to avoid duplication", __FUNCTION__, item->getName(), item->getID());
+			if (startupRecipients) return false;
 			continue;
 		}
 
-		ReturnValue result = g_game().internalMoveItem(itemParent, targetPlayer->getInbox(), INDEX_WHEREEVER, item, item->getItemCount(), nullptr, FLAG_NOLIMIT, targetPlayer);
+		const auto &inbox = targetPlayer->getInbox();
+		const auto count = item->getItemCount();
+		std::shared_ptr<Item> movedItem;
+		const auto flags = startupRecipients ? FLAG_NOLIMIT | FLAG_IGNOREAUTOSTACK : FLAG_NOLIMIT;
+		ReturnValue result = g_game().internalMoveItem(itemParent, inbox, INDEX_WHEREEVER, item, count, startupRecipients ? &movedItem : nullptr, flags,
+		                                              startupRecipients ? nullptr : targetPlayer);
 		if (result != RETURNVALUE_NOERROR) {
+			if (startupRecipients) return false;
 			g_logger().error("[{}] Failed to transfer item '{}' (id: {}, pos: {}) to '{}', error: {}", __FUNCTION__, item->getName(), item->getID(), tile->getPosition(), targetPlayer->getName(), result);
 			failedItemTransfers.push_back(fmt::format("{} (id: {}) at {}", item->getName(), item->getID(), tile->getPosition().toString()));
 			continue;
 		}
+		if (startupRecipients && (!movedItem || movedItem->getParent() != inbox || movedItem->getItemCount() != count)) return false;
 
 		++itemsMoved;
 		if (item->isWrapContainer()) {
@@ -390,6 +456,9 @@ bool House::transferToDepot(const std::shared_ptr<Player> &player, const std::sh
 			continue;
 		}
 		movedItemsLog.emplace_back(fmt::format("{} (id: {}) at {}", item->getName(), item->getID(), tile->getPosition().toString()));
+	}
+	for (const auto &source : detachedSources) {
+		if (const auto container = source->getContainer(); container && !container->getItemList().empty()) return false;
 	}
 
 	itemsFound = itemsMoved + static_cast<uint32_t>(failedItemTransfers.size());
@@ -407,8 +476,10 @@ bool House::transferToDepot(const std::shared_ptr<Player> &player, const std::sh
 			}
 		}
 	}
-	for (const auto &playerToSave : playersToSave) {
-		g_saveManager().savePlayer(playerToSave);
+	if (!startupRecipients) {
+		for (const auto &playerToSave : playersToSave) {
+			g_saveManager().savePlayer(playerToSave);
+		}
 	}
 
 	totalItemsFound += itemsFound;
@@ -455,47 +526,53 @@ void House::setNewOwnership() {
 	hasNewOwnerOnStartup = true;
 }
 
-void House::handleWrapableItem(ItemList &moveItemList, const std::shared_ptr<Item> &item, const std::shared_ptr<Player> &player, const std::shared_ptr<HouseTile> &houseTile) const {
+bool House::handleWrapableItem(ItemList &moveItemList, const std::shared_ptr<Item> &item, const std::shared_ptr<HouseTile> &houseTile, ItemList *detachedSources) const {
 	if (!item || !houseTile) {
-		return;
+		return false;
 	}
 
-	if (item->isWrapContainer()) {
-		g_logger().debug("[{}] found wrapable container '{}'", __FUNCTION__, item->getName());
-		collectMovableItemsFromContainer(moveItemList, item->getContainer(), player, houseTile);
-	}
+	const auto originalOwner = detachedSources ? item->getOwnerId() : 0;
+	const bool contentsReady = !item->isWrapContainer() || collectMovableItemsFromContainer(moveItemList, item->getContainer(), houseTile, detachedSources);
 
 	const auto &newItem = g_game().wrapItem(item, houseTile->getHouse());
-	if (newItem->isRemoved() && !newItem->getParent()) {
-		g_logger().warn("[{}] item removed during wrapping - check ground type - player name: {} item id: {} position: {}", __FUNCTION__, player->getName(), item->getID(), houseTile->getPosition().toString());
-		return;
+	if (!newItem || (newItem->isRemoved() && !newItem->getParent())) {
+		g_logger().warn("[{}] item removed during wrapping - check ground type - item id: {} position: {}", __FUNCTION__, item->getID(), houseTile->getPosition().toString());
+		return false;
+	}
+	if (detachedSources && newItem != item) {
+		detachedSources->push_back(item);
+		if (originalOwner) newItem->setOwner(originalOwner);
 	}
 
 	moveItemList.push_back(newItem);
+	return contentsReady && newItem->getID() == ITEM_DECORATION_KIT;
 }
 
-void House::collectMovableItemsFromContainer(ItemList &moveItemList, const std::shared_ptr<Container> &container, const std::shared_ptr<Player> &player, const std::shared_ptr<HouseTile> &houseTile) const {
+bool House::collectMovableItemsFromContainer(ItemList &moveItemList, const std::shared_ptr<Container> &container, const std::shared_ptr<HouseTile> &houseTile, ItemList *detachedSources) const {
 	if (!container) {
-		return;
+		return false;
 	}
 
-	for (const auto &item : container->getItemList()) {
+	bool ready = true;
+	const auto itemsBeforeWrapping = container->getItemList();
+	for (const auto &item : itemsBeforeWrapping) {
 		if (!item) {
 			continue;
 		}
 
 		if (item->isWrapable()) {
-			handleWrapableItem(moveItemList, item, player, houseTile);
+			ready = handleWrapableItem(moveItemList, item, houseTile, detachedSources) && ready;
 		} else if (item->isPickupable()) {
 			moveItemList.push_back(item);
 		} else if (const auto &innerContainer = item->getContainer()) {
-			collectMovableItemsFromContainer(moveItemList, innerContainer, player, houseTile);
+			ready = collectMovableItemsFromContainer(moveItemList, innerContainer, houseTile, detachedSources) && ready;
 		}
 	}
 
 	if (container->isPickupable() && !container->isWrapable()) {
 		moveItemList.push_back(container);
 	}
+	return ready;
 }
 
 bool House::getAccessList(uint32_t listId, std::string &list) const {
@@ -581,7 +658,7 @@ bool House::canEditAccessList(uint32_t listId, const std::shared_ptr<Player> &pl
 }
 
 std::shared_ptr<HouseTransferItem> House::getTransferItem() {
-	if (transferItem != nullptr) {
+	if (transferItem != nullptr || hasPendingAuctionSettlement() || getState() != CyclopediaHouseState::Rented) {
 		return nullptr;
 	}
 
@@ -600,7 +677,7 @@ void House::resetTransferItem() {
 	}
 }
 
-void House::calculateBidEndDate(uint8_t daysToEnd) {
+uint32_t House::calculateBidEndDate(uint8_t daysToEnd) {
 	auto currentTimeMs = std::chrono::system_clock::now().time_since_epoch();
 
 	auto now = std::chrono::system_clock::time_point(
@@ -629,7 +706,7 @@ void House::calculateBidEndDate(uint8_t daysToEnd) {
 		}
 	}
 	std::chrono::system_clock::time_point targetTime = targetDay + std::chrono::hours(hour) + std::chrono::minutes(min) + std::chrono::seconds(sec);
-	this->m_bidEndDate = static_cast<uint32_t>(
+	return static_cast<uint32_t>(
 		std::chrono::duration_cast<std::chrono::seconds>(targetTime.time_since_epoch()).count()
 	);
 }
@@ -670,7 +747,7 @@ void HouseTransferItem::onTradeEvent(TradeEvents_t event, const std::shared_ptr<
 }
 
 bool House::executeTransfer(const std::shared_ptr<HouseTransferItem> &item, const std::shared_ptr<Player> &newOwner) {
-	if (transferItem != item) {
+	if (transferItem != item || hasPendingAuctionSettlement() || hasAuctionEscrow()) {
 		return false;
 	}
 

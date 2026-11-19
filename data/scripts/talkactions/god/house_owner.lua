@@ -10,6 +10,10 @@ function houseOwner.onSay(player, words, param)
 		player:sendCancelMessage("You are not inside a house.")
 		return true
 	end
+	if house:hasAuctionEscrow() then
+		player:sendCancelMessage("This house has an auction or transfer in progress.")
+		return true
+	end
 
 	if param == "" or param == "none" then
 		house:setHouseOwner(0)

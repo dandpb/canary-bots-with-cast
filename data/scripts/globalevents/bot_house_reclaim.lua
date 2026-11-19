@@ -14,6 +14,7 @@ local RECLAIM_CHUNK         = 5       -- houses restored per tick
 local RECLAIM_CHUNK_DELAY_MS = 500
 
 local function reclaimChunk(todo, startIdx)
+	if Game.getGameState() == GAME_STATE_SHUTDOWN then return end
 	local endIdx = math.min(startIdx + RECLAIM_CHUNK - 1, #todo)
 	for i = startIdx, endIdx do
 		local e = todo[i]
@@ -38,6 +39,7 @@ end
 local botHouseReclaim = GlobalEvent("BotHouseReclaim")
 
 function botHouseReclaim.onThink(interval)
+	if Game.getGameState() == GAME_STATE_SHUTDOWN then return true end
 	BotHouseClaim.ensureSchema()
 
 	-- Async so the dispatcher isn't blocked on the DB round-trip (the callback

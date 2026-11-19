@@ -314,7 +314,10 @@ function Npc:parseBank(message, npc, creature, npcHandler)
 		end
 	elseif npcHandler:getTopic(playerId) == 13 then
 		if MsgContains(message, "yes") then
-			if not player:transferMoneyTo(transfer[playerId], count[playerId]) then
+			local success, pending = player:transferMoneyTo(transfer[playerId], count[playerId])
+			if pending then
+				npcHandler:say("The bank is reconciling a transfer. Check your balance before retrying.", npc, creature)
+			elseif not success then
 				npcHandler:say("You cannot transfer money to this account.", npc, creature)
 			else
 				npcHandler:say(string.format("Very well. You have transferred %d gold to %s.", count[playerId], string.titleCase(transfer[playerId])), npc, creature)
@@ -656,22 +659,28 @@ function Npc:parseGuildBank(message, npc, creature, playerId, npcHandler)
 		return true
 	elseif npcHandler:getTopic(playerId) == 128 then
 		if MsgContains(message, "yes") then
-			npcHandler:say(string.format("We have placed an order to transfer %d gold from your guild account to guild %s.  Please check your inbox for confirmation.", count[playerId], string.titleCase(transfer[playerId])), npc, creature)
 			local guild = player:getGuild()
+			local amount = tonumber(count[playerId])
+			local success, pending = Bank.transferToGuild(guild, transfer[playerId], amount)
+			if pending then
+				npcHandler:say("The bank is reconciling a transfer. Check your guild balance before retrying.", npc, creature)
+				npcHandler:setTopic(playerId, 0)
+				return true
+			end
+			npcHandler:say(string.format("We have placed an order to transfer %d gold from your guild account to guild %s.  Please check your inbox for confirmation.", count[playerId], string.titleCase(transfer[playerId])), npc, creature)
 			local info = {
 				type = "Guild to Guild Transfer",
 				amount = count[playerId],
 				owner = player:getName() .. " of " .. guild:getName(),
 				recipient = transfer[playerId],
 			}
-			local amount = tonumber(count[playerId])
-			if Bank.transferToGuild(guild, transfer[playerId], amount) then
+			if success then
 				logger.info("Guild {} transferred {} gold to guild {}.", guild:getName(), amount, transfer[playerId])
 				info.success = true
 				info.message = "We are happy to inform you that your transfer request was successfully carried out."
 			else
 				logger.info("Guild {} failed to transfer {} gold to guild {}.", guild:getName(), amount, transfer[playerId])
-				info.message = "We are sorry to inform you that we could not fulfill your request, due to a lack of the required sum on your guild account."
+				info.message = "We are sorry to inform you that we could not complete your transfer."
 				info.success = false
 			end
 			local inbox = player:getInbox()

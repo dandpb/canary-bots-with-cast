@@ -3,6 +3,13 @@ local function ServerSave()
 		cleanMap()
 	end
 
+	-- These values must be included in the synchronous shutdown checkpoint.
+	UpdateDailyRewardGlobalStorage(DailyReward.storages.lastServerSave, os.time())
+	for _, raid in pairs(Raid.registry) do
+		raid.kv:set("checks-today", 0)
+		raid.kv:set("last-check-date", os.date("%Y%m%d"))
+	end
+
 	if configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLOSE) then
 		Game.setGameState(GAME_STATE_CLOSED)
 	end
@@ -11,15 +18,6 @@ local function ServerSave()
 	elseif not configManager.getBoolean(configKeys.GLOBAL_SERVER_SAVE_CLOSE) then
 		-- Neither close nor shutdown (e.g. canary-core-qa): those states saved the world, so save it here.
 		saveServer()
-	end
-
-	-- Update daily reward next server save timestamp
-	UpdateDailyRewardGlobalStorage(DailyReward.storages.lastServerSave, os.time())
-
-	-- Reset raid daily counters
-	for name, raid in pairs(Raid.registry) do
-		raid.kv:set("checks-today", 0)
-		raid.kv:set("last-check-date", os.date("%Y%m%d"))
 	end
 end
 

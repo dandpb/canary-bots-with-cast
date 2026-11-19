@@ -57,8 +57,8 @@ class AttestedFixture(original):
         compose = json.loads(self.compose.read_text())
         compose["services"]["database"]["image"] = database
         compose["services"]["game"]["volumes"].append(f"{self.directory}:/m5")
-        compose["networks"] = {"default": {"internal": True}}
-        self.compose.write_text(json.dumps(compose))
+        compose["networks"]["default"]["internal"] = True
+        self.write_compose(compose)
 
     def start_database(self):
         super().start_database()
