@@ -20,12 +20,15 @@ Implements the autonomous player bot subsystem (`libbot_engine.so`) and its hot-
 - When authored CSV loading fails, `dataPoisoned_` is set and `activateBot` refuses all bot activations rather than running on partial or empty data (`[bot_engine.cpp:BotEngine::activateBot]`).
 - Hibernated bots preserve their `Player` instance in `hibernationPool_` while unlinked from `g_game().getPlayers()` and the world map; bots with active cast viewers (`getCastViewerCount() > 0`), human-led party members, or dying state (`dyingBots_`) must not hibernate (`[bot_engine.cpp:BotEngine::hibernateBot]`).
 - Reload snapshots (`BotReloadSnapshot`) transfer only value types and executable-owned `std::shared_ptr<Player>` handles across `dlclose()`, cancelling pending dispatcher events (`cancelPendingDispatcherEvents`) before unloading the old module (`[bot_engine.cpp:BotEngine::quiesceForReload]`, `[bot_engine_loader.cpp:BotEngineLoader::commitReload]`).
+- Real-player PvP protection: AoE rune targeting (`findBestRunePosition`) rejects candidate landing tiles within Chebyshev distance `<= 1` of any non-bot player, and both `checkVigilante` and `checkRandomPK` explicitly skip non-bot players (`!p->isBotPlayer()`) (`[bot_combat.cpp:BotEngine::findBestRunePosition]`, `[bot_combat.cpp:BotEngine::checkVigilante]`, `[bot_combat.cpp:BotEngine::checkRandomPK]`).
+- Cross-floor portal planning caps hop depth at `BotEngine::Z_MAX_HOPS = 16` (`botnav::ZPlanParams::maxHops = 16`) with a 4,096-portal Dijkstra settle budget (`[bot_engine_impl.hpp:BotEngine::Z_MAX_HOPS]`, `[bot_zcore.hpp:botnav::ZPlanParams]`).
 
 ## Side Effects
 - Copies `libbot_engine.so` into a private `mkdtemp` directory and loads/unloads it via `dlopen` / `dlclose` (`[bot_engine_loader.cpp:BotEngineLoader::prepare]`, `[bot_engine_loader.cpp:BotEngineLoader::Module::~Module]`).
 - Mutates world state by placing, moving, teleporting, equipping, and removing bot `Player` instances in `Game` and `Map`, casting spells, using items, and dispatching chat messages (`[bot_engine.cpp:BotEngine::materializePlayerFromDb]`, `[bot_engine.cpp:BotEngine::activateBot]`, `[bot_engine.cpp:BotEngine::deactivateBot]`).
 - Executes synchronous and asynchronous SQL queries via `Database` and `g_botDatabaseTasks()` (`bot_active_players`, `cast_broadcasters`, `bot_state_persistence`) and checkpoints player state via `g_saveManager()` (`[bot_engine.cpp:BotEngine::registerBot]`, `[bot_engine.cpp:BotEngine::checkpointBotPersistentState]`, `[bot_engine.cpp:BotEngine::saveAllStates]`).
 - Reads and writes authored CSV/JSON/binary cache files under `data/bot/` and `data/bot_chat/`, and binds non-blocking Unix domain sockets (`server.sock`, `server.lock`) when `botbrain::Runtime` is enabled (`[bot_brain_channel.hpp:botbrain::Channel]`, `[bot_engine_impl.hpp:BotEngine]`).
+- When QA environment variable `CANARY_QA_HUNT_PHASE_TRACE_GUID` matches a bot's GUID, `BotEngine::beginHuntPhase` emits passive `[HUNT:PHASE]` transition log lines (`[bot_hunt.cpp:BotEngine::beginHuntPhase]`).
 
 ## Verification
 - Run: `ctest --test-dir build --output-on-failure`

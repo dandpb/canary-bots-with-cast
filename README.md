@@ -328,8 +328,11 @@ Full command list: [BOT_SYSTEM_DOCS.md §12](data/scripts/lib/BOT_SYSTEM_DOCS.md
 
 ### Configuration (`config.lua`)
 
-All **240** `bot*` keys live in `config.lua` — there is deliberately no second
-config file and no override layer. Changing a **value** is hot
+All **241** `bot*` keys live in `config.lua` — there is deliberately no second
+config file. Note that `config.lua.dist` includes a trailing `-- Solo + bots: preset CASUAL`
+section that overrides selected defaults (e.g., `rateUseStages = true`, `rateLoot = 3`,
+`rateSpawn = 3`, `deathLosePercent = 0`, `botGangEnable = false`, `botGangTargetPlayers = false`,
+`botMarketAcceptChancePct = 60`, `autoLoot = true`, `autoBank = true`). Changing a **value** is hot
 (`/cavebot _global reloadconfig`); adding or renaming a key needs a rebuild.
 
 ```lua
@@ -471,27 +474,29 @@ cavebot is what makes recording new routes for this server practical.
 # Canary Bots with Cast Blueprint
 
 ## System Overview
-Canary Bots with Cast is a multi-subsystem MMORPG server emulator that pairs the high-performance C++ `canary` game server and dynamic `libbot_engine.so` bot runtime with an in-game `@cast` spectator TV system, an auction-house market bot, web-based world map telemetry, and optional external LLM party companions.
+Canary Bots with Cast is a multi-subsystem MMORPG server emulator that pairs the high-performance C++ `canary` game server and dynamic `libbot_engine.so` bot runtime with an in-game `@cast` spectator TV system, server-side Visual Replay recording, Quick Loot nearby-corpse scanning, an auction-house market bot, web-based world map telemetry, the Thais Voxel Explorer, and optional external LLM party companions (OpenAI Responses/Decisions and Gemini Decisions via LiteLLM).
 
 ## Local Interface & Invariants
 - `[CMakeLists.txt:project(canary)]` CMake project `canary` (or `canary-debug` when `CMAKE_BUILD_TYPE STREQUAL "Debug"`) requiring CMake >= 3.22; adds subdirectories `src` and `tests`.
-- `[CMakeLists.txt:OPTIONS_ENABLE_CCACHE]`, `[CMakeLists.txt:OPTIONS_ENABLE_SCCACHE]`, `[CMakeLists.txt:OPTIONS_ENABLE_IPO]`, `[CMakeLists.txt:FEATURE_METRICS]`, `[CMakeLists.txt:CANARY_BUILD_SERVER]`, `[CMakeLists.txt:CANARY_BUILD_TESTS]`.
+- `[CMakeLists.txt:OPTIONS_ENABLE_CCACHE]`, `[CMakeLists.txt:OPTIONS_ENABLE_SCCACHE]`, `[CMakeLists.txt:OPTIONS_ENABLE_IPO]`, `[CMakeLists.txt:CANARY_TARGET_ARCH]` (default `"native"`, consumed by `cmake/modules/CanaryLib.cmake` via `-march=${CANARY_TARGET_ARCH}`), `[CMakeLists.txt:FEATURE_METRICS]`, `[CMakeLists.txt:CANARY_BUILD_SERVER]`, `[CMakeLists.txt:CANARY_BUILD_TESTS]`.
 - `[vcpkg.json:name]` vcpkg manifest declaring dependencies (abseil, argon2, asio, bext-di, bext-ut, curl, eventpp, gtest, libmariadb, luajit, magic-enum, mio, parallel-hashmap, protobuf, pugixml, spdlog, zlib, bshoshany-thread-pool, atomic-queue, nlohmann-json, openssl).
 - `[recompile.sh:main]` Build script entry point accepting positional args `VCPKG_PATH` ($1) and `BUILD_TYPE` ($2).
 - `[start.sh:BIN_PATH]` Server runner script accepting optional binary path ($1, default `./canary`).
 - `[start_gdb.sh:gdb]` GDB server runner loop invoking `./canary` with `--batch -return-child-result --command=gdb_debug`.
 - `[schema.sql:server_config]`, `[schema.sql:accounts]`, `[schema.sql:players]`, `[schema.sql:guilds]`, `[schema.sql:houses]`, `[schema.sql:market_offers]`, `[schema.sql:kv_store]`, `[schema.sql:cast_broadcasters]`.
-- `[config.lua.dist:botPlayersOnline]` Configuration globals for bot population, Table A/B/C odds, navigation jitter, roaming, and combat.
+- `[config.lua.dist:botPlayersOnline]` Configuration globals (241 `bot*` keys plus trailing Solo Casual preset overrides) for bot population, Table A/B/C odds, navigation jitter, roaming, market acceptance, and combat.
 
 ## Subdirectories & System Boundaries
+- `cmake`: [`./cmake/modules/README.md`](./cmake/modules/README.md) - CMake build configuration modules including `CanaryLib.cmake` (`CANARY_TARGET_ARCH`) and dependency finders.
 - `src`: [`./src/README.md`](./src/README.md) - Core C++ game server implementation and hot-reloadable `libbot_engine.so` AI engine.
-- `data`: [`./data/README.md`](./data/README.md) - Datapack scripts, bot system orchestration, chat channels, and global event handlers.
+- `data`: [`./data/README.md`](./data/README.md) - Datapack scripts, experience stages, bot system orchestration, chat channels, and global event handlers.
 - `data-canary`: [`./data-canary/README.md`](./data-canary/README.md) - Canary core script datapack (actions, movements, creaturescripts, spells).
 - `data-otservbr-global`: [`./data-otservbr-global/README.md`](./data-otservbr-global/README.md) - Global datapack including monsters, NPCs, raids, quests, world changes, and startup map tables.
 - `database`: [`./database/README.md`](./database/README.md) - Database schema migrations, table definitions, and initial bot population seeding.
-- `deployment`: [`./deployment/README.md`](./deployment/README.md) - Deployment infrastructure, web cast login, browser websocket client, and AI brain companions.
-- `docker`: [`./docker/README.md`](./docker/README.md) - Docker container orchestration, environment configs, and runtime health checks.
-- `docs`: [`./docs/README.md`](./docs/README.md) - Architecture documents, design specifications, and operations guides.
+- `deployment`: [`./deployment/README.md`](./deployment/README.md) - Deployment infrastructure, web cast login, Thais Voxel Explorer, browser websocket client, core-QA/B1 fixtures, WSL stack, and AI brain companions.
+- `docker`: [`./docker/README.md`](./docker/README.md) - Docker container orchestration, generic/ARM64 Dockerfiles, environment configs, and runtime health checks.
+- `docs`: [`./docs/README.md`](./docs/README.md) - Architecture documents, design specifications, and maintenance scripts.
+- `tests`: [`./tests/README.md`](./tests/README.md) - C++ Boost::ut unit/integration suites, Lua regression tests, and isolated QA fixtures.
 - `tools`: [`./tools/README.md`](./tools/README.md) - Bot CSV authoring tools, population generators, cavebot importer, and test harnesses.
 
 ## Global Invariants

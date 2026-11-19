@@ -9,15 +9,15 @@ reference, and bot house ownership + furniture.
 > migration it loads that from `data/bot/authored/*.csv`, which ships in this
 > repo — hunt scripts and their waypoints, city routes, POIs, equipment, town
 > mapping and travel positions. There is nothing to import for any of it.
-> To add or change a hunt script, edit the CSVs — see BOT_SYSTEM_DOCS.md §6c and
+> To add or change a hunt script, edit the CSVs — see BOT_SYSTEM_DOCS.md Â§6c and
 > `tools/cfg_importer/`, which imports an OTClient cavebot `.cfg` directly.
 
 ## Interface
 - `[import.sh:FILES]` — Automated bash importer executing the numbered SQL dumps in foreign-key dependency order (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`).
 - `[00_bot_schema.sql:bot_market_item_prices]`, `[00_bot_schema.sql:bot_hunt_script_stats]` — Bot runtime table DDL (`CREATE TABLE IF NOT EXISTS`).
-- `[01_accounts.sql:accounts]` � Seeds the bot account (`id = 65000`).
-- `[02_players.sql:players]` � Seeds 997 bot player rows.
-- `[03_player_storage.sql:player_storage]` � Seeds bot storage grants.
+- `[01_accounts.sql:accounts]` — Seeds the bot account (`id = 65000`).
+- `[02_players.sql:players]` — Seeds 997 bot player rows.
+- `[03_player_storage.sql:player_storage]` — Seeds bot storage grants.
 - `[11_bot_market_item_prices.sql:bot_market_item_prices]` — Seeds item market/NPC price reference rows.
 - `[14_houses.sql:houses]` — Seeds house ownership and metadata (bots own 794 of 993 houses).
 - `[15_tile_store.sql:tile_store]` — Seeds serialized house furniture/item tile blobs.
@@ -99,8 +99,7 @@ ALTER TABLE `players`  AUTO_INCREMENT = 66100;
 
 ## Notes
 
-- **No personal data.** The god account ships with the documented default
-  last-login IPs are zeroed. Change the password after first login.
+- **No personal data.** No administrator or real-player account is pre-seeded in `01_accounts.sql`; last-login IPs are zeroed. Provision administrators separately following *Administrator provisioning and rotation* above.
 - **Data provenance** (`source` / `source_file`) is generic in the distributed
   authored CSVs; the functional `source_name` routing key on city routes is kept.
   Wiki-derived market prices are attributed under CC BY-SA 3.0 — see the header

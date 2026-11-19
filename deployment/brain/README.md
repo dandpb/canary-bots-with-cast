@@ -1,12 +1,14 @@
 # Optional intelligent party companions
 
-Start with the [Portuguese initial setup guide](SETUP.pt-BR.md) for WSL, the LiteLLM dashboard, named OpenAI/Gemini credentials, model routes, the shared ledger and an offline replay check. For recording/runner/export details, see [Replay and gameplay benchmarks](REPLAY.md). New runtime paths are opt-in; existing configurations retain their behavior.
+Start with the [Portuguese initial setup guide](SETUP.pt-BR.md) for WSL, the LiteLLM dashboard, named OpenAI/Gemini credentials, model routes, the shared ledger and an offline replay check. For player usage see [Guia do Jogador](GUIA_DO_JOGADOR.md), for recording/runner/export details see [Replay and gameplay benchmarks](REPLAY.md), and for server-side visual packet replay and video export see [Replay Visual](REPLAY_VISUAL.pt-BR.md). New runtime paths are opt-in; existing configurations retain their behavior.
 
 The planned M5 uses the [admission wrapper and offline evidence report](tools/M5_PILOT.md), with frozen source/input hashes and the existing canonical ledger. Integration of these tools does not approve a fixture or authorize a paid campaign.
 
 Implements [issue #1](https://github.com/dandpb/canary-bots-with-cast/issues/1) for one to three explicitly selected native bots. The feature is disabled when `data/bot/brain.json` is absent. Other bots retain their existing engine.
 
-The C++ engine owns gameplay and projects live observations. The default direct OpenAI configuration calls GPT-6 Luna: Decisions selects an offered action; Responses interprets Portuguese requests and proposes objectives. The optional `provider: "litellm"` configuration uses explicit gateway routes, including OpenAI/Gemini, and constrained Responses choices. Neither path receives administrative commands or database credentials. Movement, attacks, cooldowns and emergency healing remain local.
+The C++ engine owns gameplay and projects live observations. The default direct OpenAI configuration calls GPT-6 Luna: Decisions selects an offered action; Responses interprets Portuguese requests and proposes objectives. The optional `provider: "litellm"` configuration uses explicit gateway routes (`gateway` and optional split `responses_gateway`, with `decision_api: "decisions" | "responses"` and `reasoning: true | false`), supporting OpenAI, Gemini, and Gemini Decision 1 via the [gateway profiles](gateway/README.md). Neither path receives administrative commands or database credentials. Movement, attacks, cooldowns and emergency healing remain local.
+
+Subpackages: [`src/canary_brain/README.md`](src/canary_brain/README.md) (Python worker, replay/visual-replay CLI, supervision & reward-aware hiatus), [`gateway/README.md`](gateway/README.md) (LiteLLM & Gemini Decisions Docker/config templates), and [`tools/README.md`](tools/README.md) (M5 qualification, smoke runners, and Jev experiments).
 
 ## Playing
 
@@ -113,6 +115,10 @@ effect without rebuilding or restarting either process.
   A hunt that the native server fails after five minutes with no XP or defeats
   is also excluded temporarily, so the next decision does not immediately
   retry it. This is a confirmed unsuccessful hunt, not proof of a movement stall.
+- **Reward-aware hunt hiatus** (`Supervisor.reward_hiatus`): once a hunt has at
+  least 8 learned samples with mean reward `<= 0.25`, it is excluded on an
+  escalating hiatus from 30 minutes (`1800s`) up to 2 hours (`7200s`), resetting
+  when mean reward recovers to `>= 0.5`.
 
 Controls require a live autonomous bot outside a human party, active mode and
 an observation no older than three seconds. Human party authority is unchanged.

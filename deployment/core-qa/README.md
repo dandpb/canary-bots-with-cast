@@ -27,6 +27,8 @@ protocolo `1500`. Nenhuma dessas portas aponta ao stack `canary-bots-wsl`.
 - `[qa_return_attempt.py:main]` / `[qa_return_attempt.py:ReturnAttempt]` — Managed quiescent return executor CLI (`start-managed` | `rescue`) coordinating `attempt.lock`, `ABANDONED` markers (`[qa_return_attempt.py:ReturnAttempt.abandon]`), and bounded health/smoke verification (`[qa_return_attempt.py:ReturnAttempt.post_start]`).
 - `[compose.yaml:name]` / `[compose.brain-fake.yaml:services]` / `[compose.game-pin.yaml:services.game]` — Compose stack definitions for project `canary-core-qa`.
 - `[preflight.py:PROFILES]` / `[preflight.py:load_profile]` / `[preflight.py:assert_profile_render]` / `[compose.b1.yaml]` / `[compose.b1-brain.yaml]` — `CORE_QA_PROFILE` (unset = `stage1`, unchanged): the separate B1 project `canary-qa-b1` with its own overlays, ports `27171`-`27173`/`28080`, tags, limits and `runtime/b1/evidence`.
+- `[b1_fixture.py:main]` / `[b1_fixture.py:prepare_initdb]` / `[b1_fixture.py:render_overlays]` / `[b1_fixture.py:check]` / `[b1_fixture.py:check_ready]` — B1 companion playtest fixture CLI preparing `runtime/b1/initdb`, leader SQL, hunt/equipment overlays, and readiness/evidence checks (see [`B1_FIXTURE.md`](./B1_FIXTURE.md) and tests `test_b1_fixture.py`, `test_b1_profile.py`, `test_myaac_profile.py`).
+- Subdirectory [`./b1/README.md`](./b1/README.md) — B1 companion playtest seed SQL, leader template, brain server config, and market no-op overrides.
 
 ## Invariants
 

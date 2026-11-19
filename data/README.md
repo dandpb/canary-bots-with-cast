@@ -11,6 +11,7 @@ Package implementation for `data`, providing component logic and data interfaces
 - `BotPlayers` (`[global.lua:BotPlayers]`)
 - `eventsTrainer` (`[global.lua:eventsTrainer]`)
 - `eventsPz` (`[global.lua:eventsPz]`)
+- `experienceStages`, `skillsStages`, `magicLevelStages` (`[stages.lua:experienceStages]`): Level-banded rate multiplier tables (experience stages split `101..150` at `3x` and `151+` at `2x` when `rateUseStages = true`).
 - Subdirectory [`./chatchannels/README.md`](./chatchannels/README.md) - Sub-package for chatchannels
 - Subdirectory [`./events/README.md`](./events/README.md) - Sub-package for events
 - Subdirectory [`./json/README.md`](./json/README.md) - Sub-package for json
@@ -21,7 +22,7 @@ Package implementation for `data`, providing component logic and data interfaces
 - Subdirectory [`./scripts/README.md`](./scripts/README.md) - Sub-package for scripts
 
 ## Invariants
-- None
+- `stages.lua` stage tables must have contiguous, non-overlapping `minlevel`/`maxlevel` ranges with an open-ended final band (`[stages.lua:experienceStages]`).
 
 ## Side Effects
 - Schedules timed tasks or dispatcher callbacks (`[global.lua]`)

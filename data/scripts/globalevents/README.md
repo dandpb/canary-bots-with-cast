@@ -16,7 +16,7 @@ Package implementation for `data/scripts/globalevents`, providing component logi
 - `depthPass.onThink` (`[bot_market.lua:depthPass.onThink]`)
 
 ## Invariants
-- None
+- `botStartup.onStartup` loads one bot per scheduled event, yielding to the dispatcher between loads with adaptive pacing bounded to `100..1000 ms` (`nextDelayMs = max(100, floor(nextDelayMs / 2), min(1000, pressureMs * 4))`), retries failed loads up to 3 attempts with a 1-second retry delay, reports `[BOT_BATCH]` progress and syncs `players_online` visibility every `50` bots and on completion, grants quest access before hibernation, and restores persisted states only after the final load attempt (`[bot_manager.lua:botStartup.onStartup]`).
 
 ## Side Effects
 - Schedules timed tasks or dispatcher callbacks (`[bot_house_reclaim.lua]`)

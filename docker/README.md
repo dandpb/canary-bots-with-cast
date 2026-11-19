@@ -4,6 +4,7 @@
 Contains Dockerfiles (`Dockerfile.x86`, `Dockerfile.arm`, `Dockerfile.dev`), `docker-compose.yml`, the Lua configuration mutator script (`config.sh`), and container startup/seed scripts (`./data`).
 
 ## Interface
+- `[Dockerfile.x86:build]` / `[Dockerfile.arm:build]` / `[Dockerfile.dev:build]` / `[docker-compose.yml:services]` — Multi-stage container builds packaging `/canary/canary`, `/canary/libbot_engine.so`, and `/canary/database/bots` alongside datapacks and `schema.sql`.
 - `[config.sh:substitute_lua_variable]` — `substitute_lua_variable(variable_name, new_value)` rewrites `variable_name = ...` assignments in `$lua_file` (preserving unquoted booleans/integers and quoting strings).
 - `[config.sh:get_named_arg]` — `get_named_arg(arg_name, "$@")` extracts `--file` (default `"config.lua"`) and `--env` (default `".env"`) CLI arguments.
 - `[config.sh:verify_file]` — `verify_file(path, label)` verifies that the target `.env` and `.lua` files exist before processing.
@@ -13,6 +14,8 @@ Contains Dockerfiles (`Dockerfile.x86`, `Dockerfile.arm`, `Dockerfile.dev`), `do
 - Additional documentation: [`./DOCKER.md`](./DOCKER.md).
 
 ## Invariants
+- `[Dockerfile.x86]`, `[Dockerfile.arm]`, `[Dockerfile.dev]` configure the private NuGet vcpkg binary cache only when `/run/secrets/github_token`, `VCPKG_FEED_URL`, and `VCPKG_FEED_USERNAME` are all present, allowing generic public builds without a private package feed.
+- `[Dockerfile.arm]` pins `--triplet=arm64-linux --host-triplet=arm64-linux` for `vcpkg install` and `-DVCPKG_HOST_TRIPLET=arm64-linux -DVCPKG_TARGET_TRIPLET=arm64-linux` for CMake configuration.
 - `[config.sh:45]` exits with code `1` if either `$env_file` (default `.env`) or `$lua_file` (default `config.lua`) does not exist on disk.
 - `[config.sh:89]` expects positional overrides as alternating `variable_name` `new_value` pairs.
 
