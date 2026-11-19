@@ -1,3 +1,28 @@
+# Test Suites & QA Fixtures (`tests`)
+
+## Overview
+Provides C++ `Boost::ut` unit (`canary_ut`) and integration (`canary_it`, including `database_transaction_it.cpp`) test targets, standalone Lua/LuaJIT bot startup and progression regression suites, and isolated Docker/offline QA harnesses (`fixture/`).
+
+## Interface
+- `[CMakeLists.txt]` — Registers CTest unit and integration test executables (`canary_ut`, `canary_it`) when `CANARY_BUILD_TESTS=ON`.
+- Subdirectories:
+  - `unit`: C++ `Boost::ut` unit tests (`canary_ut`), including `players/components/player_storage_test.cpp` and `players/bot_brain_protocol_test.cpp`.
+  - `integration`: [`./integration/README.md`](./integration/README.md) — C++ integration suites (`canary_it`), including `database_transaction_it.cpp`.
+  - `lua`: [`./lua/README.md`](./lua/README.md) — Standalone Lua/LuaJIT regression suites (`bot_startup_test.lua`, `bot_persistence_no_xp_test.lua`, progression/save tests).
+  - `fixture`: [`./fixture/README.md`](./fixture/README.md) — M5/party qualification harnesses, offline status capture/runner adapters, and hunt-phase trace fixtures.
+
+## Invariants
+- Standalone Lua tests under `tests/lua/` execute directly with `lua` or `luajit` using mock dispatcher/database adapters without requiring a live MySQL instance or compiled C++ binary.
+- Integration tests under `tests/integration/` run against a configured test database or injected repositories without mutating production schemas.
+
+## Side Effects
+- CTest builds and executes `canary_ut` and `canary_it`; `tests/fixture/` scripts may spawn disposable Docker containers and write evidence archives under explicit output paths.
+
+## Verification
+- Run: `ctest --preset linux-debug --output-on-failure` and `lua tests/lua/bot_startup_test.lua`
+
+---
+
 ## Testing
 
 ### Bot startup regression tests (Lua)

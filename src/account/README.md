@@ -14,6 +14,7 @@ Provides the domain model and persistence abstractions for player accounts, incl
 - `Account::removeCoins` enforces `coins >= amount` before deduction, returning `AccountErrors_t::RemoveCoins` on insufficient balance (`[account.cpp:Account::removeCoins]`).
 - `Account::setPremiumDays` clamps non-positive `days <= 0` to `premiumLastDay = 0` and `premiumRemainingDays = 0` (`[account.cpp:Account::setPremiumDays]`).
 - `Account::authenticatePassword` never logs plaintext passwords or stored password hashes on failure to prevent credential exposure (`[account.cpp:Account::authenticatePassword]`).
+- Both `Account::authenticateSession` and `Account::authenticatePassword` reject `LegacySeedAccount` (`id == 1`) whenever its stored or submitted password matches `LegacySeedFingerprint` (`f45ca43bc9b20edf28d705024aac6c0b2c67072f`, or empty stored hash on session auth) (`[account.cpp:Account::authenticateSession]`, `[account.cpp:Account::authenticatePassword]`).
 - `AccountRepositoryDB::loadAccountPlayers` filters out soft-deleted characters where `deletion != 0` (`[account_repository_db.cpp:AccountRepositoryDB::loadAccountPlayers]`).
 - `AccountRepositoryDB::setupLoyaltyInfo` ensures `premiumDaysPurchased >= premiumRemainingDays` and `creationTime != 0`, persisting normalized values when violated (`[account_repository_db.cpp:AccountRepositoryDB::setupLoyaltyInfo]`).
 

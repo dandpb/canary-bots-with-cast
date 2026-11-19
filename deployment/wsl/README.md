@@ -14,16 +14,17 @@ porta no host. Jogo e site publicam somente em `127.0.0.1`.
 
 ## Interface
 
-- `[setup.py:here]` — Inicializa `.env`, scripts SQL em `initdb/` e arquivos de configuração `runtime/config/{server,worker}.json` sem sobrescrever arquivos existentes.
+- `[setup.py:here]` — Inicializa `.env`, scripts SQL em `initdb/` e arquivos de configuração `runtime/config/{server,worker}.json` (com `provider: "native"` como padrão inicial) sem sobrescrever arquivos existentes.
 - `[setup-gateway.py:prepare]` / `[setup-gateway.py:prepare_coordination]` / `[setup-gateway.py:add_coordination]` — CLI (`--directory`, `--coordination`) que prepara `runtime/config/litellm.yaml`, `runtime/config/litellm-coordination.yaml` e `runtime/secrets/litellm-{provider,worker,db,ui,redis}.env` com modo `0600`.
 - `[game-entrypoint.py:main]` / `[game-entrypoint.py:render]` / `[game-entrypoint.py:port]` — Entrypoint do container `game` que renderiza `config.lua` com overrides de ambiente (`MARIADB_PASSWORD`, `GAME_PUBLIC_IP`, `GAME_LOGIN_PORT`, `GAME_PROTOCOL_PORT`, `GAME_STATUS_PORT`, `GAME_DISABLE_MAP_DOWNLOAD`, `GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN`, `BOT_POPULATION_REFERENCE_BOTS`, `BOT_PLAYERS_ONLINE`), instala `/etc/canary-brain/server.json` em `data/bot/brain.json` e executa `/canary/canary`.
 - `[verify-build-source.py:main]` / `[verify-build-source.py:verify]` — CLI (`--source`, `--revision`) que valida checkout Git standalone, limpo, sem `alternates` ou submódulos, conferindo o SHA-1 de cada blob rastreado.
+- `[validate-native-unit-evidence.py:validate]` / `[validate-native-unit-evidence.py:main]` / `[native-release-unit.bake.hcl]` — Validador e definição Docker Buildx Bake para evidências de testes unitários nativos em release.
 - `[monitor-bot.py:main]` / `[monitor-bot.py:sample]` / `[monitor-bot.py:assess]` / `[monitor-bot.py:command]` — CLI (`--seconds`, `--interval`, `--history`, `--require-floor`, `--require-xp-increase`, `--require-level-increase`) que amostra o progresso do piloto 65001 (`Grizzle Alyronia`) via `bot_commands` e SQLite do worker.
-- `[ops-digest.py:main]` / `[ops-digest.py:build_digest]` / `[ops-digest.py:evaluate]` / `[ops-digest.py:render]` — CLI (`--json`, `--out`, `--window`, `--history`, `--status-port`) que agrega saúde de containers, protocolo nativo (`7173`), estado de Grizzle e logs em um veredito (`GREEN`, `AMBER`, `RED`).
+- `[ops-digest.py:main]` / `[ops-digest.py:build_digest]` / `[ops-digest.py:completed_save_health]` / `[ops-digest.py:evaluate]` / `[ops-digest.py:render]` — CLI (`--json`, `--out`, `--window`, `--history`, `--status-port`) que agrega saúde de containers, protocolo nativo (`7173`), estado de Grizzle, saúde de saves concluídos e logs em um veredito (`GREEN`, `AMBER`, `RED`).
 - `[smoke.py:base]` — Smoke test de conectividade HTTP (`http://127.0.0.1:8080/`, `/index.php/worldmap`, `/login.php` com `@cast`) e portas TCP `7171`/`7172`/`7173`.
 - `[runtime-schema.sql:bot_state_persistence]` / `[runtime-schema.sql:bot_startup_config]` / `[runtime-schema.sql:bot_nav_events]` / `[runtime-schema.sql:bot_test_commands]` / `[runtime-schema.sql:player_charms]` / `[runtime-schema.sql:players]` — Tabelas de persistência/telemetria de bots e migrações `INT UNSIGNED` / `BIGINT UNSIGNED`.
 - `[web-entrypoint.sh:myaac-entrypoint]` / `[worldmap-menu.php:$db]` / `[patch-myaac-status.php:$path]` — Scripts de inicialização e patch do container MyAAC (`Web.Dockerfile`).
-- `[compose.yaml:services]` / `[Dockerfile:build]` / `[Dockerfile.release:build]` / `[Web.Dockerfile:ENTRYPOINT]` — Definições de build e serviços Docker Compose do projeto `canary-bots-wsl`.
+- `[compose.yaml:services]` / `[Dockerfile:build]` / `[Dockerfile.release:build]` / `[Dockerfile.release.arm64:build]` / `[Web.Dockerfile:ENTRYPOINT]` — Definições de build e serviços Docker Compose do projeto `canary-bots-wsl` (incluindo o serviço `litellm-decisions` sob perfil `gemini-decisions`, override `config.lua.dist` no `game`, `litellm-client.env` no `brain` e mount read-only `./runtime/store-images` no `web`).
 
 ## Invariants
 
@@ -65,12 +66,15 @@ O servidor compilado anuncia o protocolo 15.00; configure o cliente como `1500`.
 O banco foi importado com o schema e os sete seeds de `database/bots/` na ordem
 documentada, mais `runtime-schema.sql`: persistência/telemetria ausentes da
 migração distribuída e campos de charms com a mesma capacidade `uint32_t` do
-código nativo. A configuração local mantém os 997 bots, garantindo a inclusão dos
-três pilotos de IA. A seleção estratificada de 500 excluiria o piloto 65003.
-Para ajustar, altere
-`BOT_PLAYERS_ONLINE` no `.env` local e recrie o serviço `game`.
-Na `main`, a inicialização carrega 50 bots por lote e pausa 35 segundos entre
-lotes. O Grizzle está no primeiro lote; os 997 ficam disponíveis gradualmente.
+código nativo. O padrão em `compose.yaml` é `BOT_PLAYERS_ONLINE=500`; defina
+`BOT_PLAYERS_ONLINE=997` no `.env` local (e recrie o serviço `game`) caso queira
+garantir a inclusão dos três pilotos de IA sem que a seleção estratificada de
+500 exclua o piloto 65003.
+Na `main`, a inicialização carrega um bot por vez e cede ao dispatcher após cada
+carga com atraso adaptativo de `100 ms` até `1000 ms` (sem a antiga pausa fixa
+de 35 segundos), publicando progresso `[BOT_BATCH]` e visibilidade online a cada
+50 bots e ao final. O Grizzle carrega no início; os demais ficam disponíveis
+gradualmente.
 
 O mapa é `otservbr.otbm` da release upstream `v3.4.1`, correspondente à base de
 fevereiro de 2026. SHA-256:

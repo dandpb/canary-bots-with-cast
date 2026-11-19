@@ -12,13 +12,13 @@ Package implementation for `src/map`, providing component logic and data interfa
 - `Player` (`[map.hpp:Player]`)
 - `Game` (`[map.hpp:Game]`)
 - `Tile` (`[map.hpp:Tile]`)
-- `Map` (`[map.hpp:Map]`)
+- `Map` (`[map.hpp:Map]`, `[map.hpp:Map::save]`, `[map.hpp:Map::saveOnce]`)
 - `FindPathParams` (`[map.hpp:FindPathParams]`)
 - Subdirectory [`./house/README.md`](./house/README.md) - Sub-package for house
 - Subdirectory [`./utils/README.md`](./utils/README.md) - Sub-package for utils
 
 ## Invariants
-- None
+- `Map::save` retries `Map::saveOnce()` (`IOMapSerialize::saveHouseInfo() && IOMapSerialize::saveHouseItems()`) up to 6 times, but aborts immediately without retrying if `DBTransaction::lastOutcome() == DBTransaction::Outcome::Uncertain` (`[map.cpp:Map::save]`, `[map.cpp:Map::saveOnce]`).
 
 ## Side Effects
 - Emits system diagnostic logs (`[map.cpp]`)

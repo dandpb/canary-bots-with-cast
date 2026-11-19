@@ -1,16 +1,20 @@
-# Cast Viewer Sink
+# Cast Broadcaster Publisher (`src/creatures/players/cast`)
 
 ## Overview
-Defines the `CastViewerSink` interface (`src/creatures/players/cast/cast_viewer_sink.hpp`), decoupling `Player` network packet fan-out from concrete `ProtocolGame` sessions so live cast streams can broadcast to multiple viewers without circular header dependencies.
+Implements `CastPublisher` (`cast_publisher.hpp`, `cast_publisher.cpp`), keeping the `cast_broadcasters` database table synchronized with human `Player::setCastBroadcasting` transitions without blocking the game dispatcher thread or leaving stale rows on abrupt disconnects.
 
 ## Interface
-- `CastViewerSink` (`[cast_viewer_sink.hpp:CastViewerSink]`): Abstract interface implemented by `ProtocolGame` exposing viewer lifecycle and broadcast methods (`isConnectionExpired`, `getIP`, `getViewerName`, `setViewerName`, `getViewerId`, `setViewerId`, `disconnectClient`, `releaseCastSession`, `sendPacket`, `sendViewerChat`, `sendViewerChannelEvent`, `syncOpenContainers`).
+- `CastPublisher`, `CastPublisher::Operation`, `CastPublisher::Executor`, `CastPublisher::Scheduler`, `g_castPublisher` (`[cast_publisher.hpp:CastPublisher]`, `[cast_publisher.hpp:CastPublisher::Operation]`, `[cast_publisher.hpp:g_castPublisher]`): Singleton per-GUID async publisher exposing `getInstance()`, `publish(guid, name)`, `unpublish(guid)`, `pendingCount()`, and `retryDelayMs(delayedRetries)`.
+- Retry constants (`[cast_publisher.hpp:CastPublisher::kMaxAttempts]`, `[cast_publisher.hpp:CastPublisher::kRetryBaseDelayMs]`, `[cast_publisher.hpp:CastPublisher::kRetryMaxDelayMs]`): `kMaxAttempts = 3` immediate attempts followed by exponential timer backoff from `1000 ms` up to `60000 ms`.
 
 ## Invariants
-- `CastViewerSink` is a pure abstract interface with no state; concrete implementations must safely handle viewer packet forwarding and session release when the broadcaster logs out or stops casting (`[cast_viewer_sink.hpp:CastViewerSink]`).
+- At most one SQL write (`UPSERT` or `DELETE`) per human player GUID is in flight at any time; concurrent requests coalesce by overwriting `Entry::desired` and incrementing `generation` so a stale `DELETE` can never overwrite a newer `publish` (`[cast_publisher.hpp:CastPublisher]`, `[cast_publisher.cpp:CastPublisher::request]`, `[cast_publisher.cpp:CastPublisher::onDone]`).
+- Failed writes are never dropped while they remain the newest desired state: immediate retries run up to `kMaxAttempts` times, then scheduled backoff retries run until either persistence succeeds or a newer request supersedes the retry token (`[cast_publisher.cpp:CastPublisher::onDone]`, `[cast_publisher.cpp:CastPublisher::onRetry]`).
+- Only human casters are routed through `CastPublisher`; native bots maintain their own `cast_broadcasters` persistence path inside `libbot_engine.so` (`[cast_publisher.hpp:CastPublisher]`).
 
 ## Side Effects
-- None directly (header-only interface; concrete implementations perform network I/O and session teardown).
+- Executes off-dispatcher SQL `INSERT ... ON DUPLICATE KEY UPDATE` and `DELETE` queries against `cast_broadcasters` on dedicated worker connections without acquiring the dispatcher database lock (`[cast_publisher.cpp:CastPublisher::getInstance]`).
+- Schedules delayed backoff retry callbacks via `g_dispatcher()` when transient DB failures exhaust immediate retries (`[cast_publisher.cpp:CastPublisher::onDone]`).
 
 ## Verification
 - Run: `ctest --test-dir build --output-on-failure`

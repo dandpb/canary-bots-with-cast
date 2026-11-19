@@ -22,3 +22,20 @@ O recorte inclui as casas X 32329 a 32408 e Y 32201 a 32280 nos 16 PNGs do World
 O templo e o depot usam as posições do [cadastro do Canary](../../../data/bot/authored/city_pois.csv). A alameda e os jardins descrevem padrões visíveis no minimapa. Fachadas, cores de materiais, alturas e coberturas são interpretações. Na superfície, os volumes usam os pisos superiores alinhados. A troca de andar é feita pelo seletor.
 
 Dados cartográficos do projeto [TibiaMaps](https://github.com/tibiamaps/tibia-map-data), com [licença MIT](public/data/LICENSE-map.txt).
+
+## Interface
+- `[index.html]` / `[vite.config.js]` / `[package.json:scripts]` — Vite frontend build (`npm run check`, `npm run build`, `npm run preview`) supporting URL parameters `?andar=<0..15>` and `?render=software`.
+- Subdirectories:
+  - `src`: [`./src/README.md`](./src/README.md) — Voxel scene builder, district map data (`thais.json`), WebGL/Canvas2D software renderer, navigation, and place validation.
+  - `scripts`: [`./scripts/README.md`](./scripts/README.md) — Map cropping (`crop-thais.py`) and place validation CLI (`check-place.mjs`).
+
+## Invariants
+- The cropped Thais region covers exact map coordinates `X 32329..32408` and `Y 32201..32280` across 16 floors (`0..15`), with 1 pixel = 1 tile = `1.7` scene units, verified against source hashes in `src/thais.json` (`[scripts/check-place.mjs]`).
+- `?render=software` renders the same district geometry via 2D Canvas (`SoftwareRenderer`) when WebGL is unavailable.
+
+## Side Effects
+- `npm run build` outputs bundled static assets into `dist/`; `scripts/crop-thais.py` writes cropped floor PNGs and updates `src/thais.json` hashes.
+
+## Verification
+- Run: `npm run check && npm run build`
+
