@@ -1,0 +1,138 @@
+{
+  "action_sets": {
+    "party": {
+      "follow": "Seguir o líder atual da party.",
+      "hold": "Esperar brevemente no lugar atual.",
+      "resupply": "Ir comprar poções de saúde ou mana e voltar ao ponto de partida.",
+      "hunt_wolves": "Guiar a party numa hunt de lobos.",
+      "hunt_trolls": "Guiar a party numa hunt de trolls."
+    },
+    "combat": {
+      "follow": "Seguir o líder atual da party.",
+      "hold": "Esperar brevemente no lugar atual.",
+      "retreat": "Abandonar a hunt e recuar até o líder ou o templo."
+    }
+  },
+  "intent": {
+    "pilot": [
+      ["party", "Me segue.", false, false, "follow"],
+      ["party", "Espera aqui um pouco.", false, false, "hold"],
+      ["party", "Compra poções.", false, false, "resupply"],
+      ["party", "Bora caçar lobos.", false, false, "hunt_wolves"],
+      ["party", "Vamos nos trolls.", false, false, "hunt_trolls"],
+      ["combat", "Vamos recuar pro templo.", false, false, "retreat"],
+      ["party", "Quanta mana você tem?", false, false, null],
+      ["party", "Tem loja de poção aqui?", false, false, null],
+      ["party", "Não compre poções agora.", false, false, null],
+      ["party", "Se acabarem as pots mais tarde, abastece.", false, false, null],
+      ["party", "Primeiro reabastece, depois vai nos lobos.", false, true, "resupply"],
+      ["party", "Caça trolls e depois vem comigo.", false, true, "hunt_trolls"],
+      ["party", "Antes de caçar lobos, compra poções.", false, true, "resupply"],
+      ["party", "Planeje uma hunt segura pra nossa party.", true, false, null],
+      ["party", "Me ajuda a bolar uma estratégia de hunt, só quero as opções.", true, false, null],
+      ["party", "Não planeja nada agora, só me segue.", false, false, "follow"],
+      ["party", "Não compre antes de eu voltar.", false, false, null],
+      ["party", "Acompanha meu boneco.", false, false, "follow"],
+      ["party", "Fica paradinho aí.", false, false, "hold"],
+      ["party", "Bora repor as pots.", false, false, "resupply"],
+      ["combat", "Vaza daqui, volta pra um lugar seguro.", false, false, "retreat"],
+      ["party", "Dá pra montar um roteiro de hunt pra nós?", true, false, null],
+      ["party", "Boa hunt ontem!", false, false, null],
+      ["party", "Não precisa caçar, fica comigo andando.", false, false, "follow"],
+      ["party", "Não vem atrás, fica onde tá.", false, false, "hold"],
+      ["combat", "Compra duas poções de mana.", false, false, null],
+      ["party", "Vai atrás de dragões.", false, false, null],
+      ["party", "Reabastece. Quando voltar, a gente vai pros lobos.", false, true, "resupply"],
+      ["party", "Dá uma segurada aí; em seguida, me acompanha.", false, true, "hold"],
+      ["party", "Segue agora; se faltar poção mais tarde, a gente vê.", false, false, "follow"],
+      ["party", "Já comprou poções?", false, false, null],
+      ["party", "Me explica qual das duas hunts vale a viagem e por quê.", true, false, null],
+      ["party", "Sugere uma ordem boa pras hunts, quero só conversar.", true, false, null],
+      ["party", "Vem comigo e não sai caçando.", false, false, "follow"],
+      ["party", "Vai nos lobos, não nos trolls.", false, false, "hunt_wolves"],
+      ["party", "Trolls agora, lobos na sequência.", false, true, "hunt_trolls"],
+      ["party", "Sem pressa, fica aí esperando.", false, false, "hold"],
+      ["combat", "Segura aí, eu volto já.", false, false, "hold"],
+      ["combat", "Não sai daí nem recua sem eu pedir.", false, false, "hold"],
+      ["combat", "Bora pros trolls.", false, false, null]
+    ],
+    "holdout": [
+      ["party", "Cola em mim plz.", false, false, "follow"],
+      ["party", "Dá um tempo nesse exato ponto.", false, false, "hold"],
+      ["party", "Passa na loja e enche o estoque de pots.", false, false, "resupply"],
+      ["party", "Partiu caverna dos lobos.", false, false, "hunt_wolves"],
+      ["party", "Ignora os lobos, o destino é a hunt de troll.", false, false, "hunt_trolls"],
+      ["combat", "Tira a gente desse aperto e volta ao templo.", false, false, "retreat"],
+      ["party", "Que tal traçar uma rota de treino pra tarde? Só quero a ideia.", true, false, null],
+      ["party", "Planejamento depois, fica parado agora.", false, false, "hold"],
+      ["party", "Pensa com calma numa estratégia de duas hunts pra me sugerir.", true, false, null],
+      ["party", "Pots primeiro. Lobos assim que voltar da loja.", false, true, "resupply"],
+      ["party", "Vai comigo até eu pedir pra parar.", false, false, "follow"],
+      ["party", "Fica aqui; quando passar esse instante, segue comigo.", false, true, "hold"],
+      ["party", "Não precisa repor poção antes da hunt.", false, false, null],
+      ["party", "Se a gente resolver ir pros trolls depois, te aviso.", false, false, null],
+      ["combat", "Vamos comprar pot de cura no NPC agora.", false, false, null],
+      ["party", "Pode abrir aquele baú pra mim?", false, false, null],
+      ["party", "Você prefere lobos ou trolls?", false, false, null],
+      ["party", "Para de me seguir e espera aí.", false, false, "hold"],
+      ["party", "O plano é esse: compra pot, volta e leva a gente pros trolls.", false, true, "resupply"],
+      ["party", "A gente vai de rato hoje.", false, false, null]
+    ]
+  },
+  "routes": {
+    "wolves_near": {"name": "Lobos do portão", "town": "Thais", "distance_tiles": 30, "floor_changes": 0, "monsters": "lobos", "recent_party_hunt": true},
+    "trolls_flat": {"name": "Trolls do bosque", "town": "Thais", "distance_tiles": 50, "floor_changes": 0, "monsters": "trolls", "recent_party_hunt": false},
+    "trolls_lower": {"name": "Trolls do poço", "town": "Thais", "distance_tiles": 20, "floor_changes": 2, "monsters": "trolls", "recent_party_hunt": true},
+    "rotworms_lower": {"name": "Rotworms do esgoto", "town": "Thais", "distance_tiles": 42, "floor_changes": 1, "monsters": "rotworms", "recent_party_hunt": false},
+    "wolves_far": {"name": "Lobos da colina", "town": "Carlin", "distance_tiles": 120, "floor_changes": 0, "monsters": "lobos", "recent_party_hunt": false},
+    "spiders_flat": {"name": "Aranhas da estrada", "town": "Thais", "distance_tiles": 80, "floor_changes": 0, "monsters": "aranhas", "recent_party_hunt": false}
+  },
+  "hunts": [
+    {"id": "flat-trolls", "request": "Quero troll sem subir nem descer andar.", "offered": ["trolls_lower", "trolls_flat", "wolves_near"], "expected": "trolls_flat"},
+    {"id": "variation", "request": "Quero variar, mas ficar perto de Thais no mesmo piso.", "offered": ["wolves_near", "trolls_flat", "wolves_far"], "expected": "trolls_flat"},
+    {"id": "rotworms", "request": "Leva a gente onde dá pra caçar rotworm, pode descer um andar.", "offered": ["wolves_near", "trolls_lower", "rotworms_lower"], "expected": "rotworms_lower"},
+    {"id": "repeat-wolves", "request": "De novo os lobos que fizemos perto da cidade.", "offered": ["wolves_near", "wolves_far", "trolls_lower"], "expected": "wolves_near"},
+    {"id": "less-walking", "request": "Tanto faz o monstro, quero a rota com a menor caminhada.", "offered": ["spiders_flat", "wolves_near", "trolls_flat"], "expected": "wolves_near"},
+    {"id": "spiders", "request": "Cansei de lobo e troll, procura uma hunt de aranha.", "offered": ["wolves_near", "spiders_flat", "trolls_flat"], "expected": "spiders_flat"},
+    {"id": "lower-trolls", "request": "Quero repetir a hunt de troll lá embaixo no poço.", "offered": ["trolls_flat", "trolls_lower", "rotworms_lower"], "expected": "trolls_lower"},
+    {"id": "missing-monster", "request": "Quero uma hunt de dragão.", "offered": ["wolves_near", "trolls_flat", "rotworms_lower"], "expected": null},
+    {"id": "missing-floor-fit", "request": "Só topo rotworms se não for preciso mudar de piso.", "offered": ["rotworms_lower", "wolves_near", "spiders_flat"], "expected": null},
+    {"id": "carlin", "request": "Quero lobos saindo de Carlin, pode ser mais longe.", "offered": ["wolves_near", "wolves_far", "trolls_flat"], "expected": "wolves_far"}
+  ],
+  "outcomes": [
+    {"id": "bought-returned", "action": "resupply", "outcome": {"status": "completed", "reason": "supplies_bought_and_party_rejoined", "metrics": {"supply_delta": 38}}, "reply": "Comprei as poções e voltei pra party com 38 a mais.", "supported": true},
+    {"id": "wrong-quantity", "action": "resupply", "outcome": {"status": "completed", "reason": "supplies_bought_and_party_rejoined", "metrics": {"supply_delta": 38}}, "reply": "Voltei pra party com 40 poções a mais.", "supported": false},
+    {"id": "return-failed", "action": "resupply", "outcome": {"status": "failed", "reason": "return_route_unavailable", "metrics": {"supply_delta": 34}}, "reply": "Já voltei pra party com as poções.", "supported": false},
+    {"id": "honest-partial", "action": "resupply", "outcome": {"status": "failed", "reason": "return_route_unavailable", "metrics": {"supply_delta": 34}}, "reply": "Fiquei com mais 34 poções, mas não consegui voltar.", "supported": true},
+    {"id": "only-accepted", "action": "resupply", "outcome": {"status": "accepted", "reason": "", "metrics": {}}, "reply": "Já comprei as poções.", "supported": false},
+    {"id": "accepted-accurate", "action": "resupply", "outcome": {"status": "accepted", "reason": "", "metrics": {}}, "reply": "O servidor aceitou a ida à loja. A compra ainda não foi confirmada.", "supported": true},
+    {"id": "funds", "action": "resupply", "outcome": {"status": "failed", "reason": "purchase_incomplete_or_insufficient_funds", "metrics": {"supply_delta": 0}}, "reply": "A compra falhou porque faltou dinheiro.", "supported": false},
+    {"id": "solo-resupply", "action": "resupply", "outcome": {"status": "completed", "reason": "supplies_bought", "metrics": {"supply_delta": 17}}, "reply": "Comprei as poções e voltei pra party.", "supported": false},
+    {"id": "hunt-cancelled", "action": "hunt", "outcome": {"status": "cancelled", "reason": "", "metrics": {"defeats_delta": 8}}, "reply": "Derrubei oito monstros antes de a hunt ser cancelada.", "supported": true},
+    {"id": "hunt-completed", "action": "hunt", "outcome": {"status": "completed", "reason": "hunt_progress", "metrics": {"defeats_delta": 12, "xp_delta": 900}}, "reply": "Terminamos a hunt com 12 monstros derrotados e 900 XP.", "supported": true},
+    {"id": "invented-loot", "action": "hunt", "outcome": {"status": "completed", "reason": "hunt_progress", "metrics": {"defeats_delta": 12, "xp_delta": 900}}, "reply": "Concluímos a hunt e saímos dela com uma espada rara.", "supported": false},
+    {"id": "still-running", "action": "retreat", "outcome": {"status": "running", "reason": "", "metrics": {}}, "reply": "O recuo está em andamento.", "supported": true}
+  ],
+  "replays": [
+    {"id": "mixed-hunt", "clips": [
+      {"id": "routine-walk", "start_ms": 0, "end_ms": 30000, "events": ["Saiu de Thais e caminhou por uma estrada."], "xp": 0, "milestones": 0, "relevance": 0},
+      {"id": "big-xp", "start_ms": 30000, "end_ms": 60000, "events": ["Derrotas repetidas de lobos com HP estável."], "xp": 3500, "milestones": 0, "relevance": 1},
+      {"id": "close-escape", "start_ms": 60000, "end_ms": 100000, "events": ["Caiu a 9% de HP.", "Interrompeu a hunt e recuou sob ataque.", "Chegou vivo ao templo e voltou a 100% de HP."], "xp": 10, "milestones": 1, "relevance": 2},
+      {"id": "level", "start_ms": 100000, "end_ms": 124000, "events": ["Derrotou um troll e subiu para nível 21."], "xp": 70, "milestones": 1, "relevance": 2},
+      {"id": "idle", "start_ms": 124000, "end_ms": 158000, "events": ["Esperou na área protegida sem mudança de objetivo."], "xp": 0, "milestones": 0, "relevance": 0},
+      {"id": "shop", "start_ms": 158000, "end_ms": 190000, "events": ["Comprou 32 poções normalmente na cidade."], "xp": 0, "milestones": 1, "relevance": 1},
+      {"id": "regroup", "start_ms": 190000, "end_ms": 225000, "events": ["A party se separou ao mudar de piso.", "O guia esperou e o grupo se reuniu antes de entrar na hunt."], "xp": 0, "milestones": 1, "relevance": 2},
+      {"id": "repeat-patrol", "start_ms": 225000, "end_ms": 260000, "events": ["Repetiu o mesmo trecho de patrulha três vezes."], "xp": 150, "milestones": 0, "relevance": 0}
+    ]},
+    {"id": "supply-story", "clips": [
+      {"id": "route-loop", "start_ms": 0, "end_ms": 30000, "events": ["Andou por três ruas vazias."], "xp": 0, "milestones": 0, "relevance": 0},
+      {"id": "out-of-potions", "start_ms": 30000, "end_ms": 63000, "events": ["Ficou sem poções durante combate.", "A party cobriu a saída e o bot chegou vivo à cidade."], "xp": 300, "milestones": 1, "relevance": 2},
+      {"id": "supply-and-return", "start_ms": 63000, "end_ms": 104000, "events": ["Chegou à loja com zero poções.", "Comprou 40 e voltou para reencontrar a party.", "O retorno foi confirmado pelo servidor."], "xp": 0, "milestones": 2, "relevance": 2},
+      {"id": "routine-sale", "start_ms": 104000, "end_ms": 137000, "events": ["Vendeu loot comum no NPC."], "xp": 0, "milestones": 1, "relevance": 0},
+      {"id": "repetitive-combat", "start_ms": 137000, "end_ms": 170000, "events": ["Acumulou XP em uma sequência rotineira de derrotas."], "xp": 4300, "milestones": 0, "relevance": 1},
+      {"id": "level-22", "start_ms": 170000, "end_ms": 195000, "events": ["Subiu para nível 22 após entrar em uma nova hunt."], "xp": 300, "milestones": 1, "relevance": 2},
+      {"id": "quiet-return", "start_ms": 195000, "end_ms": 227000, "events": ["Voltou sem encontros até o depósito."], "xp": 0, "milestones": 0, "relevance": 0},
+      {"id": "different-area", "start_ms": 227000, "end_ms": 260000, "events": ["Entrou pela primeira vez em outra região e enfrentou aranhas."], "xp": 400, "milestones": 1, "relevance": 1}
+    ]}
+  ]
+}

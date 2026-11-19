@@ -36,3 +36,46 @@ Command-line tools, smoke harnesses, and M5 comparative pilot wrappers (`m5_pilo
 ## Verification
 
 - Run: `pytest`
+
+## Experimentos com Jev
+
+Execute a partir da raiz do repositório com Python 3.11 ou superior. O modo
+offline usa os casos sintéticos de [jev_experiment_cases.json](jev_experiment_cases.json)
+e grava as previsões das regras locais e os payloads preparados.
+
+```text
+python deployment/brain/tools/jev_experiments.py all --output jev-offline.json
+python deployment/brain/tools/jev_experiments.py intent --split holdout --output jev-intent.json
+python deployment/brain/tools/jev_experiments.py hunts --output jev-hunts.json
+python deployment/brain/tools/jev_experiments.py outcomes --output jev-outcomes.json
+python deployment/brain/tools/jev_experiments.py replays --output jev-replays.json
+```
+
+| Comando | Casos | Comparação | Métricas principais |
+|---|---:|---|---|
+| `intent` | 40 de piloto e 20 reservados para avaliação | Marcadores do controller para plano e sequência, e palavras-chave para primeira ação | Acerto por julgamento, ação indevida e abstenção |
+| `hunts` | 10 pedidos com catálogos sintéticos | Rota elegível mais próxima | Acerto da primeira opção, posição da rota esperada e escolha indevida quando nenhuma serve |
+| `outcomes` | 12 respostas e resultados sintéticos | Regra que confia em toda resposta sobre uma ação concluída | Alegações indevidas que passam, respostas corretas sinalizadas e casos incertos |
+| `replays` | 2 histórias com 8 cortes cada | Ordem por número de marcos e XP | NDCG@5 e proporção de cortes relevantes entre os cinco primeiros |
+
+Os rótulos são manuais. As regras de comparação são locais. O script mede as
+escolhas sobre os mesmos casos, com a autoridade do jogador assumida no cenário
+de `intent`. Os cortes são janelas de eventos com timestamps sintéticos. O
+relatório inclui cada previsão, seu rótulo e os denominadores das médias.
+
+Após autorização de gasto, use o ambiente Python do Canary Brain no WSL/Linux, a variável
+`TYPESAFE_API_KEY` e o ledger canônico já montado. Substitua o caminho abaixo
+pelo caminho real desse ledger no ambiente que executará o script. O exemplo
+reserva até `0.01` USD no total para a execução.
+
+```text
+python deployment/brain/tools/jev_experiments.py intent --split holdout --live --budget-file /var/lib/canary-brain/state.sqlite3 --max-usd 0.01 --output jev-intent-live.json
+```
+
+O mesmo `--live` funciona para os quatro experimentos e para `all`. Ele envia
+os casos sintéticos à API System One com o modelo fixado em `jev-1.14.0`.
+As chamadas são sequenciais e cada tentativa reserva seu custo máximo antes de
+sair. O relatório inclui respostas, uso, custo e latência. Em caso de falha,
+ele preserva a parte concluída e a reserva de qualquer chamada com custo
+desconhecido. O limite é por execução e as reservas também contam para o limite
+mensal compartilhado.
