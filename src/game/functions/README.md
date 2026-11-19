@@ -16,4 +16,4 @@ Provides the live hot-reload dispatcher (`GameReload`) that reloads server confi
 - Reads XML, Lua, and configuration files from disk and logs reload outcomes via `g_logger()` (`[game_reload.cpp:logReloadStatus]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

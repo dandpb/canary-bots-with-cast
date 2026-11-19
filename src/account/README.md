@@ -24,4 +24,4 @@ Provides the domain model and persistence abstractions for player accounts, incl
 - Emits diagnostic and error logs via `g_logger()` (`[account.cpp:Account::removeCoins]`, `[account.cpp:Account::registerCoinTransaction]`, `[account.cpp:Account::authenticateSession]`, `[account.cpp:Account::authenticatePassword]`, `[account_repository_db.cpp:AccountRepositoryDB::save]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

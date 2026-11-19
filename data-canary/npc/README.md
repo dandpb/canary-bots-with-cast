@@ -18,4 +18,4 @@ Defines and registers the `"Canary"` guide, shopkeeper, and promotion NPC (`cana
 - `[canary.lua:114]` and `[canary.lua:132]` mutate player inventory, gold balance, and vocation promotion state during shop transactions and promotions.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).

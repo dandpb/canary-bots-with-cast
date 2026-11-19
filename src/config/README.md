@@ -20,4 +20,4 @@ Manages server configuration loading, reloading, and typed lookup from `config.l
 - Logs warnings and errors via `g_logger()` on missing config identifiers, file load errors, or type/key mismatches (`[configmanager.cpp:ConfigManager::load]`, `[configmanager.cpp:ConfigManager::missingConfigWarning]`, `[configmanager.cpp:ConfigManager::getString]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

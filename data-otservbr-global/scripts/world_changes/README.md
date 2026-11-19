@@ -54,4 +54,4 @@ Component package under `scripts/world_changes` containing 6 files (`fury_gates.
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [oriental_trader.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

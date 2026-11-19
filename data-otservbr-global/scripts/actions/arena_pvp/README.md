@@ -24,4 +24,4 @@ Component package under `scripts/actions/arena_pvp` containing 2 files (`arena_1
 - Teleports creatures/players across map coordinates via `teleportTo` [arena_2x2.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

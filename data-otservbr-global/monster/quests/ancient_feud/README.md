@@ -22,4 +22,4 @@ Component package under `monster/quests/ancient_feud` containing 4 files (`katex
 - Registers monster type `Yirkas Blue Scales` into the global `Game` engine registry via `mType:register(monster)` [yirkas_blue_scales.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

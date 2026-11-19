@@ -58,4 +58,4 @@ Component package under `monster/event_creatures/memory_creatures` containing 24
 - Registers monster type `Memory of a Mammoth` into the global `Game` engine registry via `mType:register(monster)` [memory_of_a_mammoth.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

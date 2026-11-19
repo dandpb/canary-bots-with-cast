@@ -23,4 +23,4 @@ Component package under `scripts/actions/soulpit` containing 2 files (`soulpit_a
 - Teleports creatures/players across map coordinates via `teleportTo` [soulpit_entrance.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

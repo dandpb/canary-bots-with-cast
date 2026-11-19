@@ -103,4 +103,4 @@ Intermediate blueprint grouping 14 subdirectories under `scripts`.
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [hazard_primal.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).

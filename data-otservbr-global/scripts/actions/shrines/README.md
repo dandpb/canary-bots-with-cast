@@ -16,4 +16,4 @@ Component package under `scripts/actions/shrines` containing 1 files (`feyrist_e
 - Teleports creatures/players across map coordinates via `teleportTo` [feyrist_exit.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

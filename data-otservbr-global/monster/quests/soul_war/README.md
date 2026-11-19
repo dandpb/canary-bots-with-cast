@@ -60,4 +60,4 @@ Provides 23 direct files (`aspect_of_power.lua`..`weeping_soul.lua`) and 1 subdi
 - Spawns items, monsters, or NPCs in the game world via `Game.createItem` / `Game.createMonster` / `Game.createNpc` [goshnars_cruelty.lua:Game]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

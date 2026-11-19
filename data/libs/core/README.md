@@ -23,4 +23,4 @@ Defines the global `Global.Storage` table (`global_storage.lua`) mapping named k
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

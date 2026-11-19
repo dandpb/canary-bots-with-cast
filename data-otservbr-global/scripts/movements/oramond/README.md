@@ -46,4 +46,4 @@ Component package under `scripts/movements/oramond` containing 6 files (`oramond
 - Teleports creatures/players across map coordinates via `teleportTo` [voting_oramond.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

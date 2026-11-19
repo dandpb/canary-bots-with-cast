@@ -29,4 +29,4 @@ Component package under `scripts/globalevents/others` containing 3 files (`check
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [raids_schedule.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

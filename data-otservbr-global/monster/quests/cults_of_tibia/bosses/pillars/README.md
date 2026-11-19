@@ -36,4 +36,4 @@ Component package under `monster/quests/cults_of_tibia/bosses/pillars` containin
 - Attaches creature event scripts defined in `monster.events` on spawn [pillar_of_summoning.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../../tests/lua/README.md).

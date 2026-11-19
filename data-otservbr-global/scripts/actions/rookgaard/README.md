@@ -40,4 +40,4 @@ Provides 4 direct files (`chest.lua`..`sewer_lever.lua`) and 2 subdirectories un
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [sewer_lever.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

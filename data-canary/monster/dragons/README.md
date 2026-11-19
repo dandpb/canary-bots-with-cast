@@ -17,4 +17,4 @@ Defines and registers 5 dragon `MonsterType` definitions for the `data-canary` d
 - Each file invokes `Game.createMonsterType(...)` and `mType:register(monster)` to register its `MonsterType` in the global game engine registry at startup/reload.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

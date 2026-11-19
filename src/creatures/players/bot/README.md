@@ -31,4 +31,4 @@ Implements the autonomous player bot subsystem (`libbot_engine.so`) and its hot-
 - When QA environment variable `CANARY_QA_HUNT_PHASE_TRACE_GUID` matches a bot's GUID, `BotEngine::beginHuntPhase` emits passive `[HUNT:PHASE]` transition log lines (`[bot_hunt.cpp:BotEngine::beginHuntPhase]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

@@ -59,4 +59,4 @@ Component package under `monster/reptiles` containing 42 files (`adult_goanna.lu
 - Registers monster type `Killer Caiman` into the global `Game` engine registry via `mType:register(monster)` [killer_caiman.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

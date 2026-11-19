@@ -16,4 +16,4 @@ Defines and registers the 4 vocation summon familiar `MonsterType` definitions (
 - Each file invokes `Game.createMonsterType(...)` and `mType:register(monster)` to register its familiar `MonsterType` in the global game engine registry at startup/reload.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

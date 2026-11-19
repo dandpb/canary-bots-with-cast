@@ -13,4 +13,4 @@ Package implementation for `data/modules/scripts/gamestore/catalog`, providing c
 - None
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

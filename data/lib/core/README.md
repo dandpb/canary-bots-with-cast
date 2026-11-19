@@ -6,11 +6,11 @@ Intermediate grouping for core data library subsystems such as the modular quest
 
 ## Subdirectories & Boundaries
 
-- [quests](./quests/README.md): Quest catalog builder (`[catalog.lua:build]`) and custom Lua searcher (`[loader.lua:load]`) populating the global `Quests` table.
+- [quests](./quests/README.md): Quest catalog builder (`[quests/catalog.lua:build]`) and custom Lua searcher (`[quests/loader.lua:load]`) populating the global `Quests` table.
 
 ## Interface
 
-- [quests](./quests/README.md): Exposes `[catalog.lua:build]`, `[loader.lua:load]`, and global `[loader.lua:Quests]`.
+- [quests](./quests/README.md): Exposes `[quests/catalog.lua:build]`, `[quests/loader.lua:load]`, and global `[quests/loader.lua:Quests]`.
 
 ## Invariants
 
@@ -22,4 +22,4 @@ Intermediate grouping for core data library subsystems such as the modular quest
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

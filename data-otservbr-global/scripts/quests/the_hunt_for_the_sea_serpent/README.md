@@ -26,4 +26,4 @@ Component package under `scripts/quests/the_hunt_for_the_sea_serpent` containing
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_teleports.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

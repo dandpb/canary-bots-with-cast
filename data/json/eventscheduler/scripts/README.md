@@ -19,4 +19,4 @@ Contains Lua startup event scripts triggered by the JSON event scheduler (`../ev
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -36,4 +36,4 @@ Component package under `monster/quests/the_dream_courts/bosses` containing 7 fi
 - Attaches creature event scripts defined in `monster.events` on spawn [plagueroot.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

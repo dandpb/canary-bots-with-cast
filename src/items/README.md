@@ -31,4 +31,4 @@ Package implementation for `src/items`, providing component logic and data inter
 - Emits system diagnostic logs (`[tile.cpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

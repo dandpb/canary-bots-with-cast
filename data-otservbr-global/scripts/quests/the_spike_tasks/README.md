@@ -24,4 +24,4 @@ Component package under `scripts/quests/the_spike_tasks` containing 2 files (`mo
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_spike_teleport.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

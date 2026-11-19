@@ -14,4 +14,4 @@ Component package under `monster/quests/no_rest_for_the_wicked/bosses` containin
 - Registers monster type `Arbaziloth` into the global `Game` engine registry via `mType:register(monster)` [arbaziloth.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

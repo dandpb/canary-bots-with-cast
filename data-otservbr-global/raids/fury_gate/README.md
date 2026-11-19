@@ -14,4 +14,4 @@ Component package under `raids/fury_gate` containing 1 files (`furyosa.xml`..`fu
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [furyosa.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

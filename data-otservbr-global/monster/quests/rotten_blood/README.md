@@ -56,4 +56,4 @@ Component package under `monster/quests/rotten_blood` containing 22 files (`bloa
 - Registers monster type `Elder Bloodjaw` into the global `Game` engine registry via `mType:register(monster)` [elder_bloodjaw.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

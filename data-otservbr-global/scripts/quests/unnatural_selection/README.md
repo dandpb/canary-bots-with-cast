@@ -30,4 +30,4 @@ Component package under `scripts/quests/unnatural_selection` containing 3 files 
 - Mutates player or global storage state via `setStorageValue` [movements_mission3_dance_dance_evolution.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

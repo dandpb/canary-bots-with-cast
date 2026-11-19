@@ -43,4 +43,4 @@ Provides 9 direct files (`angry_plant.lua`..`unbeatable_dragon.lua`) and 1 subdi
 - Registers monster type `Unbeatable Dragon` into the global `Game` engine registry via `mType:register(monster)` [unbeatable_dragon.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

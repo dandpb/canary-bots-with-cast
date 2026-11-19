@@ -10,7 +10,7 @@ Command-line tools, smoke harnesses, and M5 comparative pilot wrappers (`m5_pilo
 - `[m5_pilot.py:ledger_snapshot]` / `[m5_pilot.py:ledger_export]` / `[m5_pilot.py:admitted_budget]` / `[m5_pilot.py:validate_none_configuration]` / `[m5_pilot.py:validate_none_envelope]` / `[m5_pilot.py:validate_recovery_envelope]` / `[m5_pilot.py:source_files]` / `[m5_pilot.py:assert_frozen_imports]` — Read-only SQLite ledger verification, frozen source manifest validation, and profile configuration comparators against `[m5_openai_none_reference.v2.json:schema_version]`.
 - `[m5_report.py:main]` / `[m5_report.py:review]` / `[m5_report.py:window_persistence]` / `[m5_report.py:latency_metrics]` / `[m5_report.py:priced_usage]` / `[m5_report.py:markdown]` — Offline M5 evidence verifier CLI (`--recording`, `--experiment`, `--trials` | `--trials-root`, `--attestation`, `--ledger`, `--output`, `--require-completed`) generating `report.json`, `acceptance.json`, and `report.md`.
 - `[benchmark_gateway.py:main]` / `[benchmark_gateway.py:serve]` / `[benchmark_gateway.py:cleanup]` / `[benchmark_gateway.py:environment]` — Private benchmark LiteLLM gateway lifecycle manager (`--runtime`, `--policy`, `--image`, `--revision`, `--check` | `--serve`) with crash-safe mutation journaling (`[benchmark_gateway.py:journal]`) and flock leasing (`[benchmark_gateway.py:lease]`).
-- `[evaluate.py:main]` / `[evaluate.py:evaluate]` — Deterministic held-out synthetic contextual bandit evaluation CLI (`--output`).
+- `[evaluate.py:evaluate]` / `[evaluate.py:evaluate]` — Deterministic held-out synthetic contextual bandit evaluation CLI (`--output`).
 - `[probe.py:probe]` — Live OpenAI contract probe CLI (`[probe.py:--live]`, `[probe.py:--credential]`, `[probe.py:--state]`, `[probe.py:--output]`, `[probe.py:--samples]`, `[probe.py:--max-effort]`, `[probe.py:--tool-result]`).
 - `[deadline_smoke.py:main]` / `[deadline_smoke.py:exercise]` — End-to-end deadline enforcement and reservation retention smoke suite across candidate TTL profiles (`[deadline_smoke.py:PROFILES]`) and upstream delays (`[deadline_smoke.py:DELAYS_MS]`).
 - `[gateway_smoke.py:main]` / `[gateway_routing_smoke.py:main]` / `[gateway_usage_smoke.py:main]` / `[gateway_flat_import_smoke.py:main]` / `[gateway_admin_routing_smoke.py:main]` / `[run_gateway_admin_routing_smoke.py:main]` / `[gemini_gateway_smoke.py:main]` / `[haiku_gateway_smoke.py:main]` — Offline and containerized LiteLLM proxy boundary, routing immutability, usage accounting, and provider wire-schema smoke tests.
@@ -38,7 +38,7 @@ Command-line tools, smoke harnesses, and M5 comparative pilot wrappers (`m5_pilo
 
 ## Verification
 
-- Run: `pytest`
+- From the repository root, run `cd deployment/brain` and `python -m pytest` with the [development dependencies installed](../README.md#verification). The Jev offline commands below use the repository root.
 
 ## Experimentos com Jev
 

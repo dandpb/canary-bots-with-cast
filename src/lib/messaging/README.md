@@ -23,4 +23,4 @@ The `src/lib/messaging` component provides lightweight, header-only typed messag
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

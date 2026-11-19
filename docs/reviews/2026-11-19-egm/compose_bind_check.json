@@ -1,0 +1,29 @@
+{
+  "command": "docker compose with every profile and a synthetic interpolation environment, config --no-env-resolution --format json",
+  "services": {
+    "game": [
+      {
+        "source": "/home/daniel/canary-bots-wsl/deployment/wsl/runtime/config",
+        "target": "/etc/canary-brain"
+      },
+      {
+        "source": "/home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/lua/config.lua.dist",
+        "target": "/canary/config.lua.dist"
+      },
+      {
+        "source": "/home/daniel/canary-bots-wsl/deployment/wsl/runtime/world/otservbr.otbm",
+        "target": "/canary/data-otservbr-global/world/otservbr.otbm"
+      }
+    ],
+    "brain": [
+      {
+        "source": "/home/daniel/canary-bots-wsl/deployment/wsl/runtime/config/worker.json",
+        "target": "/etc/canary-brain/worker.json"
+      },
+      {
+        "source": "/home/daniel/canary-bots-wsl/deployment/wsl/runtime/secrets/litellm-client.env",
+        "target": "/etc/canary-brain/litellm-client.env"
+      }
+    ]
+  }
+}

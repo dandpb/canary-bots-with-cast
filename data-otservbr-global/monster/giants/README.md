@@ -50,4 +50,4 @@ Component package under `monster/giants` containing 16 files (`beast_hulking_pre
 - Registers monster type `Ogre Sage` into the global `Game` engine registry via `mType:register(monster)` [ogre_sage.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

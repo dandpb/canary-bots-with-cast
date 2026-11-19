@@ -33,4 +33,4 @@ Provides 3 direct files (`creaturescripts_kill.lua`..`movement_teleport.lua`) an
 - Teleports creatures/players across map coordinates via `teleportTo` [movement_teleport.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

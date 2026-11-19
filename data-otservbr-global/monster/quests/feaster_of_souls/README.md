@@ -40,4 +40,4 @@ Component package under `monster/quests/feaster_of_souls` containing 9 files (`b
 - Registers monster type `Unaz the Mean` into the global `Game` engine registry via `mType:register(monster)` [unaz_the_mean.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

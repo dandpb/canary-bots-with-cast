@@ -59,7 +59,7 @@ Component package under `migrations` containing 57 files (`1.lua`..`9.lua`).
 - Executes SQL DDL/DML statements against the database via `db.query` [2.lua:db.query]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).
 
 ### Existing Documentation: Database Migration System
 

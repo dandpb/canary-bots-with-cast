@@ -1,7 +1,6 @@
 """Admission, immutable inputs and shared accounting before any live M5 call."""
 
 import asyncio
-import hashlib
 import json
 import platform
 import sqlite3

@@ -18,7 +18,7 @@ Provides the C++-to-Lua bindings for core game state, global script functions, c
 - `ConfigFunctions` getters require a valid `ConfigKey_t` enum key on the Lua stack (`[config_functions.cpp:ConfigFunctions::luaConfigManagerGetString]`, `[config_functions.cpp:ConfigFunctions::luaConfigManagerGetFloat]`).
 - `GameFunctions::luaGameCreateMonsterType` errors if a `MonsterType` with the resolved name or variant name is already registered in `g_monsters()` (`[game_functions.cpp:GameFunctions::luaGameCreateMonsterType]`).
 - `ModalWindowFunctions::luaModalWindowSendToPlayer` only sends the modal window if `!player->hasModalWindowOpen(window->id)` (`[modal_window_functions.cpp:ModalWindowFunctions::luaModalWindowSendToPlayer]`).
-- Note: `ZoneFunctions::init` is invoked directly from `Lua::load` (`[lua_functions_loader.cpp:Lua::load]`) rather than inside `CoreGameFunctions::init` (`[core_game_functions.hpp:CoreGameFunctions::init]`).
+- Note: `ZoneFunctions::init` is invoked directly from `Lua::load` (`[../../lua_functions_loader.cpp:Lua::load]`) rather than inside `CoreGameFunctions::init` (`[core_game_functions.hpp:CoreGameFunctions::init]`).
 
 ## Side Effects
 - Mutates the Lua state global tables and metatables (`Bank`, `configManager`, `configKeys`, `Game`, `ModalWindow`, `Zone`, and global functions/enums) (`[core_game_functions.hpp:CoreGameFunctions::init]`, `[zone_functions.cpp:ZoneFunctions::init]`).
@@ -27,4 +27,4 @@ Provides the C++-to-Lua bindings for core game state, global script functions, c
 - Dispatches network packets to players such as modal windows and channel messages (`player->sendModalWindow`) (`[modal_window_functions.cpp:ModalWindowFunctions::luaModalWindowSendToPlayer]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../../tests/README.md#running-tests).

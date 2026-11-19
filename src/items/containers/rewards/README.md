@@ -27,4 +27,4 @@ Implements boss reward containers: `Reward` (`ITEM_REWARD_CONTAINER`, representi
 - `RewardChest::removeItem` erases the target item from `itemlist` and calls `itemToRemove->resetParent()` without sending client container updates (`[rewardchest.cpp:RewardChest::removeItem]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

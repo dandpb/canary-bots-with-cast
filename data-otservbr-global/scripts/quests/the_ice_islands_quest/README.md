@@ -58,4 +58,4 @@ Component package under `scripts/quests/the_ice_islands_quest` containing 8 file
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_yakchal.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

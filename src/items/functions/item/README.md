@@ -23,4 +23,4 @@ Package implementation for `src/items/functions/item`, providing component logic
 - Emits system diagnostic logs (`[item_parse.cpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

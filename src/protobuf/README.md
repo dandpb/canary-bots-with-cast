@@ -16,4 +16,4 @@ Contains Protocol Buffer (`.proto`) schemas and CMake code-generation rules for 
 - Build-time C++ header/source generation (`appearances.pb.h`/`cc`, `kv.pb.h`/`cc`) in `${CMAKE_CURRENT_BINARY_DIR}` via `protobuf_generate` (`[CMakeLists.txt:protobuf_generate]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

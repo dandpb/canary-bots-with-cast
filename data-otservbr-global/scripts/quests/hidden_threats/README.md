@@ -38,4 +38,4 @@ Component package under `scripts/quests/hidden_threats` containing 4 files (`act
 - Mutates player or global storage state via `setStorageValue` [movement-chests_check.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

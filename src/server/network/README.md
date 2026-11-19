@@ -26,4 +26,4 @@ Intermediate architectural boundary grouping all network transport, packet buffe
 - Allocates pooled `OutputMessage` buffers (`[message/outputmessage.cpp:OutputMessagePool::getOutputMessage]`) and schedules packet processing, login/logout, and auto-send tasks onto `g_dispatcher()` and `ThreadPool` (`[protocol/protocol.cpp:Protocol::sendRecvMessageCallback]`, `[message/outputmessage.cpp:OutputMessagePool::scheduleSendAll]`, `[webhook/webhook.cpp:Webhook::run]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

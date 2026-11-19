@@ -53,4 +53,4 @@ Component package under `scripts/quests/grave_danger_quest/cobra_bastion` contai
 - Spawns items, monsters, or NPCs in the game world via `Game.createItem` / `Game.createMonster` / `Game.createNpc` [creaturescripts_ugly_monster.lua:Game]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

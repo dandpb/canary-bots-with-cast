@@ -49,4 +49,4 @@ Component package under `scripts/quests/svargrond_arena` containing 5 files (`cr
 - Spawns items, monsters, or NPCs in the game world via `Game.createItem` / `Game.createMonster` / `Game.createNpc` [movements_arena_pit.lua:Game]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

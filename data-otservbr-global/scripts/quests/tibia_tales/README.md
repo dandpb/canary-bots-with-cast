@@ -17,4 +17,4 @@ Component package under `scripts/quests/tibia_tales` containing 1 files (`action
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [actions_ultimate_booze_beer_bottle.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

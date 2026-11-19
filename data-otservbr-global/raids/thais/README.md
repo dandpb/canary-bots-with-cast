@@ -39,4 +39,4 @@ Component package under `raids/thais` containing 4 files (`cyclops.xml`..`wild_h
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [wild_horses.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

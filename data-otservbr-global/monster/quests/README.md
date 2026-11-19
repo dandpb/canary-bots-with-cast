@@ -147,4 +147,4 @@ Intermediate blueprint grouping 43 subdirectories under `monster/quests`.
 - Registers monster type `Animated Sword` into the global `Game` engine registry via `mType:register(monster)` [animated_sword.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

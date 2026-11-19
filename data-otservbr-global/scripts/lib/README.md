@@ -36,4 +36,4 @@ Component package under `scripts/lib` containing 2 files (`monster_functions.lua
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [register_actions.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

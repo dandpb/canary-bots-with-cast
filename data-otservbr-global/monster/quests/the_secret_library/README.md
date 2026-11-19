@@ -60,4 +60,4 @@ Provides 47 direct files (`biting_cold.lua`..`yalahari_despoiler.lua`) and 1 sub
 - Registers monster type `Force Field` into the global `Game` engine registry via `mType:register(monster)` [force_field.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

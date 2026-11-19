@@ -18,4 +18,18 @@ Contains offline and Docker-isolated test harnesses for M5 comparative pilot qua
 - Spawns isolated Docker containers/subprocesses during live fixture runs and writes JSON/Markdown evidence bundles and archive manifests to caller-specified output paths.
 
 ## Verification
-- Run: `pytest tests/fixture`
+
+Use Linux or WSL with Python 3.11 or newer and `luajit` on `PATH`. From the
+repository root, install the locked Brain development dependencies and the
+worker in editable mode so the harness resolves it from the source checkout.
+The full suite includes `test_m5_persistence_contract.py`, which needs an ARM64
+Linux LuaJIT process with `libcrypto.so.3`. Use an ARM64 host or run that process
+under ARM64 emulation. On AMD64 with native LuaJIT, run the other fixture tests
+with `--ignore=tests/fixture/test_m5_persistence_contract.py`.
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -r deployment/brain/requirements-dev.lock
+.venv/bin/pip install --no-deps -e deployment/brain
+.venv/bin/python -m pytest tests/fixture
+```

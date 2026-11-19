@@ -59,4 +59,4 @@ Component package under `monster/quests/killing_in_the_name_of` containing 30 fi
 - Registers monster type `Hide` into the global `Game` engine registry via `mType:register(monster)` [hide.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

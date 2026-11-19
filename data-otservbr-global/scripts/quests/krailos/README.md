@@ -16,4 +16,4 @@ Component package under `scripts/quests/krailos` containing 1 files (`movements_
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_access_depot.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

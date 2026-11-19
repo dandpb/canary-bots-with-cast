@@ -21,7 +21,7 @@ Provides the core `Container` class (`[container.hpp:Container]`)—an `Item` an
 - `ContainerIterator` never traverses deeper than `maxTraversalDepth` (`MAX_CONTAINER_DEPTH`) and tracks `visitedContainers` to prevent infinite loops on cyclic container references (`[container.cpp:ContainerIterator::advance]`).
 - `Container::queryAdd` rejects additions when `!unlocked`, when the item is not pickupable, when adding a container to itself or an ancestor cylinder (`cylinder == addThing`), when `cylinder == parent` (cycle guard), when item ownership conflicts (`RETURNVALUE_ITEMISNOTYOURS`), when non-ammo is added to a quiver (`RETURNVALUE_ONLYAMMOINQUIVER`), or when container/item count limits (`MAX_CONTAINER`, `m_maxItems`, `capacity()`) are exceeded without `FLAG_NOLIMIT` (`[container.cpp:Container::queryAdd]`).
 - `Container::getWeight()` always equals `Item::getWeight() + totalWeight`, and `updateItemWeight(int32_t diff)` propagates weight deltas up all ancestor containers (`[container.cpp:Container::getWeight]`, `[container.cpp:Container::updateItemWeight]`).
-- Child invariants from `depot`, `inbox`, `mailbox`, and `rewards` apply to their respective subclasses (`[depotchest.cpp:DepotChest::queryAdd]`, `[inbox.cpp:Inbox::queryAdd]`, `[mailbox.cpp:Mailbox::canSend]`, `[reward.cpp:Reward::queryAdd]`).
+- Child invariants from `depot`, `inbox`, `mailbox`, and `rewards` apply to their respective subclasses (`[depot/depotchest.cpp:DepotChest::queryAdd]`, `[inbox/inbox.cpp:Inbox::queryAdd]`, `[mailbox/mailbox.cpp:Mailbox::canSend]`, `[rewards/reward.cpp:Reward::queryAdd]`).
 
 ## Side Effects
 - `Container::~Container` removes `ITEM_BROWSEFIELD` entries from `g_game().browseFields` and restores parent pointers of browsed items back to the tile (`[container.cpp:Container::~Container]`).
@@ -29,4 +29,4 @@ Provides the core `Container` class (`[container.hpp:Container]`)—an `Item` an
 - `Container::unserializeItemNode` instantiates child items via `Item::CreateItem` from OTBM nodes (`[container.cpp:Container::unserializeItemNode]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

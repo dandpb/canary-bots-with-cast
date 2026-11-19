@@ -54,4 +54,4 @@ Component package under `monster/dawnport` containing 20 files (`brittle_skeleto
 - Registers monster type `Muglex Clan Footman` into the global `Game` engine registry via `mType:register(monster)` [muglex_clan_footman.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

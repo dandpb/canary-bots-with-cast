@@ -38,4 +38,4 @@ The `src/io` component implements Canary's binary file loaders (`OTB::Loader`, `
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

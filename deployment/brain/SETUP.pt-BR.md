@@ -372,27 +372,30 @@ pela timeline, mude velocidade/andar e inspecione decisões. Encerre com Ctrl+C.
 Guarde o caminho retornado por `REPLAY_QA` para os comandos de exportação.
 Essa demonstração valida a ferramenta; não mede inteligência ou XP real.
 
-## 6. Configurar o worker com uma rota LiteLLM
+## 6. Configurar as rotas LiteLLM do worker
 
 Use [worker-replay.example.json](worker-replay.example.json) como esquema,
-preservando os valores locais de socket, GUIDs e servidor. O mesmo worker usa
-uma rota por configuração; os participantes de uma campanha têm suas próprias
-configurações. Antes de iniciar um worker real, confira:
+preservando os valores locais de socket, GUIDs e servidor. A rota `gateway`
+define como o worker escolhe ações. Quando sua API é `decisions`, um
+`responses_gateway` opcional com `decision_api: responses` pode atender diálogo,
+planejamento e reflexão. O worker compartilha a credencial interna e o ledger
+entre as rotas. Cada participante de uma campanha tem sua própria configuração.
+Antes de iniciar um worker real, confira estes campos.
 
 | Campo do worker | Valor a conferir |
 | --- | --- |
 | `provider` | `litellm` |
-| `gateway.base_url` | `http://litellm:4000/v1` no Compose, ou loopback no host |
+| `gateway.base_url` | `http://litellm:4000/v1` no Compose, `http://litellm-decisions:4000/v1` para o perfil dedicado ao Gemini Decision 1, ou loopback no host |
 | `gateway.alias` | Alias exato, como `canary-openai` |
 | `gateway.effective_model` | ID sem prefixo, como `gpt-6-luna` |
 | `gateway.upstream_model` | ID completo, como `openai/gpt-6-luna` |
 | `gateway.deployment_id` | ID efetivo da rota; não inventar outro no worker |
 | `gateway.configuration_sha256` | Hash calculado após a configuração final |
-| `gateway.version` | Versão implantada; implementação qualificada: `1.108.0` |
+| `gateway.version` | Versão exata do proxy em uso. O perfil dedicado ao Gemini Decision 1 usa `1.111.0rc1` |
 | `gateway.prices` | Tarifas revisadas e datadas; não copiar uma tarifa OpenAI para Gemini |
 | `gateway.decision_reasoning_effort` | Opcional, somente decisões OpenAI Responses; ausente ou `null` preserva a omissão legada |
 | `gateway.decision_max_output_tokens` | Inteiro estrito de 256 a 4096; padrão 256. Teto maior somente para decisões OpenAI Responses |
-| `credential_file` | Caminho interno para arquivo com `LITELLM_API_KEY` |
+| `credential_file` | `/etc/canary-brain/litellm-client.env` no Compose WSL. O arquivo contém `LITELLM_API_KEY` |
 | `budget_file` | Ledger mensal canônico já existente |
 | `recording.path` | Outro SQLite, separado de estado e orçamento |
 
@@ -439,6 +442,8 @@ uso positivo sem esse preço impede liquidação.
 O prazo efetivo é `min(decision_timeout, menor TTL oferecido pelo servidor)`.
 Configurar 10 s não permite usar respostas depois de um TTL de 1 ou 1,5 s.
 Timeouts mantêm a reserva desconhecida e deixam o motor nativo continuar.
+A expiração de uma decisão tática põe em espera só outras decisões táticas.
+Uma falha do provedor pode ativar o backoff do endpoint inteiro.
 
 Para gerar o arquivo do cliente sem mostrar/copiar chaves de provider,
 execute em `deployment/wsl`:
@@ -463,11 +468,10 @@ print('Credencial restrita do cliente preparada; valor não exibido.')
 PY
 ```
 
-No serviço `brain` do Compose, substitua a montagem antiga de
-`openai.env:/etc/canary-brain/openai.env:ro` por
-`./runtime/secrets/litellm-client.env:/etc/canary-brain/gateway.env:ro`.
-Ajuste `credential_file` para `/etc/canary-brain/gateway.env`.
-Preserve as montagens de configuração, socket e `brain-state`.
+O serviço `brain` do Compose WSL monta a credencial do cliente em
+`/etc/canary-brain/litellm-client.env`. Informe esse caminho em
+`credential_file`. Preserve as montagens de configuração, socket e
+`brain-state`.
 
 Na implantação WSL de referência, o ledger existente é
 `/var/lib/canary-brain/state.sqlite3`, no volume `canary-bots-wsl_brain-state`.

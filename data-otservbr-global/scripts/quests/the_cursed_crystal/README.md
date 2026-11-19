@@ -49,4 +49,4 @@ Component package under `scripts/quests/the_cursed_crystal` containing 4 files (
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [actions_Ointment.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

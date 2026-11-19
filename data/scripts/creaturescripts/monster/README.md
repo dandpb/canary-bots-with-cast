@@ -19,4 +19,4 @@ Package implementation for `data/scripts/creaturescripts/monster`, providing com
 - Schedules timed tasks or dispatcher callbacks (`[boss_lever_death.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

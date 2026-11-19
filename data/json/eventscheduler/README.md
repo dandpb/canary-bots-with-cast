@@ -151,7 +151,7 @@ For additional help, contact the support team or refer to the project's document
 ## Interface
 
 - `[events.json:events]`: JSON array of scheduled event definitions (`Forge Time`, `Double Bestiary`, `Fast Exercise`, `50% Loot Bonus`, `50% Exp Bonus`, `Boss Cooldown Reduction`, `Double Exp`, `Double Loot`, `Double Bosstiary`, `Fast Respawn`) specifying `name`, `startdate`, `enddate`, `script`, `ingame` modifiers (`forgechance`, `doublebestiary`, `fastexercise`, `lootrate`, `exprate`, `bosscooldown`, `doublebosstiary`, `spawnrate`, `bosslootrate`, `skillrate`), `description`, `colors` (`colordark`, `colorlight`), and `details` (`displaypriority`, `isseasonal`, `specialevent`).
-- [scripts](./scripts/README.md): Exposes `[example.lua:GlobalEvent("EventScheduleExample")]` and `[example.lua:globalEvent.onStartup]`.
+- [scripts](./scripts/README.md): Exposes `[scripts/example.lua:GlobalEvent("EventScheduleExample")]` and `[scripts/example.lua:globalEvent.onStartup]`.
 
 ## Invariants
 
@@ -163,4 +163,4 @@ For additional help, contact the support team or refer to the project's document
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

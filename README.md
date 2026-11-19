@@ -231,8 +231,8 @@ both next to your server working directory.
 ```bash
 mysql -u root -p -e "CREATE DATABASE canary DEFAULT CHARSET=utf8mb3;"
 mysql -u root -p canary < schema.sql
-# Seed the bot data (god account, bot account, bots, hunts, market, …):
-cd database/bots && DB_USER=root DB_PASS=yourpass DB_NAME=canary ./import.sh
+# Seed the bot account, characters, market prices and housing:
+DB_USER=root DB_PASS=yourpass DB_NAME=canary bash database/bots/import.sh
 ```
 
 See [database/bots/README.md](database/bots/README.md) for the manual import
@@ -252,7 +252,8 @@ upstream Canary release matching the base version and place it per `mapName`.
 ### 4. Run
 
 Start `canary` (the `.so` is loaded automatically). On first boot the migrations
-finish setting up the bot tables. Connect with an OTClient (protocol 13+).
+finish setting up the bot tables. Use an OTClient build and assets compatible with
+protocol 15.00 (`1500`).
 
 **ARM64 VPS using the AMD64 release.** The prebuilt Linux server and bot engine
 tested here are AMD64 binaries. Run both from the same release in an AMD64
@@ -496,7 +497,7 @@ Canary Bots with Cast is a multi-subsystem MMORPG server emulator that pairs the
 - `deployment`: [`./deployment/README.md`](./deployment/README.md) - Deployment infrastructure, web cast login, Thais Voxel Explorer, browser websocket client, core-QA/B1 fixtures, WSL stack, and AI brain companions.
 - `docker`: [`./docker/README.md`](./docker/README.md) - Docker container orchestration, generic/ARM64 Dockerfiles, environment configs, and runtime health checks.
 - `docs`: [`./docs/README.md`](./docs/README.md) - Architecture documents, design specifications, and maintenance scripts.
-- `tests`: [`./tests/README.md`](./tests/README.md) - C++ Boost::ut unit/integration suites, Lua regression tests, and isolated QA fixtures.
+- `tests`: [`./tests/README.md`](./tests/README.md) - C++ GoogleTest unit and integration suites, Lua regression tests, and isolated QA fixtures.
 - `tools`: [`./tools/README.md`](./tools/README.md) - Bot CSV authoring tools, population generators, cavebot importer, and test harnesses.
 
 ## Global Invariants
@@ -510,11 +511,14 @@ Canary Bots with Cast is a multi-subsystem MMORPG server emulator that pairs the
 - `[config.lua.dist:castOperatorPassword]` Cast operator authentication requires `authType = "password"`.
 
 ## Global Side Effects
-- `[recompile.sh:setup_canary]` Compiles `canary` and `libbot_engine.so` under `build/linux-release/bin/`.
+- `[recompile.sh:build_canary]` Runs the CMake configure and build. The Linux release commands above set `TOGGLE_BIN_FOLDER=ON` to place `canary` and `libbot_engine.so` under `build/linux-release/bin/`.
 - `[start.sh:logs]` Runs `$BIN_PATH` in an infinite restart loop, logging timestamped stdout/stderr to `logs/`.
 - `[schema.sql:players]` Creates 42 database tables and triggers, cascading player and account state mutations.
 - `[src/creatures/players/bot]` Ticks active bots every 100 ms, generating real in-game creature movements, attacks, chat messages, and market transactions.
 
 ## System Verification
-- Run: `ctest --test-dir build --output-on-failure`
+
+- C++ and Lua regressions are documented in the [test guide](tests/README.md).
+- Worker and offline replay checks are documented in the [Brain verification guide](deployment/brain/README.md#verification).
+- Compose configuration checks are documented in the [Docker guide](docker/DOCKER.md#validate-the-compose-file).
 

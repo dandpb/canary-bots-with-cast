@@ -20,4 +20,4 @@ Component package under `scripts/quests/oramond/the_ancient_sewers` containing 1
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [actions_the_ancient_sewers.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

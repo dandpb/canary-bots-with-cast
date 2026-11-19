@@ -42,4 +42,4 @@ Component package under `scripts/quests/the_thieves_guild_quest` containing 5 fi
 - Spawns items, monsters, or NPCs in the game world via `Game.createItem` / `Game.createMonster` / `Game.createNpc` [actions_note.lua:Game]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

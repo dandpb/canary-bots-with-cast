@@ -47,4 +47,4 @@ Component package under `monster/quests/hero_of_rathleton` containing 13 files (
 - Registers monster type `Glooth Slasher` into the global `Game` engine registry via `mType:register(monster)` [glooth_slasher.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -30,4 +30,4 @@ Component package under `scripts/quests/the_great_dragon_hunt_quest` containing 
 - Mutates player or global storage state via `setStorageValue` [creaturescripts_the_great_dragon_hunt.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

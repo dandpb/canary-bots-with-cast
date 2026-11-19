@@ -19,4 +19,4 @@ Package implementation for `data/scripts/eventcallbacks/monster`, providing comp
 - None
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -23,4 +23,4 @@ Component package under `startup/others` containing 2 files (`functions.lua`..`l
 - Loads and executes `DATA_DIRECTORY .. "/startup/others/functions.lua"` via `dofile` [load.lua:dofile]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

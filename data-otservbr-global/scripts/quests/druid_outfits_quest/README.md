@@ -26,4 +26,4 @@ Component package under `scripts/quests/druid_outfits_quest` containing 2 files 
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [globalevents_druid_outfits_blooming_griffinclaw.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

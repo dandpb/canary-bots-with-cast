@@ -4,13 +4,13 @@
 Loads and validates named player storage key definitions and reserved ranges from `XML/storages.xml` (`Storages`), allowing scripts and engine subsystems to reference storage keys by symbolic name.
 
 ## Interface
-- `Storages` (`[storages.hpp:Storages]`, `[storages.cpp:Storages]`): Singleton (`getInstance()`) providing `loadFromXml()` (`[storages.cpp:Storages::loadFromXml]`) and `getStorageMap()` (`[storages.hpp:Storages::getStorageMap]`).
+- `Storages` (`[storages.hpp:Storages]`, `[storages.cpp:Storages]`): Singleton (`getInstance()`) providing `loadFromXML()` (`[storages.cpp:Storages::loadFromXML]`) and `getStorageMap()` (`[storages.hpp:Storages::getStorageMap]`).
 
 ## Invariants
-- Storage keys within the engine's reserved range (`PSTRG_RESERVED_RANGE_START` to `PSTRG_RESERVED_RANGE_SIZE`, `10000000`–`20000000`) cannot be registered in `XML/storages.xml` and are skipped with a warning (`[storages.cpp:Storages::loadFromXml]`).
+- The loader adds the containing range's start to each storage key. It skips the entry if the result exceeds the declared end, and warns about uppercase names (`[storages.cpp:Storages::loadFromXML]`).
 
 ## Side Effects
-- Reads `XML/storages.xml` from disk and populates `m_storageMap` (`[storages.cpp:Storages::loadFromXml]`).
+- Reads `XML/storages.xml` under the configured core directory and populates `m_storageMap` (`[storages.cpp:Storages::loadFromXML]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

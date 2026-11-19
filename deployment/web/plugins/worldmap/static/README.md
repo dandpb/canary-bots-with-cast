@@ -29,4 +29,4 @@ Static frontend assets for the MyAAC World Map plugin, containing the bundled Le
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `node --check deployment/web/plugins/worldmap/static/worldmap.js`.

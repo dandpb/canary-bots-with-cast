@@ -53,4 +53,4 @@ Component package under `scripts/quests/secret_service` containing 8 files (`act
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [actions_rust_bugs.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

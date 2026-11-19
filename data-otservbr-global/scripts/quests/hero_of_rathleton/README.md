@@ -59,4 +59,4 @@ Component package under `scripts/quests/hero_of_rathleton` containing 15 files (
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [actions_machines_lava.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

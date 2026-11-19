@@ -24,4 +24,4 @@ Provides the canonical RFC-4180 CSV writer (`csv_common.py`), offline schema and
 - `[import_to_mysql.py:main]` connects to MySQL, optionally executes `CREATE TABLE IF NOT EXISTS` (`--create`), deletes existing rows from the 9 tables in `ORDER`, and bulk-inserts rows parsed from `AUTHORED_DIR`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `python tools/bot_csv/validate.py` and `python tools/bot_csv/test_tolerance.py`.

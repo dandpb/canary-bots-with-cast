@@ -20,4 +20,4 @@ Implements the `Inbox` container (`[inbox.hpp:Inbox]`), a paginated, locked (`un
 - `Inbox::postAddNotification` and `Inbox::postRemoveNotification` propagate notifications to `getParent()` with `LINK_PARENT` (`[inbox.cpp:Inbox::postAddNotification]`, `[inbox.cpp:Inbox::postRemoveNotification]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

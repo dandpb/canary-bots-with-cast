@@ -14,7 +14,7 @@ porta no host. Jogo e site publicam somente em `127.0.0.1`.
 
 ## Interface
 
-- `[setup.py:here]` — Inicializa `.env`, scripts SQL em `initdb/` e arquivos de configuração `runtime/config/{server,worker}.json` (com `provider: "native"` como padrão inicial) sem sobrescrever arquivos existentes.
+- `[setup.py:here]` — Cria `.env` e `runtime/config/{server,worker}.json` se estiverem ausentes, com `provider: "native"` no worker inicial. Regera os scripts SQL em `initdb/` a cada execução.
 - `[setup-gateway.py:prepare]` / `[setup-gateway.py:prepare_coordination]` / `[setup-gateway.py:add_coordination]` — CLI (`--directory`, `--coordination`) que prepara `runtime/config/litellm.yaml`, `runtime/config/litellm-coordination.yaml` e `runtime/secrets/litellm-{provider,worker,db,ui,redis}.env` com modo `0600`.
 - `[game-entrypoint.py:main]` / `[game-entrypoint.py:render]` / `[game-entrypoint.py:port]` — Entrypoint do container `game` que renderiza `config.lua` com overrides de ambiente (`MARIADB_PASSWORD`, `GAME_PUBLIC_IP`, `GAME_LOGIN_PORT`, `GAME_PROTOCOL_PORT`, `GAME_STATUS_PORT`, `GAME_DISABLE_MAP_DOWNLOAD`, `GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN`, `BOT_POPULATION_REFERENCE_BOTS`, `BOT_PLAYERS_ONLINE`), instala `/etc/canary-brain/server.json` em `data/bot/brain.json` e executa `/canary/canary`.
 - `[verify-build-source.py:main]` / `[verify-build-source.py:verify]` — CLI (`--source`, `--revision`) que valida checkout Git standalone, limpo, sem `alternates` ou submódulos, conferindo o SHA-1 de cada blob rastreado.
@@ -29,9 +29,9 @@ porta no host. Jogo e site publicam somente em `127.0.0.1`.
 ## Invariants
 
 - `[game-entrypoint.py:render]` — `MARIADB_PASSWORD` deve estar definido; `GAME_LOGIN_PORT`, `GAME_PROTOCOL_PORT` e `GAME_STATUS_PORT` devem ser 3 portas distintas em `1..65535`; `GAME_DISABLE_GLOBAL_SAVE_SHUTDOWN` deve ser `''` ou `'1'`.
-- `[setup.py:env]` / `[setup-gateway.py:prepare]` — Arquivos `.env`, `runtime/config/*` e `runtime/secrets/*` existentes nunca são sobrescritos (`O_CREAT | O_EXCL`, modo `0600`, `umask 0077`); `add_coordination` mantém `cache=False` e `cache_responses=False`.
+- `[setup-gateway.py:prepare]` cria os arquivos que gerencia de forma exclusiva, com modo `0600` e `umask 0077`. `add_coordination` mantém `cache=False` e `cache_responses=False`.
 - `[verify-build-source.py:verify]` — `SOURCE_REVISION` deve ter 40 caracteres hexadecimais minúsculos idênticos ao `HEAD`, sem worktrees linkadas, `objects/info/alternates` ou alterações na árvore.
-- `[ops-digest.py:evaluate]` — Escala o veredito para `RED` se qualquer serviço não estiver saudável, porta `7173` falhar, `players_online == 0`, observação do Grizzle tiver `> 60s`, XP/nível vivo for menor que o persistido, `> 50` linhas de erro ou `last_save_count == 0`.
+- `[ops-digest.py:evaluate]` — Marca `RED` para serviço parado ou `unhealthy`, falta de resposta do protocolo de status, população online vazia ou observação do Grizzle com mais de 60 segundos. Serviço em inicialização, reinícios e falhas de endpoints HTTP são classificados como `AMBER`.
 
 ## Side Effects
 
@@ -42,7 +42,7 @@ porta no host. Jogo e site publicam somente em `127.0.0.1`.
 
 ## Verification
 
-- Run: `pytest`
+- Para os testes offline, utilize o [ambiente de QA](../../tests/fixture/README.md#verification) e execute `python -m pytest deployment/wsl` na raiz do repositório. Para conferir o Compose recém-configurado, execute `docker compose config --quiet` no diretório `deployment/wsl`.
 
 ## Operação
 
@@ -66,8 +66,9 @@ O servidor compilado anuncia o protocolo 15.00; configure o cliente como `1500`.
 O banco foi importado com o schema e os sete seeds de `database/bots/` na ordem
 documentada, mais `runtime-schema.sql`: persistência/telemetria ausentes da
 migração distribuída e campos de charms com a mesma capacidade `uint32_t` do
-código nativo. O padrão em `compose.yaml` é `BOT_PLAYERS_ONLINE=500`; defina
-`BOT_PLAYERS_ONLINE=997` no `.env` local (e recrie o serviço `game`) caso queira
+código nativo. O `setup.py` grava `BOT_PLAYERS_ONLINE=997` em um `.env` novo.
+Sem essa variável, `compose.yaml` usa 500. Defina
+`BOT_PLAYERS_ONLINE=997` no `.env` local (e recrie o serviço `game`) para
 garantir a inclusão dos três pilotos de IA sem que a seleção estratificada de
 500 exclua o piloto 65003.
 Na `main`, a inicialização carrega um bot por vez e cede ao dispatcher após cada
@@ -248,7 +249,7 @@ Use o serviço deste Compose para a implantação WSL; o Compose independente em
 
 O perfil `ai` usa a imagem `canary-bots-wsl-brain:local`; um merge não recompila
 essa imagem. Para a configuração inicial, siga a
-[etapa do worker LiteLLM](../brain/SETUP.pt-BR.md#6-configurar-o-worker-com-uma-rota-litellm),
+[etapa do worker LiteLLM](../brain/SETUP.pt-BR.md#6-configurar-as-rotas-litellm-do-worker),
 que inclui os comandos de build e inicialização: configure `provider: litellm`,
 prepare `runtime/secrets/litellm-client.env` com permissão `0600` e apenas
 `LITELLM_API_KEY`, e preserve o ledger canônico existente em `brain-state`.

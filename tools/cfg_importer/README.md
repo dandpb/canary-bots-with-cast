@@ -27,4 +27,4 @@ Converts OTClient cavebot 1.3 `.cfg` hunt files and `cfg_manifest.csv` metadata 
 - `[convert_cfg.py:main]` copies newly dropped `.cfg` files into `tools/cfg_importer/cfg/` after a successful non-dry-run import.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `python tools/cfg_importer/convert_cfg.py --dry-run` to validate the manifest against the current CSVs.

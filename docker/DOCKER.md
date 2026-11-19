@@ -1,37 +1,38 @@
-# Getting Started with docker
+# start Canary with Docker Compose
 
-## - Requirements
-- Docker 19 and docker-compose 1.17
-- Execute the script root directory /docker/data/download-myaac.sh
-- To use global ip change the login.py on world to use that ip and
-also change in config.lua.dist
-- Client pointing to http://<ip>:8080/login.php
+This Compose project runs a MariaDB database, the Canary game server and the
+OpenTibiaBR login service. Run the following commands from the repository root
+with Docker and the Compose plugin. For the local WSL deployment with MyAAC,
+cast and the AI worker, see the [WSL guide](../deployment/wsl/README.md).
 
-### Default Values (docker-compose.yml)
-- Ports: 7171, 7172, 80(web), 3306, 8080(login)
-- Database Server: database
-- Database Name/User/Password: otserver
+## Validate the Compose file
 
-### - Commands
-To compile and start database, webserver and otserver just run
-```
-$ docker-compose up -d
-```
-Sometimes the server will not start due to database take too long to start
-so you can restart it
-```
-docker-compose restart otserver
+This command uses the example settings and lists the expected services
+`database`, `server` and `login`.
 
-or
-
-docker-compose stop otserver
-docker-compose start otserver
+```sh
+docker compose --env-file docker/.env.dist -f docker/docker-compose.yml config --no-env-resolution --services
 ```
 
-To compile your changes in otserver, just stop and start
-```
-$ docker-compose up -d --build otserver
+## Start the stack
+
+Copy `docker/.env.dist` to `docker/.env` for a new deployment. Edit the
+credentials and addresses before starting. Keep an existing `docker/.env`
+when updating your checkout.
+
+```sh
+cp -n docker/.env.dist docker/.env
+docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --build
+docker compose --env-file docker/.env -f docker/docker-compose.yml ps
 ```
 
-### - Observations
-- The data folder persist db and webserver data;
+The example publishes HTTP login on `8080`, game on `7172`, status on `7171`,
+login gRPC on `9090` and MariaDB on `3306`. The default HTTP login URL for a
+local client is `http://127.0.0.1:8080/login.php`. MariaDB stores its data in
+the Compose volume `db-volume`.
+
+Rebuild the game server after changing its source.
+
+```sh
+docker compose --env-file docker/.env -f docker/docker-compose.yml up -d --build server
+```

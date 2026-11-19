@@ -28,4 +28,4 @@ Package implementation for `data`, providing component logic and data interfaces
 - Schedules timed tasks or dispatcher callbacks (`[global.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../tests/lua/README.md).

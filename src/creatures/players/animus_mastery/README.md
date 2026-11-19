@@ -1,17 +1,17 @@
 # Animus Mastery
 
 ## Overview
-Manages a player's unlocked monster soul/animus masteries (`AnimusMastery`), calculating experience multipliers based on bestiary monster unlocks and persisting the unlocked monster race list to the player's key-value (`KV`) store.
+Manages a player's unlocked Animus Masteries, calculates an experience multiplier from the number of masteries, and serializes the unlocked monster names.
 
 ## Interface
-- `AnimusMastery` (`[animus_mastery.hpp:AnimusMastery]`, `[animus_mastery.cpp:AnimusMastery]`): Per-player component providing `add(const std::string &addMonsterType)`, `remove(const std::string &removeMonsterType)`, `has(const std::string &searchMonsterType) const`, `getPoints() const`, `getExpMultiplier() const`, `save() const`, and `load()`.
+- `AnimusMastery` (`[animus_mastery.hpp:AnimusMastery]`, `[animus_mastery.cpp:AnimusMastery]`): Per-player component with `add`, `remove`, `has`, `getPoints`, `getExperienceMultiplier`, `serialize`, and `unserialize`.
 
 ## Invariants
 - `AnimusMastery::add` deduplicates entries and only inserts a monster name if `has(addMonsterType)` is false (`[animus_mastery.cpp:AnimusMastery::add]`).
-- `getExpMultiplier()` computes a baseline `1.0f` plus `CONFIG_BASE_MULTIPLIER` (2.0%) and an additional `CONFIG_STEP_MULTIPLIER` (0.1%) per `CONFIG_MONSTERS_PER_MULTIPLIER` (10) unlocked animus masteries, capped at `CONFIG_MAX_MULTIPLIER` (4.0%) (`[animus_mastery.cpp:AnimusMastery::getExpMultiplier]`).
+- `getExperienceMultiplier()` adds the configured base percentage and a bonus for each full group of masteries, then caps the resulting multiplier at the configured maximum (`[animus_mastery.cpp:AnimusMastery::getExperienceMultiplier]`). `[animus_mastery.cpp:AnimusMastery::init]` loads these settings and clamps group size to at least one.
 
 ## Side Effects
-- Reads and writes the `"animus_mastery"` array in the owning player's `KV` store during `load()` and `save()` (`[animus_mastery.cpp:AnimusMastery::load]`, `[animus_mastery.cpp:AnimusMastery::save]`).
+- Reads and writes monster names through property streams (`[animus_mastery.cpp:AnimusMastery::serialize]`, `[animus_mastery.cpp:AnimusMastery::unserialize]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

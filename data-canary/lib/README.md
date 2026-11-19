@@ -15,4 +15,4 @@ Provides the top-level Lua library entrypoint (`lib.lua`) for the `data-canary` 
 - `[lib.lua:2]` executes `data-canary/lib/core/load.lua`, registering global `Storage` and `GlobalStorage` tables and loading the quest catalog.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).

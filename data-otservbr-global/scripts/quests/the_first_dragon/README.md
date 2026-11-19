@@ -59,4 +59,4 @@ Component package under `scripts/quests/the_first_dragon` containing 17 files (`
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_treasure_chest.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

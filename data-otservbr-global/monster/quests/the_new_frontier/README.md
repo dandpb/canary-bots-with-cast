@@ -49,4 +49,4 @@ Component package under `monster/quests/the_new_frontier` containing 15 files (`
 - Registers monster type `Shard of Corruption` into the global `Game` engine registry via `mType:register(monster)` [shard_of_corruption.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

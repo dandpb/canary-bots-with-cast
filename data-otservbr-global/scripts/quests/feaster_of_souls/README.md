@@ -65,4 +65,4 @@ Component package under `scripts/quests/feaster_of_souls` containing 14 files (`
 - Teleports creatures/players across map coordinates via `teleportTo` [actions_portal_pale_worm.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

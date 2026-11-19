@@ -42,4 +42,4 @@ Component package under `monster/quests/the_percht_queens_island` containing 10 
 - Registers monster type `Warm Fire` into the global `Game` engine registry via `mType:register(monster)` [warm_fire.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

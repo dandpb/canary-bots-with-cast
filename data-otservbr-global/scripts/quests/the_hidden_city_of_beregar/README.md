@@ -59,4 +59,4 @@ Component package under `scripts/quests/the_hidden_city_of_beregar` containing 1
 - Teleports creatures/players across map coordinates via `teleportTo` [actions_ore_wagon.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

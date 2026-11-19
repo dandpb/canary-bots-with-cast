@@ -53,4 +53,4 @@ Component package under `raids/darashia` containing 9 files (`arachir_the_ancien
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [white_pale.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

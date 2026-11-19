@@ -15,4 +15,4 @@ Component package under `scripts/quests/no_rest_for_the_wicked` containing 1 fil
 - Spawns items, monsters, or NPCs in the game world via `Game.createItem` / `Game.createMonster` / `Game.createNpc` [actions_arbaziloth_lever.lua:Game]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

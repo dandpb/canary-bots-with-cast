@@ -44,4 +44,4 @@ Component package under `scripts/quests/lions_rock` containing 2 files (`actions
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [movements_lions_rock.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

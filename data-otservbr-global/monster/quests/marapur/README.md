@@ -14,4 +14,4 @@ Component package under `monster/quests/marapur` containing 1 files (`timira_the
 - Registers monster type `Timira the Many-Headed` into the global `Game` engine registry via `mType:register(monster)` [timira_the_many-headed.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

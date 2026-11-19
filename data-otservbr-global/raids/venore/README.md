@@ -52,4 +52,4 @@ Component package under `raids/venore` containing 9 files (`dharalion.xml`..`wat
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [water_buffalo.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

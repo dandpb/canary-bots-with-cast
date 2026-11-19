@@ -24,4 +24,4 @@ Package implementation for `src/lua/functions/creatures/npc`, providing componen
 - Emits system diagnostic logs (`[shop_functions.cpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../../tests/README.md#running-tests).

@@ -22,4 +22,4 @@ Package implementation for `data/scripts/spells/attack/monk`, providing componen
 - Schedules timed tasks or dispatcher callbacks (`[spiritual_outburst.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

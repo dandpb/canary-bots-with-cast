@@ -39,4 +39,4 @@ Component package under `scripts/quests/killing_in_the_name_of` containing 3 fil
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [movements_boss.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

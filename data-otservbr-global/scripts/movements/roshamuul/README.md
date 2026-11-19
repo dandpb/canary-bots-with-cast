@@ -16,4 +16,4 @@ Component package under `scripts/movements/roshamuul` containing 1 files (`stran
 - Teleports creatures/players across map coordinates via `teleportTo` [strange_vortex_tp.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

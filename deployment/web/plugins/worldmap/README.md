@@ -30,7 +30,7 @@ Tested at 500 markers: a full redraw takes ~3–5 ms (canvas renderer, so the po
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `php -l deployment/web/plugins/worldmap/config.php` and `php -l deployment/web/plugins/worldmap/install.php`. See [page checks](pages/README.md#verification) and [asset checks](static/README.md#verification).
 
 ---
 

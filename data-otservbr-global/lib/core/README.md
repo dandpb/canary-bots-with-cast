@@ -23,4 +23,4 @@ Provides 4 direct files (`constants.lua`..`storages.lua`) and 1 subdirectories u
 - Loads and executes `"data.lib.core.quests.loader"` via `require` [quests.lua:require]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

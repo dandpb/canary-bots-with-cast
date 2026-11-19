@@ -32,4 +32,4 @@ Component package under `scripts/quests/koshei_the_deathless_quest` containing 3
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [action_switch.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

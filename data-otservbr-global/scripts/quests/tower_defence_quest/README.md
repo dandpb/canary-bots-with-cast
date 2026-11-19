@@ -16,4 +16,4 @@ Component package under `scripts/quests/tower_defence_quest` containing 1 files 
 - Mutates player or global storage state via `setStorageValue` [creaturescripts_goblin_leader_kill.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

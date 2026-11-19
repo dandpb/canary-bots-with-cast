@@ -16,4 +16,4 @@ Component package under `scripts/quests/behemoth` containing 1 files (`action-le
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [action-lever.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

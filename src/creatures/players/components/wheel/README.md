@@ -25,4 +25,4 @@ Implements the player's Wheel of Destiny progression system, including slot poin
 - Mutates owning `Player` combat stats, learned spells, conditions, health/mana/capacity, and sends Wheel UI/cooldown packets via `ProtocolGame` (`[player_wheel.hpp:PlayerWheel::reloadPlayerData]`, `[player_wheel.hpp:PlayerWheel::sendOpenWheelWindow]`, `[player_wheel.hpp:PlayerWheel::sendGiftOfLifeCooldown]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../../tests/README.md#running-tests).

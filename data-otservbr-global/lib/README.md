@@ -26,4 +26,4 @@ Provides 1 direct files (`lib.lua`..`lib.lua`) and 5 subdirectories under `lib`.
 - Loads and executes `DATA_DIRECTORY .. "/lib/functions/load.lua"` via `dofile` [lib.lua:dofile]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).

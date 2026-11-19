@@ -22,4 +22,4 @@ Package implementation for `src/lua/functions/creatures/combat`, providing compo
 - Emits system diagnostic logs (`[spell_functions.cpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../../tests/README.md#running-tests).

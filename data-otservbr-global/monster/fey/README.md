@@ -53,4 +53,4 @@ Component package under `monster/fey` containing 19 files (`angry_sugar_fairy.lu
 - Registers monster type `Sugar Cube` into the global `Game` engine registry via `mType:register(monster)` [sugar_cube.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

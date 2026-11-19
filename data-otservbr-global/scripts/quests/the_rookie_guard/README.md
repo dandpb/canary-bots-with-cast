@@ -59,4 +59,4 @@ Component package under `scripts/quests/the_rookie_guard` containing 11 files (`
 - Mutates player or global storage state via `setStorageValue` [mission06_run_like_wolf.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

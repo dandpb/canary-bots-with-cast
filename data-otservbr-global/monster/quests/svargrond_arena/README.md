@@ -30,4 +30,4 @@ Intermediate blueprint grouping 3 subdirectories under `monster/quests/svargrond
 - Registers monster type `Darakan the Executioner` into the global `Game` engine registry via `mType:register(monster)` [darakan_the_executioner.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

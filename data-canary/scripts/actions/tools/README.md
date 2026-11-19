@@ -15,4 +15,4 @@ Package implementation for `data-canary/scripts/actions/tools`, providing compon
 - None
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

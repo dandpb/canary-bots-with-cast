@@ -17,7 +17,7 @@ Provides 1 direct files (`startup.lua`..`startup.lua`) and 2 subdirectories unde
 - Loads and executes `DATA_DIRECTORY .. "/startup/others/load.lua"` via `dofile` [startup.lua:dofile]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).
 
 ### Reserved Action and Unique ID Ranges
 

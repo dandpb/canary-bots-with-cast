@@ -19,4 +19,4 @@ Provides the container startup entrypoint script (`start.sh`) and optional test 
 - `[start.sh:139]` mutates `config.lua` via `sed -i` and an inline `python3` `json.dumps` replacement for `mysqlPass`, copies `config.lua`, `data/`, and `$OT_SERVER_DATA/` to `/data/server/` if present, sets `ulimit -c unlimited`, unsets `MYSQL_PWD`, and replaces the shell process with `exec ./canary`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `bash -n docker/data/start.sh`. See the [Docker guide](../DOCKER.md) for a Compose deployment.

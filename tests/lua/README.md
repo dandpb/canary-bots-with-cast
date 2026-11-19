@@ -1,7 +1,7 @@
 # Lua Regression Tests (`tests/lua`)
 
 ## Overview
-Provides standalone Lua/LuaJIT regression tests validating bot startup pacing, quest-access ordering, XP progression, hibernation/reload persistence, and global server saves without requiring a compiled C++ server or live database.
+Provides standalone Lua/LuaJIT tests for bot startup pacing and global saves, plus in-server tests for progression, combat and persistence.
 
 ## Interface
 - `[bot_startup_test.lua]` — Exercises the real `BotStartup` handler (`data/scripts/globalevents/bot_manager.lua`) against a mock dispatcher and DB, verifying 997-bot loading, adaptive `100..1000 ms` backoff/recovery, 3-attempt retries, 50-bot visibility batches, and finalization scheduling.
@@ -9,10 +9,17 @@ Provides standalone Lua/LuaJIT regression tests validating bot startup pacing, q
 - Acceptance notes & evidence: [`README.bot-progression.md`](./README.bot-progression.md), [`LIFECYCLE_ACCEPTANCE.md`](./LIFECYCLE_ACCEPTANCE.md), [`INTEGRATION_UPDATE_2026-11-05.md`](./INTEGRATION_UPDATE_2026-11-05.md), [`RELOAD_PROGRESS_ACCEPTANCE.md`](./RELOAD_PROGRESS_ACCEPTANCE.md), [`RELOAD_QUEST_ACCEPTANCE.md`](./RELOAD_QUEST_ACCEPTANCE.md), `*.json`.
 
 ## Invariants
-- Tests execute deterministically from the repository root under both `lua` and `luajit` with zero external network or MySQL dependencies.
+- The startup and global-save tests use fake dispatcher/database adapters and run from the repository root with Lua or LuaJIT. The progression and persistence scripts use Canary's Lua runtime, including native `Player` objects. The no-XP persistence check also loads the QA lifecycle bridge.
 
 ## Side Effects
-- None (in-memory fake dispatcher and database stubs).
+- The standalone tests exercise in-memory stubs. The in-server suites exercise player and database state in an isolated QA fixture.
 
 ## Verification
-- Run: `lua tests/lua/bot_startup_test.lua`
+
+```sh
+lua tests/lua/bot_startup_test.lua
+lua tests/lua/global_server_save_test.lua
+lua tools/bot_brain/test_startup_batches.lua
+```
+
+Use [the progression guide](README.bot-progression.md) for the in-server suites.

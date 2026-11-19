@@ -14,4 +14,4 @@ Package implementation for `data-canary/scripts/creaturescripts`, providing comp
 - Schedules timed tasks or dispatcher callbacks (`[free_quest.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

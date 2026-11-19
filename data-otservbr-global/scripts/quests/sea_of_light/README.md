@@ -20,4 +20,4 @@ Component package under `scripts/quests/sea_of_light` containing 1 files (`actio
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [actions_sea_of_light.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -52,4 +52,4 @@ Root global datapack (`data-otservbr-global`) containing libraries, database mig
 - Loads and executes `DATA_DIRECTORY .. "/startup/tables/load.lua"` via `dofile` [startup.lua:dofile]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../tests/lua/README.md).

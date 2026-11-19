@@ -45,4 +45,4 @@ Component package under `scripts/quests/the_ape_city` containing 4 files (`actio
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_mission9_the_deepest_catacomb_teleport.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

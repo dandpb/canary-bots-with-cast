@@ -1,0 +1,108 @@
+{
+  "counts": {
+    "readmes": 586,
+    "external_link_occurrences": 172,
+    "local_links": 1555,
+    "markdown_anchors": 112,
+    "contract_references": 3418,
+    "non_simple_symbol_refs": 129,
+    "symbol_refs": 3108,
+    "docs": 663,
+    "unique_external_urls": 135
+  },
+  "findings_by_kind": {
+    "link_path": 10
+  },
+  "findings": [
+    {
+      "kind": "link_path",
+      "file": "deployment/brain/EXPERIMENTOS_SYSTEM_ONE.pt-BR.md",
+      "line": 16,
+      "reference": "../../../.scratch/jev-experiments-2026-11-18/report.md",
+      "detail": ".scratch/jev-experiments-2026-11-18/report.md",
+      "exists_in_umbrella_workspace": true,
+      "outside_canary_checkout": true
+    },
+    {
+      "kind": "link_path",
+      "file": "deployment/brain/EXPERIMENTOS_SYSTEM_ONE.pt-BR.md",
+      "line": 16,
+      "reference": "../../../.scratch/jev-experiments-2026-11-18/provider-comparison.md",
+      "detail": ".scratch/jev-experiments-2026-11-18/provider-comparison.md",
+      "exists_in_umbrella_workspace": true,
+      "outside_canary_checkout": true
+    },
+    {
+      "kind": "link_path",
+      "file": "deployment/brain/EXPERIMENTOS_SYSTEM_ONE.pt-BR.md",
+      "line": 16,
+      "reference": "../../../.scratch/jev-experiments-2026-11-18/litellm-native-decisions-report.md",
+      "detail": ".scratch/jev-experiments-2026-11-18/litellm-native-decisions-report.md",
+      "exists_in_umbrella_workspace": true,
+      "outside_canary_checkout": true
+    },
+    {
+      "kind": "link_path",
+      "file": "deployment/brain/EXPERIMENTOS_SYSTEM_ONE.pt-BR.md",
+      "line": 16,
+      "reference": "../../../.scratch/jev-experiments-2026-11-18/gameplay-terra-luna-report.md",
+      "detail": ".scratch/jev-experiments-2026-11-18/gameplay-terra-luna-report.md",
+      "exists_in_umbrella_workspace": true,
+      "outside_canary_checkout": true
+    },
+    {
+      "kind": "link_path",
+      "file": "deployment/brain/EXPERIMENTOS_SYSTEM_ONE.pt-BR.md",
+      "line": 37,
+      "reference": "../../../tibia-otclient/modules/game_questlog/game_questlog.lua",
+      "detail": "tibia-otclient/modules/game_questlog/game_questlog.lua",
+      "exists_in_umbrella_workspace": true,
+      "outside_canary_checkout": true
+    },
+    {
+      "kind": "link_path",
+      "file": "deployment/brain/EXPERIMENTOS_SYSTEM_ONE.pt-BR.md",
+      "line": 56,
+      "reference": "../../../tibia-otclient/modules/game_bugreport/bugreport.lua",
+      "detail": "tibia-otclient/modules/game_bugreport/bugreport.lua",
+      "exists_in_umbrella_workspace": true,
+      "outside_canary_checkout": true
+    },
+    {
+      "kind": "link_path",
+      "file": "deployment/brain/EXPERIMENTOS_SYSTEM_ONE.pt-BR.md",
+      "line": 59,
+      "reference": "../../../tibia-otclient/data/locales/pt.lua",
+      "detail": "tibia-otclient/data/locales/pt.lua",
+      "exists_in_umbrella_workspace": true,
+      "outside_canary_checkout": true
+    },
+    {
+      "kind": "link_path",
+      "file": "deployment/brain/EXPERIMENTOS_SYSTEM_ONE.pt-BR.md",
+      "line": 59,
+      "reference": "../../../tibia-otclient/modules/client_locales/neededtranslations.lua",
+      "detail": "tibia-otclient/modules/client_locales/neededtranslations.lua",
+      "exists_in_umbrella_workspace": true,
+      "outside_canary_checkout": true
+    },
+    {
+      "kind": "link_path",
+      "file": "deployment/brain/EXPERIMENTOS_SYSTEM_ONE.pt-BR.md",
+      "line": 60,
+      "reference": "../../../AI_WORKFLOW.md",
+      "detail": "AI_WORKFLOW.md",
+      "exists_in_umbrella_workspace": true,
+      "outside_canary_checkout": true
+    },
+    {
+      "kind": "link_path",
+      "file": "deployment/brain/EXPERIMENTOS_SYSTEM_ONE.pt-BR.md",
+      "line": 66,
+      "reference": "../../../tibia-otclient/modules/game_questlog/game_questlog.lua",
+      "detail": "tibia-otclient/modules/game_questlog/game_questlog.lua",
+      "exists_in_umbrella_workspace": true,
+      "outside_canary_checkout": true
+    }
+  ]
+}

@@ -22,4 +22,4 @@ Package implementation for `data/scripts/spells/conjuring`, providing component 
 - None
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

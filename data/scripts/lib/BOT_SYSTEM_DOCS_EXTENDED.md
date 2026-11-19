@@ -770,8 +770,8 @@ canary.service: Main process exited, code=dumped, status=6/ABRT
 
 **Root cause analysis (no coredumps available, code review only):**
 
-- `Game::shutdown()` ([src/game/game.cpp:8479](src/game/game.cpp#L8479)) does `clear()`s and `serviceManager->stop()` then logs `Done!`.
-- The `BotEngine::tick()` cycleEvent ([game_functions.cpp:1079](src/lua/functions/core/game/game_functions.cpp#L1079)) keeps firing on the dispatcher thread — note the auto-deactivation warnings are logged AFTER `Done!`, indicating the dispatcher hasn't fully drained.
+- `Game::shutdown()` ([Game::shutdown](../../../src/game/game.cpp#L8638)) does `clear()`s and `serviceManager->stop()` then logs `Done!`.
+- The `BotEngine::tick()` cycleEvent ([GameFunctions::luaGameBotStartTickLoop](../../../src/lua/functions/core/game/game_functions.cpp#L1306)) keeps firing on the dispatcher thread — note the auto-deactivation warnings are logged AFTER `Done!`, indicating the dispatcher hasn't fully drained.
 - During those ticks, `processBot()` finds `bot.getPlayer()` returning nullptr (Players are being torn down on main thread) and sets `bot.active = false`. That part is safe.
 - The crash is glibc's heap-corruption detection in a doubly-linked list (malloc bin metadata). It indicates either a double-free, a use-after-free, or a buffer overflow earlier that corrupted heap metadata.
 - Most likely culprit: race between dispatcher thread (mid-tick) and main thread (destroying Player objects), OR `flushNavEvents()` calling `g_databaseTasks().execute()` while the database task system is being torn down.
@@ -790,7 +790,7 @@ Three optimization attempts were investigated and rejected. Documented here so f
 
 **3. Hunt-waypoint compression (investigated 2026-05-07, NO-GO)** — Hypothesis: collapsing runs of consecutive `node`/`stand` waypoints on the same z would reduce A* calls. Investigation revealed:
 - 95.1% of waypoints are `node` (72.3%) + `stand` (22.8%); 4.9% are anchors (ladder/rope/use_with/etc).
-- The C++ engine **already has runtime waypoint compression** via `PATROL_LOOKAHEAD` (3-tile, scan 8 ahead) at [bot_engine.cpp:688-689,9812-9854](src/creatures/players/bot/bot_engine.cpp#L688) — when a bot is within 3 tiles of any of the next 8 waypoints, it skips ahead. So removing dense waypoints provides ~0% CPU savings.
+- The C++ engine **already has runtime waypoint compression** via `PATROL_LOOKAHEAD` (3-tile, scan 8 ahead) at [bot_hunt.cpp](../../../src/creatures/players/bot/bot_hunt.cpp#L1864) — when a bot is within 3 tiles of any of the next 8 waypoints, it skips ahead. So removing dense waypoints provides ~0% CPU savings.
 - NODE waypoints sample a random 3×3 tile (intentional wandering pattern). Compression would change hunt behavior.
 - Tight node clusters often interleave with `use_with`/`npc_interact` (quest puzzle positioning). Compression breaks quests.
 - Hazard avoidance (skirting fields/magic walls) may be encoded by tight node runs that A* can't reproduce.
@@ -823,12 +823,12 @@ Three optimization attempts were investigated and rejected. Documented here so f
 **Key lessons learned from the test campaign:**
 
 1. **`Restart=always` autorestart + bot save-on-shutdown can silently overwrite SQL UPDATEs.** The first Test 2 attempt failed because `systemctl restart canary` triggered `BotManager` graceful shutdown, which ran `IOLoginData::savePlayerGuard` per bot, writing in-memory `group_id=1` back to the DB and reverting our UPDATE. Fix: `systemctl stop canary` → confirm offline → `UPDATE` while no Player objects exist → `systemctl start canary` (within 20s `RestartSec` window). Verify after restart with `SELECT group_id, COUNT(*) FROM players ... GROUP BY group_id` — partial reverts (some 1s, some 7s) are the giveaway.
-2. **Group `id=7 'bot'`** (existing in [data/XML/groups.xml](data/XML/groups.xml)) was *almost* right out of the box for benchmarking — only `cannotattackmonster` had to flip from 1 to 0 so bots can still hunt while monsters/NPCs ignore them. No new group needed.
+2. **Group `id=7 'bot'`** (existing in [data/XML/groups.xml](../../XML/groups.xml)) was *almost* right out of the box for benchmarking — only `cannotattackmonster` had to flip from 1 to 0 so bots can still hunt while monsters/NPCs ignore them. No new group needed.
 3. **HP buffer trick** (`UPDATE healthmax/health=1000000000` with backup table) is a reusable pattern for any test where bots must survive without heal — at 200 bots × 100-200 dmg/sec, 1B HP buys ~30 hours of continuous damage. Restore via `UPDATE players p JOIN backup b ON p.id=b.id SET p.health=b.health, ...` then `DROP TABLE backup`.
 4. **Heal cost was overstated by Test 1 alone.** Test 1 attributed 0.10 cores to heal, but Test 3-A (group=1, 1B HP buffer, heal block iterates but never fires casts) ran at 0.387 cores — almost identical to Test 1 C (0.375). So the 0.10 cores was almost entirely cast cost when bots were actually damaged. Lever for optimization: prevent damage in the first place, not throttle the heal block.
 
    **Confirmed via direct instrumentation 2026-05-07**: atomic ns counters around `doHealing()` and the mana-restore block, 8-min steady-state run with 200 bots in hunt mix. Per-call cost: heal ≈ **3500–5000 ns**, mana ≈ **70 ns**. Total: 400 calls/sec × ~4070 ns = **~0.0016 cores** at the call site. The 0.10-core delta from Test 1 is *not* in the heal block itself — it's downstream work (network packets to spectators when health changes, or measurement noise). Even removing the entire heal block saves only ~0.0016 cores. **Heal-block optimization is not a viable lever.** Real CPU hotspots remain: `Map::getPathMatching` (A* per monster scan) and `Spectators().find<Monster>()` (per-tick spatial query).
-5. **`HEAL:` log lines are gated by `bot.verboseLog`** ([bot_engine.cpp:10888-10895](src/creatures/players/bot/bot_engine.cpp#L10888)) which is only true when someone is watching a bot via cast viewer. So `journalctl | grep -c 'HEAL:'` is *not* a reliable "is heal running" signal in steady state — only "is anyone watching a bot that healed". Use kill-attribution / bot HP queries for damage verification instead.
+5. **`HEAL:` log lines are gated by `bot.verboseLog`** ([bot_combat.cpp](../../../src/creatures/players/bot/bot_combat.cpp#L3585)) which is only true when someone is watching a bot via cast viewer. So `journalctl | grep -c 'HEAL:'` is *not* a reliable "is heal running" signal in steady state — only "is anyone watching a bot that healed". Use kill-attribution / bot HP queries for damage verification instead.
 6. **`top` per-process %CPU is in Irix mode** (100% per core). On the 2-core LXC, the steady-state 0.38 cores = 19% of total capacity — would be 9.5% on a 4-core LXC. **Always report cores (absolute), never %CPU**, since % depends on core count.
 7. **State mix matters for fair comparison.** Re-runs with significantly different idle/dwell/hunt/travel ratios can shift total cost by 0.05+ cores. Capture the state-mix line from `journalctl ... grep 'States: idle'` alongside every CPU sample so future you can validate the comparison.
 
@@ -874,7 +874,7 @@ Methodology:
 
 ### May 2026 Scaling-by-Load Benchmark (feat/debug-mode @ `875ced8e8`, 2026-05-13)
 
-After investigating a kite/A* regression on `feat/cavebot`, we reverted to `feat/debug-mode` and measured CPU at every load point so future changes have a clean reference table. Same 2-core LXC hardware. Bot count controlled via `BOT_CONFIG.TARGET_ONLINE` in [data/scripts/lib/bot_system.lua](data/scripts/lib/bot_system.lua) (no bots load on boot when `TARGET_ONLINE=0`).
+After investigating a kite/A* regression on `feat/cavebot`, we reverted to `feat/debug-mode` and measured CPU at every load point so future changes have a clean reference table. Same 2-core LXC hardware. Bot count controlled via `BOT_CONFIG.TARGET_ONLINE` in [data/scripts/lib/bot_system.lua](bot_system.lua) (no bots load on boot when `TARGET_ONLINE=0`).
 
 | Scenario | Avg %CPU | Max %CPU | Notes |
 |---|---:|---:|---|
@@ -1088,7 +1088,7 @@ from the database.
 
 ### Loop & thresholds
 
-Driven by [bot_hibernation.lua](../../globalevents/bot_hibernation.lua):
+Driven by [bot_hibernation.lua](../globalevents/bot_hibernation.lua):
 
 | Setting | Value | Purpose |
 |---|---|---|
@@ -1432,7 +1432,7 @@ character list is built from `IBotEngine::getActiveBotNames()` — returns every
 broadcasters. Toggle: `static constexpr bool kShowBotsInCastList = true` at line 58.
 
 **Protocol limit — 255 names (Path A only)**: the Tibia char-list packet uses a
-`uint8_t` count ([protocollogin.cpp:86](../../src/server/network/protocol/protocollogin.cpp#L86)),
+`uint8_t` count ([protocollogin.cpp:86](../../../src/server/network/protocol/protocollogin.cpp#L86)),
 so when `botPlayersOnline > 255` the @cast dropdown silently truncates to the first 255
 sorted names. Cast-watching individual bots beyond #255 still works (e.g. via direct
 character-name login), only the dropdown is capped. Lifting this would require a custom
@@ -1463,13 +1463,11 @@ $broadcasters = Player::where(function ($q) {
 `account_id=65000` filter started returning all 997 — the 797 unloaded characters
 appeared as ghost entries; clicking one returned "This player is not broadcasting".
 
-The new source-of-truth table is maintained synchronously by the C++ BotEngine — see
-[migration 60.lua](../../data-otservbr-global/migrations/60.lua) for the contract and
-[bot_engine.cpp:2303,2342](../../src/creatures/players/bot/bot_engine.cpp#L2303) for the
-write sites. The table:
+The table mirrors the in-memory bot list. See [migration 62.lua](../../../data-otservbr-global/migrations/62.lua)
+for the schema and [BotEngine::registerBot](../../../src/creatures/players/bot/bot_engine.cpp#L238)
+for the enqueue site. The table:
 
-- is populated within ~1ms of `BotEngine::registerBot` via `g_databaseTasks().execute()`
-  (async pattern matching the rest of `bot_engine.cpp`'s DB writes)
+- receives inserts and removals asynchronously via `g_botDatabaseTasks().execute()`
 - holds rows for bots that are loaded into the engine, awake **or** hibernated — so
   wake-on-click still works for hibernated entries
 - is independent of `botPlayersShowAsOnline` (that flag governs the website's online

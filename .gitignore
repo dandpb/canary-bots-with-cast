@@ -412,6 +412,7 @@ compile_commands.json
 /enc_temp_folder
 
 /tools/*
+!/tools/README.md
 !/tools/bot_brain/
 /tools/bot_brain/*
 !/tools/bot_brain/test_engine_loader.py

@@ -59,4 +59,4 @@ Component package under `monster/mammals` containing 80 files (`badger.lua`..`ye
 - Registers monster type `Desperate White Deer` into the global `Game` engine registry via `mType:register(monster)` [desperate_white_deer.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

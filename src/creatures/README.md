@@ -30,4 +30,4 @@ Package implementation for `src/creatures`, providing component logic and data i
 - Schedules timed tasks or dispatcher callbacks (`[creature.hpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

@@ -40,4 +40,4 @@ Component package under `monster/quests/ancient_tombs` containing 10 files (`ash
 - Registers monster type `Vashresamun` into the global `Game` engine registry via `mType:register(monster)` [vashresamun.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

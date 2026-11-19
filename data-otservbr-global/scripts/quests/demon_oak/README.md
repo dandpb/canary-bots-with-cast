@@ -52,4 +52,4 @@ Component package under `scripts/quests/demon_oak` containing 7 files (`actions_
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [movements_entrance.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

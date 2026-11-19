@@ -53,4 +53,4 @@ Component package under `monster/elementals` containing 19 files (`candy_floss_e
 - Registers monster type `Massive Earth Elemental` into the global `Game` engine registry via `mType:register(monster)` [massive_earth_elemental.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

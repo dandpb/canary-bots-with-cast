@@ -39,4 +39,4 @@ Component package under `monster/quests/dark_trails` containing 9 files (`canopi
 - Registers monster type `Tremor Worm` into the global `Game` engine registry via `mType:register(monster)` [tremor_worm.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

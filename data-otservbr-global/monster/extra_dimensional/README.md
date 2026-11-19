@@ -45,4 +45,4 @@ Component package under `monster/extra_dimensional` containing 11 files (`breach
 - Attaches creature event scripts defined in `monster.events` on spawn [yielothax.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

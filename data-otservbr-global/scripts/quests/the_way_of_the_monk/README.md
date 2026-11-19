@@ -34,4 +34,4 @@ Component package under `scripts/quests/the_way_of_the_monk` containing 3 files 
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [shrines_dawnport.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

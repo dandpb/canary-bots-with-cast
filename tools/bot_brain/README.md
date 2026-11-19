@@ -26,4 +26,5 @@ Provides a disposable Docker-isolated Canary + MariaDB stack (`lifecycle_qa.py`)
 - `[lifecycle_qa.py:command]` atomically writes `qa-command.tmp` and renames it to `qa-command.lua` inside the `canary-lifecycle-qa-game` container, triggering `GlobalEvent("CanaryLifecycleQA")` to write `qa-result.json`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- Run the [standalone Lua startup tests](../../tests/lua/README.md#verification)
+  and the [Brain worker checks](../../deployment/brain/README.md#verification).

@@ -47,4 +47,4 @@ Legacy XML-bound event handler scripts for `Creature`, `Party`, and `Player` ent
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

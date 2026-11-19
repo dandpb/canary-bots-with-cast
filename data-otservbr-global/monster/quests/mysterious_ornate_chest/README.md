@@ -26,4 +26,4 @@ Component package under `monster/quests/mysterious_ornate_chest` containing 5 fi
 - Attaches creature event scripts defined in `monster.events` on spawn [ugly_monster.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

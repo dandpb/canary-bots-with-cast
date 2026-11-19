@@ -40,4 +40,4 @@ Package implementation for `src`, providing component logic and data interfaces 
 - Schedules timed tasks or dispatcher callbacks (`[canary_server.cpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../tests/README.md#running-tests).

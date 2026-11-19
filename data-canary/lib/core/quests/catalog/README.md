@@ -14,4 +14,4 @@ Defines the quest log catalog entries and module list for the minimal `data-cana
 - `[init.lua:5]` executes `dofile(CORE_DIRECTORY .. "/lib/core/quests/catalog.lua")` and loads each module listed in `questModules`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

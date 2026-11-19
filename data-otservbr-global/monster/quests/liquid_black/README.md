@@ -22,4 +22,4 @@ Component package under `monster/quests/liquid_black` containing 3 files (`jaul.
 - Attaches creature event scripts defined in `monster.events` on spawn [tanjis.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -27,4 +27,4 @@ Package implementation for `data/libs/functions`, providing component logic and 
 - Executes SQL queries against game database (`[player.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

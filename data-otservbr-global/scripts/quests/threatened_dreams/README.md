@@ -59,4 +59,4 @@ Component package under `scripts/quests/threatened_dreams` containing 12 files (
 - Mutates player or global storage state via `setStorageValue` [action_poacher_notes.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

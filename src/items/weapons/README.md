@@ -21,4 +21,4 @@ Package implementation for `src/items/weapons`, providing component logic and da
 - Emits system diagnostic logs (`[weapons.cpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

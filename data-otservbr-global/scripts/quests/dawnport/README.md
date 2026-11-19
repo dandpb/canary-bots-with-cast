@@ -51,4 +51,4 @@ Component package under `scripts/quests/dawnport` containing 7 files (`actions_l
 - Mutates player or global storage state via `setStorageValue` [creaturescripts_minotaur_kill.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

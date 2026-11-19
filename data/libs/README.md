@@ -20,4 +20,4 @@ Package implementation for `data/libs`, providing component logic and data inter
 - None
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).

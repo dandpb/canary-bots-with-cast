@@ -47,4 +47,4 @@ Provides 12 direct files (`aggressive_lava.lua`..`snail_slime.lua`) and 1 subdir
 - Registers monster type `Organic Matter` into the global `Game` engine registry via `mType:register(monster)` [organic_matter.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

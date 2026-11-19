@@ -47,4 +47,4 @@ Component package under `monster/quests/cults_of_tibia/bosses/summons` containin
 - Registers monster type `Stolen Soul` into the global `Game` engine registry via `mType:register(monster)` [stolen_soul.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../../tests/lua/README.md).

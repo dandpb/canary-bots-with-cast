@@ -17,4 +17,4 @@ Implements `CastPublisher` (`cast_publisher.hpp`, `cast_publisher.cpp`), keeping
 - Schedules delayed backoff retry callbacks via `g_dispatcher()` when transient DB failures exhaust immediate retries (`[cast_publisher.cpp:CastPublisher::onDone]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

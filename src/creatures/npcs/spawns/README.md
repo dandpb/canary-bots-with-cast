@@ -19,4 +19,4 @@ Manages non-player character spawn zones (`SpawnNpc`, `SpawnsNpc`, `spawnBlockNp
 - `SpawnNpc::startSpawnNpcCheck` and `SpawnNpc::scheduleSpawnNpc` (`[spawn_npc.cpp:SpawnNpc::startSpawnNpcCheck]`, `[spawn_npc.cpp:SpawnNpc::scheduleSpawnNpc]`): Schedule events on `g_dispatcher()` and emit `CONST_ME_TELEPORT` effects via `g_game().addMagicEffect`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

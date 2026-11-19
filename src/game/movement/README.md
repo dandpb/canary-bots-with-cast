@@ -18,4 +18,4 @@ Defines 3D map coordinates (`Position`), cardinal/diagonal movement directions (
 - `Position::getRandomDirection` shuffles a static direction vector using the global RNG (`getRandomGenerator()`) (`[position.cpp:Position::getRandomDirection]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

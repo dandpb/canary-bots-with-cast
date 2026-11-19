@@ -49,4 +49,4 @@ Component package under `monster/lycanthropes` containing 15 files (`cunning_wer
 - Registers monster type `Werepanther` into the global `Game` engine registry via `mType:register(monster)` [werepanther.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

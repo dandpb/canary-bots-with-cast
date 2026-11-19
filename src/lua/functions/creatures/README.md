@@ -24,4 +24,4 @@ Package implementation for `src/lua/functions/creatures`, providing component lo
 - Emits system diagnostic logs (`[creature_functions.cpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

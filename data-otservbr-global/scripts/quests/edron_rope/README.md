@@ -17,4 +17,4 @@ Component package under `scripts/quests/edron_rope` containing 1 files (`movemen
 - Mutates player or global storage state via `setStorageValue` [movements_rope.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

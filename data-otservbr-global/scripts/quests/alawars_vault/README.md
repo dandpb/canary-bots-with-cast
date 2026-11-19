@@ -16,4 +16,4 @@ Component package under `scripts/quests/alawars_vault` containing 1 files (`acti
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [action-lever.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

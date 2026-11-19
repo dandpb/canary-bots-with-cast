@@ -32,4 +32,4 @@ Component package under `scripts/actions/oramond` containing 5 files (`elevator.
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [teleport_west.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

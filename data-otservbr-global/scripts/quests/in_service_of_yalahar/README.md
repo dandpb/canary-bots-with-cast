@@ -59,4 +59,4 @@ Component package under `scripts/quests/in_service_of_yalahar` containing 18 fil
 - Mutates player or global storage state via `setStorageValue` [actions_last_fight.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

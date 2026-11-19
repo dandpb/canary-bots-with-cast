@@ -17,4 +17,4 @@ Provides standalone Python maintenance utilities used for bulk refactoring of Lu
 - All four scripts (`convert_monsters_callbacks.py`, `modify_lua_script_interfaces.py`, `normalize_cpp_own_includes.py.py`, `remove_player_includes.py`) overwrite matching `.lua`, `.cpp`, and `.hpp` source files in-place when regex transformations produce changes.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- Run `python -m compileall -q docs/python-scripts` from the repository root to check syntax.

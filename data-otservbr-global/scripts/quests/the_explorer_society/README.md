@@ -59,4 +59,4 @@ Component package under `scripts/quests/the_explorer_society` containing 11 file
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [actions_findings.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

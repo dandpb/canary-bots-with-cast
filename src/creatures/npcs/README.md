@@ -22,4 +22,4 @@ Implements non-player character instances (`Npc`), static NPC type definitions a
 - Invokes Lua callbacks via `CreatureCallback` on creature appear, disappear, move, say, think, and shop transactions (`[npc.cpp:Npc::onCreatureAppear]`, `[npc.cpp:Npc::onRemoveCreature]`, `[npc.cpp:Npc::onCreatureMove]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

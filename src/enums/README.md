@@ -20,4 +20,4 @@ Defines shared strongly-typed and unscoped C++ enumerations used across account 
 - None
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

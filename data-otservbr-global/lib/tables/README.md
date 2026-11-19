@@ -17,4 +17,4 @@ Component package under `lib/tables` containing 3 files (`load.lua`..`town.lua`)
 - Loads and executes `DATA_DIRECTORY .. "/lib/tables/town.lua"` via `dofile` [load.lua:dofile]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

@@ -31,4 +31,4 @@ Package implementation for `src/lua/functions`, providing component logic and da
 - Emits system diagnostic logs (`[lua_functions_loader.hpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

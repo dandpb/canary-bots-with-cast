@@ -25,4 +25,4 @@ Component package under `scripts/actions/adventurers_guild` containing 2 files (
 - Teleports creatures/players across map coordinates via `teleportTo` [magic_door.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

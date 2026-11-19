@@ -55,4 +55,4 @@ Component package under `scripts/movements/others` containing 5 files (`dawnport
 - Teleports creatures/players across map coordinates via `teleportTo` [teleport.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

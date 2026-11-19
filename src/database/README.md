@@ -16,17 +16,17 @@ Provides synchronous and asynchronous MySQL database connectivity, query executi
 
 ## Invariants
 - `Database::collectStatements` requires a fresh, unconnected `Database` instance (`handle == nullptr && statements_ == nullptr`) and throws `std::logic_error` otherwise; when capturing statements, `storeQuery` is forbidden and throws `std::logic_error` (`[database.hpp:Database::collectStatements]`, `[database.cpp:Database::storeQuery]`).
-- `Database::beginTransaction` acquires `databaseLock` after executing `BEGIN`, and `Database::finishTransaction` commits or rolls back while releasing `databaseLock` and classifying ambiguous transport errors as `TransactionOutcome::Uncertain` (`[database.cpp:Database::beginTransaction]`, `[database.cpp:Database::finishTransaction]`).
+- `DBTransaction::executeWithinTransaction` acquires the connection lock before `BEGIN` and holds it through commit or rollback. `Database::finishTransaction` classifies ambiguous transport errors as `TransactionOutcome::Uncertain` (`[database.hpp:DBTransaction::executeWithinTransaction]`, `[database.cpp:Database::finishTransaction]`).
 - `Database::canRetryDeadlock` returns `true` only when the transaction occurred on the same `Database` instance, same MySQL thread ID, same `recoveryEpoch_`, and failed with MySQL deadlock error `1213` (`[database.cpp:Database::canRetryDeadlock]`).
-- `DBInsert::execute` splits batched row values so each query never exceeds `Database::MAX_QUERY_SIZE` (8 MB) or `maxPacketSize` (`[database.hpp:Database::MAX_QUERY_SIZE]`, `[database.cpp:Database::addRow]`, `[database.cpp:DBInsert::execute]`).
+- `DBInsert::addRow` flushes the current batch when adding a row would approach the connection's packet limit and returns failure if the flush fails (`[database.cpp:DBInsert::addRow]`, `[database.hpp:Database::getMaxPacketSize]`).
 - `BotDatabaseTasks` never touches the shared `Database` singleton or `ThreadPool`, isolating all bot async DB I/O onto its own `db_` connection and `worker_` thread, and lazily retries connection every 2 seconds when disconnected (`[botdatabasetasks.hpp:BotDatabaseTasks]`, `[botdatabasetasks.cpp:BotDatabaseTasks::run]`).
 
 ## Side Effects
 - Opens TCP/Unix socket connections to MySQL and executes SQL queries and transactions via `libmysqlclient` (`[database.cpp:Database::connect]`, `[database.cpp:Database::executeQuery]`, `[database.cpp:Database::storeQuery]`, `[database.cpp:Database::beginTransaction]`, `[database.cpp:Database::finishTransaction]`).
-- `Database::createDatabaseBackup` writes temporary credentials (`database_backup.cnf`), invokes `mysqldump` via `std::system`, compresses `.sql` dumps into `.sql.gz` under `database_backup/`, and deletes `.gz` backups older than 7 days (`[database.cpp:Database::createDatabaseBackup]`).
+- `Database::createDatabaseBackup` writes temporary credentials to `database_backup.cnf` and removes the file after invoking `mysqldump`. It compresses the dump under `database_backup/` and deletes `.gz` backups older than 7 days (`[database.cpp:Database::createDatabaseBackup]`).
 - `DatabaseManager::updateDatabase` creates a Lua state, scans and executes migration scripts in `<DATA_DIRECTORY>/migrations/`, and updates `server_config` (`[databasemanager.cpp:DatabaseManager::updateDatabase]`).
 - `DatabaseTasks` and `BotDatabaseTasks` dispatch completion callbacks onto `g_dispatcher()` (`[databasetasks.cpp:DatabaseTasks::execute]`, `[databasetasks.cpp:DatabaseTasks::store]`, `[botdatabasetasks.cpp:BotDatabaseTasks::run]`).
 - Records lock and query latency metrics (`metrics::lock_latency`, `metrics::query_latency`) and dispatcher sync DB telemetry gated by `BOT_PERF_TELEMETRY=1` (`[database.cpp:SyncDbTimer]`, `[database.cpp:Database::executeQuery]`, `[database.cpp:Database::storeQuery]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ integration test guide](../../tests/integration/README.md) for the disposable database and transaction tests.

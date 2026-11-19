@@ -22,4 +22,4 @@ Package implementation for `data/scripts/spells/support/monk`, providing compone
 - Schedules timed tasks or dispatcher callbacks (`[avatar_of_balance.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

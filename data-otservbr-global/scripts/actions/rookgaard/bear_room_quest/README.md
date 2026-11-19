@@ -24,4 +24,4 @@ Component package under `scripts/actions/rookgaard/bear_room_quest` containing 2
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [bear_room_quest_stone.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

@@ -49,4 +49,4 @@ Component package under `monster/quests/kilmaresh` containing 15 files (`a_shiel
 - Registers monster type `Sun-Marked Goanna` into the global `Game` engine registry via `mType:register(monster)` [sun-marked_goanna.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

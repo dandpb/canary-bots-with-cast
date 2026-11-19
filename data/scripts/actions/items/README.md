@@ -23,4 +23,4 @@ Package implementation for `data/scripts/actions/items`, providing component log
 - Schedules timed tasks or dispatcher callbacks (`[magic_gold_converter.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

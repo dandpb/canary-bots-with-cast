@@ -26,4 +26,4 @@ Component package under `scripts/systems` containing 1 files (`hazard_primal.lua
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [hazard_primal.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

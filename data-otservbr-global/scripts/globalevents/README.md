@@ -25,4 +25,4 @@ Provides 2 direct files (`dawnport_magic_effect.lua`..`update.lua`) and 3 subdir
 - Executes SQL DDL/DML statements against the database via `db.query` [update.lua:db.query]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

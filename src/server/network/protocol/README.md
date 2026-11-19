@@ -28,4 +28,4 @@ Implements the wire protocols for client-server communication, cryptographic fra
 - Maintains thread-local zlib `z_stream` state (`Protocol::ZStream`) for packet deflation (`[protocol.cpp:Protocol::compression]`) and static IP tracking maps (`ProtocolStatus::ipConnectMap`, `g_castOperatorFailures`) (`[protocolstatus.cpp:ProtocolStatus::onRecvFirstMessage]`, `[protocolgame.cpp:checkCastOperatorPassword]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

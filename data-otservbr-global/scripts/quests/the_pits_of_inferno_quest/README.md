@@ -59,4 +59,4 @@ Component package under `scripts/quests/the_pits_of_inferno_quest` containing 26
 - Mutates player or global storage state via `setStorageValue` [actions_fountain.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

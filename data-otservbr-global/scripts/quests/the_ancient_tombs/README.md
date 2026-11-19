@@ -59,4 +59,4 @@ Component package under `scripts/quests/the_ancient_tombs` containing 23 files (
 - Spawns items, monsters, or NPCs in the game world via `Game.createItem` / `Game.createMonster` / `Game.createNpc` [actions_oasis_lever_door.lua:Game]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

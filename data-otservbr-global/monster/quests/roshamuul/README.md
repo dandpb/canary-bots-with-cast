@@ -37,4 +37,4 @@ Component package under `monster/quests/roshamuul` containing 9 files (`bad_drea
 - Registers monster type `Terofar` into the global `Game` engine registry via `mType:register(monster)` [terofar.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -34,4 +34,4 @@ Component package under `monster/quests/primal_ordeal_quest` containing 7 files 
 - Registers monster type `Unchained Fire` into the global `Game` engine registry via `mType:register(monster)` [unchained_fire.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

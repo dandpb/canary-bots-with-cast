@@ -25,4 +25,4 @@ Component package under `monster/familiars` containing 5 files (`druid_familiar.
 - Registers monster type `Sorcerer familiar` into the global `Game` engine registry via `mType:register(monster)` [sorcerer_familiar.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

@@ -30,4 +30,4 @@ Component package under `monster/quests/soul_war/normal_monsters/burning_hatred`
 - Registers monster type `Symbol of Hatred` into the global `Game` engine registry via `mType:register(monster)` [symbol_of_hatred.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../../tests/lua/README.md).

@@ -28,4 +28,9 @@ tools/botperf/*.sh text eol=lf
 # Deployment entrypoints and the public SQL importer run under Linux bash.
 database/bots/import.sh text eol=lf
 deployment/wsl/*.sh text eol=lf
+docker/config.sh text eol=lf
 docker/data/start.sh text eol=lf
+
+# M5 verifies the reviewed reference and decision fixture by SHA-256.
+deployment/brain/tools/m5_openai_none_reference.v2.json text eol=lf
+deployment/brain/tests/fixtures/m5-none-v3-decisions.json text eol=lf

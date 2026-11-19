@@ -24,4 +24,4 @@ Component package under `scripts/quests/thais_lighthouse` containing 2 files (`a
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [movement-stair.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

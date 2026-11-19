@@ -18,4 +18,4 @@ Implements the financial transaction abstraction (`Bank` and `Bankable`) for pla
 - Emits `balance_increase` and `balance_decrease` counters to `g_metrics()` on transfers, withdrawals, and deposits (`[bank.cpp:Bank::transferTo]`, `[bank.cpp:Bank::withdraw]`, `[bank.cpp:Bank::deposit]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

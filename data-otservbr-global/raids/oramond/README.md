@@ -16,4 +16,4 @@ Component package under `raids/oramond` containing 2 files (`crustacea_gigantica
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [crustacea_gigantica_5.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

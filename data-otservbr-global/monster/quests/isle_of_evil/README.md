@@ -28,4 +28,4 @@ Component package under `monster/quests/isle_of_evil` containing 6 files (`booge
 - Registers monster type `Monstor` into the global `Game` engine registry via `mType:register(monster)` [monstor.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

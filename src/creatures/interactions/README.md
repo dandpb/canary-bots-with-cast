@@ -19,4 +19,4 @@ Manages in-game chat channels (`ChatChannel`, `PrivateChatChannel`, and the `Cha
 - `ChatChannel::execute*Event` (`[chat.cpp:ChatChannel::executeCanJoinEvent]`, `[chat.cpp:ChatChannel::executeOnJoinEvent]`, `[chat.cpp:ChatChannel::executeOnLeaveEvent]`, `[chat.cpp:ChatChannel::executeOnSpeakEvent]`): Executes Lua callbacks (`canJoin`, `onJoin`, `onLeave`, `onSpeak`) on `Chat::scriptInterface`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

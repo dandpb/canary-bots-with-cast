@@ -30,4 +30,4 @@ Intermediate blueprint grouping 3 subdirectories under `scripts/creaturescripts`
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [dawnport.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

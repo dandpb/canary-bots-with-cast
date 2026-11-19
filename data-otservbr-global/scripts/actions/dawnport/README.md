@@ -26,4 +26,4 @@ Component package under `scripts/actions/dawnport` containing 2 files (`lever.lu
 - Teleports creatures/players across map coordinates via `teleportTo` [vocation_door.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

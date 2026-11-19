@@ -19,4 +19,4 @@ Component package under `scripts/actions/system` containing 1 files (`quest_rewa
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [quest_reward_common.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

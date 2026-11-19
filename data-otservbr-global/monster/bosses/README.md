@@ -59,4 +59,4 @@ Component package under `monster/bosses` containing 94 files (`alchemist_contain
 - Attaches creature event scripts defined in `monster.events` on spawn [black_knight.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

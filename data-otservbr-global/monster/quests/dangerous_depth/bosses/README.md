@@ -31,4 +31,4 @@ Component package under `monster/quests/dangerous_depth/bosses` containing 6 fil
 - Registers monster type `The Hungry Baron from Below` into the global `Game` engine registry via `mType:register(monster)` [the_hungry_baron_from_below.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

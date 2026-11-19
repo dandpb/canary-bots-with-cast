@@ -59,4 +59,4 @@ Component package under `monster/quests/heart_of_destruction` containing 26 file
 - Attaches creature event scripts defined in `monster.events` on spawn [charging_outburst.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -2,7 +2,7 @@
 
 ## Overview
 This folder seeds a fresh Canary database with the bot system's runtime data: the
-admin account, the bot account and its 997 bot players, the market price
+bot account and its 997 bot players, the market price
 reference, and bot house ownership + furniture.
 
 > **The engine does not read hunt or route data from MySQL.** Since the BOT_CSV
@@ -26,14 +26,13 @@ reference, and bot house ownership + furniture.
 ## Prerequisites
 
 1. A MySQL/MariaDB database created and reachable.
-2. The repo-root **`schema.sql`** already imported into it. (This distribution's
-   `schema.sql` intentionally does **not** seed the default god account or sample
-   characters — those come from the dumps here.)
+2. The repo-root **`schema.sql`** already imported into it. The seed files here
+   add the bot account and characters. Provision administrator accounts separately.
 
 ## Quick import
 
 ```bash
-DB_HOST=127.0.0.1 DB_USER=root DB_PASS=yourpass DB_NAME=canary ./import.sh
+DB_HOST=127.0.0.1 DB_USER=root DB_PASS=yourpass DB_NAME=canary bash database/bots/import.sh
 ```
 
 Defaults if you omit the variables: host `127.0.0.1`, port `3306`, user `root`,
@@ -116,5 +115,5 @@ ALTER TABLE `players`  AUTO_INCREMENT = 66100;
   `tools/bot_population_generator/`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `bash -n database/bots/import.sh`. Use a disposable database for an import smoke test.
 

@@ -17,4 +17,4 @@ Implements the XML-configured `Modules` subsystem (`modules.xml`), which binds c
 - Updates per-player module cooldown timestamps via `player->setModuleDelay(recvbyte, delay)` and invokes Lua scripts that read from `NetworkMessage` (`[modules.cpp:Modules::executeOnRecvbyte]`, `[modules.cpp:Module::executeOnRecvbyte]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

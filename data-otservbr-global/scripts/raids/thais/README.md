@@ -53,4 +53,4 @@ Component package under `scripts/raids/thais` containing 2 files (`rats.lua`..`w
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [wild_horses.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

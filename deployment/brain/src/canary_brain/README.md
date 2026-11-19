@@ -4,7 +4,7 @@
 Implements the external autonomous-companion and party-pilot worker (`canary_brain`), communicating with the C++ `libbot_engine.so` over a non-blocking `AF_UNIX` datagram socket. Provides protocol serialization, SQLite WAL state and monthly USD-cap accounting, OpenAI & LiteLLM/Gemini Decisions providers, contextual bandit learning, live HTTP operator supervision (including reward-aware hunt hiatus), native admission & persistence witness verification, benchmark Docker fixture orchestration, replay/timelapse export, and visual packet replay packaging/rendering.
 
 ## Interface
-- `[cli.py:main]` — Top-level CLI entrypoint (`canary-brain`) exposing `run`, `status`, `inspect`, `checkpoint`, `rollback`, `forget`, `record-cost`, and `replay` subcommands.
+- `[cli.py:main]` — Top-level CLI entrypoint (`canary-brain`) exposing `serve`, `status`, `inspect`, `checkpoint`, `rollback`, `forget`, `record-cost`, `replay`, and `benchmark` subcommands.
 - `[runtime.py:Configuration]`, `[runtime.py:DatagramProtocol]`, `[runtime.py:read_credential]`, `[runtime.py:recording_failure]`, `[runtime.py:run]` — Worker configuration model (including split `gateway` / `responses_gateway` routing), Unix datagram I/O loop, and process lifecycle.
 - `[protocol.py:Packet]`, `[protocol.py:Candidate]`, `[protocol.py:Bot]`, `[protocol.py:MemberState]`, `[protocol.py:Party]`, `[protocol.py:Message]`, `[protocol.py:Observation]`, `[protocol.py:Intent]`, `[protocol.py:intent_for]` — Protocol v1 observation/intent schemas and validation helpers.
 - `[controller.py:Model]`, `[controller.py:Controller]` — Decision/response orchestration, multi-step objective planning, cooldowns, and action lease tracking.
@@ -36,4 +36,4 @@ Implements the external autonomous-companion and party-pilot worker (`canary_bra
 - Serves local HTTP operator APIs (`[operator_http.py:OperatorServer]`), spawns Docker Compose containers during benchmark runs (`[benchmark.py:DockerFixture]`), and runs FFmpeg/client staging for visual replay exports (`[visual_replay.py:export_visual_video]`).
 
 ## Verification
-- Run: `pytest deployment/brain`
+- With the [development dependencies installed](../../README.md#verification), run `cd deployment/brain` and `python -m pytest` from the repository root.

@@ -16,4 +16,4 @@ Component package under `scripts/quests/thieves_guild` containing 1 files (`crea
 - Mutates player or global storage state via `setStorageValue` [creaturescripts_nomad_kill.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

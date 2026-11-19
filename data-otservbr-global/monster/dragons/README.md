@@ -51,4 +51,4 @@ Component package under `monster/dragons` containing 17 files (`dragolisk.lua`..
 - Registers monster type `Elder Wyrm` into the global `Game` engine registry via `mType:register(monster)` [elder_wyrm.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

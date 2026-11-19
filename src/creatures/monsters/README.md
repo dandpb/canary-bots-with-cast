@@ -20,4 +20,4 @@ Implements monster instances (`Monster`), monster type definitions and spell des
 - `Monsters::deserializeSpell` (`[monsters.cpp:Monsters::deserializeSpell]`): Allocates `Combat`, `AreaCombat`, and `Condition` instances for monster spell blocks.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

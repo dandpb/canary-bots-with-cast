@@ -22,4 +22,4 @@ Package implementation for `data/npclib/npc_system`, providing component logic a
 - Schedules timed tasks or dispatcher callbacks (`[npc_handler.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

@@ -17,4 +17,4 @@ Component package under `scripts/quests/giant_smithhammer` containing 1 files (`
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [lever.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

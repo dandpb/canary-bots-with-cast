@@ -59,4 +59,4 @@ Component package under `scripts/quests/bigfoot_burden` containing 29 files (`ac
 - Mutates player or global storage state via `setStorageValue` [actions_matchmaker.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

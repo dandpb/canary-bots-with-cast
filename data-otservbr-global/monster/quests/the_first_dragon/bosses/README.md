@@ -26,4 +26,4 @@ Component package under `monster/quests/the_first_dragon/bosses` containing 5 fi
 - Registers monster type `Zorvorax` into the global `Game` engine registry via `mType:register(monster)` [zorvorax.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

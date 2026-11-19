@@ -10,7 +10,7 @@ Top-level blueprint for `data/lib/`, housing the core quest catalog loader under
 
 ## Interface
 
-- [core](./core/README.md): Exposes `[catalog.lua:build]`, `[loader.lua:load]`, and global `[loader.lua:Quests]`.
+- [core](./core/README.md): Exposes `[core/quests/catalog.lua:build]`, `[core/quests/loader.lua:load]`, and global `[core/quests/loader.lua:Quests]`.
 
 ## Invariants
 
@@ -22,4 +22,4 @@ Top-level blueprint for `data/lib/`, housing the core quest catalog loader under
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).

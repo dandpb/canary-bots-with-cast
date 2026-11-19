@@ -37,4 +37,4 @@ Component package under `scripts/creaturescripts/others` containing 5 files (`da
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [rookgaard_advance.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

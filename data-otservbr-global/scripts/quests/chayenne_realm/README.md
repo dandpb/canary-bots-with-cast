@@ -33,4 +33,4 @@ Component package under `scripts/quests/chayenne_realm` containing 3 files (`act
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_enter_realm.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

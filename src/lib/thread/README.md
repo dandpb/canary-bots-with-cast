@@ -24,7 +24,7 @@ The `src/lib/thread` component provides Canary's centralized multi-threaded task
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).
 
 ---
 

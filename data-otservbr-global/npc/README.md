@@ -60,4 +60,4 @@ Provides 1027 direct files (`....lua`..`zurak_arena.lua`) and 1 subdirectories u
 - Registers NPC `A Dead Bureaucrat` into the `Game` engine via `npcType:register(npcConfig)` [a_dead_bureaucrat2.lua:npcType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).

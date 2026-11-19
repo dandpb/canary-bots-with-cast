@@ -44,4 +44,4 @@ Component package under `monster/quests/in_service_of_yalahar` containing 11 fil
 - Registers monster type `Sharptooth` into the global `Game` engine registry via `mType:register(monster)` [sharptooth.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

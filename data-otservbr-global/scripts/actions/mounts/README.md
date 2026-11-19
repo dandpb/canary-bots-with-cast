@@ -17,4 +17,4 @@ Component package under `scripts/actions/mounts` containing 1 files (`mounts.lua
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [mounts.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

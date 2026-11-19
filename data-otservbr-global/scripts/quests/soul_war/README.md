@@ -59,4 +59,4 @@ Component package under `scripts/quests/soul_war` containing 12 files (`action-r
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [moveevent-soul_war_entrances.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

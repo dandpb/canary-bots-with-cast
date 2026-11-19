@@ -53,4 +53,4 @@ Component package under `monster/quests/ferumbras_ascension/bosses` containing 1
 - Attaches creature event scripts defined in `monster.events` on spawn [mazoran.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

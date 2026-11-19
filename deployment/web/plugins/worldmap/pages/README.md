@@ -25,4 +25,4 @@ MyAAC Community page controller (`worldmap.php`) serving both the interactive Wo
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `php -l deployment/web/plugins/worldmap/pages/worldmap.php`.

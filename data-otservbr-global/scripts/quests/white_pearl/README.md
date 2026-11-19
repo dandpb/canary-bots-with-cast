@@ -17,4 +17,4 @@ Component package under `scripts/quests/white_pearl` containing 1 files (`moveme
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_white_pearl.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

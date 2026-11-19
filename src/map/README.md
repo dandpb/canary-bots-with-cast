@@ -26,4 +26,4 @@ Package implementation for `src/map`, providing component logic and data interfa
 - Emits system diagnostic logs (`[mapcache.cpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

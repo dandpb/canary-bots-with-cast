@@ -23,4 +23,4 @@ Component package under `scripts/quests/the_primal_ordeal` containing 2 files (`
 - Mutates player or global storage state via `setStorageValue` [creaturescripts_the_primal_menace_killed.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

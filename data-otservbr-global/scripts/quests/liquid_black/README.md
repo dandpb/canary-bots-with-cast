@@ -52,4 +52,4 @@ Component package under `scripts/quests/liquid_black` containing 7 files (`actio
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_ladder.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

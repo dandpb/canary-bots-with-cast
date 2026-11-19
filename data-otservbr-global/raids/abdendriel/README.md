@@ -29,4 +29,4 @@ Component package under `raids/abdendriel` containing 4 files (`badger.xml`..`wa
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [wasp_bear.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

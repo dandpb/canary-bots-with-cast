@@ -59,4 +59,4 @@ Component package under `scripts/quests/others` containing 12 files (`actions_ca
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [actions_exterminator_flask.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

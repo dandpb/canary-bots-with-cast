@@ -47,4 +47,4 @@ Provides 12 direct files (`generator.lua`..`whirling_blades.lua`) and 1 subdirec
 - Registers monster type `Plant Attendant` into the global `Game` engine registry via `mType:register(monster)` [plant_attendant.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

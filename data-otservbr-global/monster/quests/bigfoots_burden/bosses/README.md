@@ -22,4 +22,4 @@ Component package under `monster/quests/bigfoots_burden/bosses` containing 3 fil
 - Attaches creature event scripts defined in `monster.events` on spawn [gnomevil.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

@@ -10,7 +10,7 @@ Groups JSON-based configuration subsystems and associated scripts under `data/js
 
 ## Interface
 
-- [eventscheduler](./eventscheduler/README.md): Exposes `[events.json:events]` calendar definitions and `[example.lua:GlobalEvent("EventScheduleExample")]`.
+- [eventscheduler](./eventscheduler/README.md): Exposes `[eventscheduler/events.json:events]` calendar definitions and `[eventscheduler/scripts/example.lua:GlobalEvent("EventScheduleExample")]`.
 
 ## Invariants
 
@@ -22,4 +22,4 @@ Groups JSON-based configuration subsystems and associated scripts under `data/js
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).

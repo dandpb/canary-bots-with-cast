@@ -16,4 +16,4 @@ Component package under `scripts/quests/extension_mota` containing 1 files (`mov
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_extension_mota.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

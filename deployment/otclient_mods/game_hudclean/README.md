@@ -32,4 +32,4 @@ OTClient module (`game_hudclean`) that declutters the client interface by maskin
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `luajit deployment/otclient_mods/game_hudclean/test/hudclean_test.lua deployment/otclient_mods/game_hudclean/hudclean.lua`.

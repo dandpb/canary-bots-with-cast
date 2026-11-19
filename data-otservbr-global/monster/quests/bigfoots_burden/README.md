@@ -24,4 +24,4 @@ Provides 4 direct files (`humorless_fungus.lua`..`versperoth.lua`) and 1 subdire
 - Attaches creature event scripts defined in `monster.events` on spawn [versperoth.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

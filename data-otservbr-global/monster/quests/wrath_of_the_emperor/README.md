@@ -40,4 +40,4 @@ Component package under `monster/quests/wrath_of_the_emperor` containing 9 files
 - Attaches creature event scripts defined in `monster.events` on spawn [snake_thing.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

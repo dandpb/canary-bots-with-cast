@@ -22,4 +22,4 @@ Provides the event callback dispatch system for binding and executing Lua script
 - Modifies in-memory callback registries in `EventsCallbacks::m_callbacks` and `EventCallbackManager::m_callbacks` (`[events_callbacks.cpp:EventsCallbacks::addCallback]`, `[event_callback_manager.cpp:EventCallbackManager::registerCallback]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

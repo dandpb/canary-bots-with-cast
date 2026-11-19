@@ -41,4 +41,4 @@ Lua callback scripts implementing join access checks (`canJoin`) and message pro
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

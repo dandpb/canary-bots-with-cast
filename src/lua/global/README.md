@@ -22,4 +22,4 @@ Defines foundational abstractions for XML/Lua event loading (`Event`, `BaseEvent
 - Reads XML and Lua files from disk during `BaseEvents::loadFromXml` and reinitializes Lua states during `reload` and `checkScript` (`[baseevents.cpp:BaseEvents::loadFromXml]`, `[baseevents.cpp:Event::checkScript]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

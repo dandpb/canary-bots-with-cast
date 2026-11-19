@@ -27,4 +27,4 @@ Package implementation for `data/scripts/lib`, providing component logic and dat
 - Executes SQL queries against game database (`[register_migrations.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

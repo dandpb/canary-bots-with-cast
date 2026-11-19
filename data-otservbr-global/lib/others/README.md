@@ -26,4 +26,4 @@ Component package under `lib/others` containing 3 files (`dawnport.lua`..`soulpi
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [soulpit.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

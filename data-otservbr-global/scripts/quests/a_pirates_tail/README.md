@@ -42,4 +42,4 @@ Component package under `scripts/quests/a_pirates_tail` containing 7 files (`act
 - Mutates player or global storage state via `setStorageValue` [creaturescripts_tentugly_death.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

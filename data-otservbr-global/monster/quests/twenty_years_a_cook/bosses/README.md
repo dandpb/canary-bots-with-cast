@@ -19,4 +19,4 @@ Component package under `monster/quests/twenty_years_a_cook/bosses` containing 1
 - Attaches creature event scripts defined in `monster.events` on spawn [dragon_hoard.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

@@ -60,4 +60,4 @@ Provides 26 direct files (`azarams_soul.lua`..`vampiric_blood.lua`) and 1 subdir
 - Attaches creature event scripts defined in `monster.events` on spawn [fetter.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

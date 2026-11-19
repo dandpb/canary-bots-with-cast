@@ -36,4 +36,4 @@ Component package under `scripts/quests/the_secret_library_quest/the_order_of_th
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_bossEntrance.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

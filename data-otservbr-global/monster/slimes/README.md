@@ -46,4 +46,4 @@ Component package under `monster/slimes` containing 12 files (`acid_blob.lua`..`
 - Registers monster type `Squidgy Slime` into the global `Game` engine registry via `mType:register(monster)` [squidgy_slime.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

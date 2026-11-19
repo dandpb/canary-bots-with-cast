@@ -41,4 +41,4 @@ Component package under `scripts/quests/the_secret_library_quest/liquid_death` c
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_teleportTo.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

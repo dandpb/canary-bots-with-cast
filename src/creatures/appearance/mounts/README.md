@@ -20,4 +20,4 @@ Manages creature mount definitions (`Mount`) loaded from `<CORE_DIRECTORY>/XML/m
 - `Mounts::loadFromXml` (`[mounts.cpp:Mounts::loadFromXml]`): Reads `<CORE_DIRECTORY>/XML/mounts.xml` from disk, queries `g_configManager()` and `g_game()`, and logs warnings via `g_logger()` or `printXMLError`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

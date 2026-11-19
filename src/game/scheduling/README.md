@@ -27,4 +27,4 @@ Provides the central asynchronous task loop (`Dispatcher` and `Task`), calendar-
 - `EventsScheduler` reads `events.json` / `events.xml`, loads event Lua scripts via `g_scripts().loadEventSchedulerScripts`, mutates global schedule rate multipliers and `g_kv().scoped("eventscheduler")` keys (`forge-chance`, `double-bestiary`, `double-bosstiary`, `fast-exercise`, `boss-cooldown`), and calls `consoleHandlerExit()` on missing/corrupt schedule files (`[events_scheduler.cpp:EventsScheduler::loadScheduleEventFromJson]`, `[events_scheduler.cpp:EventsScheduler::loadScheduleEventFromXml]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

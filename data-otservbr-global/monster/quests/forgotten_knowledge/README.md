@@ -60,4 +60,4 @@ Provides 31 direct files (`animated_sword.lua`..`unbound_demon_outcast.lua`) and
 - Registers monster type `Cosmic Energy Prism B Invu` into the global `Game` engine registry via `mType:register(monster)` [cosmic_energy_prism_b_invu.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -19,4 +19,4 @@ Component package under `scripts/quests/troll_sabotage` containing 1 files (`mov
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_teleport.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

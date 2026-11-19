@@ -23,4 +23,4 @@ Intermediate blueprint grouping 2 subdirectories under `scripts/actions/worldcha
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [horestis_jars.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

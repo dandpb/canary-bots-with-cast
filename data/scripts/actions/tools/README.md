@@ -22,4 +22,4 @@ Package implementation for `data/scripts/actions/tools`, providing component log
 - None
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

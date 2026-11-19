@@ -31,4 +31,4 @@ OTClient module (`game_forceexit`) providing emergency keyboard shortcuts and co
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `luajit -e 'assert(loadfile("deployment/otclient_mods/game_forceexit/forceexit.lua"))'` to check syntax. The hotkeys require OTClient for a live check.

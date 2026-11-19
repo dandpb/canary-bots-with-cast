@@ -13,4 +13,4 @@ Defines and registers the stationary `"Training Machine"` sparring `MonsterType`
 - `[training_machine.lua:76]` registers `"Training Machine"` in the global `MonsterType` registry at startup/reload.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

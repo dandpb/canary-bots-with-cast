@@ -18,4 +18,4 @@ Component package under `scripts/quests/oramond/the_powder_of_the_stars` contain
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [actions_blue_pollen.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

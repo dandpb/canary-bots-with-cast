@@ -59,4 +59,4 @@ Component package under `scripts/quests/ferumbras_ascension` containing 66 files
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [actions_color_levers.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

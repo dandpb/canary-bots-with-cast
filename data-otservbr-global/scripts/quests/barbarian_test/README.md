@@ -26,4 +26,4 @@ Component package under `scripts/quests/barbarian_test` containing 2 files (`act
 - Mutates player or global storage state via `setStorageValue` [action_mead.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

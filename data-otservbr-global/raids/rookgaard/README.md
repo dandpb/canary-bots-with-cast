@@ -33,4 +33,4 @@ Component package under `raids/rookgaard` containing 6 files (`munster.xml`..`te
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [teleskor.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

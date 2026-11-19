@@ -20,4 +20,4 @@ Initializes global storage key tables (`Storage`, `GlobalStorage`) and loads the
 - `[load.lua:1]` and `[quests.lua:1]` load `storages.lua` and `data-canary` quest catalog modules into the Lua state.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

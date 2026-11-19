@@ -16,4 +16,4 @@ Component package under `scripts/actions/falcons` containing 1 files (`falcon_sh
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [falcon_shield.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -21,4 +21,4 @@ Provides binary packet serialization, deserialization, header framing, and poole
 - Mutates internal buffer state (`buffer`, `info.position`, `info.length`, `outputBufferStart`) and logs buffer overflows or out-of-bounds reads via `g_logger()` (`[networkmessage.cpp:NetworkMessage::getByte]`, `[networkmessage.cpp:NetworkMessage::addString]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

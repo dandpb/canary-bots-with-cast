@@ -18,4 +18,4 @@ Provides Lua bindings for low-level network packet construction/parsing (`Networ
 - Enqueues outbound webhook HTTP payloads via `g_webhook().sendMessage(...)` (`[webhook_functions.cpp:WebhookFunctions::luaWebhookSendMessage]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../../tests/README.md#running-tests).

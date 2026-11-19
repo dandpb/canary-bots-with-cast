@@ -51,4 +51,4 @@ Component package under `raids/svargrond` containing 8 files (`barba_bittermor.x
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [zushuka.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

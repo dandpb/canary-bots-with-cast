@@ -60,4 +60,4 @@ Provides 21 direct files (`actions_baeloc_nictros.lua`..`movements_zelos_tp.lua`
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_earl_osam.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -16,4 +16,4 @@ Component package under `scripts/quests/waterfall` containing 1 files (`movement
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_waterfall.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

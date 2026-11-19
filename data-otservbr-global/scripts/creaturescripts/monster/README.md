@@ -51,4 +51,4 @@ Component package under `scripts/creaturescripts/monster` containing 18 files (`
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [minion_gaz_haragoth_vortex.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

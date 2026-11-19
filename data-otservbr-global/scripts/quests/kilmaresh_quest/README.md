@@ -60,4 +60,4 @@ Provides 25 direct files (`actions_augerfun.lua`..`movements_tpvoc.lua`) and 1 s
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [actions_glasshoneyfun.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

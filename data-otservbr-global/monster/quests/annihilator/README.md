@@ -13,4 +13,4 @@ Component package under `monster/quests/annihilator` containing 1 files (`angry_
 - Registers monster type `Angry Demon` into the global `Game` engine registry via `mType:register(monster)` [angry_demon.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -27,4 +27,4 @@ Package implementation for `src/server`, providing component logic and data inte
 - Schedules timed tasks or dispatcher callbacks (`[server.cpp]`, `[signals.cpp]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

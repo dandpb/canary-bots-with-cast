@@ -22,4 +22,4 @@ Manages cosmetic visual attachment definitions (`Aura`, `Shader`, `Effect`, `Win
 - `AttachedEffects::loadFromXml` (`[attached_effects.cpp:AttachedEffects::loadFromXml]`): Reads `<CORE_DIRECTORY>/XML/attachedeffects.xml` from disk via `pugi::xml_document::load_file`, queries `g_configManager().getString(CORE_DIRECTORY)`, and logs parse failures via `printXMLError`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

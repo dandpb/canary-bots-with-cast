@@ -26,4 +26,4 @@ Package implementation for `data/scripts/talkactions/god`, providing component l
 - Schedules timed tasks or dispatcher callbacks (`[save.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

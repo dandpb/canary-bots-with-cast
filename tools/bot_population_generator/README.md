@@ -27,4 +27,4 @@ Generates deterministic MySQL population seed scripts, in-place level redistribu
 - `[generate_rename_sql.py:main]` writes `database/bots/19_bot_rename.sql` and `database/bots/19_bot_rename_rollback.sql`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `python tools/bot_population_generator/generate.py --npc-xml data-otservbr-global/world/otservbr-npc.xml --out /tmp/canary-population-check.sql` and check that it reports 997 bots.

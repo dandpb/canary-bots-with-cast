@@ -59,4 +59,4 @@ Component package under `monster/humans` containing 75 files (`acolyte_of_darkne
 - Registers monster type `Barbarian Skullhunter` into the global `Game` engine registry via `mType:register(monster)` [barbarian_skullhunter.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

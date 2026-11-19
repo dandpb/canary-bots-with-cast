@@ -23,4 +23,4 @@ Intermediate blueprint grouping 2 subdirectories under `monster/quests/no_rest_f
 - Registers monster type `Overcharged Demon` into the global `Game` engine registry via `mType:register(monster)` [overcharged_demon.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

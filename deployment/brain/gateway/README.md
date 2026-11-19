@@ -10,11 +10,11 @@ Provides container images, Compose definitions, and route policy templates for r
 - `[gateway.example.yaml]` / `[gateway.named-credentials.example.json]` — Route templates for OpenAI/Gemini aliases (`canary-openai`, `canary-gemini`) and named UI credentials.
 
 ## Invariants
-- All gateway templates disable automatic retries (`num_retries: 0`), fallbacks (`fallbacks: []`, `max_fallbacks: 0`), response caching (`cache: false`, `cache_responses: false`), and telemetry/spend logging (`telemetry: false`, `disable_spend_logs: true`, `turn_off_message_logging: true`) so every billable attempt is accounted for solely by Canary Brain's SQLite ledger (`[gateway.decisions.example.json]`).
-- `Dockerfile.decisions` runs as unprivileged user `10001:10001` with `CANARY_BENCHMARK_GATEWAY_ONLY=1` and mounts `/app/gateway.yaml` read-only (`[Dockerfile.decisions]`).
+- The dedicated Decisions template disables retries, fallbacks, response caching, telemetry, and spend logs. The worker accounts for its paid attempts in the canonical SQLite ledger. See the [setup guide](../SETUP.pt-BR.md) for the UI gateway's usage reporting.
+- `Dockerfile.decisions` runs as unprivileged user `10001:10001` with `CANARY_BENCHMARK_GATEWAY_ONLY=1`. The [WSL Compose service](../../wsl/compose.yaml) mounts the readable policy at `/app/gateway.yaml` as read-only.
 
 ## Side Effects
 - Builds Docker images and serves HTTP inference endpoints on container port `4000`, forwarding authenticated requests to upstream OpenAI or Gemini APIs.
 
 ## Verification
-- Run: `pytest deployment/brain/tests/test_gateway.py`
+- With the [development dependencies installed](../README.md#verification), run `cd deployment/brain` and `python -m pytest tests/test_gateway.py tests/test_gateway_setup.py` from the repository root.

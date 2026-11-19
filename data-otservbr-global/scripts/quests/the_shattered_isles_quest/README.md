@@ -38,4 +38,4 @@ Component package under `scripts/quests/the_shattered_isles_quest` containing 4 
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [movement_teleport.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

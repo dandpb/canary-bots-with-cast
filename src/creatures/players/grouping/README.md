@@ -21,4 +21,4 @@ Manages social, permission, and companion groupings for players, including vocat
 - `Guild` and `Party` membership changes update player helpers, shields, skulls, party icons, and party channels across online players via `g_game()` and `Player` network methods, and invoke Lua party events/callbacks (`eventPartyOnJoin`, `eventPartyOnLeave`, `eventPartyOnDisband`, `eventPartyOnShareExperience`) (`[guild.cpp:Guild::addMember]`, `[party.cpp:Party::joinParty]`, `[party.cpp:Party::leaveParty]`, `[party.cpp:Party::disband]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

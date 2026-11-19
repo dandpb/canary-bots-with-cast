@@ -59,4 +59,4 @@ Component package under `lib/quests` containing 11 files (`bigfoot_burden.lua`..
 - Loads and executes `DATA_DIRECTORY .. "/lib/quests/killing_in_the_name_of.lua"` via `dofile` [quest.lua:dofile]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

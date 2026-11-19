@@ -51,4 +51,4 @@ Component package under `scripts/quests/kilmaresh_quest/1-fafnars-wrath` contain
 - Mutates player or global storage state via `setStorageValue` [8-blessing-the-statues.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

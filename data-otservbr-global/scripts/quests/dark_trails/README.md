@@ -57,4 +57,4 @@ Component package under `scripts/quests/dark_trails` containing 7 files (`action
 - Mutates player or global storage state via `setStorageValue` [creaturescripts_kill_death_priest_shargon.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

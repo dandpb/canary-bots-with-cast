@@ -48,4 +48,4 @@ Component package under `startup/tables` containing 17 files (`chest.lua`..`writ
 - Loads and executes `DATA_DIRECTORY .. "/startup/tables/teleport_item.lua"` via `dofile` [load.lua:dofile]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

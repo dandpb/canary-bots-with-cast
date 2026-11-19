@@ -19,4 +19,4 @@ Component package under `scripts/quests/hot_cuisine` containing 2 files (`action
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_cookbook2.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

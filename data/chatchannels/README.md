@@ -23,4 +23,4 @@ Defines the server's in-game chat channel declarations (`chatchannels.xml`) and 
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).

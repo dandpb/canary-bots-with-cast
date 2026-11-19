@@ -17,4 +17,4 @@ Component package under `monster/quests/a_pirates_tail_quest` containing 2 files
 - Spawns items, monsters, or NPCs in the game world via `Game.createItem` / `Game.createMonster` / `Game.createNpc` [tentuglys_head.lua:Game]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

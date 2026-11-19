@@ -27,4 +27,4 @@ Package implementation for `src/map/utils`, providing component logic and data i
 - Emits system diagnostic logs (`[mapsector.hpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

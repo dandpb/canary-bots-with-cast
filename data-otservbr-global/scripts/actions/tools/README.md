@@ -53,4 +53,4 @@ Component package under `scripts/actions/tools` containing 11 files (`bricklayer
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [lock_pick.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

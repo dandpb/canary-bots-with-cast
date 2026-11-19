@@ -49,4 +49,4 @@ Provides 14 direct files (`bones.lua`..`undead_minion.lua`) and 1 subdirectories
 - Registers monster type `The Halloween Hare` into the global `Game` engine registry via `mType:register(monster)` [the_halloween_hare.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

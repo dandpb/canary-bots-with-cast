@@ -59,4 +59,4 @@ Component package under `scripts/quests/wrath_of_the_emperor` containing 22 file
 - Mutates player or global storage state via `setStorageValue` [actions_mission03_the_keeper.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -27,7 +27,7 @@ Gathers modular per-player components (`PlayerAchievement`, `PlayerAttachedEffec
 - Fires Lua events and callbacks (`eventOnStorageUpdate`, `EventCallback_t::playerOnStorageUpdate`) when non-login storage keys change (`[player_storage.cpp:PlayerStorage::add]`) and sends network packets to the owning player's client (`ProtocolGame`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).
 
 ---
 

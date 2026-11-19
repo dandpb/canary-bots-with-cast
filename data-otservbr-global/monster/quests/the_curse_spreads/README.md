@@ -42,4 +42,4 @@ Component package under `monster/quests/the_curse_spreads` containing 10 files (
 - Registers monster type `Feroxa5` into the global `Game` engine registry via `mType:register(monster)` [feroxa5.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

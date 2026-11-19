@@ -32,4 +32,4 @@ Component package under `monster/quests/soul_war/normal_monsters/furious_crater`
 - Attaches creature event scripts defined in `monster.events` on spawn [vibrant_phantom.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../../tests/lua/README.md).

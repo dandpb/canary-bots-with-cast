@@ -24,4 +24,4 @@ Provides foundational data structures, lock-free memory pools, string/time/math/
 - `printStackTrace` initializes the Abseil symbolizer (`absl::InitializeSymbolizer`) and logs stack frames when log level is not `"info"` (`[tools.cpp:printStackTrace]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

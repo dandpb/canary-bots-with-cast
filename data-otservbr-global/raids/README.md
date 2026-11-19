@@ -45,4 +45,4 @@ Provides 1 direct files (`raids.xml`..`raids.xml`) and 17 subdirectories under `
 - Registers raid schedule definitions loaded by the server raid manager [raids.xml:raids]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../tests/lua/README.md).

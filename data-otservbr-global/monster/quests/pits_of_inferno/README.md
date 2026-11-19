@@ -37,4 +37,4 @@ Component package under `monster/quests/pits_of_inferno` containing 9 files (`co
 - Registers monster type `The Plasmother` into the global `Game` engine registry via `mType:register(monster)` [the_plasmother.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

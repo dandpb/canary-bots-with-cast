@@ -41,4 +41,4 @@ Component package under `scripts/quests/raging_mage_tower` containing 5 files (`
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [creaturescripts_raging_mage_kill.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

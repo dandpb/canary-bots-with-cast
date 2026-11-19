@@ -13,4 +13,4 @@ Component package under `monster/quests/no_rest_for_the_wicked/summons` containi
 - Registers monster type `Overcharged Demon` into the global `Game` engine registry via `mType:register(monster)` [overcharged_demon.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

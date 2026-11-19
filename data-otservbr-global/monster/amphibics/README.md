@@ -46,4 +46,4 @@ Component package under `monster/amphibics` containing 12 files (`azure_frog.lua
 - Registers monster type `Toad` into the global `Game` engine registry via `mType:register(monster)` [toad.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

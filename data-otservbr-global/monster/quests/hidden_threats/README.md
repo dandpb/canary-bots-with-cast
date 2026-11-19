@@ -13,4 +13,4 @@ Component package under `monster/quests/hidden_threats` containing 1 files (`cav
 - Registers monster type `Cave Spider` into the global `Game` engine registry via `mType:register(monster)` [cave_spider.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

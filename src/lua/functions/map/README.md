@@ -23,4 +23,4 @@ Package implementation for `src/lua/functions/map`, providing component logic an
 - Emits system diagnostic logs (`[tile_functions.cpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

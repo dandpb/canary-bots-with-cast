@@ -22,4 +22,4 @@ Component package under `monster/wild_magics` containing 4 files (`wild_fire_mag
 - Registers monster type `Wild Water Magic` into the global `Game` engine registry via `mType:register(monster)` [wild_water_magic.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

@@ -40,4 +40,4 @@ Component package under `monster/quests/svargrond_arena/warlord` containing 10 f
 - Registers monster type `Webster` into the global `Game` engine registry via `mType:register(monster)` [webster.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

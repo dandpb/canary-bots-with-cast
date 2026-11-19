@@ -29,4 +29,4 @@ Provides specialized `Container` subclasses (`DepotChest` and `DepotLocker`) rep
 - `DepotLocker::removeInbox` erases the matching `Inbox` from `itemlist` (`[depotlocker.cpp:DepotLocker::removeInbox]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

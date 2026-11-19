@@ -23,4 +23,4 @@ Implements the `Mailbox` item and cylinder (`[mailbox.hpp:Mailbox]`), which acts
 - `Mailbox::postAddNotification` and `Mailbox::postRemoveNotification` forward notifications to `getParent()` with `LINK_PARENT` (`[mailbox.cpp:Mailbox::postAddNotification]`, `[mailbox.cpp:Mailbox::postRemoveNotification]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

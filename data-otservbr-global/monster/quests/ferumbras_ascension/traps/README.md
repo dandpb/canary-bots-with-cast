@@ -29,4 +29,4 @@ Component package under `monster/quests/ferumbras_ascension/traps` containing 6 
 - Registers monster type `Void` into the global `Game` engine registry via `mType:register(monster)` [void.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

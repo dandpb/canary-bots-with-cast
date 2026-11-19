@@ -53,4 +53,4 @@ Component package under `monster/quests/the_secret_library/bosses` containing 13
 - Attaches creature event scripts defined in `monster.events` on spawn [grand_commander_soeren.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

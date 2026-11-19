@@ -53,4 +53,4 @@ Component package under `npc/blue_valley` containing 7 files (`bodh_the_kan.lua`
 - Registers NPC `Saih The Guardian` into the `Game` engine via `npcType:register(npcConfig)` [saih_the_guardian.lua:npcType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

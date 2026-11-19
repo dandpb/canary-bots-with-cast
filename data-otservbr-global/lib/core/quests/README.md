@@ -18,4 +18,4 @@ Intermediate blueprint grouping 1 subdirectories under `lib/core/quests`.
 - Loads and executes `CORE_DIRECTORY .. "/lib/core/quests/catalog.lua"` via `dofile` [init.lua:dofile]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

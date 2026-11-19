@@ -34,4 +34,4 @@ Component package under `raids/farmine` containing 5 files (`beetles.xml`..`zula
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [zulazza_the_corruptor.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

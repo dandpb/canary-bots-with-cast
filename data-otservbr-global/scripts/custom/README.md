@@ -44,4 +44,4 @@ Component package under `scripts/custom` containing 4 files (`ambient_sounds.lua
 - Teleports creatures/players across map coordinates via `teleportTo` [movement_trainer_exit.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

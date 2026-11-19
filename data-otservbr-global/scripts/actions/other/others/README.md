@@ -27,4 +27,4 @@ Component package under `scripts/actions/other/others` containing 2 files (`ques
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [quest_system2.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

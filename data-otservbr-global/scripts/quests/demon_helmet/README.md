@@ -26,4 +26,4 @@ Component package under `scripts/quests/demon_helmet` containing 2 files (`actio
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [movement-walls.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

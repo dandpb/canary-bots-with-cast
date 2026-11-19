@@ -59,4 +59,4 @@ Component package under `monster/humanoids` containing 89 files (`broken_shaper.
 - Registers monster type `Crazed Summer Rearguard` into the global `Game` engine registry via `mType:register(monster)` [crazed_summer_rearguard.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

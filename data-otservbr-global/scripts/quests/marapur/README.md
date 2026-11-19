@@ -53,4 +53,4 @@ Component package under `scripts/quests/marapur` containing 4 files (`actions_bo
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [timira_the_many-headed.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

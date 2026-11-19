@@ -52,4 +52,4 @@ Component package under `scripts/quests/soulpit` containing 8 files (`exalted_co
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [soulpit_opressor.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

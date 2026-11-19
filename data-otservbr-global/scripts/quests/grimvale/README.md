@@ -57,4 +57,4 @@ Component package under `scripts/quests/grimvale` containing 9 files (`actions_a
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [actions_portal_minis_grimvale.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

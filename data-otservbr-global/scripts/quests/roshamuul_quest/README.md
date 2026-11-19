@@ -54,4 +54,4 @@ Component package under `scripts/quests/roshamuul_quest` containing 9 files (`ac
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_resonance_chamber.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

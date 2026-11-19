@@ -24,4 +24,4 @@ Package implementation for `data/scripts/talkactions/gm`, providing component lo
 - Executes SQL queries against game database (`[unban.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

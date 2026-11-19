@@ -27,4 +27,4 @@ Provides the quest catalog builder (`catalog.lua`) and custom Lua package search
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -59,4 +59,4 @@ Component package under `monster/vermins` containing 62 files (`afflicted_stride
 - Registers monster type `Chasm Spawn` into the global `Game` engine registry via `mType:register(monster)` [chasm_spawn.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

@@ -1,168 +1,49 @@
-# Test Suites & QA Fixtures (`tests`)
+# test suites and QA fixtures
 
 ## Overview
-Provides C++ `Boost::ut` unit (`canary_ut`) and integration (`canary_it`, including `database_transaction_it.cpp`) test targets, standalone Lua/LuaJIT bot startup and progression regression suites, and isolated Docker/offline QA harnesses (`fixture/`).
+
+C++ unit and integration tests use GoogleTest. Canary also has standalone Lua
+regressions, in-server Lua acceptance tests and isolated Python/Docker fixtures.
 
 ## Interface
-- `[CMakeLists.txt]` — Registers CTest unit and integration test executables (`canary_ut`, `canary_it`) when `CANARY_BUILD_TESTS=ON`.
-- Subdirectories:
-  - `unit`: C++ `Boost::ut` unit tests (`canary_ut`), including `players/components/player_storage_test.cpp` and `players/bot_brain_protocol_test.cpp`.
-  - `integration`: [`./integration/README.md`](./integration/README.md) — C++ integration suites (`canary_it`), including `database_transaction_it.cpp`.
-  - `lua`: [`./lua/README.md`](./lua/README.md) — Standalone Lua/LuaJIT regression suites (`bot_startup_test.lua`, `bot_persistence_no_xp_test.lua`, progression/save tests).
-  - `fixture`: [`./fixture/README.md`](./fixture/README.md) — M5/party qualification harnesses, offline status capture/runner adapters, and hunt-phase trace fixtures.
 
-## Invariants
-- Standalone Lua tests under `tests/lua/` execute directly with `lua` or `luajit` using mock dispatcher/database adapters without requiring a live MySQL instance or compiled C++ binary.
-- Integration tests under `tests/integration/` run against a configured test database or injected repositories without mutating production schemas.
+- `[CMakeLists.txt]` enables the `canary_ut` and `canary_it` targets with
+  `CANARY_BUILD_TESTS=ON` and registers GoogleTest cases with CTest.
+- `unit/` covers C++ components such as player storage and the bot brain protocol.
+- [C++ integration tests](integration/README.md) cover the database and game
+  systems using a dedicated test database.
+- [Lua regressions](lua/README.md) cover startup, progression and persistence.
+- [Isolated QA fixtures](fixture/README.md) cover qualification, party scenarios
+  and offline evidence processing.
 
-## Side Effects
-- CTest builds and executes `canary_ut` and `canary_it`; `tests/fixture/` scripts may spawn disposable Docker containers and write evidence archives under explicit output paths.
+## Running tests
 
-## Verification
-- Run: `ctest --preset linux-debug --output-on-failure` and `lua tests/lua/bot_startup_test.lua`
+From the repository root, configure and build a test-enabled preset. The
+following example uses Linux. See `cmake --list-presets=all` for your platform.
 
----
-
-## Testing
-
-### Bot startup regression tests (Lua)
-
-From the repository root, run `lua tests/lua/bot_startup_test.lua` or
-`luajit tests/lua/bot_startup_test.lua`. These tests exercise the real
-`BotStartup` handler with a fake dispatcher and database; no C++ build, running
-server, or database is needed. They cover registration of 997 bots on a healthy
-dispatcher, backoff on slow loads and late timers, recovery, retries, online
-visibility, population selection, and finalization scheduling.
-
-Run `lua tools/bot_brain/test_startup_batches.lua` or its LuaJIT equivalent to
-verify bots receive quest access before hibernating during startup.
-
-### Running tests
-
-Tests can be run directly from the repository root using CMake test presets. First, configure and build tests for your platform:
-
-```bash
-# Configure and build tests
-cmake --preset linux-debug && cmake --build --preset linux-debug
-
-# Run all tests
-ctest --preset linux-debug
-
-# Run only unit tests
-ctest --preset linux-debug -R unit
-
-# Run only integration tests
-ctest --preset linux-debug -R integration
-
-# Use -VV for verbose output showing individual test cases
-ctest --preset linux-debug -VV
+```sh
+cmake --preset linux-debug
+cmake --build --preset linux-debug
+ctest --test-dir build/linux-debug/tests/unit --output-on-failure
 ```
 
-Replace `linux-debug` with `macos-debug` or `windows-debug` for other platforms.
+With a disposable database configured as described in the
+[integration guide](integration/README.md), run the integration tests or the
+complete CTest suite.
 
-#### Direct executable access
-
-You can also run test executables directly if needed:
-
-```bash
-./build/linux-debug/tests/unit/canary_ut
-./build/linux-debug/tests/integration/canary_it
+```sh
+ctest --test-dir build/linux-debug/tests/integration --output-on-failure
+ctest --preset linux-debug --output-on-failure
 ```
 
-### Adding tests
+Use `ctest --preset linux-debug -N` to list discovered tests after building.
+`ctest -R` filters by test name. For a manual build configured with `cmake -B build`,
+use `ctest --test-dir build --output-on-failure` after enabling and building tests.
 
-Tests are added in the `tests` folder, in the root of the repository.
-As much as possible, tests should be added in the same folder as the code they are testing:
+## Adding C++ tests
 
-```
-- src
-    - foo
-        - foo.cpp
-    - bar
-        - bar.cpp
-- tests
-    - foo
-        - foo_test.cpp
-    - bar
-        - bar_test.cpp
-```
-
-### Boost::ut
-
-Tests are written using the Boost::ut framework. We've chosen this framework because it is simple, macro-free, intuitive, and easy to use.
-In this section, we will go over the basics of the framework, but you can find more information in the [Boost::ut documentation](https://boost-ext.github.io/ut/).
-There are many ways to write tests, and we encourage you to read the documentation to find the way that works best for you.
-
-#### Suites
-
-Tests needs to be encapsulated by suites, which are defined using `suite<>` structure.
-
-```cpp
-suite<"foo"> test_foo = [] {
-    // Tests go here
-};
-```
-
-This puts all tests within test_foo under the suite "foo".
-You can use declare multiple suites with the same name, and they will be merged together.
-This allows you to declare suites in different files, and they will be merged together, keeping test files clean.
-
-Avoid creating tests directly in the main function, as this will put them in the `global` suite, which is not recommended.
-
-#### Tests
-
-Tests can be defined using the `test()` lambda or the `_test` operator:
-
-```cpp
-suite<"foo"> test_foo = [] {
-    "test 1"_test = [] {
-        // Test 1
-    };
-
-    test("test 2") = [] {
-        // Test 2
-    };
-};
-```
-
-#### Assertions
-
-Both are equivalent, the received argument is the description of the test.
-The description is used to identify the test in the output, and should be unique within a suite.
-
-Assertions are done using the `expect()` function:
-
-```cpp
-suite<"foo"> test_foo = [] {
-    "test 1"_test = [] {
-        expect(eq(1_i, 1_i));
-    };
-};
-```
-
-It's always preferable to use comparison operators (eq, neq, etc.), as they provide better error messages.
-
-#### Testing against injected dependencies
-
-Testing against injected dependencies is done using the `di::extension::injector<>` class.
-This class is used to create the dependency injection container, and can be used to set up the container for testing.
-For example, to test the `RSA` class, we need to inject a `Logger` class, otherwise it will use the default SpdLog implementation.
-
-```cpp
-suite<"security"> rsaTest = [] {
-	test("RSA::start logs error for missing .pem file") = [] {
-		di::extension::injector<> injector{};
-		DI::setTestContainer(&InMemoryLogger::install(injector));
-
-		DI::create<RSA &>().start();
-
-		auto &logger = dynamic_cast<InMemoryLogger &>(injector.create<Logger &>());
-
-        expect(eq(1, logger.logs.size()) >> fatal);
-		expect(
-			eq(std::string{"error"}, logger.logs[0].level) and
-			eq(std::string{"File key.pem not found or have problem on loading... Setting standard rsa key\n"}, logger.logs[0].message)
-        );
-	};
-};
-```
+Place the file under the corresponding component in `tests/unit/` or
+`tests/integration/` and add it to that directory's `CMakeLists.txt`. Use
+GoogleTest's `TEST` or `TEST_F`. For existing examples, see
+[bot brain protocol tests](unit/players/bot_brain_protocol_test.cpp) and
+[database transaction tests](integration/database_transaction_it.cpp).

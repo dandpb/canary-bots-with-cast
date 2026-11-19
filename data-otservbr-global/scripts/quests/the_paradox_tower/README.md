@@ -59,4 +59,4 @@ Component package under `scripts/quests/the_paradox_tower` containing 11 files (
 - Teleports creatures/players across map coordinates via `teleportTo` [move_let_the _quest.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

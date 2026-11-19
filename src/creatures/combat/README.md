@@ -23,4 +23,4 @@ Implements the core combat resolution engine (`Combat`, `AreaCombat`, `MatrixAre
 - Invokes Lua script callbacks (`ValueCallback`, `TargetCallback`, `TileCallback`, `ChainCallback`, `ChainPickerCallback`, `InstantSpell::executeCastSpell`, `RuneSpell::executeCastSpell`) and emits network visual/sound effects to spectators (`[combat.cpp:Combat::sendCombatEffect]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

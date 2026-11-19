@@ -21,4 +21,4 @@ Intermediate blueprint grouping creature visual appearance subsystems: attached 
 - Reads XML configuration files (`attachedeffects.xml`, `mounts.xml`, `outfits.xml`) from `<CORE_DIRECTORY>/XML/`, mutates in-memory registries (`AttachedEffects`, `Mounts`, `outfits`), and logs diagnostics via `g_logger()` (`[attached_effects/attached_effects.cpp:AttachedEffects::loadFromXml]`, `[mounts/mounts.cpp:Mounts::loadFromXml]`, `[outfit/outfit.cpp:Outfits::loadFromXml]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

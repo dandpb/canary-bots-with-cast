@@ -18,4 +18,4 @@ Component package under `scripts/quests/parchment_room` containing 1 files (`par
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [parchment.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

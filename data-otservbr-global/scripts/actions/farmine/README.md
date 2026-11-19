@@ -16,4 +16,4 @@ Component package under `scripts/actions/farmine` containing 1 files (`temple_of
 - Teleports creatures/players across map coordinates via `teleportTo` [temple_of_equilibrium_vines.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

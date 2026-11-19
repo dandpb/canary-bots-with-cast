@@ -40,4 +40,4 @@ Component package under `scripts/quests/cradle_of_monsters` containing 2 files (
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [the_monster_fight.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

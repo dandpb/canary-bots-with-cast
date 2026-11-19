@@ -13,4 +13,4 @@ Package implementation for `data/scripts/eventcallbacks/party`, providing compon
 - Schedules timed tasks or dispatcher callbacks (`[on_disband.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

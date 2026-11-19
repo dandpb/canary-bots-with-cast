@@ -20,4 +20,4 @@ Manages monster spawn zones (`SpawnMonster`, `SpawnsMonster`, `spawnBlock_t`), p
 - `SpawnMonster::startSpawnMonsterCheck` and `SpawnMonster::scheduleSpawn` (`[spawn_monster.cpp:SpawnMonster::startSpawnMonsterCheck]`, `[spawn_monster.cpp:SpawnMonster::scheduleSpawn]`): Schedule recurring/delayed tasks on `g_dispatcher()` and emit `CONST_ME_TELEPORT` effects via `g_game().addMagicEffect`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

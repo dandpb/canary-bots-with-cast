@@ -59,4 +59,4 @@ Component package under `scripts/quests/the_dream_courts_quest` containing 36 fi
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [actions_colourfulMushroom.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -37,4 +37,4 @@ Component package under `scripts/actions/kazordoon` containing 4 files (`elevato
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [trap_door.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

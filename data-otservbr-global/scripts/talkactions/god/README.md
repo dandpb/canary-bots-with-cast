@@ -52,4 +52,4 @@ Component package under `scripts/talkactions/god` containing 3 files (`house_bac
 - Executes SQL DDL/DML statements against the database via `db.query` [house_ingest.lua:db.query]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

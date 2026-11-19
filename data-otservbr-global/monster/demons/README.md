@@ -59,4 +59,4 @@ Component package under `monster/demons` containing 39 files (`askarak_demon.lua
 - Registers monster type `Duskbringer` into the global `Game` engine registry via `mType:register(monster)` [duskbringer.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

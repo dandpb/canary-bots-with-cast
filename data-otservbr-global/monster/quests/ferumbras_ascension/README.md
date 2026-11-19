@@ -31,4 +31,4 @@ Provides 5 direct files (`damned_soul.lua`..`rage_of_mazoran.lua`) and 4 subdire
 - Registers monster type `Rage of Mazoran` into the global `Game` engine registry via `mType:register(monster)` [rage_of_mazoran.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

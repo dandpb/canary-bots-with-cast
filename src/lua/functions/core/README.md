@@ -16,4 +16,4 @@ Top-level coordinator for core Lua bindings in the server scripting environment.
 - Populates the Lua global environment with all core game, library, and network tables, classes, metatables, and constants (`[core_functions.hpp:CoreFunctions::init]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

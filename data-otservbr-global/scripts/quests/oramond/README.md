@@ -27,4 +27,4 @@ Provides 1 direct files (`actions_glooth_fairy_lever.lua`..`actions_glooth_fairy
 - Schedules asynchronous delayed callbacks on the server dispatcher via `addEvent` [actions_glooth_fairy_lever.lua:addEvent]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

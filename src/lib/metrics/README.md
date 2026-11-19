@@ -26,4 +26,4 @@ The `src/lib/metrics` component provides OpenTelemetry-based telemetry and laten
 
 ## Verification
 
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

@@ -59,4 +59,4 @@ Component package under `monster/constructs` containing 31 files (`animated_snow
 - Registers monster type `Glooth Golem` into the global `Game` engine registry via `mType:register(monster)` [glooth_golem.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

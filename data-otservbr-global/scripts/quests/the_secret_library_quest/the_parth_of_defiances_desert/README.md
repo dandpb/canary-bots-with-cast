@@ -58,4 +58,4 @@ Component package under `scripts/quests/the_secret_library_quest/the_parth_of_de
 - Mutates player or global storage state via `setStorageValue` [movements_color_puzzle.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

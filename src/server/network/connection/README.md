@@ -22,4 +22,4 @@ Manages asynchronous TCP client connections using ASIO (`asio::ip::tcp::socket` 
 - Mutates the active connection registry in `ConnectionManager::connections` (`[connection.cpp:ConnectionManager::createConnection]`, `[connection.cpp:ConnectionManager::releaseConnection]`, `[connection.cpp:ConnectionManager::closeAll]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

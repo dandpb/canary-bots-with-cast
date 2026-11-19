@@ -46,4 +46,4 @@ Component package under `raids/port_hope` containing 8 files (`kongras.xml`..`th
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [the_welter.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

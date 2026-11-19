@@ -59,4 +59,4 @@ Component package under `scripts/quests/the_new_frontier` containing 15 files (`
 - Teleports creatures/players across map coordinates via `teleportTo` [action_elevator.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

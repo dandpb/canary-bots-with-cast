@@ -59,4 +59,4 @@ Component package under `scripts/quests/cults_of_tibia` containing 42 files (`ac
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [actions_crate.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

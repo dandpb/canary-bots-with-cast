@@ -17,4 +17,4 @@ Component package under `scripts/blue_valley` containing 1 files (`monk_npcs_ste
 - Teleports creatures/players across map coordinates via `teleportTo` [monk_npcs_step_in.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

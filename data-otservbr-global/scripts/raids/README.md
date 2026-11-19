@@ -72,4 +72,4 @@ Intermediate blueprint grouping 3 subdirectories under `scripts/raids`.
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [rats.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

@@ -18,4 +18,4 @@ Intermediate blueprint grouping 1 subdirectories under `scripts/spells`.
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [abyssador_paralyze.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

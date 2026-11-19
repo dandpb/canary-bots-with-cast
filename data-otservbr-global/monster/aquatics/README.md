@@ -59,4 +59,4 @@ Component package under `monster/aquatics` containing 40 files (`abyssal_calamar
 - Registers monster type `Deepling Scout` into the global `Game` engine registry via `mType:register(monster)` [deepling_scout.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

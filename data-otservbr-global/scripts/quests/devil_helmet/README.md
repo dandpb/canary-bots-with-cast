@@ -19,4 +19,4 @@ Component package under `scripts/quests/devil_helmet` containing 1 files (`movem
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [movements_sewer.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

@@ -16,4 +16,4 @@ Package implementation for `data/scripts/weapons/scripts`, providing component l
 - None
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

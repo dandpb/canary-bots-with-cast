@@ -60,4 +60,4 @@ Provides 29 direct files (`baking.lua`..`world_board.lua`) and 1 subdirectories 
 - Spawns items, monsters, or NPCs in the game world via `Game.createItem` / `Game.createMonster` / `Game.createNpc` [create_sugar_oat.lua:Game]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

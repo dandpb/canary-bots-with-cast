@@ -13,4 +13,4 @@ Component package under `monster/quests/adventures_of_galthen` containing 1 file
 - Registers monster type `Megasylvan Yselda` into the global `Game` engine registry via `mType:register(monster)` [megasylvan_yselda.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

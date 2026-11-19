@@ -59,4 +59,4 @@ Component package under `scripts/quests/the_queen_of_the_banshees` containing 16
 - Mutates player or global storage state via `setStorageValue` [movement-1-first_seal_flame.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

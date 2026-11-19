@@ -20,4 +20,4 @@ Provides cryptographic primitives for account authentication and login packet de
 - Logs warnings and errors via `g_logger()` / `Logger` on malformed hashes, invalid base64 inputs, or OpenSSL failures (`[argon.cpp:Argon2::verifyPassword]`, `[argon.cpp:Argon2::base64_decode]`, `[rsa.cpp:RSAManager::decrypt]`, `[rsa.cpp:RSAManager::loadPEM]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../tests/README.md#running-tests).

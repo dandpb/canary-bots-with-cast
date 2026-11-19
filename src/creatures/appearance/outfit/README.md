@@ -23,4 +23,4 @@ Manages player outfit definitions (`Outfit`, `OutfitEntry`, `ProtocolOutfit`) in
 - `Outfits::reload` and `Outfits::loadFromXml` (`[outfit.cpp:Outfits::reload]`, `[outfit.cpp:Outfits::loadFromXml]`): Mutate the module-scope `outfits[PLAYERSEX_LAST + 1]` vectors (`[outfit.cpp:outfits]`), read `<CORE_DIRECTORY>/XML/outfits.xml` from disk, and log warnings/errors via `g_logger()`.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

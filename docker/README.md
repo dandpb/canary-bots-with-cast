@@ -23,4 +23,4 @@ Contains Dockerfiles (`Dockerfile.x86`, `Dockerfile.arm`, `Dockerfile.dev`), `do
 - `[config.sh:12]` writes `$lua_file.tmp` and overwrites `$lua_file` via `mv` for every variable read from `$env_file` and positional CLI arguments.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- From the repository root, run `bash -n docker/config.sh` and [validate the Compose file](DOCKER.md#validate-the-compose-file).

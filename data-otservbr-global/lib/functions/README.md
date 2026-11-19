@@ -19,4 +19,4 @@ Component package under `lib/functions` containing 2 files (`load.lua`..`players
 - Mutates player or global storage state via `setStorageValue` [players.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

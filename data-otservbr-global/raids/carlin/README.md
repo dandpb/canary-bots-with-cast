@@ -21,4 +21,4 @@ Component package under `raids/carlin` containing 2 files (`orc.xml`..`yeti.xml`
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [yeti.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

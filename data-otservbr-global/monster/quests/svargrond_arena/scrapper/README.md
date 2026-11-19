@@ -40,4 +40,4 @@ Component package under `monster/quests/svargrond_arena/scrapper` containing 10 
 - Registers monster type `The Hag` into the global `Game` engine registry via `mType:register(monster)` [the_hag.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

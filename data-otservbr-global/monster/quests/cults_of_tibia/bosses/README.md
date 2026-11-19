@@ -61,4 +61,4 @@ Provides 27 direct files (`dorokoll_the_mystic.lua`..`zarcorix_of_yalahar.lua`) 
 - Registers monster type `Last Planegazer` into the global `Game` engine registry via `mType:register(monster)` [last_planegazer.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

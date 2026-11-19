@@ -1,6 +1,6 @@
 # Optional intelligent party companions
 
-Start with the [Portuguese initial setup guide](SETUP.pt-BR.md) for WSL, the LiteLLM dashboard, named OpenAI/Gemini credentials, model routes, the shared ledger and an offline replay check. For player usage see [Guia do Jogador](GUIA_DO_JOGADOR.md), for recording/runner/export details see [Replay and gameplay benchmarks](REPLAY.md), and for server-side visual packet replay and video export see [Replay Visual](REPLAY_VISUAL.pt-BR.md). New runtime paths are opt-in; existing configurations retain their behavior.
+Start with the [Portuguese initial setup guide](SETUP.pt-BR.md) for WSL, the LiteLLM dashboard, named OpenAI/Gemini credentials, model routes, the shared ledger and an offline replay check. [Playing](#playing) documents the available `/brain` command. [Guia do Jogador](GUIA_DO_JOGADOR.md) describes the proposed `/guia` command. See [Replay and gameplay benchmarks](REPLAY.md) for recording, running and exporting, and [Replay Visual](REPLAY_VISUAL.pt-BR.md) for packet replay and video export.
 
 The planned M5 uses the [admission wrapper and offline evidence report](tools/M5_PILOT.md), with frozen source/input hashes and the existing canonical ledger. Integration of these tools does not approve a fixture or authorize a paid campaign.
 
@@ -115,10 +115,15 @@ effect without rebuilding or restarting either process.
   A hunt that the native server fails after five minutes with no XP or defeats
   is also excluded temporarily, so the next decision does not immediately
   retry it. This is a confirmed unsuccessful hunt, not proof of a movement stall.
-- **Reward-aware hunt hiatus** (`Supervisor.reward_hiatus`): once a hunt has at
-  least 8 learned samples with mean reward `<= 0.25`, it is excluded on an
-  escalating hiatus from 30 minutes (`1800s`) up to 2 hours (`7200s`), resetting
-  when mean reward recovers to `>= 0.5`.
+- **Unavailable return route**: when a solo autonomous bot reports a native
+  `return_route_unavailable` retreat failure, the worker suppresses that choice
+  for up to 300 seconds while the bot remains in the same world and floor, within
+  three tiles of the failure and at 80% health or above. Low health and an
+  explicit operator retry can bypass the suppression.
+- **Reward-aware hunt hiatus** (`Supervisor.reward_hiatus`): for a solo bot under
+  automatic supervision with unfrozen memory, a hunt with at least 8 learned
+  samples in the current context and a mean reward `<= 0.25` receives a hiatus
+  of 30 minutes to 2 hours. A mean reward `>= 0.5` clears the offense count.
 
 Controls require a live autonomous bot outside a human party, active mode and
 an observation no older than three seconds. Human party authority is unchanged.
@@ -190,13 +195,19 @@ The loader now requires matching ABI/preparation exports. Build the executable a
 library together for this transition and deploy the matching Lua files. See the
 [reload contract and remaining acceptance](../../tools/bot_brain/README.reload.md).
 
+Run the commands from the repository root on Linux or WSL with Python 3.11+.
+Use a Linux filesystem for the checkout and temporary test data. The source
+metadata test needs Git, CMake 3.22+, Ninja, a C++20 compiler and nlohmann/json
+headers. The standalone C++ check also needs GoogleTest. The reload smoke
+accepts either Lua or LuaJIT.
+
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -r deployment/brain/requirements-dev.lock
-.venv/bin/pip install --no-deps -e deployment/brain
-.venv/bin/mypy deployment/brain/src
+.venv/bin/pip install -e 'deployment/brain[tracing]'
+.venv/bin/mypy --config-file deployment/brain/pyproject.toml deployment/brain/src
 .venv/bin/ruff check deployment/brain
-.venv/bin/python -m pytest deployment/brain
+(cd deployment/brain && ../../.venv/bin/python -m pytest)
 g++ -std=c++20 -Isrc tests/unit/players/bot_brain_protocol_test.cpp -lgtest_main -lgtest -pthread -o /tmp/brain-protocol-test
 /tmp/brain-protocol-test
 lua tools/bot_brain/test_reload.lua

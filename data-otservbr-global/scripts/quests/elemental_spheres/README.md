@@ -59,4 +59,4 @@ Component package under `scripts/quests/elemental_spheres` containing 11 files (
 - Teleports creatures/players across map coordinates via `teleportTo` [actions_machine1.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

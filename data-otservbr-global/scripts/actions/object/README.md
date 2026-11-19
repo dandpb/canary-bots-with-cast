@@ -51,4 +51,4 @@ Component package under `scripts/actions/object` containing 7 files (`dancingfai
 - Teleports creatures/players across map coordinates via `teleportTo` [rope_down.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

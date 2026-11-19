@@ -20,4 +20,4 @@ Manages named and ID-indexed spatial zones (`Zone` and `Area`) across the game m
 - `Zone::setMonsterVariant` updates `SpawnMonster::setMonsterVariant` for all monster spawns centered inside the zone and removes existing monsters (`[zone.cpp:Zone::setMonsterVariant]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

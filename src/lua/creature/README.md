@@ -25,4 +25,4 @@ Implements Lua-scripted gameplay interactions and lifecycle hooks tied to creatu
 - Reads XML configuration and Lua script files from disk (`events.xml`, `raids.xml`, raid scripts) and dispatches raid announcement messages to connected players and `g_webhook()` (`[events.cpp:Events::loadFromXml]`, `[raids.cpp:Raids::loadFromXml]`, `[raids.cpp:AnnounceEvent::executeEvent]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

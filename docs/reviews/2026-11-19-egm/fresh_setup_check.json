@@ -1,0 +1,7 @@
+{
+  "seed_sql_files": 10,
+  "server_json": true,
+  "worker_json": true,
+  "lua_template_override": false,
+  "started_containers": false
+}

@@ -23,4 +23,4 @@ Provides the core LuaJIT state lifecycle, script execution interface, call-stack
 - Reads and executes `.lua` files from the filesystem during `Scripts::loadScripts` and `Scripts::loadEventSchedulerScripts` (`[scripts.cpp:Scripts::loadScripts]`, `[scripts.cpp:Scripts::loadEventSchedulerScripts]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

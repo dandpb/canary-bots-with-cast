@@ -59,4 +59,4 @@ Component package under `monster/undeads` containing 63 files (`ahau.lua`..`zomb
 - Registers monster type `Cursed Prospector` into the global `Game` engine registry via `mType:register(monster)` [cursed_prospector.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

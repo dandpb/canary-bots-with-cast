@@ -60,4 +60,4 @@ Provides 28 direct files (`animated_clomp.lua`..`orc_cultist.lua`) and 1 subdire
 - Registers monster type `Animated Stone Golem` into the global `Game` engine registry via `mType:register(monster)` [animated_stone_golem.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

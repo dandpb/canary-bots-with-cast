@@ -41,4 +41,4 @@ Component package under `scripts/quests/the_outlaw_camp` containing 5 files (`ac
 - Teleports creatures/players across map coordinates via `teleportTo` [movements_entrance.lua:teleportTo]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

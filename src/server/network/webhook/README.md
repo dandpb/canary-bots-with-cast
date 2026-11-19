@@ -19,4 +19,4 @@ Provides an asynchronous HTTP POST webhook client backed by `libcurl` and the se
 - Detaches background worker tasks onto `ThreadPool` (`threadPool.detach_task`) and schedules recurring execution ticks on `g_dispatcher()` every `DISCORD_WEBHOOK_DELAY_MS` (`[webhook.cpp:Webhook::run]`).
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../../tests/README.md#running-tests).

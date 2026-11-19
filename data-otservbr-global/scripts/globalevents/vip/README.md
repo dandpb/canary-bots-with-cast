@@ -25,4 +25,4 @@ Component package under `scripts/globalevents/vip` containing 2 files (`online_c
 - Mutates player inventory or map tile items (`addItem`, `removeItem`, `transform`, `remove`) [online_tokens.lua:transform]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

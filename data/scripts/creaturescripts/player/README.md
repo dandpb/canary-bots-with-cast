@@ -23,4 +23,4 @@ Package implementation for `data/scripts/creaturescripts/player`, providing comp
 - Executes SQL queries against game database (`[login.lua]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

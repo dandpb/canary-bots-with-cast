@@ -22,4 +22,4 @@ Component package under `raids/kazordoon` containing 2 files (`goblins.xml`..`ho
 - Broadcasts server-wide raid messages and spawns configured monsters when the raid executes [horned.xml:raid]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

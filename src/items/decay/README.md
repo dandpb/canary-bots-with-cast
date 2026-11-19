@@ -19,4 +19,4 @@ Package implementation for `src/items/decay`, providing component logic and data
 - Schedules timed tasks or dispatcher callbacks (`[decay.cpp]`)
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).

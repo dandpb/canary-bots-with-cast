@@ -51,4 +51,4 @@ Component package under `monster/birds` containing 17 files (`agressive_chicken.
 - Registers monster type `Parrot` into the global `Game` engine registry via `mType:register(monster)` [parrot.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

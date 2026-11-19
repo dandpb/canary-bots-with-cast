@@ -30,4 +30,4 @@ Component package under `monster/quests/the_explorer_society` containing 5 files
 - Registers monster type `Yellow Butterfly` into the global `Game` engine registry via `mType:register(monster)` [yellow_butterfly.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

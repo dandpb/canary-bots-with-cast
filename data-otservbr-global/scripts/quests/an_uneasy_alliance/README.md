@@ -26,4 +26,4 @@ Component package under `scripts/quests/an_uneasy_alliance` containing 2 files (
 - Mutates player or global storage state via `setStorageValue` [creaturescripts_renegade_orc_kill.lua:setStorageValue]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

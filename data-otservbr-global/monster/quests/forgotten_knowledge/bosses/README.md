@@ -48,4 +48,4 @@ Component package under `monster/quests/forgotten_knowledge/bosses` containing 1
 - Attaches creature event scripts defined in `monster.events` on spawn [soul_of_dragonking_zyrtarch.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../../tests/lua/README.md).

@@ -43,4 +43,4 @@ Component package under `scripts/game_migrations` containing 5 files (`202311282
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [20251737599334_reset_old_charms.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

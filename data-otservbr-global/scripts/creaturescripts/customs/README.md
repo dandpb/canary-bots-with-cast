@@ -23,4 +23,4 @@ Component package under `scripts/creaturescripts/customs` containing 2 files (`f
 - Registers RevScript event/spell/type handlers into the server engine via `:register()` [reward_exercise.lua:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

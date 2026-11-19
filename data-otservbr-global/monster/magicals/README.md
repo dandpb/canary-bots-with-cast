@@ -59,4 +59,4 @@ Component package under `monster/magicals` containing 64 files (`animated_feathe
 - Attaches creature event scripts defined in `monster.events` on spawn [candy_horror.lua:monster.events]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../tests/lua/README.md).

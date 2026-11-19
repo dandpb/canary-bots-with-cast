@@ -47,4 +47,4 @@ Component package under `monster/quests/the_inquisition` containing 13 files (`a
 - Registers monster type `Madareth` into the global `Game` engine registry via `mType:register(monster)` [madareth.lua:mType:register]
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [Lua regression guide](../../../../tests/lua/README.md).

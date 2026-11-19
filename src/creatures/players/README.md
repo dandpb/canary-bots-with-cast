@@ -7,7 +7,7 @@ Implements the `Player` entity (`Player`, inheriting `Creature`, `Cylinder`, and
 - `Player`, `Player::PlayerLock`, `Player::SkullTimeInfo`, `Player::AddItemBatchOptions`, `CharmInfo`, `OpenContainer` (`[player.hpp:Player]`, `[player.hpp:Player::PlayerLock]`, `[player.hpp:CharmInfo]`, `[player.hpp:OpenContainer]`, `[player.cpp:Player]`): Core player entity managing lifecycle (`createNativeBot`, `setID`, `addList`, `removeList`, `removePlayer`, `spawn`, `despawn`, `death`), combat and skills (`blockHit`, `doAttacking`, `drainHealth`, `drainMana`, `addManaSpent`, `addSkillAdvance`, `calculateFlatDamageHealing`, `getMitigation`), Monk mechanics (`getVirtue`, `setVirtue`, `setSerene`, `buildHarmony`, `spendHarmony`, `getHarmonyDamage`, `getMantra`), inventory/stash/depot cylinders (`queryAdd`, `addItemBatch`, `addItemBatchToPaginedContainer` with optional `staged` item output vector, `stowItem`, `withdrawItem`, `requestDepotItems`, `retrieveAllItemsFromDepotSearch`), Exaltation Forge (`forgeFuseItems`, `forgeTransferItemTier`, `forgeResourceConversion`), cast viewer & visual replay fan-out (`setCastBroadcasting`, `addCastViewer`, `removeCastViewer`, `forwardToCastViewers`, `getCastViewerCount`, `setSyntheticCastViewers`, `visualReplayEncoder`, `hasVisualReplayOutput`, `stopVisualReplay`), and component accessors (`wheel()`, `achiev()`, `badge()`, `title()`, `cyclopedia()`, `forgeHistory()`, `vip()`, `animusMastery()`, `attachedEffects()`, `storage()`).
 - `HighscoreCategory` (`[highscore_category.hpp:HighscoreCategory]`): Name and ID pair representing a highscore leaderboard category.
 - `ItemsTierKey`, `ItemsTierCountList`, `TierCountPairHash` (`[stash_definitions.hpp:ItemsTierKey]`, `[stash_definitions.hpp:ItemsTierCountList]`, `[stash_definitions.hpp:TierCountPairHash]`): Hash map types keying item counts by `(itemId, tier)` for depot, inbox, and stash summaries.
-- [account](./account/README.md): Process-local per-account concurrency guard (`AccountLocker`, `AccountLock`).
+- [account](../../account/README.md): Authentication, account records, and character lists.
 - [animus_mastery](./animus_mastery/README.md): Monster soul/animus mastery tracking and experience bonus calculation (`AnimusMastery`).
 - [bot](./bot/README.md): Autonomous player bot engine (`IBotEngine`, `BotEngine`, `BotEngineLoader`), pathfinding (`botnav`), and pilot brain IPC (`botbrain`).
 - [cast](./cast/README.md): Asynchronous per-GUID human caster `cast_broadcasters` SQL publisher (`CastPublisher`, `g_castPublisher`).
@@ -31,4 +31,4 @@ Implements the `Player` entity (`Player`, inheriting `Creature`, `Cylinder`, and
 - Invokes Lua creature, player, party, and storage events/callbacks (`Events`, `EventsCallbacks`) and triggers database/KV persistence via `IOLoginData`, `SaveManager`, and player components.
 
 ## Verification
-- Run: `ctest --test-dir build --output-on-failure`
+- See the [C++ build and test guide](../../../tests/README.md#running-tests).
