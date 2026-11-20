@@ -104,12 +104,20 @@ class Supervisor:
             not failure
             or snapshot.bot.health < 80
             or snapshot.world != failure["world"]
-            or time.time() >= failure["until"]
         ):
             return False
         x, y, floor = snapshot.bot.position
         old_x, old_y, old_floor = map(int, failure["position"])
         return floor == old_floor and max(abs(x - old_x), abs(y - old_y)) <= 3
+
+    def block_retreat(self, snapshot: Observation) -> None:
+        bot = snapshot.bot.id
+        self.state(bot)["retreat_route_failure"] = {
+            "world": snapshot.world,
+            "position": snapshot.bot.position,
+            "until": time.time() + 300,  # Keep the persisted deadline readable by older workers.
+        }
+        self.save(bot)
 
     def managed(self, bot: int) -> bool:
         state = self.state(bot)
@@ -411,12 +419,7 @@ class Supervisor:
             and outcome.status == "failed"
             and outcome.reason == "return_route_unavailable"
         ):
-            state["retreat_route_failure"] = {
-                "world": outcome.world,
-                "position": snapshot.bot.position,
-                "until": time.time() + 300,
-            }
-            self.save(outcome.bot_id)
+            self.block_retreat(snapshot)
         if (
             snapshot is not None
             and snapshot.autonomous
@@ -580,56 +583,10 @@ class Supervisor:
                 "retreat_stall",
                 "Retirada sem avanço de posição por cinco minutos, mesmo que haja combate ou XP.",
             )
-            anchor = state.get("retreat_retry_anchor")
-            if (
-                anchor is None
-                and state.get("retreat_retries")
-                and state.get("world") == snapshot.world
-            ):
-                anchor = list(position)
-                state["retreat_retry_anchor"] = anchor
-                state["retreat_retry_world"] = snapshot.world
-                self.save(bot)
-            if (
-                state.get("retreat_retry_world") != snapshot.world
-                or anchor is None
-                or position[2] != anchor[2]
-                or max(abs(position[0] - anchor[0]), abs(position[1] - anchor[1])) > 3
-            ):
-                state["retreat_retry_anchor"] = list(position)
-                state["retreat_retry_world"] = snapshot.world
-                state["retreat_retries"] = []
-                self.save(bot)
-            attempts = state.get("retreat_retries", [])
-            if (
-                state.get("automatic", True)
-                and len(attempts) < 2
-                and (not attempts or now - attempts[-1] >= 600)
-                and "retreat" in {item.id for item in self.offers(snapshot).actions}
-            ):
-                try:
-                    self.command(bot, "retreat", {}, automatic_recovery=True)
-                except ValueError:
-                    self.event(
-                        bot,
-                        "waiting",
-                        "A nova tentativa da retirada aguarda uma oferta atual.",
-                    )
-                else:
-                    state["retreat_retries"] = attempts + [now]
-                    self.save(bot)
-                    self.event(
-                        bot,
-                        "retreat_retry",
-                        "Retirada solicitada novamente; aguardando confirmação do servidor.",
-                    )
-            return
         stagnant = now - progress["since"] >= 300
-        working = snapshot.bot.objective_running and snapshot.bot.objective in {
-            "hunt",
-            "retreat",
-            "resupply",
-        }
+        working = snapshot.bot.objective_running and (
+            snapshot.bot.objective in {"hunt", "resupply"} or navigation_stalled
+        )
         if stagnant and working and now - state.get("last_alert", 0) >= 300:
             state["last_alert"] = now
             self.save(bot)
@@ -653,6 +610,8 @@ class Supervisor:
                 )
                 < 2
             ):
+                if navigation_stalled:
+                    self.block_retreat(snapshot)
                 try:
                     self.command(bot, "recover", {}, automatic_recovery=True)
                 except ValueError:
