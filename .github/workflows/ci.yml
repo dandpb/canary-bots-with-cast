@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect C++-relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      cpp: ${{ steps.detect.outputs.cpp }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - id: detect
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+            echo "cpp=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags origin "$BASE_SHA"
+          if git diff --name-only "$BASE_SHA" HEAD | grep -qE '^(src/|cmake/|tests/unit/|CMakeLists\.txt|CMakePresets\.json|vcpkg\.json|\.github/workflows/)'; then
+            echo "cpp=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cpp=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+
+  lua:
+    name: Lua standalone (Lua 5.1 + LuaJIT)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install interpreters
+        run: sudo apt-get update && sudo apt-get install -y lua5.1 luajit
+      - name: Run standalone regression tests
+        run: |
+          set -euo pipefail
+          for lua in lua5.1 luajit; do
+            for t in tests/lua/bot_startup_test.lua tests/lua/global_server_save_test.lua tools/bot_brain/test_startup_batches.lua; do
+              echo "== $lua $t"
+              "$lua" "$t"
+            done
+          done
+
+  python:
+    name: Python (brain + fixtures, ruff, mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: deployment/brain/requirements-dev.lock
+      - name: Install LuaJIT (fixture harness requirement)
+        run: sudo apt-get update && sudo apt-get install -y luajit
+      - name: Install locked dependencies
+        run: |
+          python -m pip install -r deployment/brain/requirements-dev.lock
+          python -m pip install --no-deps -e deployment/brain
+          python -m pip install "opentelemetry-sdk==1.45.2" "opentelemetry-exporter-otlp-proto-http==1.45.2"
+      - name: Brain test suite
+        working-directory: deployment/brain
+        run: python -m pytest tests -q
+      - name: Fixture test suite (offline)
+        # test_m5_persistence_contract.py needs an ARM64 LuaJIT process with
+        # libcrypto.so.3; runners are AMD64 (tests/fixture/README.md).
+        run: python -m pytest tests/fixture --ignore=tests/fixture/test_m5_persistence_contract.py -q
+      - name: Ruff lint
+        run: ruff check deployment/brain/src deployment/brain/tests
+      - name: Ruff format
+        run: ruff format --check deployment/brain/src deployment/brain/tests
+      - name: Mypy (strict)
+        working-directory: deployment/brain
+        run: mypy src
+
+  cpp:
+    name: C++ build + unit tests (Linux x64, GCC 13)
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      CC: gcc-13
+      CXX: g++-13
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/.vcpkg-bincache,readwrite"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain
+        run: |
+          set -euo pipefail
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install -y gcc-13 g++-13 ninja-build ccache pkg-config autoconf automake libtool binutils
+
+      - name: vcpkg baseline
+        run: echo "VCPKG_COMMIT=$(jq -r '."builtin-baseline"' vcpkg.json)" >> "$GITHUB_ENV"
+
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-bincache
+          key: vcpkg-ci-linux-x64-gcc13-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+          restore-keys: vcpkg-ci-linux-x64-gcc13-${{ env.VCPKG_COMMIT }}-
+
+      - name: Count the cached vcpkg packages
+        id: vcpkg-count
+        run: echo "before=$(find .vcpkg-bincache -type f 2>/dev/null | wc -l)" >> "$GITHUB_OUTPUT"
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2.20
+        with:
+          max-size: "2G"
+          key: ccache-ci-linux-x64-gcc13
+          restore-keys: ccache-ci-linux-x64
+
+      - uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitURL: "https://github.com/microsoft/vcpkg.git"
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT }}
+
+      - name: Configure (tests enabled)
+        run: |
+          set -euo pipefail
+          mkdir -p .vcpkg-bincache
+          cmake --preset linux-release-enabled-tests -DTOGGLE_BIN_FOLDER=ON \
+            -DOPTIONS_ENABLE_SCCACHE=OFF -DOPTIONS_ENABLE_CCACHE=ON
+
+      - name: Count the vcpkg packages after configure
+        id: vcpkg-count-after
+        if: always()
+        run: echo "after=$(find .vcpkg-bincache -type f 2>/dev/null | wc -l)" >> "$GITHUB_OUTPUT"
+
+      # Saved whenever vcpkg built something new, even if configure or the build failed.
+      - name: Save the vcpkg binary cache
+        if: always() && steps.vcpkg-count.outputs.before != steps.vcpkg-count-after.outputs.after
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-bincache
+          key: vcpkg-ci-linux-x64-gcc13-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}-${{ github.run_id }}
+
+      - name: Build canary, bot_engine and canary_ut
+        run: |
+          set -euo pipefail
+          # Unity + LTO TUs need ~2.5-3 GB each: size the parallelism by RAM, not by cores.
+          JOBS=$(( $(free -g | awk '/^Mem:/{print $2}') / 3 )); [ "$JOBS" -ge 1 ] || JOBS=1
+          [ "$JOBS" -le "$(nproc)" ] || JOBS=$(nproc)
+          echo "nproc=$(nproc) RAM=$(free -g | awk '/^Mem:/{print $2}')G -> $JOBS jobs"
+          cmake --build --preset linux-release-enabled-tests --parallel "$JOBS" \
+            --target canary bot_engine canary_ut 2>&1 | tee build.log
+          # The symbol gate (cmake/check_bot_engine_symbols.cmake) runs as bot_engine's
+          # POST_BUILD step and deletes the library on failure; prove it actually ran.
+          grep -F "bot_engine: zero GNU_UNIQUE dynamic symbols" build.log
+
+      - name: Run the unit suite
+        run: |
+          set -euo pipefail
+          UT=$(find build/linux-release-enabled-tests -name canary_ut -type f | head -n 1)
+          [ -n "$UT" ] || { echo "::error::canary_ut binary not found"; exit 1; }
+          # Fixtures locate the repository by walking up from the working directory.
+          "$GITHUB_WORKSPACE/$UT"
