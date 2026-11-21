@@ -3724,7 +3724,7 @@ std::string BotEngine::executeCommand(const std::string& botName, const std::str
 // !!! this drain loop existed and was correct, but the reload path never reached it.
 void BotEngine::cancelPendingDispatcherEvents() {
 	if (brain_) {
-		for (const auto guid : brain_->roster) {
+		for (const auto guid : brain_->allPilots()) {
 			if (auto bot = getBotState(guid)) {
 				finishBrain(*bot, "cancelled", "engine_unloaded");
 			}

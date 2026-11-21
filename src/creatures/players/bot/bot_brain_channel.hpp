@@ -101,7 +101,7 @@ namespace botbrain {
 
 		std::vector<nlohmann::json> receive() const {
 			std::vector<nlohmann::json> packets;
-			for (int count = 0; count < 12; ++count) {
+			for (int count = 0; count < 32; ++count) {
 				std::array<char, 32769> buffer {};
 				sockaddr_un sender {};
 				socklen_t length = sizeof(sender);
@@ -305,15 +305,29 @@ namespace botbrain {
 		std::unique_ptr<Channel> channel;
 		std::string mode = "disabled", world;
 		std::vector<uint32_t> roster;
+		std::vector<uint32_t> dynamicPartyRoster;
 		uint32_t autonomous = 0;
 		bool keepAwake = false;
+		bool humanPartyDynamic = false;
+		size_t maxHumanPartyBots = 10;
 		std::unordered_map<uint32_t, Session> sessions;
 		int64_t heartbeat = 0;
 		int64_t lastHello = 0;
 		uint64_t messageSequence = 0;
 
+		bool hasPilot(uint32_t guid) const {
+			return std::find(roster.begin(), roster.end(), guid) != roster.end()
+				|| std::find(dynamicPartyRoster.begin(), dynamicPartyRoster.end(), guid) != dynamicPartyRoster.end();
+		}
+
+		std::vector<uint32_t> allPilots() const {
+			std::vector<uint32_t> all = roster;
+			all.insert(all.end(), dynamicPartyRoster.begin(), dynamicPartyRoster.end());
+			return all;
+		}
+
 		void beginTelemetryTick() {
-			for (const auto guid : roster) {
+			for (const auto guid : allPilots()) {
 				sessions[guid].delivery.beginTick();
 			}
 		}
@@ -322,7 +336,7 @@ namespace botbrain {
 			if (!channel) {
 				return;
 			}
-			for (const auto guid : roster) {
+			for (const auto guid : allPilots()) {
 				if (auto session = sessions.find(guid); session != sessions.end()) {
 					session->second.delivery.flush(*channel);
 				}
@@ -378,6 +392,11 @@ namespace botbrain {
 			}
 			autonomous = config.value("autonomous_bot", 0U);
 			keepAwake = config.value("keep_awake", false);
+			humanPartyDynamic = config.value("dynamic_human_party", false);
+			maxHumanPartyBots = config.value("max_human_party_bots", static_cast<size_t>(10));
+			if (humanPartyDynamic && (maxHumanPartyBots == 0 || maxHumanPartyBots > 10)) {
+				throw std::runtime_error("max_human_party_bots must be between 1 and 10");
+			}
 			if (autonomous && std::find(roster.begin(), roster.end(), autonomous) == roster.end()) {
 				throw std::runtime_error("autonomous bot must belong to the pilot roster");
 			}

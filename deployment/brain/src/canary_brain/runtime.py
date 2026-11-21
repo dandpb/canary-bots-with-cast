@@ -43,6 +43,8 @@ class Configuration(BaseModel):
     budget_file: Path | None = None
     credential_file: Path | None = None
     bots: list[int] = Field(min_length=1, max_length=3)
+    dynamic_human_party: bool = False
+    max_human_party_bots: int = Field(default=10, ge=1, le=10)
     monthly_usd: int = Field(default=50, ge=1, le=50)
     decision_timeout: float = Field(default=1.2, ge=0.1, le=30)
     learning: bool = False
@@ -61,6 +63,12 @@ class Configuration(BaseModel):
 
     @model_validator(mode="after")
     def isolated_recording(self) -> "Configuration":
+        if self.dynamic_human_party and (
+            self.benchmark_supervision or self.recording is not None
+        ):
+            raise ValueError(
+                "dynamic_human_party cannot be enabled with benchmark recording or supervision"
+            )
         if self.benchmark_supervision and (
             self.run_seconds is None or self.recording is None or len(self.bots) != 1
         ):
@@ -141,8 +149,11 @@ def read_credential(path: Path, variable: str = "OPENAI_API_KEY") -> str:
 
 
 class DatagramProtocol(asyncio.DatagramProtocol):
-    def __init__(self, controller: Controller, server: str) -> None:
+    def __init__(
+        self, controller: Controller, server: str, *, max_tasks: int = 32
+    ) -> None:
         self.controller, self.server = controller, server
+        self.max_tasks = max(32, max_tasks)
         self.tasks: set[asyncio.Task[None]] = set()
 
     def datagram_received(self, data: bytes, address: Any) -> None:
@@ -151,7 +162,7 @@ class DatagramProtocol(asyncio.DatagramProtocol):
         native = self.controller.native_run
         if native and not native.check_peer(self.server):
             return
-        if len(data) > 32768 or len(self.tasks) >= 32:
+        if len(data) > 32768 or len(self.tasks) >= self.max_tasks:
             if native:
                 native.abort("worker_ingress_overflow")
             return
@@ -263,6 +274,17 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                         ),
                     },
                 )
+        max_active_bots = max(
+            3,
+            len(configuration.bots)
+            + (
+                configuration.max_human_party_bots
+                if configuration.dynamic_human_party
+                else 0
+            ),
+        )
+        fast_slots = min(max(3, max_active_bots), 10)
+        planning_slots = 3 if configuration.dynamic_human_party else 1
         if configuration.provider == "openai":
             if configuration.credential_file is None:
                 raise ValueError("OpenAI provider requires a private credential file")
@@ -278,6 +300,8 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 configuration.decision_timeout,
                 recorder=recorder,
                 run_cap=configuration.run_cap_nanousd,
+                fast_slots=fast_slots,
+                planning_slots=planning_slots,
             )
         elif configuration.provider == "litellm":
             if configuration.credential_file is None or configuration.gateway is None:
@@ -306,6 +330,8 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                     gateway=configuration.responses_gateway,
                     recorder=recorder,
                     run_cap=configuration.run_cap_nanousd,
+                    fast_slots=fast_slots,
+                    planning_slots=planning_slots,
                 )
             provider = GatewayProvider(
                 ledger,
@@ -315,6 +341,8 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
                 responses=responses,
                 recorder=recorder,
                 run_cap=configuration.run_cap_nanousd,
+                fast_slots=fast_slots,
+                planning_slots=planning_slots,
             )
         else:
             provider = FakeProvider()
@@ -354,6 +382,8 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
             native_source_revision=configuration.native_source_revision
             if configuration.benchmark_supervision
             else None,
+            dynamic_human_party=configuration.dynamic_human_party,
+            max_active_bots=max_active_bots,
         )
         if configuration.memory_mode != "existing":
             import random
@@ -362,7 +392,9 @@ async def run(configuration: Configuration, stop: asyncio.Event | None = None) -
         controller = active_controller
         loop = asyncio.get_running_loop()
         transport, protocol = await loop.create_datagram_endpoint(
-            lambda: DatagramProtocol(active_controller, server),
+            lambda: DatagramProtocol(
+                active_controller, server, max_tasks=max(32, max_active_bots * 4)
+            ),
             family=socket.AF_UNIX,
             local_addr=str(endpoint),
         )

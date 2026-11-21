@@ -59,11 +59,15 @@ class Controller:
         benchmark_stops: Stops | None = None,
         require_telemetry_delivery: bool = False,
         native_source_revision: str | None = None,
+        dynamic_human_party: bool = False,
+        max_active_bots: int = 3,
     ) -> None:
         if mode not in {"shadow", "active"}:
             raise ValueError("controller mode must be shadow or active")
         self.store, self.model, self.send, self.mode = store, model, send, mode
         self.roster = roster
+        self.dynamic_human_party = dynamic_human_party
+        self.max_active_bots = max(3, max_active_bots)
         self.policy = Policy(store, epsilon=exploration)
         self.learning = learning
         self.recorder, self.memory_mode, self.observe_only = (
@@ -76,6 +80,7 @@ class Controller:
         self.bridge_ready = not (require_benchmark_bridge or require_telemetry_delivery)
         self.benchmark_stops = benchmark_stops
         self.latest: dict[int, Observation] = {}
+        self.last_seen_monotonic: dict[int, float] = {}
         self.pending: dict[tuple[int, str], asyncio.Task[None]] = {}
         self.seen: deque[str] = deque(maxlen=512)
         self.last_decision: dict[int, tuple[float, str]] = {}
@@ -226,7 +231,18 @@ class Controller:
         if not self.bridge_ready:
             return
         bot = snapshot.bot.id
-        if self.roster is not None and bot not in self.roster:
+        in_static = self.roster is None or bot in self.roster
+        in_human_party = (
+            self.dynamic_human_party
+            and snapshot.party is not None
+            and snapshot.party.leader_id > 0
+        )
+        if not in_static and not in_human_party:
+            if bot in self.latest:
+                self.latest.pop(bot, None)
+                self.last_seen_monotonic.pop(bot, None)
+                self.last_decision.pop(bot, None)
+                self.leader_message.pop(bot, None)
             return
         self._world(snapshot.world)
         previous_observation = self.latest.get(bot)
@@ -237,9 +253,31 @@ class Controller:
             and snapshot.sequence <= previous_observation.sequence
         ):
             return
-        if len(self.latest) >= 3 and bot not in self.latest:
+        now_mono = time.monotonic()
+        if (
+            self.dynamic_human_party
+            and len(self.latest) >= self.max_active_bots
+            and bot not in self.latest
+        ):
+            static_roster = self.roster or set()
+            stale = [
+                key
+                for key, obs in self.latest.items()
+                if key not in static_roster
+                and (
+                    obs.party is None
+                    or now_mono - self.last_seen_monotonic.get(key, 0.0) > 10.0
+                )
+            ]
+            for key in stale:
+                self.latest.pop(key, None)
+                self.last_seen_monotonic.pop(key, None)
+                self.last_decision.pop(key, None)
+                self.leader_message.pop(key, None)
+        if len(self.latest) >= self.max_active_bots and bot not in self.latest:
             return
         self.latest[bot] = snapshot
+        self.last_seen_monotonic[bot] = now_mono
         if self.benchmark_stops:
             self.benchmark_stops.observe(snapshot.model_dump(), time.monotonic())
         if self.store.get("run_clock", "start") is None:
@@ -380,6 +418,7 @@ class Controller:
             task.cancel()
         self.pending.clear()
         self.latest.clear()
+        self.last_seen_monotonic.clear()
         self.seen.clear()
         self.last_decision.clear()
         self.leader_message.clear()
@@ -437,7 +476,8 @@ class Controller:
                 return None
             if not operator and self.supervisor.managed(snapshot.bot.id):
                 return None
-        if len(self.store.records("pending", 25)) >= 24:
+        pending_limit = max(24, self.max_active_bots * 4)
+        if len(self.store.records("pending", pending_limit + 1)) >= pending_limit:
             return None
         intent = intent_for(snapshot, candidate, uuid.uuid4().hex)
         self.record(
@@ -570,12 +610,18 @@ class Controller:
             snapshot = snapshot.model_copy(update={"actions": actions})
             if not snapshot.nearby and snapshot.bot.health >= 50:
                 return
+        now_mono = time.monotonic()
         guides = [
             item.bot.id
             for item in self.latest.values()
             if item.party
             and snapshot.party
             and item.party.leader_id == self.authority(snapshot)
+            and (
+                not self.dynamic_human_party
+                or (self.roster is not None and item.bot.id in self.roster)
+                or now_mono - self.last_seen_monotonic.get(item.bot.id, 0.0) <= 10.0
+            )
         ]
         if guides and snapshot.bot.id != min(guides):
             snapshot = snapshot.model_copy(

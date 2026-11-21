@@ -6,12 +6,15 @@
 
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <array>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace botbrain {
@@ -149,6 +152,206 @@ namespace botbrain {
 			desc += "...";
 		}
 		return desc;
+	}
+
+	struct PartyChatMember {
+		uint32_t guid = 0;
+		std::string name;
+		uint8_t baseVocation = 0;
+	};
+
+	struct PartyChatRoute {
+		std::vector<uint32_t> recipients;
+		std::string message;
+		bool targeted = false;
+	};
+
+	/** Route a human leader `/brain` message to the whole party or targeted bots by name/vocation. */
+	inline PartyChatRoute routePartyBrainChat(const std::string &rawText, const std::vector<PartyChatMember> &members) {
+		auto isSpace = [](unsigned char ch) { return std::isspace(ch) != 0; };
+		auto trimAscii = [&](const std::string &input) -> std::string {
+			size_t start = 0;
+			while (start < input.size() && isSpace(static_cast<unsigned char>(input[start]))) {
+				++start;
+			}
+			size_t end = input.size();
+			while (end > start && isSpace(static_cast<unsigned char>(input[end - 1]))) {
+				--end;
+			}
+			return input.substr(start, end - start);
+		};
+		auto toLowerAscii = [](const std::string &input) -> std::string {
+			std::string out = input;
+			for (char &ch : out) {
+				ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+			}
+			return out;
+		};
+		auto stripTargetPunct = [](std::string token) -> std::string {
+			if (!token.empty() && token.front() == '@') {
+				token.erase(token.begin());
+			}
+			while (!token.empty() && (token.back() == ':' || token.back() == ',')) {
+				token.pop_back();
+			}
+			return token;
+		};
+
+		const std::string trimmed = trimAscii(rawText);
+		if (trimmed.empty() || members.empty()) {
+			return {};
+		}
+
+		std::vector<uint32_t> allRecipients;
+		allRecipients.reserve(members.size());
+		for (const auto &member : members) {
+			allRecipients.push_back(member.guid);
+		}
+
+		// Priority 1: match full bot name prefix (longest names first) + whitespace + message.
+		const std::string body = (!trimmed.empty() && trimmed.front() == '@') ? trimAscii(trimmed.substr(1)) : trimmed;
+		const std::string lowerBody = toLowerAscii(body);
+		std::vector<const PartyChatMember*> byNameLength;
+		byNameLength.reserve(members.size());
+		for (const auto &member : members) {
+			if (!member.name.empty()) {
+				byNameLength.push_back(&member);
+			}
+		}
+		std::sort(byNameLength.begin(), byNameLength.end(), [](const PartyChatMember* a, const PartyChatMember* b) {
+			return a->name.size() > b->name.size();
+		});
+		for (const auto* member : byNameLength) {
+			const std::string lowerName = toLowerAscii(trimAscii(member->name));
+			if (lowerName.empty() || lowerBody.size() <= lowerName.size() || lowerBody.rfind(lowerName, 0) != 0) {
+				continue;
+			}
+			size_t after = lowerName.size();
+			if (after < body.size() && (body[after] == ':' || body[after] == ',')) {
+				++after;
+			}
+			if (after >= body.size() || !isSpace(static_cast<unsigned char>(body[after]))) {
+				continue;
+			}
+			const std::string rest = trimAscii(body.substr(after));
+			if (rest.empty()) {
+				continue;
+			}
+			std::vector<uint32_t> matched;
+			for (const auto &candidate : members) {
+				if (toLowerAscii(trimAscii(candidate.name)) == lowerName) {
+					matched.push_back(candidate.guid);
+				}
+			}
+			return { std::move(matched), rest, true };
+		}
+
+		// Priority 2: inspect first token when followed by a non-empty message.
+		size_t ws = 0;
+		while (ws < trimmed.size() && !isSpace(static_cast<unsigned char>(trimmed[ws]))) {
+			++ws;
+		}
+		const std::string rest = ws < trimmed.size() ? trimAscii(trimmed.substr(ws)) : "";
+		if (!rest.empty()) {
+			const std::string token = stripTargetPunct(toLowerAscii(trimmed.substr(0, ws)));
+			static constexpr std::array<const char*, 4> kGroupAliases { "all", "todos", "grupo", "party" };
+			if (std::find(kGroupAliases.begin(), kGroupAliases.end(), token) != kGroupAliases.end()) {
+				return { std::move(allRecipients), rest, false };
+			}
+
+			// 2b. First name of a bot in the party.
+			std::vector<uint32_t> firstNameMatched;
+			for (const auto &member : members) {
+				const std::string lowerMemberName = toLowerAscii(trimAscii(member.name));
+				size_t nameEnd = 0;
+				while (nameEnd < lowerMemberName.size() && !isSpace(static_cast<unsigned char>(lowerMemberName[nameEnd]))) {
+					++nameEnd;
+				}
+				if (nameEnd > 0 && lowerMemberName.substr(0, nameEnd) == token) {
+					firstNameMatched.push_back(member.guid);
+				}
+			}
+			if (!firstNameMatched.empty()) {
+				return { std::move(firstNameMatched), rest, true };
+			}
+
+			// 2c. Base vocation aliases.
+			uint8_t targetVocation = 0;
+			static constexpr std::array<const char*, 6> kSorcAliases { "sorcerer", "sorcerers", "sorc", "sorcs", "ms", "mss" };
+			static constexpr std::array<const char*, 8> kDruidAliases { "druid", "druids", "druida", "druidas", "ed", "eds", "healer", "healers" };
+			static constexpr std::array<const char*, 8> kPaladinAliases { "paladin", "paladins", "paladino", "paladinos", "pally", "pala", "rp", "rps" };
+			static constexpr std::array<const char*, 8> kKnightAliases { "knight", "knights", "kina", "kinas", "ek", "eks", "tank", "tanks" };
+			if (std::find(kSorcAliases.begin(), kSorcAliases.end(), token) != kSorcAliases.end()) {
+				targetVocation = 1;
+			} else if (std::find(kDruidAliases.begin(), kDruidAliases.end(), token) != kDruidAliases.end()) {
+				targetVocation = 2;
+			} else if (std::find(kPaladinAliases.begin(), kPaladinAliases.end(), token) != kPaladinAliases.end()) {
+				targetVocation = 3;
+			} else if (std::find(kKnightAliases.begin(), kKnightAliases.end(), token) != kKnightAliases.end()) {
+				targetVocation = 4;
+			}
+			if (targetVocation != 0) {
+				std::vector<uint32_t> vocMatched;
+				for (const auto &member : members) {
+					if (member.baseVocation == targetVocation) {
+						vocMatched.push_back(member.guid);
+					}
+				}
+				return { std::move(vocMatched), rest, true };
+			}
+		}
+
+		return { std::move(allRecipients), trimmed, false };
+	}
+
+	struct DynamicPartyCandidate {
+		uint32_t guid = 0;
+		uint32_t leaderGuid = 0;
+		bool inStaticRoster = false;
+		bool previouslyDynamic = false;
+	};
+
+	/** Deterministically select non-static human-party bots up to per-party and global caps. */
+	inline std::vector<uint32_t> selectDynamicPartyPilots(
+		const std::vector<DynamicPartyCandidate> &candidates,
+		size_t maxBotsPerParty,
+		size_t maxDynamicTotal
+	) {
+		std::unordered_map<uint32_t, size_t> partyCount;
+		std::vector<DynamicPartyCandidate> dynamicPool;
+		dynamicPool.reserve(candidates.size());
+
+		for (const auto &candidate : candidates) {
+			if (candidate.guid == 0 || candidate.leaderGuid == 0) {
+				continue;
+			}
+			if (candidate.inStaticRoster) {
+				++partyCount[candidate.leaderGuid];
+			} else {
+				dynamicPool.push_back(candidate);
+			}
+		}
+
+		std::sort(dynamicPool.begin(), dynamicPool.end(), [](const DynamicPartyCandidate &a, const DynamicPartyCandidate &b) {
+			if (a.previouslyDynamic != b.previouslyDynamic) {
+				return a.previouslyDynamic > b.previouslyDynamic;
+			}
+			return a.guid < b.guid;
+		});
+
+		std::vector<uint32_t> selected;
+		for (const auto &candidate : dynamicPool) {
+			if (selected.size() >= maxDynamicTotal) {
+				break;
+			}
+			auto &count = partyCount[candidate.leaderGuid];
+			if (count >= maxBotsPerParty) {
+				continue;
+			}
+			++count;
+			selected.push_back(candidate.guid);
+		}
+		return selected;
 	}
 
 	inline nlohmann::json telemetry(const std::string &world, uint32_t guid, uint64_t sequence, int64_t captured, uint64_t deaths, const std::string &phase, bool owned = false) {

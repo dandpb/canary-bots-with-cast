@@ -109,7 +109,7 @@ uint32_t BotEngine::brainPotions(const std::shared_ptr<Player> &player) const {
 
 bool BotEngine::brainOwns(uint32_t guid) const {
 	if (!brain_ || brain_->mode != "active" || botMonoMs() - brain_->heartbeat > 5000
-	    || std::find(brain_->roster.begin(), brain_->roster.end(), guid) == brain_->roster.end()) {
+	    || !brain_->hasPilot(guid)) {
 		return false;
 	}
 	auto session = brain_->sessions.find(guid);
@@ -159,7 +159,7 @@ std::string BotEngine::brainCommand(const std::string &botName, const std::strin
 	}
 	if (command == "reload") {
 		if (brain_) {
-			for (const auto guid : brain_->roster) {
+			for (const auto guid : brain_->allPilots()) {
 				if (auto bot = getBotState(guid)) {
 					finishBrain(*bot, "cancelled", "controller_reloaded");
 				}
@@ -188,10 +188,22 @@ std::string BotEngine::brainCommand(const std::string &botName, const std::strin
 				{ "walk_queue", player ? player->listWalkDir.size() : 0 }, { "pending_walk_pause", bot ? bot->pendingWalkPauseEventId : 0 },
 				{ "floor_change", bot ? static_cast<int>(bot->fcState) : 0 } });
 		}
-		return Json({ { "version", 1 }, { "mode", brain_->mode }, { "world", brain_->world }, { "worker_alive", botMonoMs() - brain_->heartbeat <= 5000 }, { "roster", brain_->roster }, { "sessions", sessions }, { "bridge_tick_p95_us", p95 }, { "bridge_tick_samples", timings.size() } }).dump();
+		return Json({
+			{ "version", 1 },
+			{ "mode", brain_->mode },
+			{ "world", brain_->world },
+			{ "worker_alive", botMonoMs() - brain_->heartbeat <= 5000 },
+			{ "roster", brain_->roster },
+			{ "dynamic_human_party", brain_->humanPartyDynamic },
+			{ "max_human_party_bots", brain_->maxHumanPartyBots },
+			{ "dynamic_party_roster", brain_->dynamicPartyRoster },
+			{ "sessions", sessions },
+			{ "bridge_tick_p95_us", p95 },
+			{ "bridge_tick_samples", timings.size() }
+		}).dump();
 	}
 	if (command == "disable") {
-		for (const auto guid : brain_->roster) {
+		for (const auto guid : brain_->allPilots()) {
 			auto bot = getBotState(guid);
 			if (bot && (botName == "_global" || bot->name == botName)) {
 				finishBrain(*bot, "cancelled", "operator_disabled");
@@ -201,11 +213,14 @@ std::string BotEngine::brainCommand(const std::string &botName, const std::strin
 			brain_.reset();
 			return "Brain disabled; native behavior retained.";
 		}
-		brain_->roster.erase(std::remove_if(brain_->roster.begin(), brain_->roster.end(), [&](uint32_t guid) {
-								 auto bot = getBotState(guid);
-								 return bot && bot->name == botName;
-							 }),
-		                     brain_->roster.end());
+		auto removeByName = [&](std::vector<uint32_t> &target) {
+			target.erase(std::remove_if(target.begin(), target.end(), [&](uint32_t guid) {
+				auto bot = getBotState(guid);
+				return bot && bot->name == botName;
+			}), target.end());
+		};
+		removeByName(brain_->roster);
+		removeByName(brain_->dynamicPartyRoster);
 		return "Selected companion returned to native behavior.";
 	}
 	if (command.rfind("chat ", 0) == 0) {
@@ -219,12 +234,34 @@ std::string BotEngine::brainCommand(const std::string &botName, const std::strin
 			if (!player || player->isBotPlayer()) {
 				return "Entre em uma party com um companheiro inteligente.";
 			}
-			for (const auto guid : brain_->roster) {
-				auto bot = getBotState(guid);
-				if (bot && bot->getPlayer() && player->getParty() && bot->getPlayer()->getParty() == player->getParty()
-				    && brainMessage(guid, sender, command.substr(separator + 1))) {
+			std::vector<botbrain::PartyChatMember> partyMembers;
+			if (auto party = player->getParty()) {
+				for (const auto guid : brain_->allPilots()) {
+					auto bot = getBotState(guid);
+					auto memberPlayer = bot ? bot->getPlayer() : nullptr;
+					if (bot && memberPlayer && memberPlayer->getParty() == party) {
+						partyMembers.push_back({ guid, bot->name, getBaseVocation(bot->vocationId) });
+					}
+				}
+			}
+			if (!partyMembers.empty()) {
+				const auto routed = botbrain::routePartyBrainChat(command.substr(separator + 1), partyMembers);
+				if (routed.recipients.empty()) {
+					return "Nenhum companheiro dessa vocacao esta na sua party.";
+				}
+				size_t delivered = 0;
+				for (const auto guid : routed.recipients) {
+					if (brainMessage(guid, sender, routed.message)) {
+						++delivered;
+					}
+				}
+				if (delivered == 1) {
 					return "Mensagem enviada ao companheiro.";
 				}
+				if (delivered > 1) {
+					return "Mensagem enviada a " + std::to_string(delivered) + " companheiros.";
+				}
+				return "Nenhum companheiro inteligente disponivel.";
 			}
 			if (brain_->autonomous && brainMessage(brain_->autonomous, sender, command.substr(separator + 1))) {
 				return "Mensagem enviada ao bot explorador.";
@@ -490,7 +527,7 @@ void BotEngine::finishBrain(BotState &bot, const std::string &status, const std:
 }
 
 bool BotEngine::brainMessage(uint32_t guid, uint32_t sender, const std::string &text) {
-	if (!brain_ || !brain_->channel || std::find(brain_->roster.begin(), brain_->roster.end(), guid) == brain_->roster.end()) {
+	if (!brain_ || !brain_->channel || !brain_->hasPilot(guid)) {
 		return false;
 	}
 	auto bot = getBotState(guid);
@@ -536,7 +573,6 @@ void BotEngine::tickBrain() {
 	const auto processingStarted = std::chrono::steady_clock::now();
 	const auto now = botMonoMs();
 	const auto packets = brain_->channel->receive();
-	brain_->beginTelemetryTick();
 	// Consume queued heartbeats before evaluating leases. A busy dispatcher may
 	// resume after five seconds even though the independent worker stayed alive.
 	for (const auto &packet : packets) {
@@ -545,11 +581,44 @@ void BotEngine::tickBrain() {
 			brain_->heartbeat = now;
 		}
 	}
+	if (brain_->humanPartyDynamic) {
+		std::vector<botbrain::DynamicPartyCandidate> candidates;
+		for (const auto &bot : bots_) {
+			if (!bot.active || bot.hibernated || bot.state != BotAIState::PARTY) {
+				continue;
+			}
+			auto memberPlayer = bot.getPlayer();
+			if (!memberPlayer || memberPlayer->getHealth() <= 0) {
+				continue;
+			}
+			auto party = memberPlayer->getParty();
+			auto leader = party ? party->getLeader() : nullptr;
+			if (!leader || leader->isBotPlayer() || leader->isRemoved() || leader->getHealth() <= 0
+			    || g_game().getPlayerByID(leader->getID()) != leader) {
+				continue;
+			}
+			const bool inStatic = std::find(brain_->roster.begin(), brain_->roster.end(), bot.guid) != brain_->roster.end();
+			const bool prevDynamic = std::find(brain_->dynamicPartyRoster.begin(), brain_->dynamicPartyRoster.end(), bot.guid) != brain_->dynamicPartyRoster.end();
+			candidates.push_back({ bot.guid, leader->getGUID(), inStatic, prevDynamic });
+		}
+		auto nextDynamic = botbrain::selectDynamicPartyPilots(candidates, brain_->maxHumanPartyBots, brain_->maxHumanPartyBots);
+		for (const auto oldGuid : brain_->dynamicPartyRoster) {
+			if (std::find(nextDynamic.begin(), nextDynamic.end(), oldGuid) == nextDynamic.end()) {
+				if (auto bot = getBotState(oldGuid)) {
+					finishBrain(*bot, "cancelled", "party_left");
+				}
+				brain_->sessions.erase(oldGuid);
+				brainCombat.erase(oldGuid);
+			}
+		}
+		brain_->dynamicPartyRoster = std::move(nextDynamic);
+	}
+	brain_->beginTelemetryTick();
 	if (now - brain_->lastHello >= 1000) {
 		brain_->lastHello = now;
 		brain_->channel->send({ { "version", 1 }, { "type", "hello" }, { "world", brain_->world }, { "capabilities", { { "lifecycle_telemetry", 1 }, { "telemetry_delivery", 1 }, { "telemetry_admission", 1 }, { "telemetry_fence", 1 }, { "keep_awake", brain_->keepAwake } } } });
 	}
-	for (const auto guid : brain_->roster) {
+	for (const auto guid : brain_->allPilots()) {
 		auto bot = getBotState(guid);
 		if (!bot) {
 			auto existing = brain_->sessions.find(guid);
@@ -634,7 +703,7 @@ void BotEngine::tickBrain() {
 				brain_->channel->send(brainOutcome(brain_->world, guid, id, "rejected", "unknown_action"));
 				continue;
 			}
-			if (std::find(brain_->roster.begin(), brain_->roster.end(), guid) == brain_->roster.end()) {
+			if (!brain_->hasPilot(guid)) {
 				continue;
 			}
 			if (type == "telemetry_fence") {

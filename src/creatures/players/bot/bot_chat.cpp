@@ -669,7 +669,7 @@ std::string BotEngine::classifyReplyTrigger(const std::string& text, bool isPm) 
 
 void BotEngine::onPlayerSayNearBots(uint32_t playerId, const Position& pos, const std::string& text) {
 	if (brain_) {
-		for (const auto guid : brain_->roster) {
+		for (const auto guid : brain_->allPilots()) {
 			auto bot = getBotState(guid);
 			if (bot && !bot->hibernated && bot->currentPos.z == pos.z
 			    && Position::getDiagonalDistance(bot->currentPos, pos) <= 7

@@ -2304,7 +2304,7 @@ void BotEngine::forceDeactivateBotForReload(uint32_t guid) {
 }
 
 void BotEngine::pauseBotForDeath(uint32_t guid) {
-	if (brain_ && std::find(brain_->roster.begin(), brain_->roster.end(), guid) != brain_->roster.end()) {
+	if (brain_ && brain_->hasPilot(guid)) {
 		if (auto bot = getBotState(guid)) {
 			finishBrain(*bot, "failed", "death");
 		}

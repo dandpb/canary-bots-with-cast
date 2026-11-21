@@ -114,6 +114,8 @@ class Provider:
         prices: Prices = LUNA_PRICES,
         recorder: Recorder | None = None,
         run_cap: int | None = None,
+        fast_slots: int = 3,
+        planning_slots: int = 1,
     ) -> None:
         self.store, self.client, self.decision_timeout = store, client, decision_timeout
         self.model, self.prices, self.recorder, self.run_cap = (
@@ -123,8 +125,8 @@ class Provider:
             run_cap,
         )
         self.fast_slots, self.planning_slots = (
-            asyncio.Semaphore(3),
-            asyncio.Semaphore(1),
+            asyncio.Semaphore(max(1, fast_slots)),
+            asyncio.Semaphore(max(1, planning_slots)),
         )
         self.backoff: dict[str, tuple[int, float]] = {}
 

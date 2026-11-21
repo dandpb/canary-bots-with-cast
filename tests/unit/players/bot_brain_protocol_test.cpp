@@ -140,3 +140,85 @@ TEST(BotBrainProtocol, FormatsHuntCatalogDescriptionWithDeterministicMetadata) {
 	EXPECT_LE(truncated.size(), 180U);
 	EXPECT_EQ(truncated.substr(truncated.size() - 3), "...");
 }
+
+TEST(BotBrainProtocol, RoutesPartyBrainChatToGroupOrTargetByNameOrVocation) {
+	const std::vector<botbrain::PartyChatMember> members {
+		{ 65001, "Grizzle Alyronia", 4 },
+		{ 65002, "Aegis Stone", 2 },
+		{ 65003, "Lyra Swift", 3 },
+		{ 65004, "Ignis Ember", 2 },
+	};
+
+	const auto broadcast = botbrain::routePartyBrainChat("compra pocoes", members);
+	EXPECT_FALSE(broadcast.targeted);
+	EXPECT_EQ(broadcast.message, "compra pocoes");
+	EXPECT_EQ(broadcast.recipients, (std::vector<uint32_t> { 65001, 65002, 65003, 65004 }));
+
+	const auto explicitGroup = botbrain::routePartyBrainChat("todos recua", members);
+	EXPECT_FALSE(explicitGroup.targeted);
+	EXPECT_EQ(explicitGroup.message, "recua");
+	EXPECT_EQ(explicitGroup.recipients, (std::vector<uint32_t> { 65001, 65002, 65003, 65004 }));
+
+	const auto druidTarget = botbrain::routePartyBrainChat("druid espera", members);
+	EXPECT_TRUE(druidTarget.targeted);
+	EXPECT_EQ(druidTarget.message, "espera");
+	EXPECT_EQ(druidTarget.recipients, (std::vector<uint32_t> { 65002, 65004 }));
+
+	const auto ekColonTarget = botbrain::routePartyBrainChat("ek: compra pots", members);
+	EXPECT_TRUE(ekColonTarget.targeted);
+	EXPECT_EQ(ekColonTarget.message, "compra pots");
+	EXPECT_EQ(ekColonTarget.recipients, (std::vector<uint32_t> { 65001 }));
+
+	const auto rpAtTarget = botbrain::routePartyBrainChat("@rp recua", members);
+	EXPECT_TRUE(rpAtTarget.targeted);
+	EXPECT_EQ(rpAtTarget.message, "recua");
+	EXPECT_EQ(rpAtTarget.recipients, (std::vector<uint32_t> { 65003 }));
+
+	const auto missingSorc = botbrain::routePartyBrainChat("ms foca", members);
+	EXPECT_TRUE(missingSorc.targeted);
+	EXPECT_EQ(missingSorc.message, "foca");
+	EXPECT_TRUE(missingSorc.recipients.empty());
+
+	const auto fullNameTarget = botbrain::routePartyBrainChat("Grizzle Alyronia recua", members);
+	EXPECT_TRUE(fullNameTarget.targeted);
+	EXPECT_EQ(fullNameTarget.message, "recua");
+	EXPECT_EQ(fullNameTarget.recipients, (std::vector<uint32_t> { 65001 }));
+
+	const auto firstNameColon = botbrain::routePartyBrainChat("grizzle: espera", members);
+	EXPECT_TRUE(firstNameColon.targeted);
+	EXPECT_EQ(firstNameColon.message, "espera");
+	EXPECT_EQ(firstNameColon.recipients, (std::vector<uint32_t> { 65001 }));
+
+	const auto firstNameAt = botbrain::routePartyBrainChat("@Aegis compra pots", members);
+	EXPECT_TRUE(firstNameAt.targeted);
+	EXPECT_EQ(firstNameAt.message, "compra pots");
+	EXPECT_EQ(firstNameAt.recipients, (std::vector<uint32_t> { 65002 }));
+
+	const auto bareToken = botbrain::routePartyBrainChat("druid", members);
+	EXPECT_FALSE(bareToken.targeted);
+	EXPECT_EQ(bareToken.message, "druid");
+	EXPECT_EQ(bareToken.recipients, (std::vector<uint32_t> { 65001, 65002, 65003, 65004 }));
+}
+
+TEST(BotBrainProtocol, SelectsDynamicPartyPilotsDeterministicallyUpToCap) {
+	std::vector<botbrain::DynamicPartyCandidate> candidates {
+		{ 65001, 10, true, false },
+		{ 65010, 10, false, false },
+		{ 65020, 10, false, true },
+	};
+	for (uint32_t guid = 65101; guid <= 65112; ++guid) {
+		candidates.push_back({ guid, 10, false, false });
+	}
+	candidates.push_back({ 65200, 20, false, false });
+
+	const auto selected = botbrain::selectDynamicPartyPilots(candidates, 10, 10);
+	EXPECT_EQ(selected.size(), 10U);
+	// Previously dynamic 65020 comes before lower GUIDs 65010 and 65101..
+	EXPECT_EQ(selected.front(), 65020U);
+	// Static 65001 already occupies 1 of party 10's 10 slots, so only 9 dynamic slots remain for leader 10; 10th goes to leader 20.
+	EXPECT_EQ(std::count(selected.begin(), selected.end(), 65001U), 0);
+	EXPECT_EQ(std::count(selected.begin(), selected.end(), 65200U), 1);
+	EXPECT_EQ(std::count(selected.begin(), selected.end(), 65010U), 1);
+	EXPECT_EQ(std::count(selected.begin(), selected.end(), 65107U), 1);
+	EXPECT_EQ(std::count(selected.begin(), selected.end(), 65108U), 0);
+}
