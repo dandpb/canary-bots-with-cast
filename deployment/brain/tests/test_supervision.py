@@ -130,7 +130,9 @@ def test_failed_return_is_withheld_from_the_same_safe_position_only(
     assert "hunt:1" in same_area
 
     restored = Controller(c.store, FakeProvider(), sent.append, "active")
-    assert "retreat" not in {item.id for item in restored.supervisor.offers(snapshot).actions}
+    assert "retreat" not in {
+        item.id for item in restored.supervisor.offers(snapshot).actions
+    }
     new_world = snapshot.model_copy(update={"world": "world-b"})
     assert "retreat" in {item.id for item in c.supervisor.offers(new_world).actions}
 
@@ -182,7 +184,9 @@ def test_real_movement_and_xp_reset_stall_timer_but_counter_reset_does_not(
     assert c.supervisor.view()["bots"][0]["no_progress_seconds"] == 0
 
 
-def test_retreat_stall_alert_does_not_interrupt_combat_with_progress(tmp_path, monkeypatch):
+def test_retreat_stall_alert_does_not_interrupt_combat_with_progress(
+    tmp_path, monkeypatch
+):
     c, snapshot, sent, clock = console(tmp_path, monkeypatch)
     for index in range(61):
         clock[0] += 5
@@ -204,14 +208,17 @@ def test_retreat_stall_alert_does_not_interrupt_combat_with_progress(tmp_path, m
 
 
 @pytest.mark.parametrize("alternative", [True, False])
-def test_stalled_retreat_uses_a_different_eligible_route(tmp_path, monkeypatch, alternative):
+def test_stalled_retreat_uses_a_different_eligible_route(
+    tmp_path, monkeypatch, alternative
+):
     c, snapshot, sent, clock = console(tmp_path, monkeypatch)
     snapshot = snapshot.model_copy(
         update={
             "bot": snapshot.bot.model_copy(update={"objective": "retreat"}),
             "nearby": [],
             "actions": [
-                item for item in snapshot.actions
+                item
+                for item in snapshot.actions
                 if item.id in {"hold", "retreat", "continue"}
                 or (alternative and item.id == "hunt:2")
             ],

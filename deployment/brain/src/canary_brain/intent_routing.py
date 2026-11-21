@@ -23,7 +23,9 @@ def route_probability(
         and math.isfinite(act_threshold)
         and 0.0 <= reject_threshold < act_threshold <= 1.0
     ):
-        raise ValueError("thresholds must satisfy 0.0 <= reject_threshold < act_threshold <= 1.0")
+        raise ValueError(
+            "thresholds must satisfy 0.0 <= reject_threshold < act_threshold <= 1.0"
+        )
     if not math.isfinite(probability) or not 0.0 <= probability <= 1.0:
         raise ValueError("probability must be within [0.0, 1.0]")
     if probability >= act_threshold:
@@ -53,8 +55,14 @@ def clarification_question(
         return "Quer que eu faça isso agora ou só depois da atividade atual?"
 
     by_id = {item.id: item for item in offered_actions}
-    if candidate_id is not None and candidate_id != "continue" and candidate_id in by_id:
-        return f"Você quer confirmar agora a ação {_candidate_label(by_id[candidate_id])}?"
+    if (
+        candidate_id is not None
+        and candidate_id != "continue"
+        and candidate_id in by_id
+    ):
+        return (
+            f"Você quer confirmar agora a ação {_candidate_label(by_id[candidate_id])}?"
+        )
 
     hunts = [item for item in offered_actions if item.action == "hunt"]
     if len(hunts) >= 2:
@@ -69,7 +77,9 @@ def clarification_question(
     return "Não há nenhuma ação elegível agora além de continuar; quer aguardar ou mudar de posição?"
 
 
-def confirm_action_reply(offered_actions: Sequence[Candidate], candidate_id: str) -> str:
+def confirm_action_reply(
+    offered_actions: Sequence[Candidate], candidate_id: str
+) -> str:
     """Return a concise grounded confirmation reply proposing an offered action."""
     by_id = {item.id: item for item in offered_actions}
     item = by_id.get(candidate_id)
@@ -81,7 +91,11 @@ def _int_metric(metrics: Mapping[str, Any] | None, key: str) -> int | None:
     if not metrics or key not in metrics:
         return None
     raw = metrics[key]
-    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not math.isfinite(raw):
+    if (
+        isinstance(raw, bool)
+        or not isinstance(raw, (int, float))
+        or not math.isfinite(raw)
+    ):
         return None
     return round(raw)
 
@@ -101,11 +115,15 @@ def format_factual_outcome(
         return f"{candidate}: aceito pelo servidor ({status}); ainda em andamento, sem conclusão confirmada."
 
     if reason == "supplies_bought_and_party_rejoined":
-        extra = f" (saldo de poções: {supply_delta:+d})" if supply_delta is not None else ""
+        extra = (
+            f" (saldo de poções: {supply_delta:+d})" if supply_delta is not None else ""
+        )
         return f"{candidate}: compra concluída com retorno à party{extra}."
 
     if reason == "supplies_bought":
-        extra = f" (saldo de poções: {supply_delta:+d})" if supply_delta is not None else ""
+        extra = (
+            f" (saldo de poções: {supply_delta:+d})" if supply_delta is not None else ""
+        )
         return f"{candidate}: compra concluída em modo solo, sem retorno de party registrado{extra}."
 
     if reason == "return_route_unavailable":
@@ -117,7 +135,9 @@ def format_factual_outcome(
         return f"{candidate}: {status} (return_route_unavailable); o retorno não foi concluído.{partial}"
 
     if reason == "purchase_incomplete_or_insufficient_funds":
-        return f"{candidate}: falhou ({reason}); compra incompleta ou saldo insuficiente."
+        return (
+            f"{candidate}: falhou ({reason}); compra incompleta ou saldo insuficiente."
+        )
 
     if reason == "hunt_progress" or candidate.startswith("hunt:"):
         parts: list[str] = []

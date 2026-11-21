@@ -596,9 +596,7 @@ async def test_conformance_failure_blocks_campaign_and_preserves_result(
         await pilot.execute(admitted)
 
 
-async def test_attested_hook_is_scoped_to_the_campaign(
-    admitted, monkeypatch
-):
+async def test_attested_hook_is_scoped_to_the_campaign(admitted, monkeypatch):
     experiment = pilot.benchmark.Experiment.model_validate_json(
         admitted.campaign.read_text()
     )
@@ -617,8 +615,14 @@ async def test_attested_hook_is_scoped_to_the_campaign(
             harness.prepare(participant)
             compose = json.loads(harness.compose.read_text())
             seen.append(
-                ({"default": {"internal": compose["networks"]["default"]["internal"]}},
-                 compose["services"]["game"]["volumes"][-1])
+                (
+                    {
+                        "default": {
+                            "internal": compose["networks"]["default"]["internal"]
+                        }
+                    },
+                    compose["services"]["game"]["volumes"][-1],
+                )
             )
         raise RuntimeError("offline simulated failure")
 

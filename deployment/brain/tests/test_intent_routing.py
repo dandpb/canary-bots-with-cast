@@ -47,9 +47,21 @@ def test_route_probability_bands_and_validation() -> None:
 def test_clarification_question_stays_grounded_in_offered_actions() -> None:
     offered = [
         _cand("continue", "continue", "Continue the current useful objective"),
-        _cand("hunt:7", "hunt", "Guide a prudent party hunt: Dark Cathedral -2 (lvl 60-180, dist 85, same floor)"),
-        _cand("hunt:401", "hunt", "Guide a prudent party hunt: Venore East Coryms (lvl 60-240, dist 45, floor 7)"),
-        _cand("resupply", "resupply", "Walk to the town shop to replenish supplies and return"),
+        _cand(
+            "hunt:7",
+            "hunt",
+            "Guide a prudent party hunt: Dark Cathedral -2 (lvl 60-180, dist 85, same floor)",
+        ),
+        _cand(
+            "hunt:401",
+            "hunt",
+            "Guide a prudent party hunt: Venore East Coryms (lvl 60-240, dist 45, floor 7)",
+        ),
+        _cand(
+            "resupply",
+            "resupply",
+            "Walk to the town shop to replenish supplies and return",
+        ),
     ]
 
     deferred = clarification_question("Cola em mim quando terminar a hunt", offered)
@@ -75,13 +87,18 @@ def test_format_factual_outcome_distinguishes_status_and_reasons() -> None:
     assert "ainda em andamento" in accepted
     assert "concluída" not in accepted
 
-    solo = format_factual_outcome("resupply", "completed", "supplies_bought", {"supply_delta": 17})
+    solo = format_factual_outcome(
+        "resupply", "completed", "supplies_bought", {"supply_delta": 17}
+    )
     assert "modo solo" in solo
     assert "sem retorno de party" in solo
     assert "+17" in solo
 
     party = format_factual_outcome(
-        "resupply", "completed", "supplies_bought_and_party_rejoined", {"supply_delta": 38}
+        "resupply",
+        "completed",
+        "supplies_bought_and_party_rejoined",
+        {"supply_delta": 38},
     )
     assert "retorno à party" in party
     assert "+38" in party
@@ -93,7 +110,10 @@ def test_format_factual_outcome_distinguishes_status_and_reasons() -> None:
     assert "+34" in partial_fail
 
     funds = format_factual_outcome(
-        "resupply", "failed", "purchase_incomplete_or_insufficient_funds", {"supply_delta": 0}
+        "resupply",
+        "failed",
+        "purchase_incomplete_or_insufficient_funds",
+        {"supply_delta": 0},
     )
     assert "compra incompleta ou saldo insuficiente" in funds
 
@@ -106,7 +126,9 @@ def test_format_factual_outcome_distinguishes_status_and_reasons() -> None:
 
 
 def test_jev_experiments_loads_slang_clarification_fixtures() -> None:
-    fixtures_path = Path(__file__).resolve().parents[1] / "tools" / "jev_experiment_cases.json"
+    fixtures_path = (
+        Path(__file__).resolve().parents[1] / "tools" / "jev_experiment_cases.json"
+    )
     data = json.loads(fixtures_path.read_text(encoding="utf-8"))
     slang = jev_experiments.intent_cases(data, "slang_clarification")
     all_cases = jev_experiments.intent_cases(data, "all")
@@ -131,7 +153,12 @@ def test_confirm_action_reply_is_grounded_and_provisional() -> None:
     assert confirm_action_reply(offered, "resupply").endswith("resupply.")
 
 
-def _decisions_client(answers: list[dict[str, object]], *, model: str = "gpt-6-luna", deployment: str | None = None):
+def _decisions_client(
+    answers: list[dict[str, object]],
+    *,
+    model: str = "gpt-6-luna",
+    deployment: str | None = None,
+):
     calls: list[dict[str, object]] = []
 
     async def create(**kwargs):
@@ -187,7 +214,9 @@ def _multi_hunt_observation() -> dict[str, object]:
     return packet
 
 
-async def test_provider_route_dialogue_acts_on_confident_immediate_command(tmp_path) -> None:
+async def test_provider_route_dialogue_acts_on_confident_immediate_command(
+    tmp_path,
+) -> None:
     answers = [
         {"type": "predicate", "name": "plan", "probability": 0.04},
         {"type": "predicate", "name": "sequence", "probability": 0.03},
@@ -234,7 +263,12 @@ async def test_provider_route_dialogue_clarifies_ambiguous_or_low_confidence(
         {"type": "predicate", "name": "plan", "probability": 0.08},
         {"type": "predicate", "name": "sequence", "probability": 0.05},
         {"type": "predicate", "name": "actionable", "probability": p_actionable},
-        {"type": "choice", "name": "action", "choice": choice, "confidence": confidence},
+        {
+            "type": "choice",
+            "name": "action",
+            "choice": choice,
+            "confidence": confidence,
+        },
     ]
     client, _ = _decisions_client(answers)
     provider = Provider(Store(tmp_path / "brain.db"), client)
@@ -273,19 +307,25 @@ async def test_provider_route_dialogue_defers_to_converse_for_plan_sequence_or_a
     assert route == DialogueRoute("converse", probability=p_actionable)
 
 
-async def test_route_dialogue_bypasses_without_api_call_when_ineligible(tmp_path) -> None:
+async def test_route_dialogue_bypasses_without_api_call_when_ineligible(
+    tmp_path,
+) -> None:
     answers = [
         {"type": "predicate", "name": "plan", "probability": 0.01},
         {"type": "predicate", "name": "sequence", "probability": 0.01},
         {"type": "predicate", "name": "actionable", "probability": 0.99},
         {"type": "choice", "name": "action", "choice": "resupply", "confidence": 0.99},
     ]
-    client, calls = _decisions_client(answers, model="model-a", deployment="deployment-a")
+    client, calls = _decisions_client(
+        answers, model="model-a", deployment="deployment-a"
+    )
     provider = Provider(Store(tmp_path / "brain.db"), client)
     snap = Observation.model_validate(observation())
 
     assert await provider.route_dialogue(snap, "reabastece", False) is None
-    assert await provider.route_dialogue(snap, "reabasteça e depois espere", True) is None
+    assert (
+        await provider.route_dialogue(snap, "reabasteça e depois espere", True) is None
+    )
     assert await provider.route_dialogue(snap, "monta uma estratégia", True) is None
     only_continue = snap.model_copy(update={"actions": [snap.actions[0]]})
     assert await provider.route_dialogue(only_continue, "reabastece", True) is None
@@ -349,7 +389,9 @@ async def test_route_dialogue_bypasses_without_api_call_when_ineligible(tmp_path
     assert projected["recent_dialogue"] == [{"speaker": "human", "text": "oi"}]
 
 
-async def test_controller_dialogue_pre_router_act_clarify_and_fallback(tmp_path) -> None:
+async def test_controller_dialogue_pre_router_act_clarify_and_fallback(
+    tmp_path,
+) -> None:
     class Model:
         def __init__(self, outcome: DialogueRoute | Exception):
             self.outcome = outcome
@@ -384,8 +426,12 @@ async def test_controller_dialogue_pre_router_act_clarify_and_fallback(tmp_path)
     await ctrl_act.drain()
     assert model_act.route_calls == 1
     assert model_act.converse_calls == 0
-    assert any(p.get("type") == "reply" and "resupply" in str(p.get("text")) for p in sent)
-    assert [p["candidate_id"] for p in sent if p.get("type") == "intent"] == ["resupply"]
+    assert any(
+        p.get("type") == "reply" and "resupply" in str(p.get("text")) for p in sent
+    )
+    assert [p["candidate_id"] for p in sent if p.get("type") == "intent"] == [
+        "resupply"
+    ]
     mem = store_act.get("memory", "7:9")
     assert mem is not None and mem["entries"][-1]["speaker"] == "bot"
 
@@ -393,9 +439,13 @@ async def test_controller_dialogue_pre_router_act_clarify_and_fallback(tmp_path)
     sent_clarify: list[dict[str, object]] = []
     store_clarify = Store(tmp_path / "clarify.db")
     model_clarify = Model(
-        DialogueRoute("clarify", "resupply", 0.52, "Você quer confirmar agora a ação resupply?")
+        DialogueRoute(
+            "clarify", "resupply", 0.52, "Você quer confirmar agora a ação resupply?"
+        )
     )
-    ctrl_clarify = Controller(store_clarify, model_clarify, sent_clarify.append, mode="active")
+    ctrl_clarify = Controller(
+        store_clarify, model_clarify, sent_clarify.append, mode="active"
+    )
     pkt2 = observation() | {
         "mode": "active",
         "messages": [{"id": "m-clarify", "player_id": 9, "text": "vai lá"}],
@@ -404,7 +454,10 @@ async def test_controller_dialogue_pre_router_act_clarify_and_fallback(tmp_path)
     await ctrl_clarify.drain()
     assert model_clarify.route_calls == 1
     assert model_clarify.converse_calls == 0
-    assert any(p.get("type") == "reply" and "confirmar" in str(p.get("text")) for p in sent_clarify)
+    assert any(
+        p.get("type") == "reply" and "confirmar" in str(p.get("text"))
+        for p in sent_clarify
+    )
     assert not any(p.get("type") == "intent" for p in sent_clarify)
     assert store_clarify.get("memory", "7:9") is not None
 
@@ -415,7 +468,12 @@ async def test_controller_dialogue_pre_router_act_clarify_and_fallback(tmp_path)
     ):
         sent_fb: list[dict[str, object]] = []
         model_fb = Model(outcome)
-        ctrl_fb = Controller(Store(tmp_path / f"fb-{id(outcome)}.db"), model_fb, sent_fb.append, mode="active")
+        ctrl_fb = Controller(
+            Store(tmp_path / f"fb-{id(outcome)}.db"),
+            model_fb,
+            sent_fb.append,
+            mode="active",
+        )
         pkt3 = observation() | {
             "mode": "active",
             "messages": [{"id": "m-fb", "player_id": 9, "text": "e aí, tudo certo?"}],
@@ -424,7 +482,10 @@ async def test_controller_dialogue_pre_router_act_clarify_and_fallback(tmp_path)
         await ctrl_fb.drain()
         assert model_fb.route_calls == 1
         assert model_fb.converse_calls == 1
-        assert any(p.get("type") == "reply" and p.get("text") == "Fallback converse." for p in sent_fb)
+        assert any(
+            p.get("type") == "reply" and p.get("text") == "Fallback converse."
+            for p in sent_fb
+        )
 
     # 4) Leadership transfer during slow route_dialogue still blocks intent application
     ready = asyncio.Event()
@@ -441,7 +502,9 @@ async def test_controller_dialogue_pre_router_act_clarify_and_fallback(tmp_path)
             raise AssertionError("converse must not be called")
 
     sent_xfer: list[dict[str, object]] = []
-    ctrl_xfer = Controller(Store(tmp_path / "xfer.db"), SlowActModel(), sent_xfer.append, mode="active")
+    ctrl_xfer = Controller(
+        Store(tmp_path / "xfer.db"), SlowActModel(), sent_xfer.append, mode="active"
+    )
     pkt_init = observation() | {
         "mode": "active",
         "messages": [{"id": "m-xfer", "player_id": 9, "text": "compra pots"}],
@@ -458,7 +521,9 @@ async def test_controller_dialogue_pre_router_act_clarify_and_fallback(tmp_path)
     # 5) BudgetExceeded in route_dialogue sends unavailable reply and stops cleanly
     sent_budget: list[dict[str, object]] = []
     model_budget = Model(BudgetExceeded("monthly cap reached"))
-    ctrl_budget = Controller(Store(tmp_path / "budget.db"), model_budget, sent_budget.append, mode="active")
+    ctrl_budget = Controller(
+        Store(tmp_path / "budget.db"), model_budget, sent_budget.append, mode="active"
+    )
     pkt_budget = observation() | {
         "mode": "active",
         "messages": [{"id": "m-budget", "player_id": 9, "text": "compra pots"}],
@@ -466,5 +531,8 @@ async def test_controller_dialogue_pre_router_act_clarify_and_fallback(tmp_path)
     await ctrl_budget.handle(pkt_budget)
     await ctrl_budget.drain()
     assert model_budget.converse_calls == 0
-    assert any(p.get("type") == "reply" and "indisponível" in str(p.get("text")) for p in sent_budget)
+    assert any(
+        p.get("type") == "reply" and "indisponível" in str(p.get("text"))
+        for p in sent_budget
+    )
     assert not any(p.get("type") == "intent" for p in sent_budget)

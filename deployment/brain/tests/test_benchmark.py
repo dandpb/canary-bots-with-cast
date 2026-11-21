@@ -412,6 +412,7 @@ def test_isolated_compose_has_no_production_ports_or_named_volumes(tmp_path):
     native = json.loads((harness.directory / "config/server.json").read_text())
     assert native["mode"] == "shadow" and native["keep_awake"] is True
 
+
 @pytest.mark.parametrize("fault", ["missing", "foreign_record", "conflicting_label"])
 def test_invalid_ownership_precedes_any_compose_mutation(tmp_path, monkeypatch, fault):
     from canary_brain.benchmark import ComposeOwnershipInvalid
@@ -423,10 +424,13 @@ def test_invalid_ownership_precedes_any_compose_mutation(tmp_path, monkeypatch, 
         fixture.owner_file.unlink()
     elif fault == "foreign_record":
         copied_output = config.model_copy(update={"output": config.output / "foreign"})
-        other = DockerFixture(copied_output, copied_output.output / "native-0", "qa:native:0")
+        other = DockerFixture(
+            copied_output, copied_output.output / "native-0", "qa:native:0"
+        )
         other.prepare(config.participants[0])
         fixture.owner_file.write_bytes(other.owner_file.read_bytes())
     else:
+
         def conflicting(*args):
             if args[:2] == ("container", "ls"):
                 return "foreign-container"
@@ -455,7 +459,6 @@ def test_legacy_prepared_attempt_requires_operator_cleanup(tmp_path, monkeypatch
     )
     with pytest.raises(LegacyCleanupRequired, match="legacy_cleanup_required"):
         fixture.recover()
-
 
 
 def test_synthetic_demo_is_labeled_and_portable_report_is_offline(tmp_path):
@@ -575,15 +578,21 @@ async def test_resume_cleans_the_same_project_before_closing_an_interrupted_atte
 @pytest.mark.parametrize(
     "preparation", ["none", "directory", "temporary-receipt", "compose", "completed"]
 )
-async def test_resume_before_ownership_was_persisted(tmp_path, monkeypatch, preparation):
+async def test_resume_before_ownership_was_persisted(
+    tmp_path, monkeypatch, preparation
+):
     config = experiment(tmp_path)
     recording = RecordingStore(config.output / "recording.sqlite3")
     manifest = attempt(config)
     recording.begin(manifest)
-    (config.output / "experiment.json").write_text(json.dumps({
-        "configuration_sha256": manifest.configuration_sha256,
-        "compose_ownership_version": 1,
-    }))
+    (config.output / "experiment.json").write_text(
+        json.dumps(
+            {
+                "configuration_sha256": manifest.configuration_sha256,
+                "compose_ownership_version": 1,
+            }
+        )
+    )
     fixture = DockerFixture(config, config.output / "native-0", manifest.run_id)
     if preparation == "completed":
         recording.finish(manifest.run_id, "completed")
@@ -605,7 +614,9 @@ async def test_resume_before_ownership_was_persisted(tmp_path, monkeypatch, prep
         assert ReplayReader(recording.path).run(manifest.run_id)["status"] == expected
     else:
         await run_campaign(config, live=True)
-        assert ReplayReader(recording.path).run(manifest.run_id)["status"] == "interrupted"
+        assert (
+            ReplayReader(recording.path).run(manifest.run_id)["status"] == "interrupted"
+        )
 
 
 @pytest.mark.parametrize("preparation", ["ownership-only", "env-only", "torn-compose"])
@@ -630,7 +641,9 @@ async def test_resume_during_compose_preparation(
     def inventory(*arguments):
         inspected.append(arguments)
         assert arguments[1] == "ls"
-        return "owned-container" if has_resources and arguments[0] == "container" else ""
+        return (
+            "owned-container" if has_resources and arguments[0] == "container" else ""
+        )
 
     def unexpected_docker(*args, **kwargs):
         pytest.fail("incomplete Compose inputs cannot authorize a Docker operation")
@@ -648,7 +661,9 @@ async def test_resume_during_compose_preparation(
     assert ReplayReader(recording.path).run(manifest.run_id)["status"] == expected
 
 
-def test_interrupted_compose_publication_keeps_previous_definition(tmp_path, monkeypatch):
+def test_interrupted_compose_publication_keeps_previous_definition(
+    tmp_path, monkeypatch
+):
     config = experiment(tmp_path)
     fixture = DockerFixture(config, config.output / "native-0", "qa:native:0")
     fixture.prepare(config.participants[0])

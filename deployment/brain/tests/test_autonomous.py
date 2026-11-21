@@ -285,9 +285,7 @@ async def test_autonomous_strategy_skips_responses_without_multiple_actionable_c
     assert converse_calls == []
 
     # Even with retreat blocked by a prior failure, only continue+hold remain -> still skip converse.
-    controller.supervisor.block_retreat(
-        controller.latest[packet["bot"]["id"]]
-    )
+    controller.supervisor.block_retreat(controller.latest[packet["bot"]["id"]])
     packet["sequence"] += 1
     await controller.handle(packet)
     await controller.drain()

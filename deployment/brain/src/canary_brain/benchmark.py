@@ -244,7 +244,11 @@ def _sync_directory(directory: Path) -> None:
 
 def _publish_text(path: Path, value: str) -> None:
     with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+        mode="w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
     ) as stream:
         temporary = Path(stream.name)
         try:
@@ -325,8 +329,12 @@ class DockerFixture:
     def docker_metadata(*arguments: str) -> str:
         try:
             result = subprocess.run(
-                ("docker", *arguments), cwd="/", capture_output=True,
-                text=True, timeout=20, check=True,
+                ("docker", *arguments),
+                cwd="/",
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=True,
             )
         except (OSError, subprocess.SubprocessError) as error:
             raise ComposeOwnershipInvalid() from error
@@ -338,10 +346,21 @@ class DockerFixture:
             if resource == "container":
                 listing.append("-a")
             ids = set()
-            for label, value in ((COMPOSE_PROJECT_LABEL, self.project), (BENCHMARK_OWNER_LABEL, owner)):
-                ids.update(self.docker_metadata(*listing, "--filter", f"label={label}={value}").split())
+            for label, value in (
+                (COMPOSE_PROJECT_LABEL, self.project),
+                (BENCHMARK_OWNER_LABEL, owner),
+            ):
+                ids.update(
+                    self.docker_metadata(
+                        *listing, "--filter", f"label={label}={value}"
+                    ).split()
+                )
             if resource == "network":
-                ids.update(self.docker_metadata(*listing, "--filter", "name=" + self.project + "_default").split())
+                ids.update(
+                    self.docker_metadata(
+                        *listing, "--filter", "name=" + self.project + "_default"
+                    ).split()
+                )
             for resource_id in sorted(ids):
                 yield resource, resource_id
 
@@ -356,12 +375,17 @@ class DockerFixture:
                 services = compose["services"]
                 networks = compose["networks"]
                 if (
-                    set(services) != {"database", "game"} or set(networks) != {"default"}
+                    set(services) != {"database", "game"}
+                    or set(networks) != {"default"}
                     or compose.get("name", self.project) != self.project
-                    or compose.get("volumes") or networks["default"].get("external")
-                    or networks["default"].get("name", self.project + "_default") != self.project + "_default"
-                    or any(spec["labels"].get(BENCHMARK_OWNER_LABEL) != owner
-                           for spec in [*services.values(), networks["default"]])
+                    or compose.get("volumes")
+                    or networks["default"].get("external")
+                    or networks["default"].get("name", self.project + "_default")
+                    != self.project + "_default"
+                    or any(
+                        spec["labels"].get(BENCHMARK_OWNER_LABEL) != owner
+                        for spec in [*services.values(), networks["default"]]
+                    )
                 ):
                     raise ComposeOwnershipInvalid()
             except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
@@ -369,16 +393,34 @@ class DockerFixture:
         for resource, resource_id in self._docker_resources(owner):
             label_field = ".Config.Labels" if resource == "container" else ".Labels"
             try:
-                labels = json.loads(self.docker_metadata(
-                    resource, "inspect", "--format", "{{json " + label_field + "}}", resource_id,
-                ))
+                labels = json.loads(
+                    self.docker_metadata(
+                        resource,
+                        "inspect",
+                        "--format",
+                        "{{json " + label_field + "}}",
+                        resource_id,
+                    )
+                )
             except ValueError as error:
                 raise ComposeOwnershipInvalid() from error
-            if not isinstance(labels, dict) or any(labels.get(k) != v for k, v in required.items()):
+            if not isinstance(labels, dict) or any(
+                labels.get(k) != v for k, v in required.items()
+            ):
                 raise ComposeOwnershipInvalid()
 
     def command(self, *arguments: str, timeout: int = 900) -> str:
-        if arguments[0] in {"up", "create", "start", "down", "stop", "kill", "exec", "logs", "wait"}:
+        if arguments[0] in {
+            "up",
+            "create",
+            "start",
+            "down",
+            "stop",
+            "kill",
+            "exec",
+            "logs",
+            "wait",
+        }:
             self.validate_docker_ownership()
         result = subprocess.run(
             [
@@ -449,7 +491,7 @@ class DockerFixture:
             + secrets.token_hex(24)
             + "\nMARIADB_ROOT_PASSWORD="
             + secrets.token_hex(24)
-            + "\n"
+            + "\n",
         )
         game: dict[str, Any] = {
             "image": self.experiment.game_image,
@@ -513,10 +555,12 @@ class DockerFixture:
         labels = {BENCHMARK_OWNER_LABEL: owner}
         for service in services.values():
             service["labels"] = labels
-        self.write_compose({
-            "services": services,
-            "networks": {"default": {"labels": labels}},
-        })
+        self.write_compose(
+            {
+                "services": services,
+                "networks": {"default": {"labels": labels}},
+            }
+        )
 
     def write_compose(self, definition: dict[str, Any]) -> None:
         _publish_text(self.compose, canonical(definition))
@@ -561,7 +605,11 @@ class DockerFixture:
         self.command("wait", "game", timeout=210)
 
     def game_running(self) -> bool:
-        return bool(self.command("ps", "--status", "running", "--quiet", "game", timeout=20).strip())
+        return bool(
+            self.command(
+                "ps", "--status", "running", "--quiet", "game", timeout=20
+            ).strip()
+        )
 
     def close(self) -> None:
         if self.started:
@@ -588,13 +636,17 @@ class DockerFixture:
             finally:
                 if self.game_running():
                     if self.stop_requested:
-                        raise RuntimeError("final save pending; the game and database are still available")
+                        raise RuntimeError(
+                            "final save pending; the game and database are still available"
+                        )
                     self.stop_game()
                 self.command(
                     "down", "--remove-orphans", "--timeout", "180", timeout=240
                 )
 
-    def recover(self, *, ownership_expected: bool = False, allow_unprepared: bool = False) -> None:
+    def recover(
+        self, *, ownership_expected: bool = False, allow_unprepared: bool = False
+    ) -> None:
         if not self.owner_file.exists() and not self.owner_file.is_symlink():
             if ownership_expected:
                 # Preparation creates only the directory and receipt temp file before ownership.
@@ -611,7 +663,9 @@ class DockerFixture:
             if self.compose.is_file() and self.env_file.is_file():
                 try:
                     compose = json.loads(self.compose.read_text())
-                    labels = compose.get("networks", {}).get("default", {}).get("labels", {})
+                    labels = (
+                        compose.get("networks", {}).get("default", {}).get("labels", {})
+                    )
                 except (OSError, ValueError, AttributeError) as error:
                     raise ComposeOwnershipInvalid() from error
                 if BENCHMARK_OWNER_LABEL in labels:
@@ -632,7 +686,10 @@ class DockerFixture:
         if inputs_complete:
             self.started = True
             self.close()
-        elif not allow_unprepared or next(self._docker_resources(owner), None) is not None:
+        elif (
+            not allow_unprepared
+            or next(self._docker_resources(owner), None) is not None
+        ):
             raise ComposeOwnershipInvalid()
 
 
@@ -674,7 +731,9 @@ async def run_campaign(
         return await _run_campaign(
             experiment,
             operator_stop,
-            fixture_factory=DockerFixture if fixture_factory is None else fixture_factory,
+            fixture_factory=DockerFixture
+            if fixture_factory is None
+            else fixture_factory,
             worker_runner=run if worker_runner is None else worker_runner,
         )
 
@@ -832,9 +891,7 @@ async def _run_attempt(
         experiment=experiment.name,
         scenario="autonomous-progression",
         participant=participant.name,
-        model=participant.gateway.effective_model
-        if participant.gateway
-        else "none",
+        model=participant.gateway.effective_model if participant.gateway else "none",
         provider=participant.gateway.provider
         if participant.gateway
         else participant.kind,
@@ -918,9 +975,7 @@ async def _run_attempt(
                 raise asyncio.CancelledError("campaign stopped by operator")
             if worker.done():
                 await worker
-                raise RuntimeError(
-                    "worker stopped before creating its private socket"
-                )
+                raise RuntimeError("worker stopped before creating its private socket")
             if time.monotonic() > ready_until:
                 raise TimeoutError("experiment worker did not become ready")
             await asyncio.sleep(0.02)
@@ -941,17 +996,12 @@ async def _run_attempt(
                 break
             clock = Store(state).get("run_clock", "start")
             if time.monotonic() - started > 240 and clock is None:
-                raise ValueError(
-                    "experiment bot observations are missing or stale"
-                )
+                raise ValueError("experiment bot observations are missing or stale")
             if (
                 clock
-                and time.monotonic() - clock["monotonic"]
-                > experiment.seconds + 30
+                and time.monotonic() - clock["monotonic"] > experiment.seconds + 30
             ):
-                raise TimeoutError(
-                    "worker did not stop at its observed horizon"
-                )
+                raise TimeoutError("worker did not stop at its observed horizon")
             bridge = Store(state).get("bridge", "benchmark")
             if bridge is not None and not bridge["ready"]:
                 raise ValueError(
@@ -968,9 +1018,7 @@ async def _run_attempt(
             raise RuntimeError("campaign stopped: recording_gap")
         ending = Store(state).get("run_stop", "end")
         if ending is None:
-            raise RuntimeError(
-                "experiment worker ended without a supervised stop"
-            )
+            raise RuntimeError("experiment worker ended without a supervised stop")
         reason = ending["reason"]
         if reason == "operator_stop" and not Store(state).get(
             "budget_stop", str(experiment.bot_id)
@@ -1005,9 +1053,7 @@ async def _run_attempt(
                 or len(samples) < 2
                 or max(samples) - min(samples) < experiment.seconds * 1000
             ):
-                raise RuntimeError(
-                    "worker completed before the observed horizon"
-                )
+                raise RuntimeError("worker completed before the observed horizon")
             status = "completed"
         else:
             status = "failed"
@@ -1059,8 +1105,7 @@ async def _run_attempt(
                 )
             else:
                 failure.add_note(
-                    "Worker teardown also failed: "
-                    + type(teardown_failure).__name__
+                    "Worker teardown also failed: " + type(teardown_failure).__name__
                 )
         close_task = asyncio.create_task(asyncio.to_thread(harness.close))
         cleanup_error, close_cancellation = await settle_teardown(close_task)
@@ -1072,9 +1117,7 @@ async def _run_attempt(
             and current is not None
             and current.cancelling()
         ):
-            cancellation = asyncio.CancelledError(
-                "campaign cancelled during teardown"
-            )
+            cancellation = asyncio.CancelledError("campaign cancelled during teardown")
         if cancellation is not None:
             status = "interrupted"
         if cleanup_error is not None:

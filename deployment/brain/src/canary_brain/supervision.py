@@ -115,7 +115,8 @@ class Supervisor:
         self.state(bot)["retreat_route_failure"] = {
             "world": snapshot.world,
             "position": snapshot.bot.position,
-            "until": time.time() + 300,  # Keep the persisted deadline readable by older workers.
+            "until": time.time()
+            + 300,  # Keep the persisted deadline readable by older workers.
         }
         self.save(bot)
 
