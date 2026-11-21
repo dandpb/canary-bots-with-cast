@@ -57,9 +57,12 @@ TEST(BotBrainAdmission, OverflowAndDirtySourceCannotQualify) {
 
 TEST(BotBrainAdmission, BoundaryAndDeathUseRealChannelInFifoOrder) {
 	// The session scratch path may exceed sockaddr_un. Resolve an open scratch
-	// directory through procfs, keeping all created files under TMPDIR.
+	// directory through procfs, keeping all created files under TMPDIR (or the
+	// system temp directory when TMPDIR is unset, as on CI runners).
 	const char* root = std::getenv("TMPDIR");
-	ASSERT_NE(root, nullptr);
+	if (root == nullptr) {
+		root = "/tmp";
+	}
 	std::string pattern = std::string(root) + "/native-admission-XXXXXX";
 	ASSERT_NE(mkdtemp(pattern.data()), nullptr);
 	const int directory = open(pattern.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);

@@ -47,3 +47,27 @@ Place the file under the corresponding component in `tests/unit/` or
 GoogleTest's `TEST` or `TEST_F`. For existing examples, see
 [bot brain protocol tests](unit/players/bot_brain_protocol_test.cpp) and
 [database transaction tests](integration/database_transaction_it.cpp).
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on pull requests, pushes to `main` and manual
+dispatch:
+
+- `lua` runs the standalone regressions ([Lua regressions](lua/README.md))
+  under Lua 5.1 and LuaJIT.
+- `python` installs `deployment/brain/requirements-dev.lock` plus the tracing
+  extra, runs the brain suite from `deployment/brain`, the offline fixture
+  suite (the ARM64-only persistence contract is skipped on AMD64 runners, see
+  [isolated QA fixtures](fixture/README.md)), `ruff check`,
+  `ruff format --check` and strict `mypy`. The source-metadata probe test
+  needs cmake, Ninja, a C++ compiler and nlohmann-json; the workflow installs
+  the headers and the runners provide the rest.
+- `cpp` builds `canary`, `bot_engine` and `canary_ut` with the
+  `linux-release-enabled-tests` preset on Ubuntu 22.04/GCC 13 (vcpkg binary
+  cache + ccache) and runs `canary_ut` from the repository root. On pull
+  requests it only runs when the diff touches `src/`, `cmake/`, `tests/unit/`,
+  the CMake/vcpkg files or the workflows themselves; pushes and dispatch
+  always run it.
+
+In-server Lua acceptance and C++ integration tests are not part of CI; they
+need the disposable database and game fixtures described above.
