@@ -20,4 +20,5 @@ enum class AccountErrors_t : uint8_t {
 	InvalidLastDay,
 	LoadingAccount,
 	NotInitialized,
+	CommitUncertain,
 };

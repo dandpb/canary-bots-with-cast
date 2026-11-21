@@ -35,6 +35,7 @@
 #include "game/game.hpp"
 #include "game/modal_window/modal_window.hpp"
 #include "game/scheduling/dispatcher.hpp"
+#include "game/scheduling/save_manager.hpp"
 #include "io/functions/iologindata_load_player.hpp"
 #include "io/io_bosstiary.hpp"
 #include "io/iobestiary.hpp"
@@ -691,6 +692,10 @@ void ProtocolGame::login(const std::string &name, uint32_t accountId, OperatingS
 
 		if (IOMarket::playerHasPendingFill(player->getGUID())) {
 			disconnectClient("A market settlement is being reconciled. Please try again later.");
+			return;
+		}
+		if (g_saveManager().hasPendingLogout(player->getGUID())) {
+			disconnectClient("Your last logout is still being saved. Please try again later.");
 			return;
 		}
 		if (IOBan::isPlayerNamelocked(player->getGUID())) {
@@ -5863,7 +5868,7 @@ void ProtocolGame::sendMarketEnter(uint32_t depotId) {
 		msg.add<uint64_t>(player->getBankBalance());
 	}
 
-	msg.addByte(static_cast<uint8_t>(std::min<uint32_t>(IOMarket::getPlayerOfferCount(player->getGUID()), std::numeric_limits<uint8_t>::max())));
+	msg.addByte(static_cast<uint8_t>(std::min<uint32_t>(IOMarket::getPlayerOfferCount(player->getGUID()).value_or(0), std::numeric_limits<uint8_t>::max())));
 
 	std::shared_ptr<DepotLocker> depotLocker = player->getDepotLocker(depotId);
 	if (!depotLocker) {

@@ -21,6 +21,10 @@ function leaveHouse.onSay(player, words, param)
 		playerPosition:sendMagicEffect(CONST_ME_POFF)
 		return true
 	end
+	if house:hasAuctionEscrow() then
+		player:sendCancelMessage("This house has a pending transfer.")
+		return true
+	end
 
 	-- Move hireling back to lamp
 	local tiles = house:getTiles()
@@ -36,7 +40,10 @@ function leaveHouse.onSay(player, words, param)
 		end
 	end
 
-	house:setNewOwnerGuid(0)
+	if not house:setNewOwnerGuid(0) then
+		player:sendCancelMessage("This house has a pending transfer.")
+		return true
+	end
 	player:sendTextMessage(MESSAGE_EVENT_ADVANCE, "You have successfully left your house.")
 	playerPosition:sendMagicEffect(CONST_ME_POFF)
 	return true

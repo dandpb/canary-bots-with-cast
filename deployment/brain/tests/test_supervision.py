@@ -125,7 +125,14 @@ def test_failed_return_is_withheld_from_the_same_safe_position_only(
     c.supervisor.command(7, "retreat", {})
     assert sent[-1]["candidate_id"] == "retreat"
     clock[0] += 301
-    assert "retreat" in {item.id for item in c.supervisor.offers(snapshot).actions}
+    same_area = {item.id for item in c.supervisor.offers(snapshot).actions}
+    assert "retreat" not in same_area
+    assert "hunt:1" in same_area
+
+    restored = Controller(c.store, FakeProvider(), sent.append, "active")
+    assert "retreat" not in {item.id for item in restored.supervisor.offers(snapshot).actions}
+    new_world = snapshot.model_copy(update={"world": "world-b"})
+    assert "retreat" in {item.id for item in c.supervisor.offers(new_world).actions}
 
 
 def test_stale_state_and_human_party_cannot_be_controlled(tmp_path, monkeypatch):
@@ -175,7 +182,7 @@ def test_real_movement_and_xp_reset_stall_timer_but_counter_reset_does_not(
     assert c.supervisor.view()["bots"][0]["no_progress_seconds"] == 0
 
 
-def test_retreat_stall_is_detected_even_when_combat_grants_xp(tmp_path, monkeypatch):
+def test_retreat_stall_alert_does_not_interrupt_combat_with_progress(tmp_path, monkeypatch):
     c, snapshot, sent, clock = console(tmp_path, monkeypatch)
     for index in range(61):
         clock[0] += 5
@@ -183,10 +190,7 @@ def test_retreat_stall_is_detected_even_when_combat_grants_xp(tmp_path, monkeypa
             update={
                 "nearby": [{"id": 123}],
                 "bot": snapshot.bot.model_copy(
-                    update={
-                        "objective": "retreat",
-                        "xp": 1000 + index,
-                    }
+                    update={"objective": "retreat", "xp": 1000 + index}
                 ),
             }
         )
@@ -196,40 +200,50 @@ def test_retreat_stall_is_detected_even_when_combat_grants_xp(tmp_path, monkeypa
         row["kind"] == "retreat_stall" for _, row in c.store.records("operator_event")
     )
     assert c.supervisor.view()["bots"][0]["diagnosis"] == "retreat_stalled"
-    assert [item["candidate_id"] for item in sent] == ["retreat"]
-    accepted(c, sent[-1]["action_id"], "retreat")
-    for index in range(800):
+    assert not sent
+
+
+@pytest.mark.parametrize("alternative", [True, False])
+def test_stalled_retreat_uses_a_different_eligible_route(tmp_path, monkeypatch, alternative):
+    c, snapshot, sent, clock = console(tmp_path, monkeypatch)
+    snapshot = snapshot.model_copy(
+        update={
+            "bot": snapshot.bot.model_copy(update={"objective": "retreat"}),
+            "nearby": [],
+            "actions": [
+                item for item in snapshot.actions
+                if item.id in {"hold", "retreat", "continue"}
+                or (alternative and item.id == "hunt:2")
+            ],
+        }
+    )
+    c.latest[7] = snapshot
+    c.supervisor.observe(snapshot)
+    for _ in range(59):
         clock[0] += 5
-        snapshot = snapshot.model_copy(
-            update={
-                "bot": snapshot.bot.model_copy(
-                    update={
-                        "position": [100 + index % 2, 100, 7],
-                        "xp": 2000 + index,
-                    }
-                )
-            }
-        )
-        c.latest[7] = snapshot
         c.supervisor.observe(snapshot)
-        if len(sent) == 2 and c.supervisor.state(7)["phase"] == "waiting_action":
-            accepted(c, sent[-1]["action_id"], "retreat")
-    assert [item["candidate_id"] for item in sent] == ["retreat", "retreat"]
-    for index in range(62):
-        clock[0] += 5
-        snapshot = snapshot.model_copy(
-            update={
-                "bot": snapshot.bot.model_copy(
-                    update={
-                        "position": [110, 100, 7],
-                        "xp": 5000 + index,
-                    }
-                )
-            }
-        )
-        c.latest[7] = snapshot
-        c.supervisor.observe(snapshot)
-    assert [item["candidate_id"] for item in sent] == ["retreat", "retreat", "retreat"]
+    assert not sent
+
+    clock[0] += 5
+    c.supervisor.observe(snapshot)
+    assert [item["candidate_id"] for item in sent] == ["hold"]
+    assert "retreat" not in {item.id for item in c.supervisor.offers(snapshot).actions}
+    accepted(c, sent[-1]["action_id"])
+    holding = snapshot.model_copy(
+        update={
+            "objective_generation": snapshot.objective_generation + 1,
+            "bot": snapshot.bot.model_copy(
+                update={"objective": "hold", "objective_running": False}
+            ),
+        }
+    )
+    c.latest[7] = holding
+    c.supervisor.observe(holding)
+    assert [item["candidate_id"] for item in sent] == (
+        ["hold", "hunt:2"] if alternative else ["hold"]
+    )
+    if not alternative:
+        assert c.supervisor.state(7)["phase"] == "idle"
 
 
 def test_retreat_navigation_progress_and_observation_gaps_reset_timer(
@@ -273,7 +287,10 @@ def test_retreat_stall_survives_brief_objective_renewal_and_respects_pause(
         )
         c.latest[7] = snapshot
         c.supervisor.observe(snapshot)
-    assert [item["candidate_id"] for item in sent] == ["retreat"]
+    assert not sent
+    assert any(
+        row["kind"] == "retreat_stall" for _, row in c.store.records("operator_event")
+    )
 
     (tmp_path / "other").mkdir()
     c2, snapshot, sent, clock = console(tmp_path / "other", monkeypatch)

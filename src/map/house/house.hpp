@@ -15,9 +15,22 @@
 #include "game/movement/position.hpp"
 #include "enums/player_cyclopedia.hpp"
 
+#include <atomic>
+
 class House;
 class BedItem;
 class Player;
+
+struct HouseAuctionState {
+	uint32_t bidder = 0;
+	std::string bidderName;
+	uint64_t highestBid = 0;
+	uint64_t internalBid = 0;
+	uint32_t bidEndDate = 0;
+	CyclopediaHouseState state = CyclopediaHouseState::Available;
+	bool transferAccepted = false;
+	uint32_t reservedRent = 0;
+};
 
 using days = std::chrono::duration<int64_t, std::ratio<86400>>;
 
@@ -152,6 +165,8 @@ public:
 	void setNewOwnerGuid(int32_t newOwnerGuid, bool serverStartup);
 	void clearHouseInfo(bool preventOwnerDeletion);
 	bool tryTransferOwnership(const std::shared_ptr<Player> &player, bool serverStartup);
+	using StartupDepotRecipients = std::map<uint32_t, std::shared_ptr<Player>>;
+	bool stageStartupDepotTransfer(uint32_t formerOwner, StartupDepotRecipients &recipients);
 	void setOwner(uint32_t guid, bool updateDatabase = true, const std::shared_ptr<Player> &player = nullptr);
 	uint32_t getOwner() const {
 		return owner;
@@ -201,6 +216,7 @@ public:
 	std::shared_ptr<Door> getDoorByPosition(const Position &pos) const;
 
 	std::shared_ptr<HouseTransferItem> getTransferItem();
+	bool hasTransferItem() const { return transferItem != nullptr; }
 	void resetTransferItem();
 	bool executeTransfer(const std::shared_ptr<HouseTransferItem> &item, const std::shared_ptr<Player> &player);
 
@@ -278,7 +294,7 @@ public:
 		return m_bidHolderLimit;
 	}
 
-	void calculateBidEndDate(uint8_t daysToEnd);
+	static uint32_t calculateBidEndDate(uint8_t daysToEnd);
 	void setBidEndDate(uint32_t bidEndDate) {
 		this->m_bidEndDate = bidEndDate;
 	};
@@ -299,6 +315,11 @@ public:
 	bool getTransferStatus() const {
 		return m_transferStatus;
 	}
+	HouseAuctionState getAuctionState() const;
+	void setAuctionState(HouseAuctionState auction);
+	bool hasAuctionEscrow() const;
+	bool hasPendingAuctionSettlement() const { return pendingAuctionSettlement; }
+	void setPendingAuctionSettlement(bool pending) { pendingAuctionSettlement = pending; }
 
 	void setOwnerAccountId(uint32_t accountId) {
 		this->ownerAccountId = accountId;
@@ -316,6 +337,8 @@ public:
 
 private:
 	bool transferToDepot() const;
+	bool transferDepotTile(const std::shared_ptr<Player> &player, const std::shared_ptr<HouseTile> &tile, StartupDepotRecipients *startupRecipients) const;
+	static std::shared_ptr<Player> startupDepotRecipient(uint32_t guid, StartupDepotRecipients &recipients);
 
 	AccessList guestList;
 	AccessList subOwnerList;
@@ -331,6 +354,8 @@ private:
 	std::string ownerName;
 
 	bool hasNewOwnerOnStartup = false;
+	std::atomic_bool pendingAuctionSettlement = false;
+	uint32_t auctionReservedRent = 0;
 
 	std::shared_ptr<HouseTransferItem> transferItem = nullptr;
 
@@ -363,8 +388,8 @@ private:
 	bool isLoaded = false;
 
 	void handleContainer(ItemList &moveItemList, const std::shared_ptr<Item> &item) const;
-	void handleWrapableItem(ItemList &moveItemList, const std::shared_ptr<Item> &item, const std::shared_ptr<Player> &player, const std::shared_ptr<HouseTile> &houseTile) const;
-	void collectMovableItemsFromContainer(ItemList &moveItemList, const std::shared_ptr<Container> &container, const std::shared_ptr<Player> &player, const std::shared_ptr<HouseTile> &houseTile) const;
+	bool handleWrapableItem(ItemList &moveItemList, const std::shared_ptr<Item> &item, const std::shared_ptr<HouseTile> &houseTile, ItemList *detachedSources) const;
+	bool collectMovableItemsFromContainer(ItemList &moveItemList, const std::shared_ptr<Container> &container, const std::shared_ptr<HouseTile> &houseTile, ItemList *detachedSources) const;
 
 	mutable std::vector<std::string> failedItemTransfers;
 	mutable std::vector<std::string> movedItemsLog;

@@ -11,8 +11,10 @@
 
 struct AccountInfo;
 
+enum AccountType : uint8_t;
 enum class CoinType : uint8_t;
 enum class CoinTransactionType : uint8_t;
+enum class AccountErrors_t : uint8_t;
 
 class AccountRepository {
 public:
@@ -29,6 +31,8 @@ public:
 	virtual bool loadByEmailOrName(bool oldProtocol, const std::string &emailOrName, std::unique_ptr<AccountInfo> &acc) = 0;
 	virtual bool loadBySession(const std::string &email, std::unique_ptr<AccountInfo> &acc) = 0;
 	virtual bool save(const std::unique_ptr<AccountInfo> &accInfo) = 0;
+	virtual bool setAccountType(uint32_t id, AccountType type) = 0;
+	virtual AccountErrors_t changePremiumDays(AccountInfo &account, int32_t days, bool requireExact) = 0;
 
 	virtual bool getCharacterByAccountIdAndName(const uint32_t &id, const std::string &name) = 0;
 
@@ -36,6 +40,7 @@ public:
 
 	virtual bool getCoins(const uint32_t &id, CoinType coinType, uint32_t &coins) = 0;
 	virtual bool setCoins(const uint32_t &id, CoinType coinType, const uint32_t &amount) = 0;
+	virtual AccountErrors_t transferTransferableCoins(uint32_t senderId, uint32_t receiverId, uint32_t amount) = 0;
 	virtual bool registerCoinsTransaction(
 		const uint32_t &id,
 		CoinTransactionType type,

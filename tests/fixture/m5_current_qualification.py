@@ -426,10 +426,10 @@ async def execute(args):
             active_fixture = self
             super().prepare(participant)
             compose = json.loads(self.compose.read_text())
-            compose["networks"] = {"default": {"internal": True}}
+            compose["networks"]["default"]["internal"] = True
             compose["services"]["game"]["volumes"].append(f"{self.directory}:/m5")
             apply_short_trace_guid(compose, args, frozen["guid"])
-            self.compose.write_text(json.dumps(compose))
+            self.write_compose(compose)
 
         def start_database(self):
             super().start_database()

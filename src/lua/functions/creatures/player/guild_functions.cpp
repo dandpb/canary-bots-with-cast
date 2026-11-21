@@ -104,6 +104,10 @@ int GuildFunctions::luaGuildSetBankBalance(lua_State* L) {
 		return 1;
 	}
 
+	if (Bank::getPendingGuildTransfer(guild->getId())) {
+		Lua::pushBoolean(L, false);
+		return 1;
+	}
 	guild->setBankBalance(Lua::getNumber<uint64_t>(L, 2));
 	Lua::pushBoolean(L, true);
 	return 1;

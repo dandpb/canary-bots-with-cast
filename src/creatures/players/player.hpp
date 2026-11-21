@@ -429,6 +429,8 @@ public:
 	bool isOffline() const {
 		return (getID() == 0);
 	}
+	void discardPersistence() { persistenceDiscarded_ = true; }
+	bool isPersistenceDiscarded() const { return persistenceDiscarded_.load(); }
 	void disconnect() const;
 
 	uint32_t getIP() const;
@@ -1505,6 +1507,7 @@ public:
 private:
 	friend class PlayerLock;
 	std::mutex mutex;
+	std::atomic_bool persistenceDiscarded_ = false;
 
 	static uint32_t playerFirstID;
 	static uint32_t playerLastID;

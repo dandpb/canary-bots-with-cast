@@ -45,7 +45,10 @@ function houseCmd.onSay(player, words, param)
 			player:sendCancelMessage("You can only release a house you currently own.")
 			return true
 		end
-		house:setHouseOwner(0)
+		if not house:setHouseOwner(0) then
+			player:sendCancelMessage("This house has a pending transfer.")
+			return true
+		end
 		player:sendTextMessage(MESSAGE_EVENT_ADVANCE,
 			string.format('You have released "%s". It is now back on the market.', house:getName()))
 		return true
@@ -87,7 +90,10 @@ function houseCmd.onSay(player, words, param)
 	-- Snapshot the bot's ORIGINAL layout once (permanent) before the transfer,
 	-- so it can be restored verbatim if the house later falls vacant.
 	BotHouseClaim.snapshotIfAbsent(house, ownerGuid)
-	house:setHouseOwner(player:getGuid())
+	if not house:setHouseOwner(player:getGuid()) then
+		player:sendCancelMessage("This house has a pending transfer.")
+		return true
+	end
 	player:sendTextMessage(MESSAGE_EVENT_ADVANCE,
 		string.format('You are now the owner of "%s". The previous furnishings have been cleared.', house:getName()))
 	return true

@@ -84,17 +84,23 @@ int BankFunctions::luaBankTransfer(lua_State* L) {
 	if (source == nullptr) {
 		g_logger().debug("BankFunctions::luaBankTransfer: source is null");
 		Lua::reportErrorFunc("Bank is nullptr");
-		return 1;
+		Lua::pushBoolean(L, false);
+		Lua::pushBoolean(L, false);
+		return 2;
 	}
 	const auto &destination = getBank(L, 2);
 	if (destination == nullptr) {
 		g_logger().debug("BankFunctions::luaBankTransfer: destination is null");
 		Lua::reportErrorFunc("Bank is nullptr");
-		return 1;
+		Lua::pushBoolean(L, false);
+		Lua::pushBoolean(L, false);
+		return 2;
 	}
 	const uint64_t amount = Lua::getNumber<uint64_t>(L, 3);
-	Lua::pushBoolean(L, source->transferTo(destination, amount));
-	return 1;
+	bool pending = false;
+	Lua::pushBoolean(L, source->transferTo(destination, amount, &pending));
+	Lua::pushBoolean(L, pending);
+	return 2;
 }
 
 int BankFunctions::luaBankTransferToGuild(lua_State* L) {
@@ -102,16 +108,22 @@ int BankFunctions::luaBankTransferToGuild(lua_State* L) {
 	const auto &source = getBank(L, 1);
 	if (source == nullptr) {
 		Lua::reportErrorFunc("Source is nullptr");
-		return 1;
+		Lua::pushBoolean(L, false);
+		Lua::pushBoolean(L, false);
+		return 2;
 	}
 	const auto &destination = getBank(L, 2, true /* isGuild */);
 	if (destination == nullptr) {
 		Lua::reportErrorFunc("Destination is nullptr");
-		return 1;
+		Lua::pushBoolean(L, false);
+		Lua::pushBoolean(L, false);
+		return 2;
 	}
 	const uint64_t amount = Lua::getNumber<uint64_t>(L, 3);
-	Lua::pushBoolean(L, source->transferTo(destination, amount));
-	return 1;
+	bool pending = false;
+	Lua::pushBoolean(L, source->transferTo(destination, amount, &pending));
+	Lua::pushBoolean(L, pending);
+	return 2;
 }
 
 int BankFunctions::luaBankWithdraw(lua_State* L) {
@@ -131,6 +143,7 @@ int BankFunctions::luaBankWithdraw(lua_State* L) {
 	const auto &source = getBank(L, 3);
 	if (source == nullptr) {
 		Lua::reportErrorFunc("Source is nullptr");
+		Lua::pushBoolean(L, false);
 		return 1;
 	}
 	Lua::pushBoolean(L, source->withdraw(player, amount));
@@ -154,15 +167,16 @@ int BankFunctions::luaBankDeposit(lua_State* L) {
 	}
 
 	if (lua_gettop(L) == 2) {
-		Lua::pushBoolean(L, g_game().removeMoney(player, amount) && bank->credit(amount));
+		Lua::pushBoolean(L, !bank->hasPendingTransfer() && g_game().removeMoney(player, amount) && bank->credit(amount));
 		return 1;
 	}
 	const auto &destination = getBank(L, 3);
 	if (destination == nullptr) {
 		Lua::reportErrorFunc("Destination is nullptr");
+		Lua::pushBoolean(L, false);
 		return 1;
 	}
-	Lua::pushBoolean(L, g_game().removeMoney(player, amount) && destination->credit(amount));
+	Lua::pushBoolean(L, !destination->hasPendingTransfer() && g_game().removeMoney(player, amount) && destination->credit(amount));
 	return 1;
 }
 

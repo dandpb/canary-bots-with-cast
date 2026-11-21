@@ -90,8 +90,13 @@ function transfer.onSay(player, words, param)
 	end
 	name = normalizedName
 
-	if not player:transferMoneyTo(name, amount) then
-		player:sendTextMessage(config.messageStyle, "You don't have enough money.")
+	local success, pending = player:transferMoneyTo(name, amount)
+	if pending then
+		player:sendTextMessage(config.messageStyle, "The bank is reconciling a transfer. Check your balance before retrying.")
+		return true
+	end
+	if not success then
+		player:sendTextMessage(config.messageStyle, "The transfer could not be completed.")
 		return true
 	end
 

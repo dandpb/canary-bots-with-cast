@@ -22,6 +22,7 @@
 #include "game/scheduling/events_scheduler.hpp"
 #include "game/zones/zone.hpp"
 #include "io/io_bosstiary.hpp"
+#include "io/iomapserialize.hpp"
 #include "io/iomarket.hpp"
 #include "io/ioprey.hpp"
 #include "lib/thread/thread_pool.hpp"
@@ -86,7 +87,6 @@ int CanaryServer::run() {
 				g_game().setGameState(GAME_STATE_INIT);
 
 				setupHousesRent();
-				g_game().transferHouseItemsToDepot();
 
 				IOMarket::checkExpiredOffers();
 				IOMarket::getInstance().updateStatistics();
@@ -205,6 +205,7 @@ void CanaryServer::loadMaps() const {
 			g_game().loadCustomMaps(g_configManager().getString(DATA_DIRECTORY) + "/world/custom/");
 		}
 		Zone::refreshAll();
+		IOMapSerialize::completeStartupHouseDepotTransfers(g_game().map.houses);
 	} catch (const std::exception &err) {
 		throw FailedToInitializeCanary(err.what());
 	}
@@ -358,7 +359,9 @@ void CanaryServer::initializeDatabase() {
 		throw FailedToInitializeCanary(fmt::format("The database you have specified in {} is empty, please import the schema.sql to your database.", g_configManager().getConfigFileLua()));
 	}
 
-	DatabaseManager::updateDatabase();
+	if (!DatabaseManager::updateDatabase(g_configManager().getString(DATA_DIRECTORY) + "/migrations")) {
+		throw FailedToInitializeCanary("A database migration failed. Check the migration error before starting the server again.");
+	}
 
 	if (g_configManager().getBoolean(OPTIMIZE_DATABASE)
 	    && !DatabaseManager::optimizeTables()) {

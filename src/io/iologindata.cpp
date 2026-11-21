@@ -17,6 +17,7 @@
 #include "io/functions/iologindata_load_player.hpp"
 #include "io/functions/iologindata_save_player.hpp"
 #include "game/game.hpp"
+#include "game/scheduling/save_manager.hpp"
 #include "creatures/monsters/monster.hpp"
 #include "creatures/players/player.hpp"
 #include "lib/metrics/metrics.hpp"
@@ -81,6 +82,7 @@ uint8_t IOLoginData::getAccountType(uint32_t accountId) {
 
 // The boolean "disableIrrelevantInfo" will deactivate the loading of information that is not relevant to the preload, for example, forge, bosstiary, etc. None of this we need to access if the player is offline
 bool IOLoginData::loadPlayerById(const std::shared_ptr<Player> &player, uint32_t id, bool disableIrrelevantInfo /* = true*/) {
+	if (g_saveManager().hasPendingLogout(id)) return false;
 	Database &db = Database::getInstance();
 	std::ostringstream query;
 	query << "SELECT * FROM `players` WHERE `id` = " << id;
@@ -88,6 +90,7 @@ bool IOLoginData::loadPlayerById(const std::shared_ptr<Player> &player, uint32_t
 }
 
 bool IOLoginData::loadPlayerByName(const std::shared_ptr<Player> &player, const std::string &name, bool disableIrrelevantInfo /* = true*/) {
+	if (g_saveManager().hasPendingLogout(name)) return false;
 	Database &db = Database::getInstance();
 	std::ostringstream query;
 	query << "SELECT * FROM `players` WHERE `name` = " << db.escapeString(name);
@@ -100,6 +103,7 @@ bool IOLoginData::loadPlayer(const std::shared_ptr<Player> &player, const DBResu
 		g_logger().warn("[{}] - {} is nullptr", __FUNCTION__, nullptrType);
 		return false;
 	}
+	if (g_saveManager().hasPendingLogout(result->getNumber<uint32_t>("id"))) return false;
 
 	try {
 		// First
@@ -248,7 +252,7 @@ void IOLoginData::acknowledgePlayerSave(const std::shared_ptr<Player>& player, c
 }
 
 bool IOLoginData::savePlayer(const std::shared_ptr<Player> &player, std::optional<Position> position) {
-	if (!player) return false;
+	if (!player || player->isPersistenceDiscarded()) return false;
 	PlayerStorage::PlayerStorageDelta storageDelta;
 	try {
 		bool success = DBTransaction::executeWithinTransaction([player, position, &storageDelta]() {
@@ -406,12 +410,6 @@ bool IOLoginData::formatPlayerName(std::string &name) {
 
 	name = result->getString("name");
 	return true;
-}
-
-void IOLoginData::increaseBankBalance(uint32_t guid, uint64_t bankBalance) {
-	std::ostringstream query;
-	query << "UPDATE `players` SET `balance` = `balance` + " << bankBalance << " WHERE `id` = " << guid;
-	Database::getInstance().executeQuery(query.str());
 }
 
 std::vector<VIPEntry> IOLoginData::getVIPEntries(uint32_t accountId) {

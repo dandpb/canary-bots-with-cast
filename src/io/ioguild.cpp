@@ -13,6 +13,9 @@
 #include "creatures/players/grouping/guild.hpp"
 
 std::shared_ptr<Guild> IOGuild::loadGuild(uint32_t guildId) {
+	if (auto pending = Bank::getPendingGuildTransfer(guildId)) {
+		return pending;
+	}
 	Database &db = Database::getInstance();
 	std::ostringstream query;
 	query << "SELECT `name`, `balance` FROM `guilds` WHERE `id` = " << guildId;
@@ -34,6 +37,10 @@ std::shared_ptr<Guild> IOGuild::loadGuild(uint32_t guildId) {
 
 bool IOGuild::saveGuild(const std::shared_ptr<Guild> &guild) {
 	if (!guild) {
+		return false;
+	}
+	const auto lock = guild->tryLockBankBalance();
+	if (!lock.owns_lock() || Bank::getPendingGuildTransfer(guild->getId())) {
 		return false;
 	}
 	Database &db = Database::getInstance();

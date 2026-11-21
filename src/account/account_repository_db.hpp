@@ -22,6 +22,8 @@ public:
 	bool loadByEmailOrName(bool oldProtocol, const std::string &emailOrName, std::unique_ptr<AccountInfo> &acc) override;
 	bool loadBySession(const std::string &esseionKey, std::unique_ptr<AccountInfo> &acc) override;
 	bool save(const std::unique_ptr<AccountInfo> &accInfo) override;
+	bool setAccountType(uint32_t id, AccountType type) override;
+	AccountErrors_t changePremiumDays(AccountInfo &account, int32_t days, bool requireExact) override;
 
 	bool getCharacterByAccountIdAndName(const uint32_t &id, const std::string &name) override;
 
@@ -29,6 +31,7 @@ public:
 
 	bool getCoins(const uint32_t &id, CoinType coinType, uint32_t &coins) override;
 	bool setCoins(const uint32_t &id, CoinType coinType, const uint32_t &amount) override;
+	AccountErrors_t transferTransferableCoins(uint32_t senderId, uint32_t receiverId, uint32_t amount) override;
 	bool registerCoinsTransaction(
 		const uint32_t &id,
 		CoinTransactionType type,

@@ -1,6 +1,10 @@
 function onUpdateDatabase()
 	logger.info("Updating database to version 62 (bot players + cast system schema)")
 
+	local function createTable(sql)
+		assert(db.query(sql), "Could not initialize bot or cast database tables")
+	end
+
 	-- Single consolidated migration for the bot + cast distribution. All tables
 	-- use IF NOT EXISTS so this is safe on a server that already has them. The
 	-- shipped schema.sql is at db_version 56; this migration brings everything the
@@ -9,7 +13,7 @@ function onUpdateDatabase()
 	-- bot_city_routes is functional routing data and IS populated by the dumps.
 
 	-- ---- Cast / livestream ----
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `cast_broadcasters` (
 			`player_id` INT NOT NULL,
 			`player_name` VARCHAR(255) NOT NULL,
@@ -21,7 +25,7 @@ function onUpdateDatabase()
 	]])
 
 	-- ---- Bots currently loaded in the engine (for the @cast list filter) ----
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_active_players` (
 			`player_id` INT(11) NOT NULL PRIMARY KEY,
 			CONSTRAINT `bot_active_players_fk` FOREIGN KEY (`player_id`)
@@ -30,7 +34,7 @@ function onUpdateDatabase()
 	]])
 
 	-- ---- Telemetry (opt-in writes; never read by runtime logic) ----
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_chat_emissions` (
 			`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
 			`ts` INT UNSIGNED NOT NULL,
@@ -41,7 +45,7 @@ function onUpdateDatabase()
 			KEY `ts_idx` (`ts`), KEY `bot_idx` (`bot_guid`), KEY `category_idx` (`category`)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 	]])
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_hub_presence_60s` (
 			`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
 			`ts` INT UNSIGNED NOT NULL,
@@ -55,7 +59,7 @@ function onUpdateDatabase()
 	]])
 
 	-- ---- Market price reference (generic source label; see THIRD_PARTY_NOTICES) ----
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_market_item_prices` (
 			`item_id` INT UNSIGNED NOT NULL,
 			`name` VARCHAR(128) NULL,
@@ -77,7 +81,7 @@ function onUpdateDatabase()
 	]])
 
 	-- ---- Hunt scripts + children ----
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_hunt_scripts` (
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 			`name` VARCHAR(128) NOT NULL,
@@ -107,7 +111,7 @@ function onUpdateDatabase()
 			KEY `idx_script_category` (`script_category`)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 	]])
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_hunt_waypoints` (
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 			`script_id` INT UNSIGNED NOT NULL,
@@ -124,7 +128,7 @@ function onUpdateDatabase()
 			CONSTRAINT `bot_hunt_waypoints_ibfk_1` FOREIGN KEY (`script_id`) REFERENCES `bot_hunt_scripts` (`id`) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 	]])
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_hunt_targets` (
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 			`script_id` INT UNSIGNED NOT NULL,
@@ -140,7 +144,7 @@ function onUpdateDatabase()
 			CONSTRAINT `bot_hunt_targets_ibfk_1` FOREIGN KEY (`script_id`) REFERENCES `bot_hunt_scripts` (`id`) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 	]])
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_hunt_fields` (
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 			`script_id` INT UNSIGNED NOT NULL,
@@ -151,7 +155,7 @@ function onUpdateDatabase()
 			CONSTRAINT `bot_hunt_fields_ibfk_1` FOREIGN KEY (`script_id`) REFERENCES `bot_hunt_scripts` (`id`) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 	]])
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_hunt_exclusion_zones` (
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 			`script_id` INT UNSIGNED NOT NULL,
@@ -163,7 +167,7 @@ function onUpdateDatabase()
 	]])
 
 	-- ---- City routes + waypoints ----
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_city_routes` (
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 			`town_name` VARCHAR(64) NOT NULL,
@@ -177,7 +181,7 @@ function onUpdateDatabase()
 			KEY `idx_town_id` (`town_id`)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 	]])
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_city_route_waypoints` (
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 			`route_id` INT UNSIGNED NOT NULL,
@@ -194,7 +198,7 @@ function onUpdateDatabase()
 	]])
 
 	-- ---- Equipment + town mapping + admin command queue ----
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_equipment` (
 			`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 			`level` SMALLINT UNSIGNED NOT NULL,
@@ -210,7 +214,7 @@ function onUpdateDatabase()
 			UNIQUE KEY `uq_level_voc` (`level`,`vocation`)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 	]])
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_town_mapping` (
 			`source_name` VARCHAR(64) NOT NULL,
 			`canary_town_id` INT NOT NULL,
@@ -218,7 +222,7 @@ function onUpdateDatabase()
 			PRIMARY KEY (`source_name`)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
 	]])
-	db.query([[
+	createTable([[
 		CREATE TABLE IF NOT EXISTS `bot_commands` (
 			`id` INT NOT NULL AUTO_INCREMENT,
 			`bot_name` VARCHAR(50) NOT NULL,

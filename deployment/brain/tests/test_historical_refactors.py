@@ -51,8 +51,8 @@ async def test_m5_resume_preserves_historical_attempt(
     recoveries = []
 
     class Fixture(benchmark.DockerFixture):
-        def recover(self, *, ownership_expected=False):
-            recoveries.append(self.directory)
+        def recover(self, *, ownership_expected=False, allow_unprepared=False):
+            recoveries.append((self.directory, allow_unprepared))
 
         def prepare(self, participant):
             pytest.fail("a historical attempt must not be executed again")
@@ -60,7 +60,9 @@ async def test_m5_resume_preserves_historical_attempt(
     monkeypatch.setattr(benchmark, "DockerFixture", Fixture)
     result = await benchmark.run_campaign(config, live=True)
 
-    assert recoveries == [config.output / "native-0"]
+    assert recoveries == [
+        (config.output / "native-0", status in {"interrupted", "failed"})
+    ]
     retained = ReplayReader(output).run(manifest.run_id)
     assert result["participants"][0]["statuses"] == [status]
     for field in ("status", "event_count", "duration_ms", "incomplete"):

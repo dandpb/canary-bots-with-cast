@@ -425,6 +425,7 @@ function botStartup.onStartup()
 		if not name then return end
 		local due = Game.monotonicMs() + delay
 		addEvent(function()
+			if Game.getGameState() == GAME_STATE_SHUTDOWN then return end
 			local started = Game.monotonicMs()
 			local ok, player = pcall(Game.loadBotPlayer, name)
 			if not ok then
@@ -489,6 +490,7 @@ function botStartup.onStartup()
 
 					-- Check for persisted state restore (500ms after last bot is registered)
 					addEvent(function()
+						if Game.getGameState() == GAME_STATE_SHUTDOWN then return end
 						local cfgResult = db.storeQuery(
 							"SELECT `config_value` FROM `bot_startup_config` WHERE `config_key` = 'should_restore_states'"
 						)
@@ -544,6 +546,7 @@ local BOT_CMD_RESULT_MAX = 32000
 local botManager = GlobalEvent("BotManager")
 
 function botManager.onThink(interval)
+	if Game.getGameState() == GAME_STATE_SHUTDOWN then return true end
 	-- Global command queue poll (so MySQL-based commands still work).
 	-- JITTER FIX 2026-06-10: async — the sync db.storeQuery blocked the dispatcher
 	-- for the full round-trip incl. databaseLock convoy behind worker-thread DB
@@ -552,6 +555,10 @@ function botManager.onThink(interval)
 	db.botAsyncStoreQuery(
 		"SELECT `id`, `bot_name`, `command` FROM `bot_commands` WHERE `processed` = 0 ORDER BY `id` ASC LIMIT 10",
 		function(cmdResult)
+	if Game.getGameState() == GAME_STATE_SHUTDOWN then
+		if cmdResult then Result.free(cmdResult) end
+		return
+	end
 	if cmdResult then
 		repeat
 			local cmdId = Result.getNumber(cmdResult, "id")

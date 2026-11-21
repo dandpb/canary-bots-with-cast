@@ -9,11 +9,8 @@
 
 #include "lib/thread/thread_pool.hpp"
 
-#include "game/game.hpp"
 #include "utils/tools.hpp"
 #include "lib/di/container.hpp"
-
-#include <csignal>
 
 /**
  * Regardless of how many cores your computer have, we want at least
@@ -51,13 +48,7 @@ void ThreadPool::shutdown() {
 
 	logger.info("Shutting down thread pool...");
 
-	// Trigger graceful shutdown
-	g_game().setGameState(GAME_STATE_SHUTDOWN);
-
 	pool.reset();
-
-	std::signal(SIGINT, SIG_DFL);
-	std::signal(SIGTERM, SIG_DFL);
 
 	logger.info("Thread pool shutdown complete.");
 }

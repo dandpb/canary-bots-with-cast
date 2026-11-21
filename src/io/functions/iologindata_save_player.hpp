@@ -27,6 +27,8 @@ public:
 	static bool savePlayerDepotItems(const std::shared_ptr<Player> &player);
 	static bool saveRewardItems(const std::shared_ptr<Player> &player);
 	static bool savePlayerInbox(const std::shared_ptr<Player> &player);
+	// Caller owns the transaction. Only new inbox entries are serialized.
+	static bool appendPlayerInbox(const std::shared_ptr<Player> &player);
 	static bool savePlayerPreyClass(const std::shared_ptr<Player> &player);
 	static bool savePlayerTaskHuntingClass(const std::shared_ptr<Player> &player);
 	static bool savePlayerForgeHistory(const std::shared_ptr<Player> &player);
@@ -45,5 +47,5 @@ protected:
 	using ItemRewardList = std::list<std::pair<int32_t, std::shared_ptr<Item>>>;
 	using ItemInboxList = std::list<std::pair<int32_t, std::shared_ptr<Item>>>;
 
-	static bool saveItems(const std::shared_ptr<Player> &player, const ItemBlockList &itemList, DBInsert &query_insert, PropWriteStream &stream);
+	static bool saveItems(const std::shared_ptr<Player> &player, const ItemBlockList &itemList, DBInsert &query_insert, PropWriteStream &stream, int32_t runningId = 100);
 };

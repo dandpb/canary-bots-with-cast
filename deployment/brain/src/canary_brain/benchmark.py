@@ -13,6 +13,7 @@ import signal
 import sqlite3
 import stat
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable, Coroutine, Iterator
 from contextlib import contextmanager
@@ -233,6 +234,29 @@ COMPOSE_PROJECT_LABEL = "com.docker.compose.project"
 BENCHMARK_OWNER_LABEL = "org.canary.benchmark.owner"
 
 
+def _sync_directory(directory: Path) -> None:
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _publish_text(path: Path, value: str) -> None:
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+    ) as stream:
+        temporary = Path(stream.name)
+        try:
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+            temporary.replace(path)
+            _sync_directory(path.parent)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
 class DockerFixture:
     """Owns only one newly created experiment project; never targets production."""
 
@@ -266,11 +290,7 @@ class DockerFixture:
             stream.flush()
             os.fsync(stream.fileno())
         temporary.replace(self.owner_file)
-        directory_fd = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        _sync_directory(self.directory)
         self.project = record["project_name"]
         return record
 
@@ -312,8 +332,23 @@ class DockerFixture:
             raise ComposeOwnershipInvalid() from error
         return result.stdout.strip()
 
+    def _docker_resources(self, owner: str) -> Iterator[tuple[str, str]]:
+        for resource in ("container", "network", "volume"):
+            listing = [resource, "ls", "-q"]
+            if resource == "container":
+                listing.append("-a")
+            ids = set()
+            for label, value in ((COMPOSE_PROJECT_LABEL, self.project), (BENCHMARK_OWNER_LABEL, owner)):
+                ids.update(self.docker_metadata(*listing, "--filter", f"label={label}={value}").split())
+            if resource == "network":
+                ids.update(self.docker_metadata(*listing, "--filter", "name=" + self.project + "_default").split())
+            for resource_id in sorted(ids):
+                yield resource, resource_id
+
     def validate_docker_ownership(self) -> None:
         owner = self.read_ownership()["owner_id"]
+        if self.compose.is_symlink() or self.env_file.is_symlink():
+            raise ComposeOwnershipInvalid()
         required = {COMPOSE_PROJECT_LABEL: self.project, BENCHMARK_OWNER_LABEL: owner}
         if self.compose.is_file():
             try:
@@ -331,25 +366,16 @@ class DockerFixture:
                     raise ComposeOwnershipInvalid()
             except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
                 raise ComposeOwnershipInvalid() from error
-        for resource in ("container", "network", "volume"):
-            listing = [resource, "ls", "-q"]
-            if resource == "container":
-                listing.append("-a")
-            ids = set()
-            for label, value in required.items():
-                ids.update(self.docker_metadata(*listing, "--filter", f"label={label}={value}").split())
-            if resource == "network":
-                ids.update(self.docker_metadata(*listing, "--filter", "name=" + self.project + "_default").split())
+        for resource, resource_id in self._docker_resources(owner):
             label_field = ".Config.Labels" if resource == "container" else ".Labels"
-            for resource_id in sorted(ids):
-                try:
-                    labels = json.loads(self.docker_metadata(
-                        resource, "inspect", "--format", "{{json " + label_field + "}}", resource_id,
-                    ))
-                except ValueError as error:
-                    raise ComposeOwnershipInvalid() from error
-                if not isinstance(labels, dict) or any(labels.get(k) != v for k, v in required.items()):
-                    raise ComposeOwnershipInvalid()
+            try:
+                labels = json.loads(self.docker_metadata(
+                    resource, "inspect", "--format", "{{json " + label_field + "}}", resource_id,
+                ))
+            except ValueError as error:
+                raise ComposeOwnershipInvalid() from error
+            if not isinstance(labels, dict) or any(labels.get(k) != v for k, v in required.items()):
+                raise ComposeOwnershipInvalid()
 
     def command(self, *arguments: str, timeout: int = 900) -> str:
         if arguments[0] in {"up", "create", "start", "down", "stop", "kill", "exec", "logs", "wait"}:
@@ -417,14 +443,14 @@ class DockerFixture:
             "socket_directory": str(socket_dir),
         }
         (config / "server.json").write_text(canonical(server))
-        self.env_file.write_text(
+        _publish_text(
+            self.env_file,
             "MARIADB_PASSWORD="
             + secrets.token_hex(24)
             + "\nMARIADB_ROOT_PASSWORD="
             + secrets.token_hex(24)
             + "\n"
         )
-        os.chmod(self.env_file, 0o600)
         game: dict[str, Any] = {
             "image": self.experiment.game_image,
             "environment": {
@@ -487,10 +513,13 @@ class DockerFixture:
         labels = {BENCHMARK_OWNER_LABEL: owner}
         for service in services.values():
             service["labels"] = labels
-        self.compose.write_text(canonical({
+        self.write_compose({
             "services": services,
             "networks": {"default": {"labels": labels}},
-        }))
+        })
+
+    def write_compose(self, definition: dict[str, Any]) -> None:
+        _publish_text(self.compose, canonical(definition))
 
     def character(self) -> dict[str, int]:
         query = f"SELECT id,level,experience,posx,posy,posz FROM players WHERE id={self.experiment.bot_id};"
@@ -565,9 +594,19 @@ class DockerFixture:
                     "down", "--remove-orphans", "--timeout", "180", timeout=240
                 )
 
-    def recover(self, *, ownership_expected: bool = False) -> None:
+    def recover(self, *, ownership_expected: bool = False, allow_unprepared: bool = False) -> None:
         if not self.owner_file.exists() and not self.owner_file.is_symlink():
             if ownership_expected:
+                # Preparation creates only the directory and receipt temp file before ownership.
+                if allow_unprepared and not self.directory.is_symlink():
+                    try:
+                        entries = {entry.name for entry in self.directory.iterdir()}
+                    except FileNotFoundError:
+                        entries = set()
+                    except OSError as error:
+                        raise ComposeOwnershipInvalid() from error
+                    if entries <= {self.owner_file.with_suffix(".tmp").name}:
+                        return
                 raise ComposeOwnershipInvalid()
             if self.compose.is_file() and self.env_file.is_file():
                 try:
@@ -579,11 +618,21 @@ class DockerFixture:
                     raise ComposeOwnershipInvalid()
                 raise LegacyCleanupRequired()
             return
-        self.read_ownership()
-        if self.compose.is_file() and self.env_file.is_file():
+        owner = self.read_ownership()["owner_id"]
+        if self.compose.is_symlink() or self.env_file.is_symlink():
+            raise ComposeOwnershipInvalid()
+        inputs_complete = self.compose.is_file() and self.env_file.is_file()
+        if inputs_complete and allow_unprepared:
+            try:
+                json.loads(self.compose.read_text())
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                inputs_complete = False
+            except OSError as error:
+                raise ComposeOwnershipInvalid() from error
+        if inputs_complete:
             self.started = True
             self.close()
-        elif self.compose.exists() or self.env_file.exists():
+        elif not allow_unprepared or next(self._docker_resources(owner), None) is not None:
             raise ComposeOwnershipInvalid()
 
 
@@ -703,7 +752,8 @@ async def _run_campaign(
         ownership_expected = previous_plan.get("compose_ownership_version") == 1
     else:
         ownership_expected = not (experiment.output / "recording.sqlite3").exists()
-    plan_file.write_text(
+    _publish_text(
+        plan_file,
         canonical(
             {
                 "configuration_sha256": fingerprint,
@@ -711,7 +761,7 @@ async def _run_campaign(
                 "preflight": check,
                 **({"compose_ownership_version": 1} if ownership_expected else {}),
             }
-        )
+        ),
     )
     recording = experiment.output / "recording.sqlite3"
     identities = []
@@ -766,7 +816,11 @@ async def _run_attempt(
     if existing:
         harness = fixture_factory(experiment, directory, identity)
         # An unfinished cleanup blocks subsequent trials, including on resume.
-        await asyncio.to_thread(harness.recover, ownership_expected=ownership_expected)
+        await asyncio.to_thread(
+            harness.recover,
+            ownership_expected=ownership_expected,
+            allow_unprepared=existing["status"] in {"running", "interrupted", "failed"},
+        )
         if existing["status"] == "running":
             RecordingStore(recording).finish(identity, "interrupted")
         return identity

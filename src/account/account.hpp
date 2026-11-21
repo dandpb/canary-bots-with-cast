@@ -103,6 +103,7 @@ public:
 	std::string getPassword();
 
 	void addPremiumDays(const int32_t &days);
+	AccountErrors_t changePremiumDays(int32_t days, bool requireExact = false);
 	void setPremiumDays(const int32_t &days);
 	[[nodiscard]] uint32_t getPremiumRemainingDays() const;
 

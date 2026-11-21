@@ -20,6 +20,9 @@ local modulesToPreload = {
 	["gamestore.purchases"] = function()
 		return moduleLoader("purchases")
 	end,
+	["gamestore.orders"] = function()
+		return moduleLoader("orders")
+	end,
 	["gamestore.parsers"] = function()
 		return moduleLoader("parsers")
 	end,
@@ -60,6 +63,7 @@ for key, value in pairs(storeLib) do
 end
 
 local senders = require("gamestore.senders")
+GameStore.withPaidOrder = require("gamestore.orders").withPaidOrder
 local purchases = require("gamestore.purchases")
 for key, value in pairs(purchases) do
 	GameStore[key] = value

@@ -62,8 +62,7 @@ std::vector<std::string> KVSQL::loadPrefix(const std::string &prefix /* = ""*/) 
 
 bool KVSQL::save(const std::string &key, const ValueWrapper &value) {
 	auto update = dbUpdate();
-	prepareSave(key, value, update);
-	return update.execute();
+	return prepareSave(key, value, update) && update.execute();
 }
 
 bool KVSQL::prepareSave(const std::string &key, const ValueWrapper &value, DBInsert &update) const {
@@ -77,13 +76,12 @@ bool KVSQL::prepareSave(const std::string &key, const ValueWrapper &value, DBIns
 		return db.executeQuery(query);
 	}
 
-	update.addRow(fmt::format("{}, {}, {}", db.escapeString(key), value.getTimestamp(), db.escapeString(data)));
-	return true;
+	return update.addRow(fmt::format("{}, {}, {}", db.escapeString(key), value.getTimestamp(), db.escapeString(data)));
 }
 
 bool KVSQL::saveAll() {
-	auto store = getStore();
-	const bool success = DBTransaction::executeWithinTransaction([this, &store]() {
+	const bool success = DBTransaction::executeWithinTransaction([this]() {
+		const auto store = getStore();
 		auto update = dbUpdate();
 		if (!std::ranges::all_of(store, [this, &update](const auto &kv) {
 				const auto &[key, value] = kv;

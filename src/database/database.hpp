@@ -78,6 +78,7 @@ public:
 	void createDatabaseBackup(bool compress) const;
 
 	bool executeQuery(std::string_view query);
+	uint64_t insertQuery(std::string_view query);
 	struct TransactionContext {
 		const Database* owner;
 		uint64_t connectionId;
@@ -121,6 +122,7 @@ private:
 		uint32_t port;
 	};
 	enum class TransactionOutcome { Committed, Failed, Uncertain };
+	bool executeQuery(std::string_view query, uint64_t* insertId);
 	bool lockForOperation(std::unique_lock<std::recursive_mutex> &lock) const;
 	bool openConnection();
 	void discardConnection();
@@ -284,6 +286,20 @@ public:
 	using Outcome = Database::TransactionOutcome;
 	static Outcome lastOutcome() { return lastOutcome_; }
 	static void clearOutcome() { lastOutcome_ = Outcome::Failed; }
+	class ScopedReceipt {
+	public:
+		ScopedReceipt(std::string key, const std::string &token) :
+			key(std::move(key)), token(token), previous(std::exchange(receipt_, this)) { }
+		~ScopedReceipt() { receipt_ = previous; }
+		ScopedReceipt(const ScopedReceipt &) = delete;
+		ScopedReceipt &operator=(const ScopedReceipt &) = delete;
+
+	private:
+		friend class DBTransaction;
+		std::string key;
+		std::string token;
+		const ScopedReceipt *previous;
+	};
 	explicit DBTransaction() = default;
 
 	~DBTransaction() = default;
@@ -314,6 +330,13 @@ public:
 			return Outcome::Failed;
 		}
 		try {
+			if (receipt_) {
+				bool alreadyCommitted = false;
+				if (!prepareReceipt(database, alreadyCommitted) || alreadyCommitted) {
+					database.finishTransaction(false);
+					return lastOutcome_ = alreadyCommitted ? Outcome::Committed : Outcome::Failed;
+				}
+			}
 			return lastOutcome_ = database.finishTransaction(callback());
 		} catch (const std::exception &error) {
 			database.finishTransaction(false);
@@ -326,6 +349,8 @@ public:
 	}
 
 private:
+	static bool prepareReceipt(Database &database, bool &alreadyCommitted);
+	inline static thread_local const ScopedReceipt *receipt_ = nullptr;
 	inline static thread_local Outcome lastOutcome_ = Outcome::Failed;
 };
 

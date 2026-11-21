@@ -18,10 +18,12 @@ CPP = r"""
 #include <concepts>
 #include <cstdlib>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 #include <mysql/mysql.h>
 #include <mysql/errmsg.h>
@@ -41,38 +43,54 @@ struct Row {
 std::atomic<unsigned> deadlocks{0};
 class Database {
 public:
+ enum class TransactionOutcome { Committed, Failed, Uncertain };
  Database() {
   handle=mysql_init(nullptr); assert(handle);
   assert(mysql_real_connect(handle,std::getenv("CHECKPOINT_DB_HOST"),"checkpoint",
    std::getenv("CHECKPOINT_DB_PASSWORD"),"checkpoint",3306,nullptr,0));
   assert(executeQuery("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
  }
- ~Database() { mysql_close(handle); }
+ ~Database() { if(handle) mysql_close(handle); }
  static Database& getInstance() { thread_local Database db; return db; }
- bool retryQuery(std::string_view,int);
  bool executeQuery(std::string_view query) {
-  bool success=retryQuery(query,10);
-  if(!success && mysql_errno(handle)==1213) ++deadlocks;
-  mysql_free_result(mysql_store_result(handle));
-  return success;
+  if(!readyForQuery()) return false;
+  if(!sendQuery(query)) {
+   if(getLastExecuteError()==1213) ++deadlocks;
+   return false;
+  }
+  if(auto *result=mysql_store_result(handle)) mysql_free_result(result);
+  return true;
  }
  std::shared_ptr<Row> storeQuery(const std::string& query) {
-  if(mysql_query(handle,query.c_str())) return nullptr;
+  if(!readyForQuery() || !sendQuery(query)) return nullptr;
   auto result=mysql_store_result(handle); if(!result) return nullptr;
   auto values=mysql_fetch_row(result);
   auto row=values?std::make_shared<Row>(Row{std::stoull(values[0])}):nullptr;
   mysql_free_result(result); return row;
  }
- bool beginTransaction() { return executeQuery("BEGIN"); }
- bool rollback() { return mysql_rollback(handle)==0; }
- bool commit() { return mysql_commit(handle)==0; }
+ bool beginTransaction();
+ TransactionOutcome finishTransaction(bool commit);
  struct TransactionContext { const Database* owner; uint64_t connectionId; uint64_t recoveryEpoch; };
  TransactionContext transactionContext() const;
  bool canRetryDeadlock(const TransactionContext&) const;
  unsigned getLastExecuteError() const;
 private:
+ friend class DBTransaction;
+ bool lockForOperation(std::unique_lock<std::recursive_mutex>& lock) const {
+  lock.lock();
+  return true;
+ }
+ bool readyForQuery() const { return handle && (!transactionActive || !transactionFailed); }
+ void discardConnection() {
+  if(handle) mysql_close(std::exchange(handle,nullptr));
+  ++recoveryEpoch_;
+ }
+ void recordQueryFailure(unsigned);
+ bool sendQuery(std::string_view);
  static bool isRecoverableError(unsigned);
  MYSQL* handle;
+ mutable std::recursive_mutex databaseLock;
+ bool transactionActive=false, transactionFailed=false;
  static thread_local std::pair<const Database*,unsigned> lastExecuteError_;
  static thread_local uint64_t recoveryEpoch_;
 };
@@ -123,24 +141,19 @@ int main() {
 
 
 def client():
-    source = (
-        CPP
-        + function("src/database/database_definitions.hpp", "enum TransactionStates_t")
-        + ";\n"
-    )
-    source += function("src/database/database.hpp", "class DBTransaction {") + ";\n"
-    source += function(
-        "src/database/database.cpp", "bool Database::isRecoverableError("
-    )
-    source += function("src/database/database.cpp", "bool Database::retryQuery(")
-    source += function(
-        "src/database/database.cpp", "unsigned int Database::getLastExecuteError("
-    )
-    source += function(
-        "src/database/database.cpp",
+    source = CPP + function("src/database/database.hpp", "class DBTransaction {") + ";\n"
+    source += "bool DBTransaction::prepareReceipt(Database &, bool &) { assert(false); return false; }\n"
+    for signature in (
+        "bool Database::beginTransaction(",
+        "Database::TransactionOutcome Database::finishTransaction(",
+        "bool Database::isRecoverableError(",
+        "void Database::recordQueryFailure(",
+        "bool Database::sendQuery(",
+        "unsigned int Database::getLastExecuteError(",
         "Database::TransactionContext Database::transactionContext(",
-    )
-    source += function("src/database/database.cpp", "bool Database::canRetryDeadlock(")
+        "bool Database::canRetryDeadlock(",
+    ):
+        source += function("src/database/database.cpp", signature)
     source += function("src/io/iologindata.cpp", "bool IOLoginData::persistPlayerSave(")
     source += MAIN
     includes = Path(os.environ["BOT_TEST_INCLUDES"])
@@ -178,6 +191,7 @@ def run(*args, **kwargs):
 
 def disposable_database():
     image = os.environ["BOT_TEST_BUILD_IMAGE"]
+    includes = os.environ.get("BOT_TEST_INCLUDES", "/opt/installed/x64-linux/include")
     db_image = subprocess.check_output(
         ["docker", "image", "inspect", "mariadb:11.4", "--format", "{{.Id}}"], text=True
     ).strip()
@@ -257,7 +271,7 @@ def disposable_database():
                 "--env-file",
                 str(client_env),
                 "-e",
-                "BOT_TEST_INCLUDES=/opt/installed/x64-linux/include",
+                f"BOT_TEST_INCLUDES={includes}",
                 "-v",
                 str(ROOT) + ":/source:ro",
                 "--entrypoint",

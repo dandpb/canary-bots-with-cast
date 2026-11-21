@@ -16,8 +16,13 @@
 #include "lib/di/container.hpp"
 
 #include "enums/account_coins.hpp"
+#include "enums/account_errors.hpp"
 #include "account/account_info.hpp"
 #include "account/account_repository.hpp"
+
+#include <algorithm>
+#include <ctime>
+#include <limits>
 
 namespace di = boost::di;
 
@@ -73,6 +78,31 @@ namespace tests {
 			return !failSave;
 		}
 
+		bool setAccountType(uint32_t id, AccountType type) final {
+			for (auto &[_, account] : accounts) {
+				if (account.id == id && !failSave) {
+					account.accountType = type;
+					return true;
+				}
+			}
+			return false;
+		}
+
+		AccountErrors_t changePremiumDays(AccountInfo &account, int32_t days, bool requireExact) final {
+			for (auto &[_, stored] : accounts) {
+				if (stored.id != account.id || failSave || days == 0) continue;
+				const auto now = std::time(nullptr);
+				const auto expiry = std::max(now, stored.premiumLastDay);
+				const auto newExpiry = expiry + static_cast<time_t>(days) * 86400;
+				if (newExpiry > std::numeric_limits<uint32_t>::max()) return AccountErrors_t::Storage;
+				stored.premiumLastDay = account.premiumLastDay = newExpiry > now ? newExpiry : 0;
+				stored.premiumRemainingDays = account.premiumRemainingDays = newExpiry > now ? (newExpiry - now) / 86400 : 0;
+				stored.premiumDaysPurchased = account.premiumDaysPurchased = std::max<int64_t>(0, static_cast<int64_t>(stored.premiumDaysPurchased) + days);
+				return AccountErrors_t::Ok;
+			}
+			return AccountErrors_t::Storage;
+		}
+
 		bool getPassword(const uint32_t &id, std::string &password) final {
 			password = password_;
 			return !failGetPassword;
@@ -104,6 +134,25 @@ namespace tests {
 
 			coins_[id][type] = amount;
 			return !failAddCoins;
+		}
+
+		AccountErrors_t transferTransferableCoins(uint32_t senderId, uint32_t receiverId, uint32_t amount) final {
+			using enum AccountErrors_t;
+			uint32_t senderBalance = 0;
+			uint32_t receiverBalance = 0;
+			if (senderId == 0 || receiverId == 0 || senderId == receiverId || failAddCoins
+				|| !getCoins(senderId, CoinType::Transferable, senderBalance) || !getCoins(receiverId, CoinType::Transferable, receiverBalance)) {
+				return Storage;
+			}
+			if (senderBalance < amount) {
+				return RemoveCoins;
+			}
+			if (amount > std::numeric_limits<uint32_t>::max() - receiverBalance) {
+				return Storage;
+			}
+			coins_[senderId][CoinType::Transferable] -= amount;
+			coins_[receiverId][CoinType::Transferable] += amount;
+			return Ok;
 		}
 
 		bool registerCoinsTransaction(

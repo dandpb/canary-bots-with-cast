@@ -53,6 +53,8 @@ private:
 		std::function<void(DBResult_ptr, bool)> callback;
 		bool isStore = false;
 	};
+	void submit(Job job);
+	static void complete(Job job, DBResult_ptr result, bool success);
 
 	// Caller must hold mutex_. Spawns the worker (and its DB connection) on
 	// first use — bot systems only enqueue long after config/DB are ready.

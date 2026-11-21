@@ -35,6 +35,7 @@ void HouseFunctions::init(lua_State* L) {
 	Lua::registerMethod(L, "House", "setNewOwnerGuid", HouseFunctions::luaHouseSetNewOwnerGuid);
 	Lua::registerMethod(L, "House", "hasItemOnTile", HouseFunctions::luaHouseHasItemOnTile);
 	Lua::registerMethod(L, "House", "hasNewOwnership", HouseFunctions::luaHouseHasNewOwnership);
+	Lua::registerMethod(L, "House", "hasAuctionEscrow", HouseFunctions::luaHouseHasAuctionEscrow);
 	Lua::registerMethod(L, "House", "startTrade", HouseFunctions::luaHouseStartTrade);
 
 	Lua::registerMethod(L, "House", "getBeds", HouseFunctions::luaHouseGetBeds);
@@ -158,6 +159,10 @@ int HouseFunctions::luaHouseSetHouseOwner(lua_State* L) {
 
 	const uint32_t guid = Lua::getNumber<uint32_t>(L, 2);
 	const bool updateDatabase = Lua::getBoolean(L, 3, true);
+	if (house->hasPendingAuctionSettlement() || house->hasAuctionEscrow()) {
+		Lua::pushBoolean(L, false);
+		return 1;
+	}
 	house->setOwner(guid, updateDatabase);
 	Lua::pushBoolean(L, true);
 	return 1;
@@ -167,6 +172,10 @@ int HouseFunctions::luaHouseSetNewOwnerGuid(lua_State* L) {
 	// house:setNewOwnerGuid(guid[, updateDatabase = true])
 	const auto &house = Lua::getUserdataShared<House>(L, 1, "House");
 	if (house) {
+		if (house->hasPendingAuctionSettlement() || house->hasAuctionEscrow()) {
+			Lua::pushBoolean(L, false);
+			return 1;
+		}
 		auto isTransferOnRestart = g_configManager().getBoolean(TOGGLE_HOUSE_TRANSFER_ON_SERVER_RESTART);
 		if (isTransferOnRestart && house->hasNewOwnership()) {
 			const auto &player = g_game().getPlayerByGUID(house->getOwner());
@@ -210,6 +219,12 @@ int HouseFunctions::luaHouseHasNewOwnership(lua_State* L) {
 
 	auto isTransferOnRestart = g_configManager().getBoolean(TOGGLE_HOUSE_TRANSFER_ON_SERVER_RESTART);
 	Lua::pushBoolean(L, isTransferOnRestart && house->hasNewOwnership());
+	return 1;
+}
+
+int HouseFunctions::luaHouseHasAuctionEscrow(lua_State* L) {
+	const auto &house = Lua::getUserdataShared<House>(L, 1, "House");
+	Lua::pushBoolean(L, house && (house->hasAuctionEscrow() || house->hasPendingAuctionSettlement()));
 	return 1;
 }
 

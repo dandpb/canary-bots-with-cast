@@ -185,23 +185,23 @@ std::string Account::getPassword() {
 }
 
 void Account::addPremiumDays(const int32_t &days) {
-	auto timeLeft = std::max(0, static_cast<int>((m_account->premiumLastDay - getTimeNow()) % 86400));
-	setPremiumDays(m_account->premiumRemainingDays + days);
+	const auto now = getTimeNow();
+	const auto lastDay = std::max(m_account->premiumLastDay, now) + static_cast<time_t>(days) * 86400;
+	m_account->premiumLastDay = lastDay > now ? lastDay : 0;
+	m_account->premiumRemainingDays = lastDay > now ? (lastDay - now) / 86400 : 0;
 	m_account->premiumDaysPurchased += days;
+}
 
-	if (timeLeft > 0) {
-		m_account->premiumLastDay += timeLeft;
+AccountErrors_t Account::changePremiumDays(int32_t days, bool requireExact) {
+	if (!m_accLoaded) {
+		return AccountErrors_t::NotInitialized;
 	}
+	return g_accountRepository().changePremiumDays(*m_account, days, requireExact);
 }
 
 void Account::setPremiumDays(const int32_t &days) {
-	m_account->premiumRemainingDays = days;
-	m_account->premiumLastDay = getTimeNow() + (days * 86400);
-
-	if (days <= 0) {
-		m_account->premiumLastDay = 0;
-		m_account->premiumRemainingDays = 0;
-	}
+	m_account->premiumRemainingDays = std::max(0, days);
+	m_account->premiumLastDay = days > 0 ? getTimeNow() + static_cast<time_t>(days) * 86400 : 0;
 }
 
 [[nodiscard]] uint32_t Account::getPremiumRemainingDays() const {
@@ -223,7 +223,6 @@ AccountErrors_t Account::setAccountType(AccountType accountType) {
 
 void Account::updatePremiumTime() {
 	time_t lastDay = m_account->premiumLastDay;
-	uint32_t remainingDays = m_account->premiumRemainingDays;
 
 	time_t currentTime = getTimeNow();
 
@@ -238,14 +237,6 @@ void Account::updatePremiumTime() {
 
 	if (lastDay < currentTime || lastDay == 0) {
 		setPremiumDays(0);
-	}
-
-	if (remainingDays == m_account->premiumRemainingDays) {
-		return;
-	}
-
-	if (AccountErrors_t::Ok != save()) {
-		g_logger().error("Failed to update account premium time: [{}]", getDescriptor());
 	}
 }
 

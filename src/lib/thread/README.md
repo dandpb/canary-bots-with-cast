@@ -20,7 +20,7 @@ The `src/lib/thread` component provides Canary's centralized multi-threaded task
 ## Side Effects
 
 - `[thread_pool.cpp:ThreadPool::ThreadPool]` — Spawns worker threads via `BS::thread_pool` and logs the active thread count via `Logger::info`.
-- `[thread_pool.cpp:ThreadPool::shutdown]` — Sets `stopped = true`, transitions `g_game().setGameState(GAME_STATE_SHUTDOWN)`, destroys the underlying `BS::thread_pool` (`pool.reset()`, waiting for running tasks), and resets `SIGINT` and `SIGTERM` handlers to `SIG_DFL`.
+- `[thread_pool.cpp:ThreadPool::shutdown]` — Sets `stopped = true` and destroys the underlying `BS::thread_pool`, waiting for running tasks. The dispatcher owns game shutdown and its final save.
 
 ## Verification
 

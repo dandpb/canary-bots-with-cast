@@ -21,7 +21,13 @@ private:
 	static int luaDatabaseEscapeBlob(lua_State* L);
 	static int luaDatabaseEscapeString(lua_State* L);
 	static int luaDatabaseExecute(lua_State* L);
+	static int luaDatabaseInsert(lua_State* L);
 	static int luaDatabaseLastInsertId(lua_State* L);
 	static int luaDatabaseStoreQuery(lua_State* L);
 	static int luaDatabaseTableExists(lua_State* L);
+	static int luaDatabaseReserveStoreOrder(lua_State* L);
+	static int luaDatabaseClaimStoreOrder(lua_State* L);
+	static int luaDatabaseFinishStoreOrder(lua_State* L);
+	static int luaDatabaseGetStoreOrder(lua_State* L);
+	static int luaDatabaseResolveStoreOrder(lua_State* L);
 };

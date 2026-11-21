@@ -11,8 +11,12 @@
 
 #include "database/database.hpp"
 #include "enums/account_coins.hpp"
+#include "enums/account_errors.hpp"
 #include "utils/definitions.hpp"
 #include "utils/tools.hpp"
+
+#include <algorithm>
+#include <limits>
 
 AccountRepositoryDB::AccountRepositoryDB() {
 	coinTypeToColumn = {
@@ -64,6 +68,60 @@ bool AccountRepositoryDB::save(const std::unique_ptr<AccountInfo> &accInfo) {
 
 	return successful;
 };
+
+bool AccountRepositoryDB::setAccountType(uint32_t id, AccountType type) {
+	return g_database().executeQuery(fmt::format("UPDATE `accounts` SET `type` = {} WHERE `id` = {}", static_cast<uint32_t>(type), id));
+}
+
+AccountErrors_t AccountRepositoryDB::changePremiumDays(AccountInfo &account, int32_t days, bool requireExact) {
+	using enum AccountErrors_t;
+	constexpr int64_t SecondsPerDay = 86400;
+	time_t lastDay = 0;
+	uint32_t remainingDays = 0;
+	uint32_t purchasedDays = 0;
+	const auto outcome = DBTransaction::executeWithOutcome([&] {
+		const auto row = g_database().storeQuery(fmt::format(
+			"SELECT `lastday`, `premdays_purchased` FROM `accounts` WHERE `id` = {} FOR UPDATE", account.id));
+		if (!row) {
+			return false;
+		}
+		const int64_t now = getTimeNow();
+		const auto expiry = std::max(now, row->getNumber<int64_t>("lastday"));
+		const auto remaining = (expiry - now) / SecondsPerDay;
+		const auto purchased = std::max(remaining, row->getNumber<int64_t>("premdays_purchased"));
+		const auto availableDays = 0xFFFE - remaining;
+		if (days == 0 || availableDays <= 0) {
+			return false;
+		}
+
+		int64_t change;
+		if (days > 0) {
+			const auto storageDays = (std::numeric_limits<uint32_t>::max() - expiry) / SecondsPerDay;
+			const auto loyaltyDays = std::numeric_limits<int32_t>::max() - purchased;
+			change = std::min({ static_cast<int64_t>(days), availableDays, storageDays, loyaltyDays });
+			if (change <= 0 || (requireExact && change != days)) {
+				return false;
+			}
+		} else {
+			change = std::max(static_cast<int64_t>(days), -availableDays);
+		}
+
+		const auto newExpiry = expiry + change * SecondsPerDay;
+		lastDay = newExpiry > now ? newExpiry : 0;
+		remainingDays = lastDay ? (newExpiry - now) / SecondsPerDay : 0;
+		purchasedDays = std::max<int64_t>(0, purchased + change);
+		return g_database().executeQuery(fmt::format(
+			"UPDATE `accounts` SET `lastday` = {}, `premdays` = {}, `premdays_purchased` = {} WHERE `id` = {}",
+			lastDay, remainingDays, purchasedDays, account.id));
+	});
+	if (outcome != DBTransaction::Outcome::Committed) {
+		return outcome == DBTransaction::Outcome::Uncertain ? CommitUncertain : Storage;
+	}
+	account.premiumLastDay = lastDay;
+	account.premiumRemainingDays = remainingDays;
+	account.premiumDaysPurchased = purchasedDays;
+	return Ok;
+}
 
 bool AccountRepositoryDB::getCharacterByAccountIdAndName(const uint32_t &id, const std::string &name) {
 	auto result = g_database().storeQuery(fmt::format("SELECT `id` FROM `players` WHERE `account_id` = {} AND `name` = {}", id, g_database().escapeString(name)));
@@ -132,6 +190,45 @@ bool AccountRepositoryDB::setCoins(const uint32_t &id, CoinType coinType, const 
 
 	return successful;
 };
+
+AccountErrors_t AccountRepositoryDB::transferTransferableCoins(uint32_t senderId, uint32_t receiverId, uint32_t amount) {
+	using enum AccountErrors_t;
+	if (senderId == 0 || receiverId == 0 || senderId == receiverId) {
+		return Storage;
+	}
+
+	bool insufficient = false;
+	const auto outcome = DBTransaction::executeWithOutcome([&] {
+		const auto rows = g_database().storeQuery(fmt::format(
+			"SELECT `id`, `coins_transferable` FROM `accounts` WHERE `id` IN ({}, {}) ORDER BY `id` FOR UPDATE",
+			senderId,
+			receiverId
+		));
+		if (!rows) {
+			return false;
+		}
+		const auto firstBalance = rows->getNumber<uint32_t>("coins_transferable");
+		if (!rows->next()) {
+			return false;
+		}
+		const auto secondBalance = rows->getNumber<uint32_t>("coins_transferable");
+		const auto senderBalance = senderId < receiverId ? firstBalance : secondBalance;
+		const auto receiverBalance = senderId < receiverId ? secondBalance : firstBalance;
+		insufficient = senderBalance < amount;
+		if (insufficient || amount > std::numeric_limits<uint32_t>::max() - receiverBalance) {
+			return false;
+		}
+		return setCoins(senderId, CoinType::Transferable, senderBalance - amount)
+			&& setCoins(receiverId, CoinType::Transferable, receiverBalance + amount);
+	});
+	if (outcome == DBTransaction::Outcome::Committed) {
+		return Ok;
+	}
+	if (outcome == DBTransaction::Outcome::Uncertain) {
+		return CommitUncertain;
+	}
+	return insufficient ? RemoveCoins : Storage;
+}
 
 bool AccountRepositoryDB::registerCoinsTransaction(
 	const uint32_t &id,
@@ -219,5 +316,10 @@ void AccountRepositoryDB::setupLoyaltyInfo(std::unique_ptr<AccountInfo> &acc) {
 		acc->creationTime = getTimeNow();
 	}
 
-	save(acc);
+	if (!g_database().executeQuery(fmt::format(
+			"UPDATE `accounts` SET `creation` = IF(`creation` = 0, {}, `creation`), "
+			"`premdays_purchased` = GREATEST(`premdays_purchased`, FLOOR(GREATEST(0, CAST(`lastday` AS SIGNED) - {}) / 86400)) WHERE `id` = {}",
+			acc->creationTime, getTimeNow(), acc->id))) {
+		g_logger().error("Failed to initialize loyalty data for account [{}]", acc->id);
+	}
 }

@@ -42,7 +42,9 @@ public:
 	bool balance(uint64_t amount) const;
 	uint64_t balance();
 	bool hasBalance(uint64_t amount);
-	bool transferTo(const std::shared_ptr<Bank> &destination, uint64_t amount);
+	bool hasPendingTransfer() const;
+	static std::shared_ptr<Guild> getPendingGuildTransfer(uint32_t guildId);
+	bool transferTo(const std::shared_ptr<Bank> &destination, uint64_t amount, bool *pending = nullptr);
 	bool withdraw(const std::shared_ptr<Player> &player, uint64_t amount);
 	bool deposit(const std::shared_ptr<Bank> &destination);
 	bool deposit(const std::shared_ptr<Bank> &destination, uint64_t amount);
@@ -52,4 +54,5 @@ private:
 		return m_bankable;
 	}
 	std::shared_ptr<Bankable> m_bankable;
+	mutable bool m_dirty = false;
 };

@@ -58,13 +58,14 @@ local function getOfferById(id)
 
 					-- case multi offer
 				elseif type(offer.id) == "table" then
-					local newoffer = offer
 					for i = 1, #offer.id do
 						local offerId = offer.id[i]
 						if offerId == id then
-							newoffer.id = offerId
-							newoffer.price = offer.price[i]
-							return newoffer
+							local selected = {}
+							for key, value in pairs(offer) do selected[key] = value end
+							selected.id = offerId
+							selected.price = offer.price[i]
+							return selected
 						end
 					end
 				end

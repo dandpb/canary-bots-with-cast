@@ -33,6 +33,7 @@ Result = {
 }
 Game = {
 	createTile = function() end,
+	getGameState = function() return 0 end,
 	monotonicMs = function() return clock end,
 	loadBotPlayer = function(name)
 		local guid = tonumber(name:match("%d+"))

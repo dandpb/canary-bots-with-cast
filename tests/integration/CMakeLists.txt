@@ -11,3 +11,5 @@ add_subdirectory(event_callbacks)
 add_subdirectory(game)
 
 target_sources(canary_it PRIVATE database_transaction_it.cpp)
+target_sources(canary_it PRIVATE market_refund_it.cpp)
+target_sources(canary_it PRIVATE store_order_it.cpp)

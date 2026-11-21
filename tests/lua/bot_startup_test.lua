@@ -2,6 +2,7 @@
 -- Exercise the real startup handler with a deterministic dispatcher and fake DB.
 local scriptPath = arg[1] or "data/scripts/globalevents/bot_manager.lua"
 local passed = 0
+GAME_STATE_SHUTDOWN = 1
 dofile("data-otservbr-global/lib/core/storages.lua")
 
 local function check(condition, message)
@@ -58,6 +59,9 @@ local function startup(options)
 	end
 	Game = {
 		createTile = function() end,
+		getGameState = function()
+			return options.shutdownAfter and #state.calls >= options.shutdownAfter and GAME_STATE_SHUTDOWN or 0
+		end,
 		monotonicMs = function() return state.now end,
 		loadBotPlayer = function(name)
 			state.attempts[name] = (state.attempts[name] or 0) + 1
@@ -251,6 +255,12 @@ local function clearsCasts(s)
 	end
 	return false
 end
+
+test("shutdown stops scheduled bot registration", function()
+	local s = startup({ target = 4, shutdownAfter = 1 })
+	check(#s.calls == 1, "startup registered bots while shutdown was pending")
+	check(#s.finalizers == 0, "startup scheduled persisted-state restore during shutdown")
+end)
 
 test("stale casts are cleared at startup", function()
 	local s = startup({ target = 1 })

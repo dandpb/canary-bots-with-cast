@@ -483,6 +483,30 @@ TEST_F(AccountTest, AddPremiumDaysCanIncreasePremium) {
 	EXPECT_EQ(100, acc.getPremiumRemainingDays());
 }
 
+TEST_F(AccountTest, AddPremiumDaysExtendsActualExpiryEvenWhenCachedDaysAreStale) {
+	AccountInfo stored;
+	stored.id = 1;
+	stored.premiumRemainingDays = 50;
+	stored.premiumLastDay = getTimeNow() + 10 * 86400 + 3600;
+	repository().addAccount("premium-test", stored);
+	Account acc { stored.id };
+	ASSERT_EQ(acc.load(), AccountErrors_t::Ok);
+
+	acc.addPremiumDays(30);
+
+	EXPECT_EQ(acc.getPremiumLastDay(), stored.premiumLastDay + 30 * 86400);
+	EXPECT_EQ(acc.getPremiumRemainingDays(), 40);
+}
+
+TEST_F(AccountTest, SetPremiumDaysUsesWideDuration) {
+	Account acc { 1 };
+	constexpr int32_t days = 30000;
+	const auto start = getTimeNow();
+	acc.setPremiumDays(days);
+	EXPECT_GE(acc.getPremiumLastDay(), start + static_cast<time_t>(days) * 86400);
+	EXPECT_LE(acc.getPremiumLastDay(), getTimeNow() + static_cast<time_t>(days) * 86400);
+}
+
 TEST_F(AccountTest, AddPremiumDaysCanReducePremium) {
 	Account acc { 1 };
 

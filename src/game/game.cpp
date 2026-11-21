@@ -29,11 +29,13 @@
 #include "game/scheduling/dispatcher.hpp"
 #include "game/scheduling/save_manager.hpp"
 #include "game/zones/zone.hpp"
+#include "io/functions/iologindata_save_player.hpp"
 #include "io/io_bosstiary.hpp"
 #include "io/io_wheel.hpp"
 #include "io/iobestiary.hpp"
 #include "io/ioguild.hpp"
 #include "io/iologindata.hpp"
+#include "io/iomapserialize.hpp"
 #include "io/iomarket.hpp"
 #include "io/ioprey.hpp"
 #include "items/bed.hpp"
@@ -1292,11 +1294,12 @@ bool Game::removeCreature(const std::shared_ptr<Creature> &creature, bool isLogo
 		removeCreature(summon);
 	}
 
-	if (creature->getPlayer() && isLogout) {
-		auto it = teamFinderMap.find(creature->getPlayer()->getGUID());
+	if (const auto player = creature->getPlayer(); player && isLogout) {
+		auto it = teamFinderMap.find(player->getGUID());
 		if (it != teamFinderMap.end()) {
 			teamFinderMap.erase(it);
 		}
+		g_saveManager().saveLogoutPlayer(player);
 	}
 
 	return true;
@@ -2682,6 +2685,10 @@ std::shared_ptr<Item> Game::findItemOfType(const std::shared_ptr<Cylinder> &cyli
 }
 
 bool Game::removeMoney(const std::shared_ptr<Cylinder> &cylinder, uint64_t money, uint32_t flags /*= 0*/, bool useBalance /*= false*/) {
+	return removeMoney(cylinder, money, flags, useBalance, false);
+}
+
+bool Game::removeMoney(const std::shared_ptr<Cylinder> &cylinder, uint64_t money, uint32_t flags, bool useBalance, bool checked) {
 	if (cylinder == nullptr) {
 		g_logger().error("[{}] cylinder is nullptr", __FUNCTION__);
 		return false;
@@ -2735,24 +2742,36 @@ bool Game::removeMoney(const std::shared_ptr<Cylinder> &cylinder, uint64_t money
 		balance = player->getBankBalance();
 	}
 
-	if (moneyCount + balance < money) {
+	if (money > moneyCount && money - moneyCount > balance) {
 		return false;
 	}
 
 	for (const auto &moneyEntry : moneyMap) {
 		const std::shared_ptr<Item> &item = moneyEntry.second;
 		if (moneyEntry.first < money) {
-			internalRemoveItem(item);
+			const auto removed = internalRemoveItem(item);
+			if (checked && removed != RETURNVALUE_NOERROR) return false;
 			money -= moneyEntry.first;
 		} else if (moneyEntry.first > money) {
 			const uint32_t worth = moneyEntry.first / item->getItemCount();
 			const uint32_t removeCount = std::ceil(money / static_cast<double>(worth));
+			if (checked) {
+				const auto changeBank = std::dynamic_pointer_cast<Player>(cylinder);
+				if (!changeBank) return false;
+				const auto change = (worth * removeCount) - money;
+				const auto balanceBeforeChange = changeBank->getBankBalance();
+				if (change > std::numeric_limits<uint64_t>::max() - balanceBeforeChange
+					|| internalRemoveItem(item, removeCount) != RETURNVALUE_NOERROR) return false;
+				// Persist Market change with the bank balance even when the inventory is full.
+				changeBank->setBankBalance(balanceBeforeChange + change);
+				return true;
+			}
 			addMoney(cylinder, (worth * removeCount) - money, flags);
 			internalRemoveItem(item, removeCount);
 			return true;
 		} else {
-			internalRemoveItem(item);
-			return true;
+			const auto removed = internalRemoveItem(item);
+			return !checked || removed == RETURNVALUE_NOERROR;
 		}
 	}
 
@@ -4773,6 +4792,7 @@ std::shared_ptr<Item> Game::wrapItem(const std::shared_ptr<Item> &item, const st
 	auto itemName = item->getName();
 	auto attributeStore = item->getAttribute<int64_t>(ItemAttribute_t::STORE);
 	std::shared_ptr<Item> newItem = transformItem(item, ITEM_DECORATION_KIT);
+	if (!newItem) return nullptr;
 	if (attributeStore != 0) {
 		newItem->setAttribute(ItemAttribute_t::STORE, attributeStore);
 	}
@@ -8625,7 +8645,7 @@ void Game::dieSafely(const std::string &errorMsg /* = "" */) {
 void Game::finishNormalShutdown() {
 	awaitingFinalSave_ = false;
 	for (unsigned int attempt = 1; attempt <= 3; ++attempt) {
-		if (saveMotdNum() && g_saveManager().saveFinal()) {
+		if (g_saveManager().saveFinal([this] { return saveMotdNum(); })) {
 			g_dispatcher().addEvent([this] { shutdown(); }, __FUNCTION__);
 			return;
 		}
@@ -9431,90 +9451,44 @@ void Game::playerBrowseMarketOwnHistory(uint32_t playerId) {
 }
 
 namespace {
-	bool removeOfferItems(const std::shared_ptr<Player> &player, const std::shared_ptr<DepotLocker> &depotLocker, const ItemType &itemType, uint16_t amount, uint8_t tier, std::ostringstream &offerStatus) {
-		uint16_t removeAmount = amount;
-		if (tier == 0) {
-			if (
-				// Init-statement
-				auto stashItemCount = player->getStashItemCount(itemType.wareId);
-				// Condition
-				stashItemCount > 0
-			) {
-				if (removeAmount > stashItemCount && player->withdrawItem(itemType.wareId, stashItemCount)) {
-					removeAmount -= stashItemCount;
-				} else if (player->withdrawItem(itemType.wareId, removeAmount)) {
-					removeAmount = 0;
-				} else {
-					offerStatus << "Failed to remove stash items from player " << player->getName();
+	bool removeOfferItems(const std::shared_ptr<Player> &player, const std::shared_ptr<DepotLocker> &depotLocker, const ItemType &itemType, uint16_t amount, uint8_t tier, std::ostringstream &offerStatus, bool *changed = nullptr) {
+		const auto fromStash = tier == 0 ? std::min<uint32_t>(amount, player->getStashItemCount(itemType.wareId)) : 0;
+		auto remaining = amount - fromStash;
+		std::vector<std::pair<std::shared_ptr<Item>, uint32_t>> removals;
+		if (remaining != 0) {
+			const auto [items, count] = player->getLockerItemsAndCountById(depotLocker, tier, itemType.id);
+			for (const auto &item : items) {
+				if (remaining == 0) break;
+				if (!item || item->getItemCount() == 0) continue;
+				const auto quantity = std::min<uint32_t>(remaining, item->getItemCount());
+				const auto parent = item->getParent();
+				if (!parent || parent->queryRemove(item, quantity, FLAG_IGNORENOTMOVABLE) != RETURNVALUE_NOERROR) {
+					offerStatus << "The item you tried to market is not correct. Check the item again.";
 					return false;
 				}
+				removals.emplace_back(item, quantity);
+				remaining -= quantity;
 			}
 		}
-
-		auto [itemVector, totalCount] = player->getLockerItemsAndCountById(depotLocker, tier, itemType.id);
-		if (removeAmount > 0) {
-			if (totalCount == 0 || itemVector.empty()) {
-				offerStatus << "Player " << player->getName() << " not have item for create offer";
-				return false;
-			}
-
-			uint32_t removedCount = 0;
-			for (const auto &item : itemVector) {
-				if (!item) {
-					continue;
-				}
-
-				if (removedCount >= removeAmount) {
-					break;
-				}
-
-				uint16_t thisRemove = std::min<uint16_t>(
-					removeAmount - removedCount,
-					item->getItemCount()
-				);
-
-				ReturnValue ret = player->removeItem(item, thisRemove);
-				if (ret != RETURNVALUE_NOERROR) {
-					offerStatus << "Failed to remove: " << amount << " items of id: " << itemType.id << " from player " << player->getName() << " error: " << getReturnMessage(ret);
-					return false;
-				}
-
-				removedCount += thisRemove;
-			}
-
-			player->updateState();
-
-			if (removedCount < removeAmount) {
-				g_logger().error("Player {} tried to sell an item {} without this item", player->getName(), itemType.id);
-				offerStatus << "The item you tried to market is not correct. Check the item again.";
-				return false;
-			}
+		if (remaining != 0) {
+			offerStatus << "The item you tried to market is not correct. Check the item again.";
+			return false;
 		}
+		if (fromStash != 0 && !player->withdrawItem(itemType.wareId, fromStash)) {
+			offerStatus << "Failed to remove stash items from player " << player->getName();
+			return false;
+		}
+		if (fromStash != 0 && changed) *changed = true;
+		for (const auto &[item, quantity] : removals) {
+			const auto result = player->removeItem(item, quantity);
+			if (result != RETURNVALUE_NOERROR) {
+				offerStatus << "Failed to remove market items from player " << player->getName() << ": " << getReturnMessage(result);
+				return false;
+			}
+			if (changed) *changed = true;
+		}
+		if (!removals.empty()) player->updateState();
 		return true;
-	}
-
-	void processItemInsertion(const std::shared_ptr<Player> &recipient, uint16_t itemId, uint16_t &amount, uint8_t tier, uint64_t &totalPrice, uint64_t pricePerItem) {
-		uint32_t actuallyAdded = 0;
-		ReturnValue returnValue = recipient->addItemBatchToPaginedContainer(
-			recipient->getInbox(),
-			itemId,
-			amount,
-			actuallyAdded,
-			FLAG_NOLIMIT,
-			tier
-		);
-		if (returnValue != RETURNVALUE_NOERROR) {
-			if (actuallyAdded == 0) {
-				recipient->sendTextMessage(MESSAGE_MARKET, fmt::format("Not enough space in your inbox."));
-			} else {
-				recipient->sendTextMessage(MESSAGE_MARKET, fmt::format("Not enough space in your inbox to all items, processed only {} items.", actuallyAdded));
-				g_logger().warn("{} - Failed to add item {} total amount {}, currently added: {} to inbox for player {}, error code: {}", __FUNCTION__, itemId, amount, actuallyAdded, recipient->getName(), getReturnMessage(returnValue));
-			}
-		}
-		if (actuallyAdded < amount) {
-			totalPrice = pricePerItem * actuallyAdded;
-			amount = actuallyAdded;
-		}
 	}
 
 } // namespace
@@ -9573,109 +9547,89 @@ bool checkCanInitCreateMarketOffer(const std::shared_ptr<Player> &player, uint8_
 	}
 
 	const uint32_t maxOfferCount = g_configManager().getNumber(MAX_MARKET_OFFERS_AT_A_TIME_PER_PLAYER);
-	if (maxOfferCount != 0 && IOMarket::getPlayerOfferCount(player->getGUID()) >= maxOfferCount) {
-		offerStatus << "Player " << player->getName() << "excedeed max offer count " << maxOfferCount;
-		return false;
+	if (maxOfferCount != 0) {
+		const auto count = IOMarket::getPlayerOfferCount(player->getGUID());
+		if (!count || *count >= maxOfferCount) {
+			offerStatus << "Market offer limit could not be satisfied";
+			return false;
+		}
 	}
 
 	return true;
 }
 
 void Game::playerCreateMarketOffer(uint32_t playerId, uint8_t type, uint16_t itemId, uint16_t amount, uint64_t price, uint8_t tier, bool anonymous) {
-	// Initialize variables
-	// Before creating the offer we will compare it with the RETURN VALUE ERROR
 	std::ostringstream offerStatus;
-	const auto &player = getPlayerByID(playerId);
-	const ItemType &it = Item::items[itemId];
-
-	// Make sure everything is ok before the create market offer starts
-	if (!checkCanInitCreateMarketOffer(player, type, it, amount, price, offerStatus)) {
-		g_logger().error("{} - Player {} had an error on init offer on the market, error code: {}", __FUNCTION__, player->getName(), offerStatus.str());
+	const auto player = getPlayerByID(playerId);
+	const auto &item = Item::items[itemId];
+	if (getGameState() == GAME_STATE_SHUTDOWN || !checkCanInitCreateMarketOffer(player, type, item, amount, price, offerStatus)) {
+		g_logger().debug("[{}] Player {} could not create a market offer: {}", __FUNCTION__, playerId, offerStatus.str());
 		return;
 	}
 
-	const uint8_t maxTier = static_cast<uint8_t>(g_configManager().getNumber(FORGE_MAX_ITEM_TIER));
-	if (tier > maxTier) {
-		tier = maxTier;
-	}
+	const auto guid = player->getGUID();
+	const bool sell = type == MARKETACTION_SELL;
+	const bool depotItems = sell && item.id != ITEM_STORE_COIN;
+	const auto depot = sell ? player->getDepotLocker(player->getLastDepotId()) : nullptr;
+	if ((sell && !depot) || IOMarket::playerHasPendingFill(guid)) return;
 
-	if (tier > 0 && it.upgradeClassification == 0) {
-		tier = 0;
-	}
+	const auto maxTier = static_cast<uint8_t>(g_configManager().getNumber(FORGE_MAX_ITEM_TIER));
+	tier = item.upgradeClassification ? std::min(tier, maxTier) : 0;
+	const uint64_t total = price * amount;
+	const uint64_t fee = IOMarket::feeFor(total);
+	const uint64_t charge = sell ? fee : total + fee;
+	const auto cash = player->getMoney();
+	if (charge > cash && charge - cash > player->getBankBalance()) return;
 
-	uint64_t totalPrice = price * amount;
-	const uint64_t fee = IOMarket::feeFor(totalPrice);
-
-	if (type == MARKETACTION_SELL) {
-		if (fee > (player->getMoney() + player->getBankBalance())) {
-			offerStatus << "Fee is greater than player money";
+	const std::vector<std::shared_ptr<Player>> participants{player};
+	uint32_t offerId = 0;
+	bool changed = false;
+	DBTransaction::Outcome outcome;
+	{
+		Player::PlayerLock lock(player);
+		if (!checkpointMarketPlayers(participants)) {
+			player->sendTextMessage(MESSAGE_MARKET, "Market is temporarily unavailable. Try again later.");
 			return;
 		}
-
-		const std::shared_ptr<DepotLocker> &depotLocker = player->getDepotLocker(player->getLastDepotId());
-		if (depotLocker == nullptr) {
-			offerStatus << "Depot locker is nullptr for player " << player->getName();
-			return;
-		}
-
-		if (it.id == ITEM_STORE_COIN) {
-			auto [transferableCoins, result] = player->getAccount()->getCoins(CoinType::Transferable);
-
-			if (amount > transferableCoins) {
-				offerStatus << "Amount is greater than coins for player " << player->getName();
-				return;
+		outcome = DBTransaction::executeWithOutcome([&] {
+			if (depotItems && !removeOfferItems(player, depot, item, amount, tier, offerStatus, &changed)) return false;
+			if (sell && !depotItems) {
+				const auto account = player->getAccount();
+				const auto locked = g_database().storeQuery(fmt::format("SELECT id FROM accounts WHERE id={} FOR UPDATE", account->getID()));
+				if (!locked || account->removeCoins(CoinType::Transferable, amount, "") != AccountErrors_t::Ok) return false;
 			}
 
-			// Do not register a transaction for coins creating an offer
-			player->getAccount()->removeCoins(CoinType::Transferable, static_cast<uint32_t>(amount), "");
-		} else {
-			if (!removeOfferItems(player, depotLocker, it, amount, tier, offerStatus)) {
-				g_logger().error("[{}] failed to remove item with id {}, from player {}, errorcode: {}", __FUNCTION__, it.id, player->getName(), offerStatus.str());
-				return;
+			changed = true;
+			if (!payMarketGold(player, charge, false)) return false;
+			if (!IOLoginDataSave::savePlayerItem(player)
+				|| (depotItems && (!IOLoginDataSave::savePlayerStash(player) || !IOLoginDataSave::savePlayerDepotItems(player)))
+				|| !g_database().executeQuery(fmt::format("UPDATE players SET balance={} WHERE id={}", player->getBankBalance(), guid))) {
+				return false;
 			}
-		}
-
-		g_game().removeMoney(player, fee, 0, true);
-		g_metrics().addCounter("balance_decrease", fee, { { "player", player->getName() }, { "context", "market_fee" } });
-	} else {
-		uint64_t totalPrice = price * amount;
-		totalPrice += fee;
-		if (totalPrice > (player->getMoney() + player->getBankBalance())) {
-			offerStatus << "Fee is greater than player money (buy offer)";
-			return;
-		}
-
-		g_game().removeMoney(player, totalPrice, 0, true);
-		g_metrics().addCounter("balance_decrease", totalPrice, { { "player", player->getName() }, { "context", "market_offer" } });
+			offerId = IOMarket::createOffer(guid, static_cast<MarketAction_t>(type), item.id, amount, price, tier, anonymous);
+			return offerId != 0;
+		});
+		if (changed && outcome != DBTransaction::Outcome::Committed) IOMarket::setPlayerFillPending(guid, true);
 	}
 
-	// Send market window again for update item stats and avoid item clone
+	if (outcome != DBTransaction::Outcome::Committed) {
+		player->sendTextMessage(MESSAGE_MARKET, offerStatus.str().empty() ? "Market could not confirm the offer." : offerStatus.str());
+		if (outcome == DBTransaction::Outcome::Uncertain) {
+			reloadMarketPlayers(participants, offerId, [offerId] { return IOMarket::offerCreated(offerId); });
+		} else if (changed) {
+			reloadMarketPlayers(participants);
+		}
+		return;
+	}
+
+	g_metrics().addCounter("balance_decrease", charge, { { "player", player->getName() }, { "context", sell ? "market_fee" : "market_offer" } });
 	player->sendMarketEnter(player->getLastDepotId());
-
-	// If there is any error, then we will send the log and block the creation of the offer to avoid clone of items
-	// The player may lose the item as it will have already been removed, but will not clone
-	if (!offerStatus.str().empty()) {
-		if (offerStatus.str() == "The item you tried to market is not correct. Check the item again.") {
-			player->sendTextMessage(MESSAGE_MARKET, offerStatus.str());
-		} else {
-			player->sendTextMessage(MESSAGE_MARKET, "There was an error processing your offer, please contact the administrator.");
-		}
-		g_logger().error("{} - Player {} had an error creating an offer on the market, error code: {}", __FUNCTION__, player->getName(), offerStatus.str());
-		return;
-	}
-
-	IOMarket::createOffer(player->getGUID(), static_cast<MarketAction_t>(type), it.id, amount, price, tier, anonymous);
-
-	const MarketOfferList &buyOffers = IOMarket::getActiveOffers(MARKETACTION_BUY, it.id, tier);
-	const MarketOfferList &sellOffers = IOMarket::getActiveOffers(MARKETACTION_SELL, it.id, tier);
-	player->sendMarketBrowseItem(it.id, buyOffers, sellOffers, tier);
-
-	// Exhausted for create offert in the market
+	player->sendMarketBrowseItem(item.id, IOMarket::getActiveOffers(MARKETACTION_BUY, item.id, tier), IOMarket::getActiveOffers(MARKETACTION_SELL, item.id, tier), tier);
 	player->updateUIExhausted();
-	g_saveManager().savePlayer(player);
 }
 
 void Game::playerCancelMarketOffer(uint32_t playerId, uint32_t timestamp, uint16_t counter) {
+	if (getGameState() == GAME_STATE_SHUTDOWN) return;
 	const auto &player = getPlayerByID(playerId);
 	if (!player || !player->getAccount()) {
 		return;
@@ -9695,63 +9649,7 @@ void Game::playerCancelMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 		return;
 	}
 
-	const auto &playerInbox = player->getInbox();
-	if (offer.type == MARKETACTION_BUY) {
-		player->setBankBalance(player->getBankBalance() + offer.price * offer.amount);
-		g_metrics().addCounter("balance_decrease", offer.price * offer.amount, { { "player", player->getName() }, { "context", "market_purchase" } });
-		// Send market window again for update stats
-		player->sendMarketEnter(player->getLastDepotId());
-	} else {
-		const ItemType &it = Item::items[offer.itemId];
-		if (it.id == 0) {
-			return;
-		}
-
-		const uint8_t maxTier = static_cast<uint8_t>(g_configManager().getNumber(FORGE_MAX_ITEM_TIER));
-		const uint8_t offerTier = it.upgradeClassification > 0 ? std::min<uint8_t>(offer.tier, maxTier) : 0;
-		offer.tier = offerTier;
-
-		if (it.id == ITEM_STORE_COIN) {
-			// Do not register a transaction for coins upon cancellation
-			player->getAccount()->addCoins(CoinType::Transferable, offer.amount, "");
-		} else if (it.stackable) {
-			uint16_t tmpAmount = offer.amount;
-
-			while (tmpAmount > 0) {
-				int32_t stackCount = std::min<int32_t>(it.stackSize, tmpAmount);
-				const auto &item = Item::CreateItem(it.id, stackCount);
-				if (internalAddItem(playerInbox, item, INDEX_WHEREEVER, FLAG_NOLIMIT) != RETURNVALUE_NOERROR) {
-					break;
-				}
-
-				if (offerTier > 0) {
-					item->setTier(offerTier);
-				}
-
-				tmpAmount -= stackCount;
-			}
-		} else {
-			int32_t subType;
-			if (it.charges != 0) {
-				subType = it.charges;
-			} else {
-				subType = -1;
-			}
-
-			for (uint16_t i = 0; i < offer.amount; ++i) {
-				const auto &item = Item::CreateItem(it.id, subType);
-				if (internalAddItem(playerInbox, item, INDEX_WHEREEVER, FLAG_NOLIMIT) != RETURNVALUE_NOERROR) {
-					break;
-				}
-
-				if (offerTier > 0) {
-					item->setTier(offerTier);
-				}
-			}
-		}
-	}
-
-	IOMarket::moveOfferToHistory(offer.id, OFFERSTATE_CANCELLED);
+	if (!refundMarketOffer(offer, player, OFFERSTATE_CANCELLED)) return;
 
 	offer.amount = 0;
 	offer.timestamp += g_configManager().getNumber(MARKET_OFFER_DURATION);
@@ -9760,220 +9658,155 @@ void Game::playerCancelMarketOffer(uint32_t playerId, uint32_t timestamp, uint16
 	player->sendMarketEnter(player->getLastDepotId());
 	// Exhausted for cancel offer in the market
 	player->updateUIExhausted();
-	g_saveManager().savePlayer(player);
 }
 
 void Game::playerAcceptMarketOffer(uint32_t playerId, uint32_t timestamp, uint16_t counter, uint16_t amount) {
-	std::ostringstream offerStatus;
-	const auto &player = getPlayerByID(playerId);
-	if (!player || !player->getAccount()) {
-		offerStatus << "Failed to load player";
-		return;
-	}
-
-	if (!player->isInMarket()) {
-		offerStatus << "Failed to load market";
-		return;
-	}
-
+	if (getGameState() == GAME_STATE_SHUTDOWN) return;
+	const auto player = getPlayerByID(playerId);
+	if (!player || player->isBotPlayer() || !player->isInMarket()) return;
 	if (player->isUIExhausted(1000)) {
 		player->sendCancelMessage(RETURNVALUE_YOUAREEXHAUSTED);
 		return;
 	}
 
-	MarketOfferEx offer = IOMarket::getOfferByCounter(timestamp, counter);
-	if (offer.id == 0 || unresolvedMarketOffers_.contains(offer.id)) {
-		offerStatus << "Failed to load offer id";
+	auto offer = IOMarket::getOfferByCounter(timestamp, counter);
+	const bool buyOffer = offer.type == MARKETACTION_BUY;
+	if (!offer.id || unresolvedMarketOffers_.contains(offer.id)
+		|| (!buyOffer && offer.type != MARKETACTION_SELL) || !amount || amount > offer.amount
+		|| !offer.price || offer.price > std::numeric_limits<uint64_t>::max() / amount) return;
+
+	const auto &itemType = Item::items[offer.itemId];
+	if (!itemType.id || amount > (itemType.stackable ? 64000 : 2000)) return;
+	const auto maxTier = static_cast<uint8_t>(g_configManager().getNumber(FORGE_MAX_ITEM_TIER));
+	offer.tier = itemType.upgradeClassification > 0 ? std::min(offer.tier, maxTier) : 0;
+
+	const auto counterparty = getPlayerByGUID(offer.playerId, true);
+	const auto playerAccount = player->getAccount();
+	if (!counterparty || !playerAccount || !counterparty->getAccount()) return;
+	if (player == counterparty || playerAccount->getID() == counterparty->getAccount()->getID()) {
+		player->sendTextMessage(MESSAGE_MARKET, "You cannot accept your own offer.");
 		return;
 	}
+	if (IOMarket::playerHasPendingFill(player->getGUID()) || IOMarket::playerHasPendingFill(offer.playerId)
+		|| g_saveManager().hasPendingLogout(player->getGUID()) || g_saveManager().hasPendingLogout(offer.playerId)) return;
 
-	const ItemType &it = Item::items[offer.itemId];
-	if (it.id == 0) {
-		offerStatus << "Failed to load item id";
-		return;
-	}
+	const auto &buyer = buyOffer ? counterparty : player;
+	const auto &seller = buyOffer ? player : counterparty;
+	const bool storeCoin = offer.itemId == ITEM_STORE_COIN;
+	const auto inbox = storeCoin ? nullptr : buyer->getInbox();
+	const auto depot = buyOffer && !storeCoin ? seller->getDepotLocker(seller->getLastDepotId()) : nullptr;
+	if ((!storeCoin && !inbox) || (buyOffer && !storeCoin && !depot)) return;
 
-	const uint8_t maxTier = static_cast<uint8_t>(g_configManager().getNumber(FORGE_MAX_ITEM_TIER));
-	const uint8_t offerTier = it.upgradeClassification > 0 ? std::min<uint8_t>(offer.tier, maxTier) : 0;
-	offer.tier = offerTier;
+	const bool synthetic = counterparty->isBotPlayer();
+	std::vector<std::shared_ptr<Player>> realPlayers { player };
+	if (!synthetic) realPlayers.push_back(counterparty);
 
-	if (amount == 0 || (!it.stackable && amount > 2000) || (it.stackable && amount > 64000) || amount > offer.amount) {
-		offerStatus << "Invalid offer amount " << amount << " for player " << player->getName();
-		return;
-	}
+	const auto buyerAccount = buyer->getAccount();
+	const auto sellerAccount = seller->getAccount();
+	const auto writeBalance = [](const std::shared_ptr<Player> &target, uint64_t balance) {
+		return g_database().executeQuery(fmt::format("UPDATE players SET balance={} WHERE id={}", balance, target->getGUID()));
+	};
 
-	const auto &playerInbox = player->getInbox();
-
+	std::ostringstream offerStatus;
+	std::vector<std::shared_ptr<Item>> staged;
+	uint32_t delivered = amount;
 	uint64_t totalPrice = offer.price * amount;
+	uint64_t historyId = 0;
+	bool mutated = false;
+	DBTransaction::Outcome outcome;
+	{
+		const bool playerFirst = player->getGUID() < counterparty->getGUID();
+		Player::PlayerLock firstLock(playerFirst ? player : counterparty);
+		Player::PlayerLock secondLock(playerFirst ? counterparty : player);
+		if (!buyOffer && totalPrice > buyer->getBankBalance()
+			&& buyer->getMoney() < totalPrice - buyer->getBankBalance()) return;
+		if (!checkpointMarketPlayers(realPlayers)) return;
 
-	// The player has an offer to by something and someone is going to sell to item type
-	// so the market action is 'buy' as who created the offer is buying.
-	if (offer.type == MARKETACTION_BUY) {
-		const std::shared_ptr<DepotLocker> &depotLocker = player->getDepotLocker(player->getLastDepotId());
-		if (depotLocker == nullptr) {
-			offerStatus << "Depot locker is nullptr";
-			return;
-		}
-
-		const std::shared_ptr<Player> &buyerPlayer = getPlayerByGUID(offer.playerId, true);
-		if (!buyerPlayer) {
-			offerStatus << "Failed to load buyer player " << player->getName();
-			return;
-		}
-
-		const auto &buyerPlayerAccount = buyerPlayer->getAccount();
-		if (!buyerPlayerAccount) {
-			player->sendTextMessage(MESSAGE_MARKET, "Cannot accept offer.");
-			return;
-		}
-
-		const auto &playerAccount = player->getAccount();
-		if (player == buyerPlayer || playerAccount == buyerPlayerAccount) {
-			player->sendTextMessage(MESSAGE_MARKET, "You cannot accept your own offer.");
-			return;
-		}
-
-		if (it.id == ITEM_STORE_COIN) {
-			auto [transferableCoins, error] = playerAccount->getCoins(CoinType::Transferable);
-
-			if (error != AccountErrors_t::Ok) {
-				offerStatus << "Failed to load transferable coins for player " << player->getName();
-				return;
-			}
-
-			if (amount > transferableCoins) {
-				offerStatus << "Amount is greater than coins";
-				return;
-			}
-
-			playerAccount->removeCoins(
-				CoinType::Transferable,
-				amount,
-				"Sold on Market"
-			);
-		} else {
-			const auto inbox = buyerPlayer->getInbox();
-			if (!inbox) return;
-			std::vector<std::shared_ptr<Item>> staged;
-			uint32_t delivered = 0;
-			buyerPlayer->addItemBatchToPaginedContainer(inbox, it.id, amount, delivered, FLAG_NOLIMIT, offerTier, &staged);
-			if (delivered == 0) return;
-			if (!removeOfferItems(player, depotLocker, it, static_cast<uint16_t>(delivered), offerTier, offerStatus)) {
-				for (const auto &item : staged) inbox->removeThingSilently(item, item->getItemCount());
-				g_logger().error("[{}] could not remove delivered market items: {}", __FUNCTION__, offerStatus.str());
-				return;
-			}
-			for (const auto &item : staged) inbox->notifyStagedAddition(item);
-			amount = static_cast<uint16_t>(delivered);
-			totalPrice = offer.price * delivered;
-		}
-
-		// If there is any error, then we will send the log and block the creation of the offer to avoid clone of items
-		// The player may lose the item as it will have already been removed, but will not clone
-		if (!offerStatus.str().empty()) {
-			if (offerStatus.str() == "The item you tried to market is not correct. Check the item again.") {
-				player->sendTextMessage(MESSAGE_MARKET, offerStatus.str());
+		outcome = DBTransaction::executeWithOutcome([&] {
+			if (!IOMarket::lockFillOffer(offer)) return false;
+			if (storeCoin) {
+				const auto buyerId = buyerAccount->getID();
+				const auto sellerId = sellerAccount->getID();
+				const auto rows = g_database().storeQuery(fmt::format(
+					"SELECT id, coins_transferable FROM accounts WHERE id IN ({},{}) ORDER BY id FOR UPDATE", buyerId, sellerId));
+				if (!rows || rows->countResults() != 2) return false;
+				if (rows->getNumber<uint32_t>("id") != buyerId) rows->next();
+				if (rows->getNumber<uint32_t>("coins_transferable") > std::numeric_limits<uint32_t>::max() - amount) return false;
+				if (buyOffer && sellerAccount->removeCoins(CoinType::Transferable, amount, "Sold on Market") != AccountErrors_t::Ok) return false;
+				if (buyerAccount->addCoins(CoinType::Transferable, amount, "Purchased on Market") != AccountErrors_t::Ok) return false;
+				if (!buyOffer) sellerAccount->registerCoinTransaction(CoinTransactionType::Remove, CoinType::Transferable, amount, "Sold on Market");
 			} else {
-				player->sendTextMessage(MESSAGE_MARKET, "There was an error processing your offer, please contact the administrator.");
+				buyer->addItemBatchToPaginedContainer(inbox, itemType.id, amount, delivered, FLAG_NOLIMIT, offer.tier, &staged);
+				if (delivered == 0) return false;
+				totalPrice = offer.price * delivered;
+				if (buyOffer && (!removeOfferItems(seller, depot, itemType, static_cast<uint16_t>(delivered), offer.tier, offerStatus, &mutated)
+					|| !IOLoginDataSave::savePlayerStash(seller) || !IOLoginDataSave::savePlayerDepotItems(seller))) return false;
+				if (!buyer->isBotPlayer() && !IOLoginDataSave::savePlayerInbox(buyer)) return false;
 			}
-			g_logger().error("{} - Player {} had an error creating an offer on the market, error code: {}", __FUNCTION__, player->getName(), offerStatus.str());
-			player->sendMarketEnter(player->getLastDepotId());
-			return;
-		}
 
-		if (it.id == ITEM_STORE_COIN) {
-			buyerPlayer->getAccount()->addCoins(CoinType::Transferable, amount, "Purchased on Market");
-		}
+			const auto sellerBalance = seller->getBankBalance();
+			if (sellerBalance > std::numeric_limits<uint64_t>::max() - totalPrice) return false;
+			if (!buyOffer) {
+				const auto bankBefore = buyer->getBankBalance();
+				mutated = true;
+				if (!payMarketGold(buyer, totalPrice, true)
+					|| (bankBefore != buyer->getBankBalance() && !writeBalance(buyer, buyer->getBankBalance()))
+					|| (totalPrice > bankBefore && !IOLoginDataSave::savePlayerItem(buyer))) return false;
+			}
+			if (!seller->isBotPlayer() && !writeBalance(seller, sellerBalance + totalPrice)) return false;
 
-		if (amount == 0) return;
-		player->setBankBalance(player->getBankBalance() + totalPrice);
-		g_metrics().addCounter("balance_increase", totalPrice, { { "player", player->getName() }, { "context", "market_sale" } });
+			historyId = IOMarket::writeFill(offer, player->getGUID(), static_cast<uint16_t>(delivered));
+			return historyId != 0;
+		});
 
-		if (buyerPlayer->isOffline()) {
-			g_saveManager().savePlayer(buyerPlayer);
-		}
-	} else if (offer.type == MARKETACTION_SELL) {
-		std::shared_ptr<Player> sellerPlayer = getPlayerByGUID(offer.playerId, true);
-		if (!sellerPlayer) {
-			offerStatus << "Failed to load seller player";
-			return;
-		}
-
-		if (player == sellerPlayer || player->getAccount() == sellerPlayer->getAccount()) {
-			player->sendTextMessage(MESSAGE_MARKET, "You cannot accept your own offer.");
-			return;
-		}
-
-		if (totalPrice > (player->getBankBalance() + player->getMoney())) {
-			return;
-		}
-
-
-		if (it.id == ITEM_STORE_COIN) {
-			player->getAccount()->addCoins(CoinType::Transferable, amount, "Purchased on Market");
+		if (outcome == DBTransaction::Outcome::Committed) {
+			seller->setBankBalance(seller->getBankBalance() + totalPrice);
 		} else {
-			uint16_t processedAmount = amount;
-			uint64_t effectivePrice = offer.price * processedAmount;
-			processItemInsertion(player, it.id, processedAmount, offer.tier, effectivePrice, offer.price);
-			amount = processedAmount;
-			totalPrice = effectivePrice;
-		}
-
-		if (amount == 0) return;
-		// Have enough money on the bank
-		if (totalPrice <= player->getBankBalance()) {
-			player->setBankBalance(player->getBankBalance() - totalPrice);
-		} else {
-			uint64_t remainsPrice = 0;
-			remainsPrice = totalPrice - player->getBankBalance();
-			player->setBankBalance(0);
-			g_game().removeMoney(player, remainsPrice);
-		}
-		g_metrics().addCounter("balance_decrease", totalPrice, { { "player", player->getName() }, { "context", "market_purchase" } });
-
-		sellerPlayer->setBankBalance(sellerPlayer->getBankBalance() + totalPrice);
-		g_metrics().addCounter("balance_increase", totalPrice, { { "player", sellerPlayer->getName() }, { "context", "market_sale" } });
-		if (it.id == ITEM_STORE_COIN) {
-			sellerPlayer->getAccount()->registerCoinTransaction(CoinTransactionType::Remove, CoinType::Transferable, amount, "Sold on Market");
-		}
-
-		if (it.id != ITEM_STORE_COIN) {
-			player->onReceiveMail();
-		}
-
-		if (sellerPlayer->isOffline()) {
-			g_saveManager().savePlayer(sellerPlayer);
+			for (const auto &item : staged) inbox->removeThingSilently(item, item->getItemCount());
+			if (outcome == DBTransaction::Outcome::Uncertain) {
+				for (const auto &actor : realPlayers) IOMarket::setPlayerFillPending(actor->getGUID(), true);
+			} else if (mutated) {
+				IOMarket::setPlayerFillPending(player->getGUID(), true);
+			}
 		}
 	}
 
-	// Send market window again for update item stats and avoid item clone
-	player->sendMarketEnter(player->getLastDepotId());
-
-	if (!offerStatus.str().empty()) {
-		player->sendTextMessage(MESSAGE_MARKET, "There was an error processing your offer, please contact the administrator.");
-		g_logger().error("{} - Player {} had an error accepting an offer on the market, error code: {}", __FUNCTION__, player->getName(), offerStatus.str());
+	if (outcome == DBTransaction::Outcome::Uncertain) {
+		g_logger().error("MARKET_ACCEPT_COMMIT_UNCERTAIN offer_id={} history_id={}", offer.id, historyId);
+		reloadMarketPlayers(realPlayers, offer.id, [historyId, synthetic, buyOffer, counterparty, inbox, staged = std::move(staged), totalPrice] {
+			const auto committed = IOMarket::fillCommitted(historyId);
+			if (committed.value_or(false) && synthetic) {
+				Player::PlayerLock lock(counterparty);
+				if (buyOffer) {
+					for (const auto &item : staged) inbox->internalAddThing(item);
+				} else if (counterparty->getBankBalance() <= std::numeric_limits<uint64_t>::max() - totalPrice) {
+					counterparty->setBankBalance(counterparty->getBankBalance() + totalPrice);
+				}
+			}
+			return committed;
+		});
+		return;
+	}
+	if (outcome != DBTransaction::Outcome::Committed) {
+		if (mutated) reloadMarketPlayers({ player });
+		else if (!offerStatus.str().empty()) player->sendTextMessage(MESSAGE_MARKET, offerStatus.str());
 		return;
 	}
 
-	const int32_t marketOfferDuration = g_configManager().getNumber(MARKET_OFFER_DURATION);
-
-	IOMarket::appendHistory(player->getGUID(), (offer.type == MARKETACTION_BUY ? MARKETACTION_SELL : MARKETACTION_BUY), offer.itemId, amount, offer.price, time(nullptr), offer.tier, OFFERSTATE_ACCEPTEDEX);
-
-	IOMarket::appendHistory(offer.playerId, offer.type, offer.itemId, amount, offer.price, time(nullptr), offer.tier, OFFERSTATE_ACCEPTED);
-
-	offer.amount -= amount;
-
-	if (offer.amount == 0) {
-		IOMarket::deleteOffer(offer.id);
-	} else {
-		IOMarket::acceptOffer(offer.id, amount);
+	for (const auto &item : staged) inbox->notifyStagedAddition(item);
+	if (!buyOffer) {
+		g_metrics().addCounter("balance_decrease", totalPrice, { { "player", buyer->getName() }, { "context", "market_purchase" } });
+		if (!storeCoin) buyer->onReceiveMail();
 	}
-
-	offer.timestamp += marketOfferDuration;
+	g_metrics().addCounter("balance_increase", totalPrice, { { "player", seller->getName() }, { "context", "market_sale" } });
+	if (delivered < amount) {
+		player->sendTextMessage(MESSAGE_MARKET, fmt::format("Not enough space in the buyer's inbox. Processed only {} items.", delivered));
+	}
+	player->sendMarketEnter(player->getLastDepotId());
+	offer.amount -= static_cast<uint16_t>(delivered);
+	offer.timestamp += g_configManager().getNumber(MARKET_OFFER_DURATION);
 	player->sendMarketAcceptOffer(offer);
-	// Exhausted for accept offer in the market
 	player->updateUIExhausted();
-	g_saveManager().savePlayer(player);
 }
 
 void Game::parsePlayerExtendedOpcode(uint32_t playerId, uint8_t opcode, const std::string &buffer) {
@@ -11179,46 +11012,6 @@ const std::unique_ptr<AttachedEffects> &Game::getAttachedEffects() const {
 	return m_attachedEffects;
 }
 
-void Game::transferHouseItemsToDepot() {
-	if (!g_configManager().getBoolean(TOGGLE_HOUSE_TRANSFER_ON_SERVER_RESTART)) {
-		return;
-	}
-
-	if (!transferHouseItemsToPlayer.empty()) {
-		g_logger().info("Initializing house transfer items");
-	}
-
-	uint16_t transferSuccess = 0;
-	for (const auto &[houseId, playerGuid] : transferHouseItemsToPlayer) {
-		auto house = map.houses.getHouse(houseId);
-		if (house) {
-			auto offlinePlayer = std::make_shared<Player>(nullptr);
-			if (!IOLoginData::loadPlayerById(offlinePlayer, playerGuid)) {
-				continue;
-			}
-
-			if (!offlinePlayer) {
-				continue;
-			}
-
-			g_logger().info("Tranfering items to the inbox from player '{}'", offlinePlayer->getName());
-			if (house->tryTransferOwnership(offlinePlayer, true)) {
-				transferSuccess++;
-				house->setNewOwnerGuid(-1, true);
-			}
-		}
-	}
-	if (transferSuccess > 0) {
-		g_logger().info("Finished house transfer items from '{}' players", transferSuccess);
-		transferHouseItemsToPlayer.clear();
-		Map::save();
-	}
-}
-
-void Game::setTransferPlayerHouseItems(uint32_t houseId, uint32_t playerId) {
-	transferHouseItemsToPlayer[houseId] = playerId;
-}
-
 template <typename T>
 std::vector<T> setDifference(const std::unordered_set<T> &setA, const std::unordered_set<T> &setB) {
 	std::vector<T> setResult;
@@ -11617,48 +11410,53 @@ void Game::playerCyclopediaHouseBid(uint32_t playerId, uint32_t houseId, uint64_
 	}
 
 	const auto house = g_game().map.houses.getHouseByClientId(houseId);
-	if (!house) {
+	if (!house || house->getState() != CyclopediaHouseState::Available) {
+		player->sendHouseAuctionMessage(houseId, HouseAuctionType::Bid, enumToValue(BidErrorMessage::Internal));
 		return;
 	}
 
-	auto ret = player->canBidHouse(houseId);
+	const auto ret = player->canBidHouse(houseId);
 	if (ret != BidErrorMessage::NoError) {
 		player->sendHouseAuctionMessage(houseId, HouseAuctionType::Bid, enumToValue(ret));
+		return;
 	}
-	ret = BidErrorMessage::NotEnoughMoney;
+	auto auction = house->getAuctionState();
+	if (bidValue < auction.highestBid || bidValue > std::numeric_limits<int32_t>::max()) {
+		player->sendHouseAuctionMessage(houseId, HouseAuctionType::Bid, enumToValue(BidErrorMessage::Internal));
+		return;
+	}
+	IOMapSerialize::AuctionBalanceChange bidderBalance;
+	IOMapSerialize::AuctionBalanceChange refund;
 	auto retSuccess = BidSuccessMessage::BidSuccess;
-
-	if (house->getBidderName().empty()) {
-		if (!processBankAuction(player, house, bidValue)) {
-			player->sendHouseAuctionMessage(houseId, HouseAuctionType::Bid, enumToValue(ret));
-			return;
-		}
-		house->setHighestBid(0);
-		house->setInternalBid(bidValue);
-		house->setBidHolderLimit(bidValue);
-		house->setBidderName(player->getName());
-		house->setBidder(player->getGUID());
-		house->calculateBidEndDate(g_configManager().getNumber(DAYS_TO_CLOSE_BID));
-	} else if (house->getBidderName() == player->getName()) {
-		if (!processBankAuction(player, house, bidValue, true)) {
-			player->sendHouseAuctionMessage(houseId, HouseAuctionType::Bid, enumToValue(ret));
-			return;
-		}
-		house->setInternalBid(bidValue);
-		house->setBidHolderLimit(bidValue);
-	} else if (bidValue <= house->getInternalBid()) {
-		house->setHighestBid(bidValue);
+	const auto guid = player->getGUID();
+	if (auction.bidder == guid) {
+		const bool raisesBid = bidValue >= auction.internalBid;
+		bidderBalance = {guid, raisesBid ? bidValue - auction.internalBid : auction.internalBid - bidValue, raisesBid};
+		auction.internalBid = bidValue;
+	} else if (auction.bidder && bidValue <= auction.internalBid) {
+		auction.highestBid = bidValue;
 		retSuccess = BidSuccessMessage::LowerBid;
 	} else {
-		if (!processBankAuction(player, house, bidValue)) {
-			player->sendHouseAuctionMessage(houseId, HouseAuctionType::Bid, enumToValue(ret));
-			return;
+		bidderBalance = {guid, bidValue + house->getRent(), true};
+		if (auction.bidder) {
+			refund = {auction.bidder, auction.internalBid + auction.reservedRent};
+			auction.highestBid = auction.internalBid + 1;
+		} else {
+			auction.highestBid = 0;
+			auction.bidEndDate = House::calculateBidEndDate(g_configManager().getNumber(DAYS_TO_CLOSE_BID));
 		}
-		house->setHighestBid(house->getInternalBid() + 1);
-		house->setInternalBid(bidValue);
-		house->setBidHolderLimit(bidValue);
-		house->setBidderName(player->getName());
-		house->setBidder(player->getGUID());
+		auction.internalBid = bidValue;
+		auction.reservedRent = house->getRent();
+		auction.bidder = guid;
+		auction.bidderName = player->getName();
+	}
+	if (bidderBalance.debit && player->getBankBalance() < bidderBalance.amount) {
+		player->sendHouseAuctionMessage(houseId, HouseAuctionType::Bid, enumToValue(BidErrorMessage::NotEnoughMoney));
+		return;
+	}
+	if (!IOMapSerialize::settleHouseAuction(house, std::move(auction), bidderBalance, refund)) {
+		player->sendHouseAuctionMessage(houseId, HouseAuctionType::Bid, enumToValue(BidErrorMessage::Internal));
+		return;
 	}
 
 	const auto &town = g_game().map.towns.getTown(house->getTownId());
@@ -11683,7 +11481,7 @@ void Game::playerCyclopediaHouseMoveOut(uint32_t playerId, uint32_t houseId, uin
 	}
 
 	const auto house = g_game().map.houses.getHouseByClientId(houseId);
-	if (!house || house->getState() != CyclopediaHouseState::Rented) {
+	if (!house || house->getState() != CyclopediaHouseState::Rented || house->hasTransferItem()) {
 		player->sendHouseAuctionMessage(houseId, HouseAuctionType::MoveOut, enumToValue(TransferErrorMessage::Internal));
 		return;
 	}
@@ -11693,8 +11491,13 @@ void Game::playerCyclopediaHouseMoveOut(uint32_t playerId, uint32_t houseId, uin
 		return;
 	}
 
-	house->setBidEndDate(timestamp);
-	house->setState(CyclopediaHouseState::MoveOut);
+	auto auction = house->getAuctionState();
+	auction.bidEndDate = timestamp;
+	auction.state = CyclopediaHouseState::MoveOut;
+	if (!IOMapSerialize::settleHouseAuction(house, std::move(auction), {}, {})) {
+		player->sendHouseAuctionMessage(houseId, HouseAuctionType::MoveOut, enumToValue(TransferErrorMessage::Internal));
+		return;
+	}
 
 	player->sendHouseAuctionMessage(houseId, HouseAuctionType::MoveOut, enumToValue(TransferErrorMessage::Success));
 	playerCyclopediaHousesByTown(playerId, "");
@@ -11722,8 +11525,12 @@ void Game::playerCyclopediaHouseCancelMoveOut(uint32_t playerId, uint32_t houseI
 		return;
 	}
 
-	house->setBidEndDate(0);
-	house->setState(CyclopediaHouseState::Rented);
+	HouseAuctionState auction;
+	auction.state = CyclopediaHouseState::Rented;
+	if (!IOMapSerialize::settleHouseAuction(house, std::move(auction), {}, {})) {
+		player->sendHouseAuctionMessage(houseId, HouseAuctionType::CancelMoveOut, enumToValue(TransferErrorMessage::Internal));
+		return;
+	}
 
 	player->sendHouseAuctionMessage(houseId, HouseAuctionType::CancelMoveOut, enumToValue(TransferErrorMessage::Success));
 	playerCyclopediaHousesByTown(playerId, "");
@@ -11747,7 +11554,7 @@ void Game::playerCyclopediaHouseTransfer(uint32_t playerId, uint32_t houseId, ui
 	}
 
 	const auto house = g_game().map.houses.getHouseByClientId(houseId);
-	if (!house || house->getState() != CyclopediaHouseState::Rented) {
+	if (!house || house->getState() != CyclopediaHouseState::Rented || house->hasTransferItem()) {
 		owner->sendHouseAuctionMessage(houseId, HouseAuctionType::Transfer, enumToValue(TransferErrorMessage::Internal));
 		return;
 	}
@@ -11758,11 +11565,16 @@ void Game::playerCyclopediaHouseTransfer(uint32_t playerId, uint32_t houseId, ui
 		return;
 	}
 
-	house->setBidderName(newOwnerName);
-	house->setBidder(newOwner->getGUID());
-	house->setInternalBid(bidValue);
-	house->setBidEndDate(timestamp);
-	house->setState(CyclopediaHouseState::Transfer);
+	HouseAuctionState auction;
+	auction.bidder = newOwner->getGUID();
+	auction.bidderName = newOwner->getName();
+	auction.internalBid = bidValue;
+	auction.bidEndDate = timestamp;
+	auction.state = CyclopediaHouseState::Transfer;
+	if (!IOMapSerialize::settleHouseAuction(house, std::move(auction), {}, {})) {
+		owner->sendHouseAuctionMessage(houseId, HouseAuctionType::Transfer, enumToValue(TransferErrorMessage::Internal));
+		return;
+	}
 
 	owner->sendHouseAuctionMessage(houseId, HouseAuctionType::Transfer, enumToValue(ret));
 	playerCyclopediaHousesByTown(playerId, "");
@@ -11790,23 +11602,17 @@ void Game::playerCyclopediaHouseCancelTransfer(uint32_t playerId, uint32_t house
 		return;
 	}
 
-	if (house->getTransferStatus()) {
-		const auto &newOwner = getPlayerByGUID(house->getBidder());
-		const auto amountPaid = house->getInternalBid() + house->getRent();
-		if (newOwner) {
-			newOwner->setBankBalance(newOwner->getBankBalance() + amountPaid);
-			newOwner->sendResourceBalance(RESOURCE_BANK, newOwner->getBankBalance());
-		} else {
-			IOLoginData::increaseBankBalance(house->getBidder(), amountPaid);
-		}
+	HouseAuctionState auction;
+	auction.state = CyclopediaHouseState::Rented;
+	IOMapSerialize::AuctionBalanceChange refund;
+	const auto current = house->getAuctionState();
+	if (current.transferAccepted) {
+		refund = {current.bidder, current.internalBid + current.reservedRent};
 	}
-
-	house->setBidderName("");
-	house->setBidder(0);
-	house->setInternalBid(0);
-	house->setBidEndDate(0);
-	house->setState(CyclopediaHouseState::Rented);
-	house->setTransferStatus(false);
+	if (!IOMapSerialize::settleHouseAuction(house, std::move(auction), refund, {})) {
+		player->sendHouseAuctionMessage(houseId, HouseAuctionType::CancelTransfer, enumToValue(TransferErrorMessage::Internal));
+		return;
+	}
 
 	player->sendHouseAuctionMessage(houseId, HouseAuctionType::CancelTransfer, enumToValue(TransferErrorMessage::Success));
 	playerCyclopediaHousesByTown(playerId, "");
@@ -11835,12 +11641,14 @@ void Game::playerCyclopediaHouseAcceptTransfer(uint32_t playerId, uint32_t house
 		return;
 	}
 
-	if (!processBankAuction(player, house, house->getInternalBid())) {
-		player->sendHouseAuctionMessage(houseId, HouseAuctionType::AcceptTransfer, enumToValue(AcceptTransferErrorMessage::Frozen));
+	auto auction = house->getAuctionState();
+	auction.transferAccepted = true;
+	auction.reservedRent = house->getRent();
+	const auto amount = auction.internalBid + auction.reservedRent;
+	if (!IOMapSerialize::settleHouseAuction(house, std::move(auction), {player->getGUID(), amount, true}, {})) {
+		player->sendHouseAuctionMessage(houseId, HouseAuctionType::AcceptTransfer, enumToValue(AcceptTransferErrorMessage::Internal));
 		return;
 	}
-
-	house->setTransferStatus(true);
 
 	player->sendHouseAuctionMessage(houseId, HouseAuctionType::AcceptTransfer, enumToValue(ret));
 	playerCyclopediaHousesByTown(playerId, "");
@@ -11863,56 +11671,18 @@ void Game::playerCyclopediaHouseRejectTransfer(uint32_t playerId, uint32_t house
 		return;
 	}
 
-	if (house->getTransferStatus()) {
-		const auto &newOwner = getPlayerByGUID(house->getBidder());
-		const auto amountPaid = house->getInternalBid() + house->getRent();
-		if (newOwner) {
-			newOwner->setBankBalance(newOwner->getBankBalance() + amountPaid);
-			newOwner->sendResourceBalance(RESOURCE_BANK, newOwner->getBankBalance());
-		} else {
-			IOLoginData::increaseBankBalance(house->getBidder(), amountPaid);
-		}
+	HouseAuctionState auction;
+	auction.state = CyclopediaHouseState::Rented;
+	IOMapSerialize::AuctionBalanceChange refund;
+	const auto current = house->getAuctionState();
+	if (current.transferAccepted) {
+		refund = {player->getGUID(), current.internalBid + current.reservedRent};
 	}
-
-	house->setBidderName("");
-	house->setBidder(0);
-	house->setInternalBid(0);
-	house->setBidEndDate(0);
-	house->setState(CyclopediaHouseState::Rented);
-	house->setTransferStatus(false);
+	if (!IOMapSerialize::settleHouseAuction(house, std::move(auction), refund, {})) {
+		player->sendHouseAuctionMessage(houseId, HouseAuctionType::RejectTransfer, enumToValue(TransferErrorMessage::Internal));
+		return;
+	}
 
 	player->sendHouseAuctionMessage(houseId, HouseAuctionType::RejectTransfer, enumToValue(TransferErrorMessage::Success));
 	playerCyclopediaHousesByTown(playerId, "");
-}
-
-bool Game::processBankAuction(std::shared_ptr<Player> player, const std::shared_ptr<House> &house, uint64_t bid, bool replace /* = false*/) {
-	if (!replace && player->getBankBalance() < (house->getRent() + bid)) {
-		return false;
-	}
-
-	if (player->getBankBalance() < bid) {
-		return false;
-	}
-
-	uint64_t balance = player->getBankBalance();
-	if (replace) {
-		player->setBankBalance(balance - (bid - house->getInternalBid()));
-	} else {
-		player->setBankBalance(balance - (house->getRent() + bid));
-	}
-
-	player->sendResourceBalance(RESOURCE_BANK, player->getBankBalance());
-
-	if (house->getBidderName() != player->getName()) {
-		const auto otherPlayer = g_game().getPlayerByName(house->getBidderName());
-		if (!otherPlayer) {
-			uint32_t bidderGuid = IOLoginData::getGuidByName(house->getBidderName());
-			IOLoginData::increaseBankBalance(bidderGuid, (house->getBidHolderLimit() + house->getRent()));
-		} else {
-			otherPlayer->setBankBalance(otherPlayer->getBankBalance() + (house->getBidHolderLimit() + house->getRent()));
-			otherPlayer->sendResourceBalance(RESOURCE_BANK, otherPlayer->getBankBalance());
-		}
-	}
-
-	return true;
 }

@@ -11564,9 +11564,8 @@ void Player::onRemoveCreature(const std::shared_ptr<Creature> &creature, bool is
 		// alive in memory with all inventory/stats/conditions intact, so the DB save
 		// is only needed for crash recovery. Graceful shutdown saves via a different
 		// path (saveAllPlayers), and real bot logouts (isLogout=true) still save here.
-		// Crash recovery contract: bot state since last graceful shutdown is lost
-		// (accepted — they're bots, not real players).
-		if (!isBotPlayer() || isLogout) {
+		// Game::removeCreature queues logout saves after removal has finished.
+		if (!isBotPlayer() && !isLogout) {
 			g_saveManager().savePlayer(player);
 		}
 	}

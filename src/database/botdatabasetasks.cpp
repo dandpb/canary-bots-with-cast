@@ -35,21 +35,34 @@ void BotDatabaseTasks::ensureStartedLocked() {
 }
 
 void BotDatabaseTasks::execute(const std::string &query, const std::function<void(DBResult_ptr, bool)> &callback /* nullptr */) {
-	{
-		std::scoped_lock lock(mutex_);
-		ensureStartedLocked();
-		queue_.push_back(Job { query, callback, false });
-	}
-	cv_.notify_one();
+	submit({ query, callback, false });
 }
 
 void BotDatabaseTasks::store(const std::string &query, const std::function<void(DBResult_ptr, bool)> &callback /* nullptr */) {
+	submit({ query, callback, true });
+}
+
+void BotDatabaseTasks::submit(Job job) {
+	constexpr size_t maxQueuedJobs = 1024;
 	{
 		std::scoped_lock lock(mutex_);
-		ensureStartedLocked();
-		queue_.push_back(Job { query, callback, true });
+		if (queue_.size() < maxQueuedJobs) {
+			ensureStartedLocked();
+			queue_.push_back(std::move(job));
+			cv_.notify_one();
+			return;
+		}
 	}
-	cv_.notify_one();
+	g_logger().warn("[BotDatabaseTasks] SQL queue is full; rejecting job");
+	complete(std::move(job), nullptr, false);
+}
+
+void BotDatabaseTasks::complete(Job job, DBResult_ptr result, bool success) {
+	if (job.callback) {
+		g_dispatcher().addEvent([callback = std::move(job.callback), result = std::move(result), success]() {
+			callback(result, success);
+		}, "BotDatabaseTasks::complete");
+	}
 }
 
 void BotDatabaseTasks::run(const std::stop_token &token) {
@@ -64,10 +77,6 @@ void BotDatabaseTasks::run(const std::stop_token &token) {
 			cv_.wait(lock, [&] { return token.stop_requested() || !queue_.empty(); });
 			if (token.stop_requested()) {
 				return; // process teardown — drop any remainder, mirrors DatabaseTasks pool teardown
-			}
-			if (!connected && Clock::now() < nextConnect) {
-				cv_.wait_until(lock, nextConnect, [&] { return token.stop_requested(); });
-				if (token.stop_requested()) return;
 			}
 			job = std::move(queue_.front());
 			queue_.pop_front();
@@ -91,10 +100,6 @@ void BotDatabaseTasks::run(const std::stop_token &token) {
 			}
 			connected = db_.isConnected();
 		}
-		if (job.callback) {
-			g_dispatcher().addEvent([callback = std::move(job.callback), result = std::move(result), success]() {
-				callback(result, success);
-			}, "BotDatabaseTasks::complete");
-		}
+		complete(std::move(job), std::move(result), success);
 	}
 }

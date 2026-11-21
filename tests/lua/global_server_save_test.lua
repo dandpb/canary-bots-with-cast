@@ -4,7 +4,7 @@ local scriptPath = arg and arg[1] or "data/scripts/globalevents/global_server_sa
 local passed = 0
 
 local function run(shutdown, close)
-	local calls = { states = {}, saves = 0 }
+	local calls = { states = {}, saves = 0, order = {} }
 	local config = { shutdown = shutdown, close = close, clean = false, notify = false }
 	local event = {}
 	configKeys = {
@@ -30,19 +30,25 @@ local function run(shutdown, close)
 	Game = {
 		setGameState = function(state)
 			table.insert(calls.states, state)
+			table.insert(calls.order, state)
 		end,
 		broadcastMessage = function() end,
 	}
 	saveServer = function()
 		calls.saves = calls.saves + 1
+		table.insert(calls.order, "save")
 	end
 	cleanMap = function() end
 	addEvent = function(callback, _, ...)
 		callback(...)
 	end -- run at once: warnings, then the save
 	DailyReward = { storages = { lastServerSave = 1 } }
-	UpdateDailyRewardGlobalStorage = function() end
-	Raid = { registry = {} }
+	UpdateDailyRewardGlobalStorage = function()
+		table.insert(calls.order, "daily")
+	end
+	Raid = { registry = { fixture = { kv = { set = function(_, key)
+		table.insert(calls.order, key)
+	end } } } }
 	GlobalEvent = function()
 		return setmetatable(event, { __index = { time = function() end, register = function() end } })
 	end
@@ -55,6 +61,7 @@ local function test(name, shutdown, close, states, saves)
 	local calls = run(shutdown, close)
 	assert(table.concat(calls.states, ",") == states, name .. ": states " .. table.concat(calls.states, ","))
 	assert(calls.saves == saves, name .. ": saveServer called " .. calls.saves .. " times")
+	assert(table.concat(calls.order, ",", 1, 3) == "daily,checks-today,last-check-date", name .. ": KV updates must precede the save")
 	assert(calls.keep == not shutdown, name .. ": onTime must keep the event unless it shuts down")
 	passed = passed + 1
 	print("ok " .. passed .. " - " .. name)

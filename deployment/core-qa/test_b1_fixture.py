@@ -249,7 +249,10 @@ class SourceNumbersTests(unittest.TestCase):
             npc,
         )
         game = (SOURCE / "src/game/game.cpp").read_text()
-        body = game[game.index("bool Game::removeMoney(") :]
+        legacy = game.index("bool Game::removeMoney(")
+        body = game[legacy:]
+        self.assertIn("return removeMoney(cylinder, money, flags, useBalance, false);", body[: body.index("\n}\n")])
+        body = game[game.index("bool Game::removeMoney(", legacy + 1) :]
         body = body[: body.index("\n}\n")]
         self.assertIn("std::multimap<uint32_t, std::shared_ptr<Item>> moneyMap;", body)
         self.assertIn("addMoney(cylinder, (worth * removeCount) - money, flags);", body)
