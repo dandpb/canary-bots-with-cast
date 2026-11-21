@@ -84,6 +84,8 @@ def confirm_action_reply(
     by_id = {item.id: item for item in offered_actions}
     item = by_id.get(candidate_id)
     label = _candidate_label(item) if item is not None else candidate_id
+    if candidate_id.startswith("hunt:"):
+        return f"Bora! Vou propor agora a hunt {label}; pode me seguir."[:600]
     return f"Entendido, vou propor agora: {label}."[:600]
 
 

@@ -448,12 +448,12 @@ class Provider:
                 {
                     "type": "predicate",
                     "name": "actionable",
-                    "instructions": "The human message asks to immediately start one specific offered action (other than continue) right now, without negating it or deferring it to later.",
+                    "instructions": "The human message asks to immediately start one specific offered action (other than continue) right now—including asking the companion to lead or guide the party to a hunt when at least one hunt:* candidate is offered—without negating it or deferring it to later.",
                 },
                 {
                     "type": "choice",
                     "name": "action",
-                    "instructions": "Choose which offered candidate best matches the immediate action requested in `message`. Choose `continue` if no immediate action is requested.",
+                    "instructions": "Choose which offered candidate best matches the immediate action requested in `message`. If the human asks to be led to a hunt (e.g. 'me leva numa hunt', 'bora caçar'), pick the best matching offered `hunt:*` candidate rather than `follow` or `continue`. Choose `continue` if no immediate action is requested.",
                     "choices": [
                         {"value": item.id, "description": item.description}
                         for item in observation.actions
@@ -572,6 +572,7 @@ class Provider:
             "Never claim an action completed until the game reports completion. "
             "Vary your conversational phrasing naturally; avoid repeating recent bot openings. "
             "Observed episodes are facts; model_hypothesis entries are fallible suggestions only. "
+            "When the human leader asks you to lead or take them to a hunt, propose an offered hunt:* candidate and tell them to follow you. Never say you will lead them to a hunt while proposing follow or continue: if no hunt:* candidate is currently offered, explain truthfully why (e.g., low potions needing resupply or no matching route nearby for the party level/city). "
             "If the request is ambiguous, ask a short clarifying question and choose continue.",
             "input": json.dumps(
                 {

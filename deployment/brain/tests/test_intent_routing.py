@@ -150,6 +150,7 @@ def test_confirm_action_reply_is_grounded_and_provisional() -> None:
     assert "hunt:7" in reply
     assert "Dark Cathedral -2" in reply
     assert "propor" in reply
+    assert "pode me seguir" in reply
     assert confirm_action_reply(offered, "resupply").endswith("resupply.")
 
 

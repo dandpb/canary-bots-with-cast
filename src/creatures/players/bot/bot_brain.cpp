@@ -389,11 +389,16 @@ Json BotEngine::observeBrain(BotState &bot) {
 	if (leader || solo) {
 		uint32_t minimumLevel = leader ? std::min(player->getLevel(), leader->getLevel()) : player->getLevel();
 		uint32_t maximumLevel = leader ? std::max(player->getLevel(), leader->getLevel()) : player->getLevel();
+		uint32_t partyVocationMask = 1U << (getBaseVocation(bot.vocationId) - 1);
 		Json members = Json::array();
-		if (leader) members.push_back(leaderGuid);
+		if (leader) {
+			members.push_back(leaderGuid);
+			partyVocationMask |= 1U << (getBaseVocation(leader->getVocationId()) - 1);
+		}
 		if (leader) for (const auto &member : party->getMembers()) {
 			minimumLevel = std::min(minimumLevel, member->getLevel());
 			maximumLevel = std::max(maximumLevel, member->getLevel());
+			partyVocationMask |= 1U << (getBaseVocation(member->getVocationId()) - 1);
 			if (members.size() < 20) {
 				members.push_back(member->getGUID());
 			}
@@ -402,7 +407,8 @@ Json BotEngine::observeBrain(BotState &bot) {
 		if (leader) partyState = { { "leader_id", leaderGuid }, { "members", members }, { "status", memberStatus } };
 		if (leader) add("follow", "follow", "Follow and support the human party leader");
 		add("hold", "hold", "Hold position briefly while retaining combat and healing");
-		const auto homeTown = solo ? g_game().map.towns.getTown(findNearestTown(position)) : nullptr;
+		const uint32_t currentTownId = findNearestTown(position);
+		const auto homeTown = solo ? g_game().map.towns.getTown(currentTownId) : nullptr;
 		const auto homePosition = homeTown ? homeTown->getTemplePosition() : position;
 		const bool awayFromHome = position.z != homePosition.z || Position::getDiagonalDistance(position, homePosition) > 3;
 		if (!solo || health < 80 || awayFromHome) {
@@ -412,15 +418,32 @@ Json BotEngine::observeBrain(BotState &bot) {
 			if (potions < 40 && session.action != "resupply" && !player->isPzLocked() && brainShop(bot)) {
 				add("resupply", "resupply", "Walk to the town shop to replenish supplies and return");
 			}
-			if (potions >= 10 && botbrain::partyReady(memberStatus, { position.x, position.y, position.z })) {
+			const uint32_t minHuntPotions = leader ? (player->getLevel() < 30 ? 1U : (player->getLevel() < 60 ? 5U : 10U)) : 10U;
+			bool partyHasOtherGuide = false;
+			if (leader) {
+				for (const auto otherGuid : brain_->allPilots()) {
+					if (otherGuid == bot.guid) {
+						continue;
+					}
+					const auto other = brain_->sessions.find(otherGuid);
+					if (other != brain_->sessions.end() && other->second.leader == leaderGuid
+					    && !other->second.actionId.empty() && other->second.action == "hunt") {
+						partyHasOtherGuide = true;
+						break;
+					}
+				}
+			}
+			if (potions >= minHuntPotions && !partyHasOtherGuide && botbrain::partyReady(memberStatus, { position.x, position.y, position.z })) {
+				const uint32_t effectiveVocMask = leader ? partyVocationMask : (1U << (getBaseVocation(bot.vocationId) - 1));
 				for (const auto &script : huntScripts_) {
 					if (actions.size() >= 24) {
 						break;
 					}
+					const bool matchingTown = script.townId == bot.townId || (currentTownId != 0 && script.townId == currentTownId);
 					if (!script.enabled || script.isQuest || script.scriptCategory != "hunt" || script.patrolWaypoints.empty()
-					    || script.townId != bot.townId || (script.levelMin && minimumLevel < script.levelMin)
+					    || !matchingTown || (script.levelMin && minimumLevel < script.levelMin)
 					    || (script.levelMax && maximumLevel > script.levelMax)
-					    || (script.vocationMask && !(script.vocationMask & (1U << (getBaseVocation(bot.vocationId) - 1))))
+					    || (script.vocationMask && !(script.vocationMask & effectiveVocMask))
 					    || activeHunts_.count(script.id) || (!script.spawnGroup.empty() && activeSpawnGroups_.count(script.spawnGroup))
 					    || isScriptPlayerClaimed(script.id, script.spawnGroup) || isScriptHuntRepelled(script)) {
 						continue;
@@ -428,7 +451,7 @@ Json BotEngine::observeBrain(BotState &bot) {
 					const auto &entry = script.travelToWaypoints.empty() ? script.patrolWaypoints.front() : script.travelToWaypoints.front();
 					const int32_t entryDist = Position::getDiagonalDistance(entry.pos, position);
 					const int floorDelta = std::abs(static_cast<int>(entry.pos.z) - static_cast<int>(position.z));
-					const bool reachableEntry = (floorDelta == 0 && entryDist <= 200) || (solo && floorDelta == 1 && entryDist <= 120);
+					const bool reachableEntry = (floorDelta == 0 && entryDist <= 200) || (floorDelta == 1 && entryDist <= 120);
 					if (!reachableEntry) {
 						continue;
 					}
@@ -535,6 +558,10 @@ bool BotEngine::brainMessage(uint32_t guid, uint32_t sender, const std::string &
 	if (!bot || !player || player->isBotPlayer() || text.empty() || text.size() > 1024) {
 		return false;
 	}
+	const std::string utf8Text = botbrain::latin1ToUtf8(text);
+	if (utf8Text.empty() || utf8Text.size() > 1024) {
+		return false;
+	}
 	if (brain_->mode == "active" && botMonoMs() - brain_->heartbeat > 5000) {
 		return false;
 	}
@@ -553,7 +580,7 @@ bool BotEngine::brainMessage(uint32_t guid, uint32_t sender, const std::string &
 	}
 	session.messages.push_back({ { "id", brain_->world + ":" + std::to_string(++brain_->messageSequence) },
 	                             { "player_id", player->getGUID() },
-	                             { "text", text },
+	                             { "text", utf8Text },
 	                             { "channel", "pm" } });
 	return brain_->mode == "active";
 }
@@ -744,8 +771,9 @@ void BotEngine::tickBrain() {
 						continue;
 					}
 					auto target = g_game().getPlayerByGUID(message->at("player_id").get<uint32_t>(), false);
-					if (brain_->mode == "active" && target && !text.empty() && text.size() <= 1200) {
-						target->sendPrivateMessage(bot->getPlayer(), TALKTYPE_PRIVATE_FROM, text);
+					const std::string wireText = botbrain::utf8ToLatin1(text);
+					if (brain_->mode == "active" && target && !wireText.empty() && wireText.size() <= 1200) {
+						target->sendPrivateMessage(bot->getPlayer(), TALKTYPE_PRIVATE_FROM, wireText);
 					}
 					session.messages.erase(message);
 					break;
@@ -779,6 +807,24 @@ void BotEngine::tickBrain() {
 			const auto &actions = current.at("actions");
 			auto selected = std::find_if(actions.begin(), actions.end(), [&](const Json &item) { return item.at("id") == candidate; });
 			const auto action = selected->at("action").get<std::string>();
+			if (action == "hunt" && session.leader != 0) {
+				bool partyAlreadyGuiding = false;
+				for (const auto otherGuid : brain_->allPilots()) {
+					if (otherGuid == guid) {
+						continue;
+					}
+					const auto other = brain_->sessions.find(otherGuid);
+					if (other != brain_->sessions.end() && other->second.leader == session.leader
+					    && !other->second.actionId.empty() && other->second.action == "hunt") {
+						partyAlreadyGuiding = true;
+						break;
+					}
+				}
+				if (partyAlreadyGuiding) {
+					brain_->channel->send(brainOutcome(brain_->world, guid, id, "rejected", "candidate_no_longer_eligible"));
+					continue;
+				}
+			}
 			if (action == "continue") {
 				auto outcome = brainOutcome(brain_->world, guid, id, "completed", "continuing");
 				rememberOutcome(session, id, outcome);

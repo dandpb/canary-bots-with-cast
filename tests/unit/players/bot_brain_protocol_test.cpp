@@ -222,3 +222,18 @@ TEST(BotBrainProtocol, SelectsDynamicPartyPilotsDeterministicallyUpToCap) {
 	EXPECT_EQ(std::count(selected.begin(), selected.end(), 65107U), 1);
 	EXPECT_EQ(std::count(selected.begin(), selected.end(), 65108U), 0);
 }
+
+TEST(BotBrainProtocol, TranscodesUtf8AndLatin1ForTibiaChat) {
+	const std::string utf8Sample = "Vou seguir voc\xC3\xAA; j\xC3\xA1 chegamos, n\xC3\xA3o h\xC3\xA1 n\xC3\xADvel \xE2\x80\x94 tudo certo\xE2\x80\xA6";
+	const std::string latin1 = botbrain::utf8ToLatin1(utf8Sample);
+	EXPECT_EQ(latin1, "Vou seguir voc\xEA; j\xE1 chegamos, n\xE3o h\xE1 n\xEDvel - tudo certo...");
+	EXPECT_EQ(latin1.find("\xC3"), std::string::npos);
+
+	const std::string rawLatin1In = "compra po\xE7\xF5" "es";
+	const std::string decodedUtf8 = botbrain::latin1ToUtf8(rawLatin1In);
+	EXPECT_EQ(decodedUtf8, "compra po\xC3\xA7\xC3\xB5" "es");
+	// Valid UTF-8 input passes through unchanged and serializes cleanly via nlohmann::json.
+	EXPECT_EQ(botbrain::latin1ToUtf8(utf8Sample), utf8Sample);
+	const nlohmann::json payload = { { "text", decodedUtf8 } };
+	EXPECT_NO_THROW((void)payload.dump());
+}

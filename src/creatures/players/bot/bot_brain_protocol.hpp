@@ -354,6 +354,118 @@ namespace botbrain {
 		return selected;
 	}
 
+	/** Decode UTF-8 into ISO-8859-1 (Latin-1) with ASCII typography fallbacks for Tibia client text. */
+	inline std::string utf8ToLatin1(const std::string &utf8) {
+		std::string out;
+		out.reserve(utf8.size());
+		size_t i = 0;
+		const size_t n = utf8.size();
+		while (i < n) {
+			const auto b0 = static_cast<unsigned char>(utf8[i]);
+			if (b0 < 0x80) {
+				out.push_back(static_cast<char>(b0));
+				++i;
+				continue;
+			}
+			uint32_t cp = 0;
+			size_t len = 0;
+			if (b0 >= 0xC2 && b0 <= 0xDF && i + 1 < n) {
+				const auto b1 = static_cast<unsigned char>(utf8[i + 1]);
+				if ((b1 & 0xC0) == 0x80) {
+					cp = (static_cast<uint32_t>(b0 & 0x1F) << 6) | static_cast<uint32_t>(b1 & 0x3F);
+					len = 2;
+				}
+			} else if (b0 >= 0xE0 && b0 <= 0xEF && i + 2 < n) {
+				const auto b1 = static_cast<unsigned char>(utf8[i + 1]);
+				const auto b2 = static_cast<unsigned char>(utf8[i + 2]);
+				if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80
+				    && !(b0 == 0xE0 && b1 < 0xA0) && !(b0 == 0xED && b1 >= 0xA0)) {
+					cp = (static_cast<uint32_t>(b0 & 0x0F) << 12)
+						| (static_cast<uint32_t>(b1 & 0x3F) << 6)
+						| static_cast<uint32_t>(b2 & 0x3F);
+					len = 3;
+				}
+			} else if (b0 >= 0xF0 && b0 <= 0xF4 && i + 3 < n) {
+				const auto b1 = static_cast<unsigned char>(utf8[i + 1]);
+				const auto b2 = static_cast<unsigned char>(utf8[i + 2]);
+				const auto b3 = static_cast<unsigned char>(utf8[i + 3]);
+				if ((b1 & 0xC0) == 0x80 && (b2 & 0xC0) == 0x80 && (b3 & 0xC0) == 0x80
+				    && !(b0 == 0xF0 && b1 < 0x90) && !(b0 == 0xF4 && b1 > 0x8F)) {
+					cp = (static_cast<uint32_t>(b0 & 0x07) << 18)
+						| (static_cast<uint32_t>(b1 & 0x3F) << 12)
+						| (static_cast<uint32_t>(b2 & 0x3F) << 6)
+						| static_cast<uint32_t>(b3 & 0x3F);
+					len = 4;
+				}
+			}
+			if (len == 0) {
+				out.push_back(static_cast<char>(b0));
+				++i;
+				continue;
+			}
+			if (cp <= 0xFF) {
+				out.push_back(static_cast<char>(cp));
+			} else if (cp == 0x2013 || cp == 0x2014) {
+				out.push_back('-');
+			} else if (cp == 0x2018 || cp == 0x2019) {
+				out.push_back('\'');
+			} else if (cp == 0x201C || cp == 0x201D) {
+				out.push_back('"');
+			} else if (cp == 0x2026) {
+				out.append("...");
+			}
+			i += len;
+		}
+		return out;
+	}
+
+	/** Ensure player text is valid UTF-8 before JSON serialization (transcoding ISO-8859-1 if invalid UTF-8). */
+	inline std::string latin1ToUtf8(const std::string &input) {
+		size_t i = 0;
+		const size_t n = input.size();
+		bool validUtf8 = true;
+		while (i < n) {
+			const auto b0 = static_cast<unsigned char>(input[i]);
+			if (b0 < 0x80) {
+				++i;
+			} else if (b0 >= 0xC2 && b0 <= 0xDF && i + 1 < n
+			           && (static_cast<unsigned char>(input[i + 1]) & 0xC0) == 0x80) {
+				i += 2;
+			} else if (b0 >= 0xE0 && b0 <= 0xEF && i + 2 < n
+			           && (static_cast<unsigned char>(input[i + 1]) & 0xC0) == 0x80
+			           && (static_cast<unsigned char>(input[i + 2]) & 0xC0) == 0x80
+			           && !(b0 == 0xE0 && static_cast<unsigned char>(input[i + 1]) < 0xA0)
+			           && !(b0 == 0xED && static_cast<unsigned char>(input[i + 1]) >= 0xA0)) {
+				i += 3;
+			} else if (b0 >= 0xF0 && b0 <= 0xF4 && i + 3 < n
+			           && (static_cast<unsigned char>(input[i + 1]) & 0xC0) == 0x80
+			           && (static_cast<unsigned char>(input[i + 2]) & 0xC0) == 0x80
+			           && (static_cast<unsigned char>(input[i + 3]) & 0xC0) == 0x80
+			           && !(b0 == 0xF0 && static_cast<unsigned char>(input[i + 1]) < 0x90)
+			           && !(b0 == 0xF4 && static_cast<unsigned char>(input[i + 1]) > 0x8F)) {
+				i += 4;
+			} else {
+				validUtf8 = false;
+				break;
+			}
+		}
+		if (validUtf8) {
+			return input;
+		}
+		std::string out;
+		out.reserve(n * 2);
+		for (const char ch : input) {
+			const auto b = static_cast<unsigned char>(ch);
+			if (b < 0x80) {
+				out.push_back(static_cast<char>(b));
+			} else {
+				out.push_back(static_cast<char>(0xC0 | (b >> 6)));
+				out.push_back(static_cast<char>(0x80 | (b & 0x3F)));
+			}
+		}
+		return out;
+	}
+
 	inline nlohmann::json telemetry(const std::string &world, uint32_t guid, uint64_t sequence, int64_t captured, uint64_t deaths, const std::string &phase, bool owned = false) {
 		return { { "version", 1 }, { "type", "telemetry" }, { "world", world }, { "bot_id", guid },
 		         { "sequence", sequence }, { "captured_ms", captured }, { "deaths", deaths }, { "phase", phase }, { "model_owned", owned } };
