@@ -66,8 +66,8 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: deployment/brain/requirements-dev.lock
-      - name: Install LuaJIT (fixture harness requirement)
-        run: sudo apt-get update && sudo apt-get install -y luajit
+      - name: Install LuaJIT and nlohmann-json (fixture + source-metadata probe requirements)
+        run: sudo apt-get update && sudo apt-get install -y luajit nlohmann-json3-dev
       - name: Install locked dependencies
         run: |
           python -m pip install -r deployment/brain/requirements-dev.lock
