@@ -6,9 +6,100 @@
 
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace botbrain {
+	struct RetreatWaypoint {
+		uint16_t x = 0;
+		uint16_t y = 0;
+		uint8_t z = 0;
+	};
+
+	struct RetreatRouteCandidate {
+		uint32_t scriptId = 0;
+		bool isQuest = false;
+		std::string category;
+		std::vector<RetreatWaypoint> travelFrom;
+	};
+
+	struct RetreatRouteSelection {
+		uint32_t scriptId = 0;
+		size_t waypointIndex = 0;
+	};
+
+	/** Pick the nearest authored hunt travel_from route that ends close to home. */
+	inline std::optional<RetreatRouteSelection> selectRetreatRoute(
+		const RetreatWaypoint &pos,
+		const RetreatWaypoint &home,
+		uint32_t preferredScriptId,
+		const std::vector<RetreatRouteCandidate> &candidates,
+		int32_t maxAttachDist = 60,
+		int32_t maxTownEndDist = 120
+	) {
+		auto cheb = [](const RetreatWaypoint &a, const RetreatWaypoint &b) -> int32_t {
+			return std::max(
+				std::abs(static_cast<int32_t>(a.x) - static_cast<int32_t>(b.x)),
+				std::abs(static_cast<int32_t>(a.y) - static_cast<int32_t>(b.y))
+			);
+		};
+		const int32_t currentHomeDist = cheb(pos, home);
+		bool hasBest = false;
+		bool bestPreferred = false;
+		int32_t bestAttachDist = std::numeric_limits<int32_t>::max();
+		int32_t bestEndHomeDist = std::numeric_limits<int32_t>::max();
+		RetreatRouteSelection best {};
+
+		for (const auto &candidate : candidates) {
+			if (candidate.scriptId == 0 || candidate.isQuest || candidate.category != "hunt" || candidate.travelFrom.empty()) {
+				continue;
+			}
+			const auto &end = candidate.travelFrom.back();
+			const int32_t endHomeDist = cheb(end, home);
+			if (endHomeDist > maxTownEndDist || !(endHomeDist < currentHomeDist || (pos.z != home.z && end.z == home.z))) {
+				continue;
+			}
+			int32_t nearestDist = std::numeric_limits<int32_t>::max();
+			size_t nearestIdx = 0;
+			for (size_t i = 0; i < candidate.travelFrom.size(); ++i) {
+				if (candidate.travelFrom[i].z != pos.z) {
+					continue;
+				}
+				const int32_t d = cheb(candidate.travelFrom[i], pos);
+				if (d < nearestDist) {
+					nearestDist = d;
+					nearestIdx = i;
+				}
+			}
+			if (nearestDist > maxAttachDist) {
+				continue;
+			}
+			const bool isPreferred = preferredScriptId != 0 && candidate.scriptId == preferredScriptId;
+			const bool better = !hasBest
+				|| (isPreferred != bestPreferred
+					? isPreferred
+					: (nearestDist != bestAttachDist
+						? nearestDist < bestAttachDist
+						: (endHomeDist != bestEndHomeDist ? endHomeDist < bestEndHomeDist : candidate.scriptId < best.scriptId)));
+			if (better) {
+				hasBest = true;
+				bestPreferred = isPreferred;
+				bestAttachDist = nearestDist;
+				bestEndHomeDist = endHomeDist;
+				best = { candidate.scriptId, nearestIdx };
+			}
+		}
+		if (!hasBest) {
+			return std::nullopt;
+		}
+		return best;
+	}
+
 	inline nlohmann::json telemetry(const std::string &world, uint32_t guid, uint64_t sequence, int64_t captured, uint64_t deaths, const std::string &phase, bool owned = false) {
 		return { { "version", 1 }, { "type", "telemetry" }, { "world", world }, { "bot_id", guid },
 		         { "sequence", sequence }, { "captured_ms", captured }, { "deaths", deaths }, { "phase", phase }, { "model_owned", owned } };

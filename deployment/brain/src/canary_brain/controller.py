@@ -297,16 +297,40 @@ class Controller:
             snapshot.autonomous
             and snapshot.party is None
             and not snapshot.bot.objective_running
-            and len(snapshot.actions) > 1
             and self.memory_mode != "frozen"
         ):
-            profile = self.store.get("profile", str(bot)) or {}
-            if time.time() - profile.get("last_autonomous_plan", 0) >= 600:
-                profile["last_autonomous_plan"] = time.time()
-                self.store.put("profile", str(bot), profile)
-                self._spawn(
-                    bot, "strategy", partial(self._autonomous_strategy, snapshot)
+            offered = self.supervisor.offers(snapshot)
+            actionable = sorted(
+                item.id
+                for item in offered.actions
+                if item.action not in {"continue", "hold"}
+            )
+            if len(actionable) >= 2:
+                latest_terminal = next(
+                    (
+                        key
+                        for key, row in self.store.records("episode", 20)
+                        if row.get("bot") == bot and row.get("terminal")
+                    ),
+                    None,
                 )
+                strategy_key = json.dumps(
+                    [snapshot.world, actionable, latest_terminal],
+                    separators=(",", ":"),
+                )
+                profile = self.store.get("profile", str(bot)) or {}
+                elapsed = time.time() - profile.get("last_autonomous_plan", 0)
+                same_context = (
+                    profile.get("last_autonomous_strategy_key") == strategy_key
+                )
+                cooldown = 3600 if same_context else 600
+                if elapsed >= cooldown:
+                    profile["last_autonomous_plan"] = time.time()
+                    profile["last_autonomous_strategy_key"] = strategy_key
+                    self.store.put("profile", str(bot), profile)
+                    self._spawn(
+                        bot, "strategy", partial(self._autonomous_strategy, snapshot)
+                    )
         plan = self.store.get("plan", str(bot))
         if (
             plan

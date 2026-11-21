@@ -469,6 +469,8 @@ void BotEngine::finishBrain(BotState &bot, const std::string &status, const std:
 	session.action = "follow";
 	session.script = 0;
 	session.waypoint = 0;
+	session.retreatScript = 0;
+	session.retreatWaypoint = 0;
 	session.skipped = 0;
 }
 
@@ -589,7 +591,7 @@ void BotEngine::tickBrain() {
 		}
 		session.offers.push_back(snapshot);
 		brain_->channel->send(snapshot);
-		if (!session.actionId.empty() && now - session.started > (session.action == "hunt" ? 1800000 : 300000)) {
+		if (!session.actionId.empty() && now - session.started > (session.action == "hunt" ? 1800000 : (session.action == "retreat" && session.retreatScript != 0 ? 600000 : 300000))) {
 			finishBrain(*bot, "failed", "objective_timeout");
 		}
 	}
@@ -740,10 +742,45 @@ void BotEngine::tickBrain() {
 			if (action == "hunt") {
 				brainCombat[guid] = {};
 				session.script = static_cast<uint32_t>(std::stoul(candidate.substr(5)));
+				session.lastHuntScript = session.script;
 				activeHunts_[session.script] = guid;
 				for (const auto &script : huntScripts_) {
 					if (script.id == session.script && !script.spawnGroup.empty()) {
 						activeSpawnGroups_[script.spawnGroup] = guid;
+					}
+				}
+			}
+			if (action == "retreat" && !bot->getPlayer()->getParty() && brain_->autonomous == guid) {
+				session.retreatScript = 0;
+				session.retreatWaypoint = 0;
+				const auto &pos = bot->currentPos;
+				if (pos.z != home.z || Position::getDiagonalDistance(pos, home) > 60) {
+					std::vector<botbrain::RetreatRouteCandidate> candidates;
+					candidates.reserve(huntScripts_.size());
+					for (const auto &script : huntScripts_) {
+						if (script.travelFromWaypoints.empty()) {
+							continue;
+						}
+						botbrain::RetreatRouteCandidate route;
+						route.scriptId = script.id;
+						route.isQuest = script.isQuest;
+						route.category = script.scriptCategory;
+						route.travelFrom.reserve(script.travelFromWaypoints.size());
+						for (const auto &wp : script.travelFromWaypoints) {
+							route.travelFrom.push_back({ wp.pos.x, wp.pos.y, wp.pos.z });
+						}
+						candidates.push_back(std::move(route));
+					}
+					const auto chosen = botbrain::selectRetreatRoute(
+						{ pos.x, pos.y, pos.z },
+						{ home.x, home.y, home.z },
+						session.lastHuntScript,
+						candidates
+					);
+					if (chosen) {
+						session.retreatScript = chosen->scriptId;
+						session.retreatWaypoint = chosen->waypointIndex;
+						castLog(*bot, fmt::format("BRAIN: retreat using travel_from script {} wp {}", session.retreatScript, session.retreatWaypoint));
 					}
 				}
 			}
@@ -831,7 +868,55 @@ bool BotEngine::brainPartyMove(BotState &bot, const Position &leaderPosition) {
 		if (!player->getParty() && bot.guid == brain_->autonomous) {
 			if (now - session.lastMove >= 500) {
 				session.lastMove = now;
-				if (!planScopedWalk(bot, leaderPosition, 2)) finishBrain(bot, "failed", "return_route_unavailable");
+				if (session.action == "retreat" && session.retreatScript != 0) {
+					const HuntScript* retreatRoute = nullptr;
+					for (const auto &script : huntScripts_) {
+						if (script.id == session.retreatScript) {
+							retreatRoute = &script;
+							break;
+						}
+					}
+					if (retreatRoute && session.retreatWaypoint < retreatRoute->travelFromWaypoints.size()) {
+						const auto &waypoints = retreatRoute->travelFromWaypoints;
+						size_t index = session.retreatWaypoint;
+						if (bot.currentPos.z != waypoints[index].pos.z && !waypoints[index].isWalkOnFc) {
+							if (planScopedWalk(bot, waypoints[index].pos, 1)) {
+								return true;
+							}
+							session.retreatScript = 0;
+							session.retreatWaypoint = 0;
+							session.skipped = 0;
+						} else {
+							clearPlannerWalk(bot.guid);
+							WaypointFollowConfig config;
+							config.logPrefix = "BRAIN_RET";
+							auto result = followWaypoints(bot, waypoints, index, session.skipped, config);
+							session.retreatWaypoint = index;
+							if (result.inProgress && session.retreatWaypoint < waypoints.size()) {
+								return true;
+							}
+							session.retreatScript = 0;
+							session.retreatWaypoint = 0;
+							session.skipped = 0;
+							clearPlannerWalk(bot.guid);
+							if (!result.aborted) {
+								const auto town = g_game().map.towns.getTown(findNearestTown(bot.currentPos));
+								if (town) {
+									const auto tp = town->getTemplePosition();
+									session.home = { tp.x, tp.y, tp.z };
+								}
+							}
+						}
+					} else {
+						session.retreatScript = 0;
+						session.retreatWaypoint = 0;
+						session.skipped = 0;
+					}
+					const Position targetHome(session.home[0], session.home[1], static_cast<uint8_t>(session.home[2]));
+					if (!planScopedWalk(bot, targetHome, 2)) finishBrain(bot, "failed", "return_route_unavailable");
+				} else if (!planScopedWalk(bot, leaderPosition, 2)) {
+					finishBrain(bot, "failed", "return_route_unavailable");
+				}
 			}
 		} else if (bot.currentPos.z != leaderPosition.z) {
 			auto leader = player->getParty() ? player->getParty()->getLeader() : nullptr;

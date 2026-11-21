@@ -226,7 +226,7 @@ namespace botbrain {
 		std::unordered_map<std::string, nlohmann::json> outcomes;
 		std::string lease, action = "follow", actionId;
 		std::array<uint16_t, 3> home {};
-		uint32_t leader = 0, generation = 0, script = 0, shop = 0, potions = 0;
+		uint32_t leader = 0, generation = 0, script = 0, lastHuntScript = 0, retreatScript = 0, shop = 0, potions = 0;
 		uint32_t target = 0;
 		int64_t targetUntil = 0;
 		uint8_t supplyStep = 0;
@@ -296,7 +296,7 @@ namespace botbrain {
 		int64_t lastTelemetry = 0;
 		int64_t lastDeliveryStatus = 0;
 		int64_t lastPublish = 0, started = 0, lastMessage = 0, lastMove = 0, lastShopScan = 0;
-		size_t waypoint = 0;
+		size_t waypoint = 0, retreatWaypoint = 0;
 		uint32_t skipped = 0;
 		double danger = 0;
 	};

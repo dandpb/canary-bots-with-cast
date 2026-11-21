@@ -58,3 +58,48 @@ TEST(BotBrainProtocol, PrudentHuntRequiresHealthyOnlineMembersOnTheSameFloor) {
 	members[0]["online"] = false;
 	EXPECT_FALSE(botbrain::partyReady(members, { 100, 100, 7 }));
 }
+
+TEST(BotBrainProtocol, SelectRetreatRoutePrefersLastHuntAndRejectsNonTownLoops) {
+	const botbrain::RetreatWaypoint pos { 32704, 32282, 7 };
+	const botbrain::RetreatWaypoint home { 32958, 32077, 7 }; // Venore temple
+
+	botbrain::RetreatRouteCandidate nonTownLoop {
+		1258,
+		false,
+		"hunt",
+		{ { 32770, 32342, 7 }, { 32709, 32279, 7 }, { 32770, 32342, 7 } }
+	};
+	botbrain::RetreatRouteCandidate scriptSeven {
+		7,
+		false,
+		"hunt",
+		{ { 32615, 32426, 9 }, { 32693, 32281, 7 }, { 33014, 32053, 6 } }
+	};
+	botbrain::RetreatRouteCandidate closerValid {
+		401,
+		false,
+		"hunt",
+		{ { 32700, 32280, 7 }, { 32960, 32080, 7 } }
+	};
+
+	// Non-town loop (1258) is closer to pos (dist 5 vs 11), so it must be rejected in favor of script 7.
+	const auto withoutPreferred = botbrain::selectRetreatRoute(pos, home, 0, { nonTownLoop, scriptSeven });
+	ASSERT_TRUE(withoutPreferred.has_value());
+	EXPECT_EQ(withoutPreferred->scriptId, 7U);
+	EXPECT_EQ(withoutPreferred->waypointIndex, 1U);
+
+	// Preferred lastHuntScript (7) wins over closerValid (401) when both end near home.
+	const auto withPreferred = botbrain::selectRetreatRoute(pos, home, 7, { nonTownLoop, closerValid, scriptSeven });
+	ASSERT_TRUE(withPreferred.has_value());
+	EXPECT_EQ(withPreferred->scriptId, 7U);
+	EXPECT_EQ(withPreferred->waypointIndex, 1U);
+
+	// Returns nullopt when no waypoint on pos.z is within maxAttachDist (60 tiles).
+	botbrain::RetreatRouteCandidate farOrWrongFloor {
+		99,
+		false,
+		"hunt",
+		{ { 32704, 32282, 8 }, { 32800, 32282, 7 }, { 32960, 32080, 7 } }
+	};
+	EXPECT_FALSE(botbrain::selectRetreatRoute(pos, home, 99, { farOrWrongFloor }).has_value());
+}

@@ -248,3 +248,118 @@ async def test_running_retreat_is_not_reissued_while_monsters_move(tmp_path):
     await controller.drain()
     assert not any(item.get("type") == "intent" for item in sent)
     await controller.close()
+
+
+async def test_autonomous_strategy_skips_responses_without_multiple_actionable_choices(
+    tmp_path,
+):
+    converse_calls = []
+
+    class Model:
+        async def decide(self, snapshot, memory):
+            return snapshot.actions[0].id
+
+        async def converse(self, *args):
+            converse_calls.append(args)
+            return Proposal("continue", "Sem opções.", "low")
+
+    sent = []
+    controller = Controller(
+        Store(tmp_path / "state.db"), Model(), sent.append, mode="active"
+    )
+    packet = observation()
+    packet.update(party=None, autonomous=True, mode="active")
+    packet["bot"].update(objective_running=False)
+    packet["actions"] = [
+        packet["actions"][0],
+        {"id": "hold", "action": "hold", "description": "Hold", "ttl_ms": 5000},
+        {
+            "id": "retreat",
+            "action": "retreat",
+            "description": "Return home",
+            "ttl_ms": 1500,
+        },
+    ]
+    await controller.handle(packet)
+    await controller.drain()
+    assert converse_calls == []
+
+    # Even with retreat blocked by a prior failure, only continue+hold remain -> still skip converse.
+    controller.supervisor.block_retreat(
+        controller.latest[packet["bot"]["id"]]
+    )
+    packet["sequence"] += 1
+    await controller.handle(packet)
+    await controller.drain()
+    assert converse_calls == []
+    await controller.close()
+
+
+async def test_autonomous_strategy_throttles_unchanged_choices(tmp_path, monkeypatch):
+    import canary_brain.controller as controller_mod
+
+    now = [10_000.0]
+    monkeypatch.setattr(controller_mod.time, "time", lambda: now[0])
+    converse_calls = []
+
+    class Model:
+        async def decide(self, snapshot, memory):
+            return "hunt:7"
+
+        async def converse(self, *args):
+            converse_calls.append(now[0])
+            return Proposal("hunt:7", "Explorar Dark Cathedral.", "low")
+
+    sent = []
+    store = Store(tmp_path / "state.db")
+    controller = Controller(store, Model(), sent.append, mode="active")
+    packet = observation()
+    packet.update(party=None, autonomous=True, mode="active")
+    packet["bot"].update(objective_running=False)
+    packet["actions"] = [
+        packet["actions"][0],
+        {
+            "id": "hunt:7",
+            "action": "hunt",
+            "description": "Dark Cathedral",
+            "ttl_ms": 5000,
+        },
+        {
+            "id": "hunt:401",
+            "action": "hunt",
+            "description": "Venore East Coryms",
+            "ttl_ms": 5000,
+        },
+    ]
+
+    await controller.handle(packet)
+    await controller.drain()
+    assert len(converse_calls) == 1
+
+    # 601s later with identical actionable offers and no new terminal episode -> throttled to 3600s.
+    now[0] += 601.0
+    packet["sequence"] += 1
+    await controller.handle(packet)
+    await controller.drain()
+    assert len(converse_calls) == 1
+
+    # Once a terminal episode finishes, another 601s later triggers a fresh strategy call.
+    intent_id = [item["action_id"] for item in sent if item.get("type") == "intent"][-1]
+    await controller.handle(
+        {
+            "version": 1,
+            "type": "outcome",
+            "world": packet["world"],
+            "bot_id": packet["bot"]["id"],
+            "action_id": intent_id,
+            "status": "completed",
+            "reason": "hunt_progress",
+            "metrics": {"xp_delta": 100.0, "progress": 1.0},
+        }
+    )
+    now[0] += 601.0
+    packet["sequence"] += 1
+    await controller.handle(packet)
+    await controller.drain()
+    assert len(converse_calls) == 2
+    await controller.close()
