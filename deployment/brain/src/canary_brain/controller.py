@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 from . import tracing
 from .benchmark_stops import Stops
+from .intent_routing import format_factual_outcome
 from .learning import Policy, episode_reward
 from .protocol import (
     Message,
@@ -686,6 +687,13 @@ class Controller:
             {
                 "candidate": value["candidate"],
                 "status": value["status"],
+                "reason": value.get("reason", ""),
+                "factual_summary": format_factual_outcome(
+                    str(value["candidate"]),
+                    str(value["status"]),
+                    str(value.get("reason") or ""),
+                    value.get("metrics"),
+                ),
                 "metrics": value.get("metrics", {}),
             }
             for _, value in self.store.records("episode", 40)
@@ -750,6 +758,13 @@ class Controller:
                 "source": key,
                 "candidate": data["candidate"],
                 "status": data["status"],
+                "reason": data.get("reason", ""),
+                "factual_summary": format_factual_outcome(
+                    str(data["candidate"]),
+                    str(data["status"]),
+                    str(data.get("reason") or ""),
+                    data.get("metrics"),
+                ),
                 "metrics": data.get("metrics", {}),
             }
             for key, data in self.store.records("episode", 50)

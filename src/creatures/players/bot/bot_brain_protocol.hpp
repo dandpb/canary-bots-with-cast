@@ -100,6 +100,57 @@ namespace botbrain {
 		return best;
 	}
 
+	/** Format a compact, deterministic hunt description with level band, distance, floor, and targets. */
+	inline std::string formatHuntDescription(
+		const std::string &name,
+		uint32_t levelMin,
+		uint32_t levelMax,
+		int32_t distanceTiles,
+		uint8_t entryFloor,
+		uint8_t botFloor,
+		const std::vector<std::string> &targetNames
+	) {
+		std::string desc = "Guide a prudent party hunt: " + name + " (";
+		if (levelMin > 0 && levelMax > 0) {
+			desc += "lvl " + std::to_string(levelMin) + "-" + std::to_string(levelMax);
+		} else if (levelMin > 0) {
+			desc += "lvl " + std::to_string(levelMin) + "+";
+		} else if (levelMax > 0) {
+			desc += "lvl <=" + std::to_string(levelMax);
+		} else {
+			desc += "any lvl";
+		}
+		desc += ", dist " + std::to_string(std::max<int32_t>(0, distanceTiles));
+		desc += entryFloor == botFloor ? ", same floor" : (", floor " + std::to_string(entryFloor));
+		std::vector<std::string> targets;
+		for (const auto &target : targetNames) {
+			if (target.empty()) {
+				continue;
+			}
+			if (std::find(targets.begin(), targets.end(), target) == targets.end()) {
+				targets.push_back(target);
+				if (targets.size() >= 3) {
+					break;
+				}
+			}
+		}
+		if (!targets.empty()) {
+			desc += ", targets: ";
+			for (size_t i = 0; i < targets.size(); ++i) {
+				if (i > 0) {
+					desc += ", ";
+				}
+				desc += targets[i];
+			}
+		}
+		desc += ")";
+		if (desc.size() > 180) {
+			desc.resize(177);
+			desc += "...";
+		}
+		return desc;
+	}
+
 	inline nlohmann::json telemetry(const std::string &world, uint32_t guid, uint64_t sequence, int64_t captured, uint64_t deaths, const std::string &phase, bool owned = false) {
 		return { { "version", 1 }, { "type", "telemetry" }, { "world", world }, { "bot_id", guid },
 		         { "sequence", sequence }, { "captured_ms", captured }, { "deaths", deaths }, { "phase", phase }, { "model_owned", owned } };

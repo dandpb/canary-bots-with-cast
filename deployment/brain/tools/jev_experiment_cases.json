@@ -77,6 +77,16 @@
       ["party", "Para de me seguir e espera aí.", false, false, "hold"],
       ["party", "O plano é esse: compra pot, volta e leva a gente pros trolls.", false, true, "resupply"],
       ["party", "A gente vai de rato hoje.", false, false, null]
+    ],
+    "slang_clarification": [
+      ["party", "Cola em mim quando terminar essa hunt.", false, false, null],
+      ["party", "Tô sem pot, dá um pulo na loja agora.", false, false, "resupply"],
+      ["party", "Segura a onda aí rapidão.", false, false, "hold"],
+      ["combat", "Mete o pé pro templo antes de deitar.", false, false, "retreat"],
+      ["party", "Bora dar um rolê nos lobos agora.", false, false, "hunt_wolves"],
+      ["party", "Se der ruim depois a gente recua.", false, false, null],
+      ["party", "Enche a bp de pot e depois partiu trolls.", false, true, "resupply"],
+      ["party", "Tô só olhando, não faz nada não.", false, false, null]
     ]
   },
   "routes": {

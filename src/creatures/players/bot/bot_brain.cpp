@@ -389,10 +389,25 @@ Json BotEngine::observeBrain(BotState &bot) {
 						continue;
 					}
 					const auto &entry = script.travelToWaypoints.empty() ? script.patrolWaypoints.front() : script.travelToWaypoints.front();
-					if (entry.pos.z != position.z || Position::getDiagonalDistance(entry.pos, position) > 200) {
+					const int32_t entryDist = Position::getDiagonalDistance(entry.pos, position);
+					const int floorDelta = std::abs(static_cast<int>(entry.pos.z) - static_cast<int>(position.z));
+					const bool reachableEntry = (floorDelta == 0 && entryDist <= 200) || (solo && floorDelta == 1 && entryDist <= 120);
+					if (!reachableEntry) {
 						continue;
 					}
-					add("hunt:" + std::to_string(script.id), "hunt", "Guide a prudent party hunt: " + script.name);
+					add(
+						"hunt:" + std::to_string(script.id),
+						"hunt",
+						botbrain::formatHuntDescription(
+							script.name,
+							script.levelMin,
+							script.levelMax,
+							entryDist,
+							entry.pos.z,
+							position.z,
+							script.targetNames
+						)
+					);
 				}
 			}
 		}

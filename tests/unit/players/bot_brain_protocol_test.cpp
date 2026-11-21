@@ -103,3 +103,40 @@ TEST(BotBrainProtocol, SelectRetreatRoutePrefersLastHuntAndRejectsNonTownLoops) 
 	};
 	EXPECT_FALSE(botbrain::selectRetreatRoute(pos, home, 99, { farOrWrongFloor }).has_value());
 }
+
+TEST(BotBrainProtocol, FormatsHuntCatalogDescriptionWithDeterministicMetadata) {
+	const auto sameFloor = botbrain::formatHuntDescription(
+		"Venore East Coryms",
+		60,
+		240,
+		45,
+		6,
+		6,
+		{ "corym charlatan", "corym skirmisher", "corym charlatan", "corym vanguard", "little corym charlatan" }
+	);
+	EXPECT_EQ(
+		sameFloor,
+		"Guide a prudent party hunt: Venore East Coryms (lvl 60-240, dist 45, same floor, targets: corym charlatan, corym skirmisher, corym vanguard)"
+	);
+
+	const auto adjacentFloor = botbrain::formatHuntDescription("Venore Coryms", 60, 0, 52, 7, 6, {});
+	EXPECT_EQ(adjacentFloor, "Guide a prudent party hunt: Venore Coryms (lvl 60+, dist 52, floor 7)");
+
+	const auto openBounds = botbrain::formatHuntDescription("Thais Rats", 0, 0, -5, 7, 7, { "", "rat" });
+	EXPECT_EQ(openBounds, "Guide a prudent party hunt: Thais Rats (any lvl, dist 0, same floor, targets: rat)");
+
+	const auto maxBounded = botbrain::formatHuntDescription("Dawnport", 0, 20, 12, 7, 7, {});
+	EXPECT_EQ(maxBounded, "Guide a prudent party hunt: Dawnport (lvl <=20, dist 12, same floor)");
+
+	const auto truncated = botbrain::formatHuntDescription(
+		std::string(140, 'X'),
+		100,
+		300,
+		88,
+		7,
+		7,
+		{ "very long monster alpha", "very long monster beta", "very long monster gamma" }
+	);
+	EXPECT_LE(truncated.size(), 180U);
+	EXPECT_EQ(truncated.substr(truncated.size() - 3), "...");
+}
