@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import tracing
 from .protocol import Observation
-from .provider import Prices, Provider
+from .provider import DialogueRoute, Prices, Provider
 
 
 class GatewayConfiguration(BaseModel):
@@ -248,6 +248,18 @@ class GatewayProvider(Provider):
             "strict": True,
             "parameters": schema,
         }
+
+    async def route_dialogue(
+        self,
+        observation: Observation,
+        text: str,
+        authorized: bool,
+        history: list[dict[str, Any]] | None = None,
+    ) -> DialogueRoute | None:
+        """Pre-route dialogue through `/v1/decisions` only when configured for Decisions."""
+        if self.gateway.decision_api != "decisions":
+            return None
+        return await super().route_dialogue(observation, text, authorized, history)
 
     async def _request_choices(
         self,

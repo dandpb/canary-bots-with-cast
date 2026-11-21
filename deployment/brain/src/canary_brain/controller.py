@@ -21,7 +21,7 @@ from .protocol import (
     TelemetryStatus,
     intent_for,
 )
-from .provider import Proposal
+from .provider import DialogueRoute, Proposal
 from .recording import Recorder, attribution, request_context
 from .store import BudgetExceeded, Store
 from .supervised_native import SupervisedNative
@@ -726,6 +726,21 @@ class Controller:
                 },
             )
 
+    def _send_dialogue_unavailable(
+        self, snapshot: Observation, message: Message
+    ) -> None:
+        if self.mode == "active" and snapshot.mode == "active":
+            self.send(
+                {
+                    "version": 1,
+                    "type": "reply",
+                    "world": snapshot.world,
+                    "bot_id": snapshot.bot.id,
+                    "message_id": message.id,
+                    "text": "Minha conversa está indisponível agora. Continuo com o comportamento nativo.",
+                }
+            )
+
     async def _dialogue(self, snapshot: Observation, message: Message) -> None:
         snapshot = self.supervisor.offers(snapshot)
         bot = snapshot.bot.id
@@ -752,50 +767,74 @@ class Controller:
         if deep:
             profile["last_max"] = time.time()
             self.store.put("profile", str(bot), profile)
-        facts = [
-            {
-                "kind": "observed_episode",
-                "source": key,
-                "candidate": data["candidate"],
-                "status": data["status"],
-                "reason": data.get("reason", ""),
-                "factual_summary": format_factual_outcome(
-                    str(data["candidate"]),
-                    str(data["status"]),
-                    str(data.get("reason") or ""),
-                    data.get("metrics"),
-                ),
-                "metrics": data.get("metrics", {}),
-            }
-            for key, data in self.store.records("episode", 50)
-            if data.get("bot") == bot and data.get("terminal")
-        ][:3]
-        hypotheses = [
-            {"kind": "model_hypothesis", "source": key, "text": data["text"][:600]}
-            for key, data in self.store.records("reflection", 20)
-            if data.get("bot") == bot
-        ][:2]
-        try:
-            proposal = await self.model.converse(
-                snapshot,
-                message.text,
-                authorized,
-                history + facts + hypotheses + self.supervisor.advice(bot),
-                deep,
-            )
-        except Exception:
-            if self.mode == "active" and snapshot.mode == "active":
-                self.send(
-                    {
-                        "version": 1,
-                        "type": "reply",
-                        "world": snapshot.world,
-                        "bot_id": bot,
-                        "message_id": message.id,
-                        "text": "Minha conversa está indisponível agora. Continuo com o comportamento nativo.",
-                    }
+
+        route: DialogueRoute | None = None
+        router = getattr(self.model, "route_dialogue", None)
+        if router is not None and authorized and not deep:
+            try:
+                route = await router(snapshot, message.text, authorized, history)
+            except BudgetExceeded:
+                self._send_dialogue_unavailable(snapshot, message)
+                raise
+            except Exception:  # noqa: BLE001 - transient pre-router errors fall back to converse
+                route = None
+
+        candidate_id: str | None
+        selection: dict[str, Any] | None = None
+        tool_call: dict[str, Any] | None = None
+        allow_plan = False
+        if route is not None and route.decision in {"act", "clarify"}:
+            reply_text = route.reply
+            candidate_id = route.candidate_id if route.decision == "act" else None
+            if route.decision == "act":
+                selection = {
+                    "source": "dialogue_decisions",
+                    "probability": route.probability,
+                }
+        else:
+            facts = [
+                {
+                    "kind": "observed_episode",
+                    "source": key,
+                    "candidate": data["candidate"],
+                    "status": data["status"],
+                    "reason": data.get("reason", ""),
+                    "factual_summary": format_factual_outcome(
+                        str(data["candidate"]),
+                        str(data["status"]),
+                        str(data.get("reason") or ""),
+                        data.get("metrics"),
+                    ),
+                    "metrics": data.get("metrics", {}),
+                }
+                for key, data in self.store.records("episode", 50)
+                if data.get("bot") == bot and data.get("terminal")
+            ][:3]
+            hypotheses = [
+                {
+                    "kind": "model_hypothesis",
+                    "source": key,
+                    "text": data["text"][:600],
+                }
+                for key, data in self.store.records("reflection", 20)
+                if data.get("bot") == bot
+            ][:2]
+            try:
+                proposal = await self.model.converse(
+                    snapshot,
+                    message.text,
+                    authorized,
+                    history + facts + hypotheses + self.supervisor.advice(bot),
+                    deep,
                 )
-            raise
+            except Exception:
+                self._send_dialogue_unavailable(snapshot, message)
+                raise
+            candidate_id = proposal.candidate_id
+            reply_text = proposal.reply
+            tool_call = proposal.tool_call
+            allow_plan = True
+
         latest = self.latest.get(bot)
         if latest is None or latest.world != snapshot.world:
             return
@@ -807,7 +846,7 @@ class Controller:
                     "world": latest.world,
                     "bot_id": bot,
                     "message_id": message.id,
-                    "text": proposal.reply,
+                    "text": reply_text,
                 }
             )
         self.store.put(
@@ -819,25 +858,31 @@ class Controller:
                     history
                     + [
                         {"speaker": "human", "text": message.text},
-                        {"speaker": "bot", "text": proposal.reply},
+                        {"speaker": "bot", "text": reply_text},
                     ]
                 )[-8:],
             },
         )
+        if candidate_id is None:
+            return
         if not authorized or not self.authorized(latest, message.player_id):
             return
         if latest.objective_generation != snapshot.objective_generation:
             return
         if self.leader_message.get(bot) != message.id:
             return
-        if proposal.candidate_id in {item.id for item in latest.actions}:
+        if candidate_id in {item.id for item in latest.actions}:
             action_id = self._apply(
-                latest, proposal.candidate_id, tool_call=proposal.tool_call
+                latest, candidate_id, selection=selection, tool_call=tool_call
             )
             self.store.delete("plan", str(bot))
-            if action_id and any(
-                word in message.text.lower()
-                for word in ("depois", "antes", "planej", "em seguida")
+            if (
+                allow_plan
+                and action_id
+                and any(
+                    word in message.text.lower()
+                    for word in ("depois", "antes", "planej", "em seguida")
+                )
             ):
                 self.store.put(
                     "plan",

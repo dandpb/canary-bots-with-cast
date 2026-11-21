@@ -69,6 +69,14 @@ def clarification_question(
     return "Não há nenhuma ação elegível agora além de continuar; quer aguardar ou mudar de posição?"
 
 
+def confirm_action_reply(offered_actions: Sequence[Candidate], candidate_id: str) -> str:
+    """Return a concise grounded confirmation reply proposing an offered action."""
+    by_id = {item.id: item for item in offered_actions}
+    item = by_id.get(candidate_id)
+    label = _candidate_label(item) if item is not None else candidate_id
+    return f"Entendido, vou propor agora: {label}."[:600]
+
+
 def _int_metric(metrics: Mapping[str, Any] | None, key: str) -> int | None:
     if not metrics or key not in metrics:
         return None

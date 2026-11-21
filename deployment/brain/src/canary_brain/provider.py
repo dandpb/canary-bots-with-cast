@@ -2,21 +2,37 @@
 
 import asyncio
 import json
+import math
 import time
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import tracing
+from .intent_routing import (
+    clarification_question,
+    confirm_action_reply,
+    route_probability,
+)
 from .protocol import Observation
 from .recording import Recorder, request_context
 from .sqlite_files import failure_metadata
 from .store import Store, month_now
 
 MODEL = "gpt-6-luna"
+DIALOGUE_BYPASS_WORDS = (
+    "estratég",
+    "estrateg",
+    "planej",
+    "pense com calma",
+    "effort max",
+    "depois",
+    "antes",
+    "em seguida",
+)
 
 
 def decision_timeout_for(observation: Observation, configured: float) -> float:
@@ -58,6 +74,25 @@ class Proposal:
     reply: str
     effort: str
     tool_call: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DialogueRoute:
+    decision: Literal["act", "clarify", "converse"]
+    candidate_id: str | None = None
+    probability: float | None = None
+    reply: str = ""
+
+
+def _valid_probability(value: Any) -> float | None:
+    if (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(value)
+        and 0.0 <= value <= 1.0
+    ):
+        return float(value)
+    return None
 
 
 class UnpricedCacheWrite(ValueError):
@@ -369,6 +404,144 @@ class Provider:
             answer.get("choice")
             for answer in data.get("answers", [])
             if answer.get("name") == "action" and answer.get("type") == "choice"
+        )
+
+    async def route_dialogue(
+        self,
+        observation: Observation,
+        text: str,
+        authorized: bool,
+        history: list[dict[str, Any]] | None = None,
+    ) -> DialogueRoute | None:
+        """Classify a player dialogue message with `/v1/decisions` before full `/v1/responses`."""
+        if not authorized or len(observation.actions) < 2:
+            return None
+        if not any(item.action != "continue" for item in observation.actions):
+            return None
+        lowered = text.lower()
+        if any(word in lowered for word in DIALOGUE_BYPASS_WORDS):
+            return None
+
+        context = observation.model_dump(exclude={"messages", "actions", "lease"})
+        context["message"] = text[:1024]
+        if history:
+            context["recent_dialogue"] = history[-4:]
+
+        body = {
+            "model": MODEL,
+            "input": [
+                {"role": "user", "content": [{"type": "input_json", "data": context}]}
+            ],
+            "questions": [
+                {
+                    "type": "predicate",
+                    "name": "plan",
+                    "instructions": "The human message asks the companion to devise or recommend a strategy/plan, or asks an open-ended question or casual conversation rather than requesting one immediate offered action.",
+                },
+                {
+                    "type": "predicate",
+                    "name": "sequence",
+                    "instructions": "The human message orders a multi-step sequence of two or more actions (such as doing one action first and another afterwards).",
+                },
+                {
+                    "type": "predicate",
+                    "name": "actionable",
+                    "instructions": "The human message asks to immediately start one specific offered action (other than continue) right now, without negating it or deferring it to later.",
+                },
+                {
+                    "type": "choice",
+                    "name": "action",
+                    "instructions": "Choose which offered candidate best matches the immediate action requested in `message`. Choose `continue` if no immediate action is requested.",
+                    "choices": [
+                        {"value": item.id, "description": item.description}
+                        for item in observation.actions
+                    ],
+                },
+            ],
+        }
+        timeout = min(max(self.decision_timeout, 2.0), 5.0)
+        data = await self._request("decisions", body, timeout, tactical=False)
+        answers = {
+            (answer.get("type"), answer.get("name")): answer
+            for answer in data.get("answers", [])
+            if isinstance(answer, dict)
+        }
+        p_plan = _valid_probability(
+            answers.get(("predicate", "plan"), {}).get("probability")
+        )
+        p_sequence = _valid_probability(
+            answers.get(("predicate", "sequence"), {}).get("probability")
+        )
+        p_actionable = _valid_probability(
+            answers.get(("predicate", "actionable"), {}).get("probability")
+        )
+        action_answer = answers.get(("choice", "action"))
+        if (
+            p_plan is None
+            or p_sequence is None
+            or p_actionable is None
+            or action_answer is None
+        ):
+            return None
+
+        offered = {item.id for item in observation.actions}
+        choice = action_answer.get("choice")
+        valid_choice = choice if isinstance(choice, str) and choice in offered else None
+        raw_confidence = action_answer.get("confidence")
+        if "confidence" not in action_answer or raw_confidence is None:
+            confidence = p_actionable
+        else:
+            parsed_confidence = _valid_probability(raw_confidence)
+            if parsed_confidence is None:
+                return None
+            confidence = parsed_confidence
+
+        if p_plan >= 0.50 or p_sequence >= 0.50:
+            return DialogueRoute("converse", probability=p_actionable)
+
+        band = route_probability(p_actionable)
+        if band == "abstain":
+            return DialogueRoute("converse", probability=p_actionable)
+
+        if band == "act":
+            if valid_choice is None or valid_choice == "continue":
+                return DialogueRoute(
+                    "clarify",
+                    candidate_id=None,
+                    probability=p_actionable,
+                    reply=clarification_question(text, observation.actions),
+                )
+            if confidence < 0.70:
+                target = valid_choice if confidence >= 0.50 else None
+                return DialogueRoute(
+                    "clarify",
+                    candidate_id=target,
+                    probability=confidence,
+                    reply=clarification_question(
+                        text, observation.actions, candidate_id=target
+                    ),
+                )
+            return DialogueRoute(
+                "act",
+                candidate_id=valid_choice,
+                probability=min(p_actionable, confidence),
+                reply=confirm_action_reply(observation.actions, valid_choice),
+            )
+
+        target = (
+            valid_choice
+            if valid_choice is not None
+            and valid_choice != "continue"
+            and confidence >= 0.55
+            else None
+        )
+        return DialogueRoute(
+            "clarify",
+            candidate_id=target,
+            probability=p_actionable,
+            reply=clarification_question(
+                text, observation.actions, candidate_id=target
+            ),
         )
 
     async def converse(
