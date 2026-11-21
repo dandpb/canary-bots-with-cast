@@ -108,11 +108,11 @@ elif mode == 'pilot_identity':
     image, mounts = pilot.container_identity()
     assert image == 'sha256:'+'1'*64 and mounts == []
 elif mode == 'pilot_attestation':
-    async def fake_campaign(config, live):
+    async def fake_campaign(config, live, *, fixture_factory, worker_runner):
         assert live
         config.output.mkdir()
         run_id = f'{config.name}:native:0'
-        harness = benchmark.DockerFixture(config,config.output/'native-0',run_id)
+        harness = fixture_factory(config,config.output/'native-0',run_id)
         harness.prepare(config.participants[0])
         harness.start_database()
         harness.close()

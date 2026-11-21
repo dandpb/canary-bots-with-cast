@@ -596,7 +596,7 @@ async def test_conformance_failure_blocks_campaign_and_preserves_result(
         await pilot.execute(admitted)
 
 
-async def test_attested_hook_is_common_and_restored_after_failure(
+async def test_attested_hook_is_scoped_to_the_campaign(
     admitted, monkeypatch
 ):
     experiment = pilot.benchmark.Experiment.model_validate_json(
@@ -606,10 +606,10 @@ async def test_attested_hook_is_common_and_restored_after_failure(
     original_run = pilot.benchmark.run
     seen = []
 
-    async def inspect_and_fail(config, live):
+    async def inspect_and_fail(config, live, *, fixture_factory, worker_runner):
         assert live
         for participant in config.participants:
-            harness = pilot.benchmark.DockerFixture(
+            harness = fixture_factory(
                 config,
                 config.output / f"{participant.name}-0",
                 f"{config.name}:{participant.name}:0",
@@ -1303,8 +1303,8 @@ async def test_observer_failure_is_not_silently_qualified_as_completed(
     async def broken(*args):
         raise RuntimeError("offline status query failure")
 
-    async def campaign(config, live):
-        await pilot.benchmark.run(SimpleNamespace(state_file=state), asyncio.Event())
+    async def campaign(config, live, *, fixture_factory, worker_runner):
+        await worker_runner(SimpleNamespace(state_file=state), asyncio.Event())
         return {"completed": True}
 
     monkeypatch.setattr(pilot.runtime, "run", worker)
@@ -1372,9 +1372,9 @@ async def test_attestation_failure_preserves_admitted_bytes_results_and_releases
             "decisions": [{"valid": True}],
         }
 
-    async def campaign(config, live):
+    async def campaign(config, live, *, fixture_factory, worker_runner):
         run_id = f"{config.name}:native:0"
-        trial = pilot.benchmark.DockerFixture(
+        trial = fixture_factory(
             config,
             config.output / "native-0",
             run_id,

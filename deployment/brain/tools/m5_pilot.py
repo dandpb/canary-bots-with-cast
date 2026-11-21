@@ -30,13 +30,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import patch
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from canary_brain import benchmark, runtime
 from canary_brain.protocol import Observation
+from canary_brain.provider import decision_timeout_for
 from canary_brain.recording import ReplayReader, digest, public_data
 from canary_brain.replay_cli import decision_fixtures
 from canary_brain.sqlite_files import failure_metadata, sqlite_operation
@@ -1466,17 +1466,18 @@ async def run_attested_campaign(experiment: benchmark.Experiment) -> Any:
                     "passive status observer failed; run evidence is incomplete"
                 )
 
-    with (
-        patch.object(benchmark, "DockerFixture", AttestedFixture),
-        patch.object(benchmark, "run", observed_worker),
-    ):
-        return await benchmark.run_campaign(experiment, live=True)
+    return await benchmark.run_campaign(
+        experiment,
+        live=True,
+        fixture_factory=AttestedFixture,
+        worker_runner=observed_worker,
+    )
 
 
 def probe_deadlines(config: runtime.Configuration, fixtures: list[Any]) -> list[int]:
     observations = [Observation.model_validate(row["observation"]) for row in fixtures]
     deadlines = [
-        round(min(config.decision_timeout * 1000, min(a.ttl_ms for a in row.actions)))
+        round(decision_timeout_for(row, config.decision_timeout) * 1000)
         for row in observations
     ]
     if (

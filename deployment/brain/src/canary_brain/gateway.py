@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -10,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from . import tracing
 from .protocol import Observation
-from .provider import Prices, Provider, tactical_choice
+from .provider import Prices, Provider
 
 
 class GatewayConfiguration(BaseModel):
@@ -248,14 +249,19 @@ class GatewayProvider(Provider):
             "parameters": schema,
         }
 
-    async def decide(
-        self, observation: Observation, memory: dict[str, Any] | None = None
-    ) -> str:
+    async def _request_choices(
+        self,
+        observation: Observation,
+        memory: dict[str, Any] | None,
+        *,
+        timeout: float,
+        tactical: bool,
+    ) -> Iterable[object]:
         if self.gateway.decision_api == "decisions":
-            return await super().decide(observation, memory)
+            return await super()._request_choices(
+                observation, memory, timeout=timeout, tactical=tactical
+            )
         options = [item.id for item in observation.actions]
-        if len(options) == 1:
-            return options[0]
         tool = self._choice_tool(options)
         body = {
             "model": self.model,
@@ -297,12 +303,8 @@ class GatewayProvider(Provider):
                     ]
                 }
             }
-        timeout = min(
-            self.decision_timeout,
-            min(item.ttl_ms for item in observation.actions) / 1000,
-        )
         data = await self._request(
-            "responses", body, timeout, fast=True, tactical=tactical_choice(observation)
+            "responses", body, timeout, fast=True, tactical=tactical
         )
         calls = [
             item
@@ -312,10 +314,6 @@ class GatewayProvider(Provider):
         if len(calls) != 1 or calls[0].get("name") != "choose_action":
             raise ValueError("gateway did not return one constrained choice")
         choice = json.loads(calls[0]["arguments"])
-        if (
-            not isinstance(choice, dict)
-            or set(choice) != {"candidate_id"}
-            or choice["candidate_id"] not in options
-        ):
+        if not isinstance(choice, dict) or set(choice) != {"candidate_id"}:
             raise ValueError("gateway returned an unavailable candidate")
-        return str(choice["candidate_id"])
+        return (choice["candidate_id"],)

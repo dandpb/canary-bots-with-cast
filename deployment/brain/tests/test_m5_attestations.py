@@ -152,10 +152,10 @@ def setup(tmp_path, monkeypatch):
 
 
 async def run_trial(monkeypatch, experiment, action):
-    async def campaign(config, live):
+    async def campaign(config, live, *, fixture_factory, worker_runner):
         assert live
         identity = f"{config.name}:native:0"
-        trial = pilot.benchmark.DockerFixture(
+        trial = fixture_factory(
             config,
             config.output / "native-0",
             identity,
@@ -163,7 +163,7 @@ async def run_trial(monkeypatch, experiment, action):
         trial.prepare(config.participants[0])
         trial.start_database()
         try:
-            return await action(trial)
+            return await action(trial, worker_runner)
         finally:
             trial.close()
 
@@ -182,7 +182,7 @@ async def test_real_metadata_precedes_game_start_and_reporter_gets_private_scope
 ):
     experiment, engine = setup
 
-    async def action(trial):
+    async def action(trial, _worker_runner):
         trial.start_game()
 
     await run_trial(monkeypatch, experiment, action)
@@ -236,7 +236,7 @@ async def test_manifest_digest_resolves_to_container_config_id_before_start(
         experiment.database_image: "sha256:" + "2" * 64,
     }
 
-    async def action(trial):
+    async def action(trial, _worker_runner):
         trial.start_game()
 
     await run_trial(monkeypatch, experiment, action)
@@ -283,7 +283,7 @@ async def test_manifest_digest_with_different_container_content_stops_before_sta
 
     engine.command = wrong_content
 
-    async def action(trial):
+    async def action(trial, _worker_runner):
         trial.start_game()
 
     with pytest.raises(ValueError, match="image differs"):
@@ -305,9 +305,9 @@ async def test_prepare_fails_before_attempt_directory_and_keeps_aggregate_eviden
 
     monkeypatch.setattr(pilot.benchmark.DockerFixture, "prepare", fail_prepare)
 
-    async def campaign(config, live):
+    async def campaign(config, live, *, fixture_factory, worker_runner):
         identity = f"{config.name}:native:0"
-        trial = pilot.benchmark.DockerFixture(
+        trial = fixture_factory(
             config,
             config.output / "native-0",
             identity,
@@ -381,7 +381,7 @@ async def test_unproven_identity_scope_or_mount_stops_before_game_and_api(
 
     engine.command = change
 
-    async def action(trial):
+    async def action(trial, _worker_runner):
         trial.start_game()
         pytest.fail("unqualified game must not run")
 
@@ -401,7 +401,7 @@ async def test_active_or_foreign_leftover_never_counts_as_clean_or_gets_deleted_
 ):
     experiment, engine = setup
 
-    async def action(trial):
+    async def action(trial, _worker_runner):
         trial.start_game()
         engine.leftover = engine.container(trial, "game", "running")
         if foreign:
@@ -431,7 +431,7 @@ async def test_close_failure_is_preserved_and_never_attested_as_clean(
     experiment, engine = setup
     engine.failure = OSError("simulated private close failure")
 
-    async def action(trial):
+    async def action(trial, _worker_runner):
         trial.start_game()
 
     with pytest.raises(OSError, match="simulated private close failure"):
@@ -459,10 +459,10 @@ async def test_observer_and_attestation_failures_both_remain_evidence(
     monkeypatch.setattr(pilot.runtime, "run", worker)
     monkeypatch.setattr(pilot, "observe_status", observer)
 
-    async def action(trial):
+    async def action(trial, worker_runner):
         trial.start_game()
         engine.leftover = engine.container(trial, "game", "running")
-        await pilot.benchmark.run(
+        await worker_runner(
             SimpleNamespace(state_file=trial.directory / "worker.sqlite3"),
             asyncio.Event(),
         )
@@ -491,7 +491,7 @@ async def test_cleanup_query_timeout_is_false_and_propagates(setup, monkeypatch)
 
     monkeypatch.setattr(pilot.subprocess, "check_output", fail_after_down)
 
-    async def action(trial):
+    async def action(trial, _worker_runner):
         trial.start_game()
 
     with pytest.raises(subprocess.TimeoutExpired):
@@ -520,7 +520,7 @@ async def test_different_container_after_start_invalidates_images(setup, monkeyp
 
     engine.command = replace_after_start
 
-    async def action(trial):
+    async def action(trial, _worker_runner):
         trial.start_game()
 
     with pytest.raises(ValueError, match="changed after"):
@@ -541,7 +541,7 @@ async def test_remaining_project_network_prevents_cleanup_claim(setup, monkeypat
 
     engine.command = retain_network
 
-    async def action(trial):
+    async def action(trial, _worker_runner):
         trial.start_game()
 
     with pytest.raises(RuntimeError, match="cleanup could not be verified"):

@@ -4,6 +4,7 @@ import asyncio
 import json
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -16,6 +17,10 @@ from .sqlite_files import failure_metadata
 from .store import Store, month_now
 
 MODEL = "gpt-6-luna"
+
+
+def decision_timeout_for(observation: Observation, configured: float) -> float:
+    return min(configured, min(item.ttl_ms for item in observation.actions) / 1000)
 
 
 def tactical_choice(observation: Observation) -> bool:
@@ -315,6 +320,29 @@ class Provider:
     async def decide(
         self, observation: Observation, memory: dict[str, Any] | None = None
     ) -> str:
+        offered = {item.id for item in observation.actions}
+        if len(observation.actions) == 1:
+            return observation.actions[0].id
+
+        choices = await self._request_choices(
+            observation,
+            memory,
+            timeout=decision_timeout_for(observation, self.decision_timeout),
+            tactical=tactical_choice(observation),
+        )
+        for choice in choices:
+            if isinstance(choice, str) and choice in offered:
+                return choice
+        raise ValueError("decision refused or chose an unavailable candidate")
+
+    async def _request_choices(
+        self,
+        observation: Observation,
+        memory: dict[str, Any] | None,
+        *,
+        timeout: float,
+        tactical: bool,
+    ) -> Iterable[object]:
         context = observation.model_dump(exclude={"messages", "actions", "lease"})
         context["experience"] = memory or {}
         body = {
@@ -336,23 +364,12 @@ class Provider:
                 }
             ],
         }
-        if len(observation.actions) == 1:
-            return observation.actions[0].id
-        timeout = min(
-            self.decision_timeout,
-            min(item.ttl_ms for item in observation.actions) / 1000,
+        data = await self._request("decisions", body, timeout, tactical=tactical)
+        return (
+            answer.get("choice")
+            for answer in data.get("answers", [])
+            if answer.get("name") == "action" and answer.get("type") == "choice"
         )
-        data = await self._request(
-            "decisions", body, timeout, tactical=tactical_choice(observation)
-        )
-        for answer in data.get("answers", []):
-            if answer.get("name") == "action" and answer.get("type") == "choice":
-                choice = answer.get("choice")
-                if isinstance(choice, str) and choice in {
-                    item.id for item in observation.actions
-                }:
-                    return choice
-        raise ValueError("decision refused or chose an unavailable candidate")
 
     async def converse(
         self,
