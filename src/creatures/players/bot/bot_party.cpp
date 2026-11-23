@@ -124,6 +124,9 @@ std::vector<uint32_t> BotEngine::findBotsForParty(uint8_t baseVocId, uint32_t pl
 }
 
 bool BotEngine::activateBotForParty(uint32_t guid, uint32_t leaderCreatureId, const Position& summonPos) {
+	// Debug isolation (#124): an ACTIVE non-pinned bot never exists while isolated, but this path
+	// also conscripts INACTIVE ones (wasInactive below), so it needs its own gate.
+	if (debugIsolateRefuses(guid, "party-activate")) return false;
 	auto it = guidToIndex_.find(guid);
 	if (it == guidToIndex_.end()) return false;
 
@@ -144,11 +147,13 @@ bool BotEngine::activateBotForParty(uint32_t guid, uint32_t leaderCreatureId, co
 		activateBot(guid);
 		// activateBot sets state=IDLE, teleports to temple — we override below
 	} else {
-		// Active bot: restore HP/mana
+		// Active bot: restore HP/mana. #187: not mana -- the bot is awake and may be watched.
 		player->health = player->healthMax;
-		player->mana = player->getMaxMana();
 		g_game().addCreatureHealth(player);
-		g_game().addPlayerMana(player);
+		if (legacyManaRefill()) {
+			player->mana = player->getMaxMana();
+			g_game().addPlayerMana(player);
+		}
 	}
 
 	// Override state to PARTY
@@ -649,7 +654,7 @@ void BotEngine::failAssemblyMemberToTeleport(BotState& bot, const Position& anch
 	Position placeAt = chooseSafePartyFollowPos(bot, anchor, s_partyFollowReservedThisTick);
 	s_ptrail.formationTele++;
 	s_prv.asmTeleFallback++;
-	BOT_TELEPORT(player, placeAt, true);
+	BOT_RESCUE_TELEPORT(bot, player, placeAt, true);
 	bot.currentPos = placeAt;
 	bot.lastPos = placeAt;
 	g_logger().info("[BotEngine] [PARTYRV] teleport fallback: bot='{}' reason={} at ({},{},{})",
@@ -1061,6 +1066,7 @@ void BotEngine::exitPartyMode(BotState& bot) {
 	s_lastPartyHealTime.erase(guid);
 	s_partyWasInactive.erase(guid);
 	s_partyPrevSecureMode.erase(guid);
+	s_partyOrder.erase(guid); // #91 verb orders never outlive the party
 	// P7: a human-party support routed through followPartyHuntLeader/role fns writes these guid-keyed
 	// cohesion/combat maps. Clear them on exit so a stale separation timer / retreat cooldown can't
 	// mis-fire (e.g. an instant teleport) when the bot next solo-hunts or joins an autonomous party.
@@ -1202,17 +1208,39 @@ void BotEngine::doPartyFollow(BotState& bot) {
 		want.expiresMs = OTSYS_TIME() + TRAIL_WANT_TTL_MS;
 	}
 
+	// #91 follow-up: a member never keeps swinging at a player that is not fighting our side (the
+	// melee twin of castSpell's gate). b7f r2: party EK Bixy Baratea white-skulled and killed the
+	// stranger Harness Two.
+	// Acceptance signal: a human-led member should never carry a skull. One line per bot per 30 s.
+	if (player->getSkull() >= SKULL_WHITE) {
+		static std::unordered_map<uint32_t, int64_t> s_partySkullLogMs; // this TU only
+		auto& last = s_partySkullLogMs[bot.guid];
+		if (OTSYS_TIME() - last >= 30000) {
+			last = OTSYS_TIME();
+			g_logger().warn("[PARTY_SKULL] bot='{}' skull={} leader='{}'", bot.name, static_cast<int>(player->getSkull()), leader->getName());
+		}
+	}
+	if (const auto at = player->getAttackedCreature(); at && humanPartyPvpBlocked(bot, at, "party_target")) {
+		player->setAttackedCreature(nullptr);
+		player->setFollowCreature(nullptr);
+	}
+
 	// 2. Self-heal (uses existing doHealing which handles HP, paralysis, mana)
 	doHealing(bot);
 
-	// 3. Mana restore
-	if (player->getMana() < player->getMaxMana() / 2) {
+	// 3. Mana restore (#187: legacy only -- the heal slot drinks potions instead)
+	if (legacyManaRefill() && player->getMana() < player->getMaxMana() / 2) {
 		player->mana = player->getMaxMana();
 		g_game().addPlayerMana(player);
 	}
 
 	// Suppress movement while preserving all role-specific healing below.
 	const bool safetyPaused = brainSafetyPause(bot);
+	// #91: a player's standing order (stay / flee / come / attack / hunt / heal) overrides the
+	// default targeting + follow below for as long as it lasts. bot_verb.cpp.
+	if (!s_partyOrder.empty() && applyPartyOrder(bot, player, party, leader, leaderDist, syncPvpSecureMode)) {
+		return;
+	}
 
 	uint8_t baseVoc = getBaseVocation(bot.vocationId);
 	bool chasing = false;
@@ -1395,78 +1423,86 @@ void BotEngine::doPartyFollow(BotState& bot) {
 		return;
 	}
 	if (!chasing) {
-		bool teleported = false;
-		if (bot.currentPos.z != leaderPos.z) {
-			// TRAIL: walk the human leader's recorded route before falling back to the teleport.
-			if (trailCfg_.humanLead && tryFollowLeaderTrail(bot, leader)) {
-				return;
-			}
-			// Different floor — teleport to leader
-			Position placeAt = chooseSafePartyFollowPos(bot, leaderPos, s_partyFollowReservedThisTick);
-			BOT_TELEPORT(player, placeAt, true);
-			bot.currentPos = placeAt;
-			bot.lastPos = placeAt;
-			teleported = true;
-			s_ptrail.partyTele++; // [PTRAIL] baseline: human-led z-change teleport
-			castLog(bot, fmt::format("PARTY: Teleported to leader (z-change) at ({},{},{})",
-				placeAt.x, placeAt.y, placeAt.z));
-		} else if (leaderDist > PARTY_TELEPORT_DIST) {
-			// TRAIL: same guard as the z-change branch above.
-			if (trailCfg_.humanLead && tryFollowLeaderTrail(bot, leader)) {
-				return;
-			}
-			// Too far — teleport
-			Position placeAt = chooseSafePartyFollowPos(bot, leaderPos, s_partyFollowReservedThisTick);
-			BOT_TELEPORT(player, placeAt, true);
-			bot.currentPos = placeAt;
-			bot.lastPos = placeAt;
-			teleported = true;
-			s_ptrail.partyTele++; // [PTRAIL] baseline: human-led too-far teleport
-			castLog(bot, fmt::format("PARTY: Teleported to leader (too far, dist={}) at ({},{},{})",
-				leaderDist, placeAt.x, placeAt.y, placeAt.z));
-		}
+		partyFollowMove(bot, player, leader, leaderDist, trailCfg_.followDist);
+	}
+}
 
-		if (teleported) {
-			// Clear stale walk/follow state from before the teleport
-			if (!player->listWalkDir.empty()) {
+// #91: extracted verbatim from doPartyFollow step 7 so the verb orders (flee / come) reuse the
+// exact same follow walk, with their own follow distance.
+void BotEngine::partyFollowMove(BotState& bot, const std::shared_ptr<Player>& player,
+	const std::shared_ptr<Player>& leader, int32_t leaderDist, int32_t followDist) {
+	const Position leaderPos = leader->getPosition();
+	bool teleported = false;
+	if (bot.currentPos.z != leaderPos.z) {
+		// TRAIL: walk the human leader's recorded route before falling back to the teleport.
+		if (trailCfg_.humanLead && tryFollowLeaderTrail(bot, leader)) {
+			return;
+		}
+		// Different floor — teleport to leader
+		Position placeAt = chooseSafePartyFollowPos(bot, leaderPos, s_partyFollowReservedThisTick);
+		BOT_RESCUE_TELEPORT(bot, player, placeAt, true);
+		bot.currentPos = placeAt;
+		bot.lastPos = placeAt;
+		teleported = true;
+		s_ptrail.partyTele++; // [PTRAIL] baseline: human-led z-change teleport
+		castLog(bot, fmt::format("PARTY: Teleported to leader (z-change) at ({},{},{})",
+			placeAt.x, placeAt.y, placeAt.z));
+	} else if (leaderDist > PARTY_TELEPORT_DIST) {
+		// TRAIL: same guard as the z-change branch above.
+		if (trailCfg_.humanLead && tryFollowLeaderTrail(bot, leader)) {
+			return;
+		}
+		// Too far — teleport
+		Position placeAt = chooseSafePartyFollowPos(bot, leaderPos, s_partyFollowReservedThisTick);
+		BOT_RESCUE_TELEPORT(bot, player, placeAt, true);
+		bot.currentPos = placeAt;
+		bot.lastPos = placeAt;
+		teleported = true;
+		s_ptrail.partyTele++; // [PTRAIL] baseline: human-led too-far teleport
+		castLog(bot, fmt::format("PARTY: Teleported to leader (too far, dist={}) at ({},{},{})",
+			leaderDist, placeAt.x, placeAt.y, placeAt.z));
+	}
+
+	if (teleported) {
+		// Clear stale walk/follow state from before the teleport
+		if (!player->listWalkDir.empty()) {
+			player->listWalkDir.clear();
+			player->stopEventWalk();
+		}
+		player->setFollowCreature(nullptr);
+		player->setAttackedCreature(nullptr);
+	} else if (leaderDist > followDist) {
+		// Walk toward leader
+		if (!player->listWalkDir.empty()) {
+			// Already walking — but if leader is getting far, recompute path
+			if (leaderDist > PARTY_LEASH_DIST) {
 				player->listWalkDir.clear();
 				player->stopEventWalk();
 			}
-			player->setFollowCreature(nullptr);
-			player->setAttackedCreature(nullptr);
-		} else if (leaderDist > trailCfg_.followDist) {
-			// Walk toward leader
-			if (!player->listWalkDir.empty()) {
-				// Already walking — but if leader is getting far, recompute path
-				if (leaderDist > PARTY_LEASH_DIST) {
-					player->listWalkDir.clear();
-					player->stopEventWalk();
-				}
-			}
+		}
 
-			if (player->listWalkDir.empty()) {
-				FindPathParams fpp;
-				fpp.fullPathSearch = true;
-				fpp.clearSight = true;
-				fpp.allowDiagonal = true;
-				fpp.keepDistance = false;
-				fpp.maxSearchDist = PATH_MAX_DIST;
-				fpp.minTargetDist = 0;
-				fpp.maxTargetDist = 1;
+		if (player->listWalkDir.empty()) {
+			FindPathParams fpp;
+			fpp.fullPathSearch = true;
+			fpp.clearSight = true;
+			fpp.allowDiagonal = true;
+			fpp.keepDistance = false;
+			fpp.maxSearchDist = PATH_MAX_DIST;
+			fpp.minTargetDist = 0;
+			fpp.maxTargetDist = 1;
 
-				std::vector<Direction> dirList;
+			std::vector<Direction> dirList;
+			if (g_game().map.getPathMatching(player, leaderPos, dirList, FrozenPathingConditionCall(leaderPos), fpp)) {
+				botStartAutoWalk(bot, player,dirList);
+			} else {
+				// Try without clear sight
+				fpp.clearSight = false;
+				dirList.clear();
 				if (g_game().map.getPathMatching(player, leaderPos, dirList, FrozenPathingConditionCall(leaderPos), fpp)) {
 					botStartAutoWalk(bot, player,dirList);
 				} else {
-					// Try without clear sight
-					fpp.clearSight = false;
-					dirList.clear();
-					if (g_game().map.getPathMatching(player, leaderPos, dirList, FrozenPathingConditionCall(leaderPos), fpp)) {
-						botStartAutoWalk(bot, player,dirList);
-					} else {
-						// Try opening doors
-						tryOpenDoors(bot, player, leaderPos);
-					}
+					// Try opening doors
+					tryOpenDoors(bot, player, leaderPos);
 				}
 			}
 		}
@@ -1605,6 +1641,7 @@ void BotEngine::tryCastChallenge(BotState& bot) {
 	if (player->hasCondition(CONDITION_SPELLCOOLDOWN, challengeSpell->getSpellId())) return;
 	if (player->hasCondition(CONDITION_SPELLGROUPCOOLDOWN, challengeSpell->getGroup())) return;
 	if (player->getMana() < 30) {
+		if (!legacyManaRefill()) return; // #187: no instant refill
 		player->mana = player->getMaxMana();
 		g_game().addPlayerMana(player);
 	}
@@ -1645,6 +1682,7 @@ bool BotEngine::tryCastUtamoVita(BotState& bot) {
 
 	// Ensure mana
 	if (player->getMana() < 50) {
+		if (!legacyManaRefill()) return false; // #187: no instant refill
 		player->mana = player->getMaxMana();
 		g_game().addPlayerMana(player);
 	}
@@ -1931,6 +1969,7 @@ bool BotEngine::formPartyWithLeader(BotState& leader, const std::shared_ptr<Play
 	// Shuffle eligible scripts (irrelevant when forced, but harmless)
 	auto rng = std::mt19937(std::random_device{}());
 	std::shuffle(eligible.begin(), eligible.end(), rng);
+	if (forceScriptId == 0) dangerPreferForParty(eligible, "live");   // #96 party conversion
 	size_t bestEdCount = rosterBestEd, bestMsCount = rosterBestMs, bestRpCount = rosterBestRp;
 
 	// ROUND2 E: the roster was recruited ONCE before the leader was elected, so the loop below only
@@ -2500,8 +2539,8 @@ void BotEngine::doPartyHunt(BotState& bot) {
 	// 2. Self-heal
 	doHealing(bot);
 
-	// 3. Mana restore (infinite mana for party hunt bots)
-	if (player->getMana() < player->getMaxMana() / 2) {
+	// 3. Mana restore (infinite mana for party hunt bots; #187: legacy only)
+	if (legacyManaRefill() && player->getMana() < player->getMaxMana() / 2) {
 		player->mana = player->getMaxMana();
 		g_game().addPlayerMana(player);
 	}
@@ -2569,7 +2608,7 @@ void BotEngine::doPartyHuntHealer(BotState& bot, BotState* leaderBot) {
 
 				// Cast exura sio on EK
 				if (!player->hasCondition(CONDITION_SPELLCOOLDOWN, sioSpell->getSpellId())) {
-					if (player->getMana() < 120) {
+					if (player->getMana() < 120 && legacyManaRefill()) { // #187: legacy only
 						player->mana = player->getMaxMana();
 						g_game().addPlayerMana(player);
 					}
@@ -2953,8 +2992,8 @@ bool BotEngine::tryPartyAoeReposition(BotState& bot, BotState* leaderBot) {
 	// coverage). ~20x less work on the hot path during combat.
 	CandidateTile currentTile = evaluateTile(bot.currentPos);
 	if (currentTile.bestSpell && currentTile.bestScore > 0) {
-		castAoeSpell(bot, currentTile.bestSpell, currentTile.bestDir);
-		return true;
+		// false = a protected bystander is in the area: let the caller fall back to single-target.
+		return castAoeSpell(bot, currentTile.bestSpell, currentTile.bestDir);
 	}
 
 	// Current tile can't land an AoE — evaluate the other candidates and reposition to the best that can.
@@ -3034,8 +3073,7 @@ bool BotEngine::tryPartyAoeReposition(BotState& bot, BotState* leaderBot) {
 
 	// Best is the current tile (shouldn't happen — current couldn't cast above) — cast anyway.
 	if (best->pos.x == bot.currentPos.x && best->pos.y == bot.currentPos.y) {
-		castAoeSpell(bot, best->bestSpell, best->bestDir);
-		return true;
+		return castAoeSpell(bot, best->bestSpell, best->bestDir);
 	}
 
 	// Reposition: pathfind to best tile
@@ -3063,8 +3101,7 @@ bool BotEngine::tryPartyAoeReposition(BotState& bot, BotState* leaderBot) {
 
 	// Can't reach — cast from current position if possible
 	if (currentTile.bestSpell) {
-		castAoeSpell(bot, currentTile.bestSpell, currentTile.bestDir);
-		return true;
+		return castAoeSpell(bot, currentTile.bestSpell, currentTile.bestDir);
 	}
 
 	return false;
@@ -4081,7 +4118,7 @@ void BotEngine::followPartyHuntLeader(BotState& bot, const std::shared_ptr<Playe
 		if (sepElapsed >= PARTY_FOLLOW_Z_SETTLE_MS && cooldownOk) {
 			const bool wasBypass = (nowMs < cdUntil);
 			Position placeAt = chooseSafePartyFollowPos(bot, leaderPos, s_partyFollowReservedThisTick);
-			BOT_TELEPORT(player, placeAt, true);
+			BOT_RESCUE_TELEPORT(bot, player, placeAt, true);
 			bot.currentPos = placeAt;
 			bot.lastPos = placeAt;
 			s_lastZChangeTime[bot.guid] = nowMs; // reuse existing z-change grace (AoE suppression, etc.)
@@ -4134,7 +4171,7 @@ void BotEngine::followPartyHuntLeader(BotState& bot, const std::shared_ptr<Playe
 			return;
 		}
 		Position placeAt = chooseSafePartyFollowPos(bot, leaderPos, s_partyFollowReservedThisTick);
-		BOT_TELEPORT(player, placeAt, true);
+		BOT_RESCUE_TELEPORT(bot, player, placeAt, true);
 		bot.currentPos = placeAt;
 		bot.lastPos = placeAt;
 		if (!player->listWalkDir.empty()) {
@@ -4568,6 +4605,7 @@ void BotEngine::sweepStaleCanaryParties() {
 		// (reclaimStaleCanaryParty refuses any party containing a real player), but the all-bot
 		// `invitebot` test party has no such shield and would be reclaimed mid-test.
 		if (s_rvMember.count(bot.guid) > 0) continue;
+		if (isSparring(bot.guid)) continue; // #87: the spar owns this all-bot party until endSpar
 		if (auto ka = s_inviteDebugKeepAlive.find(bot.guid); ka != s_inviteDebugKeepAlive.end()) {
 			if (nowMs < ka->second) continue;   // TTL still valid — leave the test party alone
 			s_inviteDebugKeepAlive.erase(ka);   // expired, fall through and clean it up

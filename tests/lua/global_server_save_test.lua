@@ -46,6 +46,7 @@ local function run(shutdown, close)
 	UpdateDailyRewardGlobalStorage = function()
 		table.insert(calls.order, "daily")
 	end
+	UpdateDailyRewardServerSave = function() end
 	Raid = { registry = { fixture = { kv = { set = function(_, key)
 		table.insert(calls.order, key)
 	end } } } }

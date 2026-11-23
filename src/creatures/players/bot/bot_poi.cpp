@@ -426,6 +426,14 @@ const BotPOI* BotEngine::selectNextPOI(BotState& bot) {
 					bot.currentPos.x, bot.currentPos.y, bot.currentPos.z,
 					candidates.size());
 			}
+			// BOT_TEST_HARNESS: `decide what=poi` for a WATCHED bot. selectNextPOI serves the live
+			// reroll AND the hibernated twin (virtualAdvanceIdle -> doActivityReroll), so one hook
+			// covers both.
+			if (audFor(AUD_DECIDE, bot.guid)) [[unlikely]] {
+				botAudDecide(bot, "poi", candidates[i]->name, static_cast<int64_t>(candidates.size()),
+					fmt::format("type={} roll={} totalWeight={} pzLocked={}", static_cast<int>(candidates[i]->type),
+						roll, totalWeight, pzLocked ? 1 : 0));
+			}
 			return candidates[i];
 		}
 	}
@@ -462,6 +470,11 @@ const BotPOI* BotEngine::selectNextPOI(BotState& bot) {
 				bot.guid, bot.townId, rewardWon ? "reward" : "imbuing",
 				s.shrine.x, s.shrine.y, s.shrine.z, s.stand.x, s.stand.y, s.stand.z);
 		}
+	}
+	if (audFor(AUD_DECIDE, bot.guid)) [[unlikely]] {
+		botAudDecide(bot, "poi", candidates.back()->name, static_cast<int64_t>(candidates.size()),
+			fmt::format("type={} roll={} totalWeight={} rounding=1", static_cast<int>(candidates.back()->type),
+				roll, totalWeight));
 	}
 	return candidates.back();
 }
@@ -526,6 +539,11 @@ void BotEngine::refreshLivenessCfgIfStale(int64_t maxAgeMs) {
 	c.houseDummyPct            = static_cast<int32_t>(cm.getNumber(BOT_HOUSE_DUMMY));
 	c.houseLockerPct           = static_cast<int32_t>(cm.getNumber(BOT_HOUSE_LOCKER));
 	c.houseShrinePct           = static_cast<int32_t>(cm.getNumber(BOT_HOUSE_SHRINE));
+	c.bedSleepPct              = std::clamp(static_cast<int32_t>(cm.getNumber(BOT_BED_SLEEP_PCT)), 0, 100);
+	c.bedSleepMinSec           = std::max(10, static_cast<int32_t>(cm.getNumber(BOT_BED_SLEEP_MIN_SEC)));
+	c.bedSleepMaxSec           = std::max(c.bedSleepMinSec, static_cast<int32_t>(cm.getNumber(BOT_BED_SLEEP_MAX_SEC)));
+	c.rescueDisguise           = cm.getBoolean(BOT_RESCUE_DISGUISE);
+	c.rescueMaxDeferSec        = std::max(5, static_cast<int32_t>(cm.getNumber(BOT_RESCUE_MAX_DEFER_SEC)));
 	c.houseSettleSec           = static_cast<int32_t>(cm.getNumber(BOT_HOUSE_SETTLE_SEC));
 	c.poiWeightRewardShrine    = static_cast<int32_t>(cm.getNumber(BOT_POI_REWARD_SHRINE));
 	c.poiWeightImbuingShrine   = static_cast<int32_t>(cm.getNumber(BOT_POI_IMBUING_SHRINE));
@@ -545,6 +563,17 @@ void BotEngine::refreshLivenessCfgIfStale(int64_t maxAgeMs) {
 	c.fishZBand                = static_cast<int32_t>(cm.getNumber(BOT_FISH_Z_BAND));
 	c.potionChancePct          = static_cast<int32_t>(cm.getNumber(BOT_POTION_CHANCE_PCT));
 	c.potionMinIntervalMs      = static_cast<int32_t>(cm.getNumber(BOT_POTION_MIN_INTERVAL_MS));
+	c.manaPotionEnable         = cm.getBoolean(BOT_MANA_POTION_ENABLE);
+	c.potionLogAll             = cm.getBoolean(BOT_POTION_LOG_ALL);
+	c.manaPotionPct            = std::clamp(static_cast<int32_t>(cm.getNumber(BOT_MANA_POTION_PCT)), 0, 100);
+	c.knightManaPotionPct      = std::clamp(static_cast<int32_t>(cm.getNumber(BOT_KNIGHT_MANA_POTION_PCT)), 0, 100);
+	c.knightHealthPotionPct    = std::clamp(static_cast<int32_t>(cm.getNumber(BOT_KNIGHT_HEALTH_POTION_PCT)), 0, 100);
+	c.spiritPotionHpPct        = std::clamp(static_cast<int32_t>(cm.getNumber(BOT_SPIRIT_POTION_HP_PCT)), 0, 100);
+	c.potionJitterMs           = std::max(0, static_cast<int32_t>(cm.getNumber(BOT_POTION_JITTER_MS)));
+	c.flaskDropIntervalSec     = std::max(0, static_cast<int32_t>(cm.getNumber(BOT_FLASK_DROP_INTERVAL_SEC)));
+	c.flaskDropMinCount        = std::max(1, static_cast<int32_t>(cm.getNumber(BOT_FLASK_DROP_MIN_COUNT)));
+	c.attackManaReservePct     = std::clamp(static_cast<int32_t>(cm.getNumber(BOT_ATTACK_MANA_RESERVE_PCT)), 0, 90);
+	c.wakeManaFullSec          = std::max(1, static_cast<int32_t>(cm.getNumber(BOT_WAKE_MANA_FULL_SEC)));
 	c.foodChancePct            = static_cast<int32_t>(cm.getNumber(BOT_FOOD_CHANCE_PCT));
 	c.foodMinIntervalMs        = static_cast<int32_t>(cm.getNumber(BOT_FOOD_MIN_INTERVAL_MS));
 	c.runeCraftChancePct       = static_cast<int32_t>(cm.getNumber(BOT_RUNECRAFT_CHANCE_PCT));

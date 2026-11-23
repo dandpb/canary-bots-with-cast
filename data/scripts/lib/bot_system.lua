@@ -4,6 +4,38 @@
 -- Uses creature:startAutoWalk() + creature:isWalking() (server-side walk scheduler)
 -- ============================================================================
 
+-- #154 startup self-check: every config key the bot Lua reads must exist in `configKeys`.
+-- A missing key reads as nil, and configManager.get*(nil) then quietly returns a fallback: that
+-- is how the BOT_MARKET_* keys would have vanished when upstream's new core keys pushed their
+-- ordinals past MAGIC_ENUM_RANGE_MAX (config_functions.cpp now registers bot keys by name).
+-- Keep this list in sync with every `configKeys.BOT_*` read in data/ (and ALLOW_PLAYER_CAST).
+do
+	local required = {
+		"BOT_PLAYERS_ONLINE",
+		"BOT_PLAYERS_SHOW_AS_ONLINE",
+		"BOT_PERSONALITY_REROLL_ON_RESTART",
+		"BOT_MARKET_ACCEPT_INTERVAL_MIN_SEC",
+		"BOT_MARKET_ACCEPT_INTERVAL_MAX_SEC",
+		"BOT_MARKET_ACCEPT_CHANCE_PCT",
+		"BOT_MARKET_SELL_CEILING_PCT",
+		"BOT_MARKET_BUY_FLOOR_PCT",
+		"BOT_MARKET_ACCEPT_DRAIN_MS",
+		"BOT_MARKET_NOREF_MAX_UNIT_PRICE",
+		"BOT_MARKET_NOREF_MIN_UNIT_PRICE",
+		"BOT_MARKET_NOREF_FIRE_GOLD_BUDGET",
+		"ALLOW_PLAYER_CAST", -- read by talkactions/player/cast.lua (#163)
+	}
+	local missing = {}
+	for _, key in ipairs(required) do
+		if not configKeys or configKeys[key] == nil then
+			missing[#missing + 1] = key
+		end
+	end
+	if #missing > 0 then
+		logger.error("[BotConfig] configKeys is missing {} bot key(s): {} -- the bot Lua would silently use fallbacks. Check config_functions.cpp (#154).", #missing, table.concat(missing, ", "))
+	end
+end
+
 -- Configuration
 BOT_CONFIG = BOT_CONFIG or {
 	-- TEMP TEST 1 (2026-05-21): master disable for GAP_SLOW infrastructure-cause test.
@@ -1076,6 +1108,7 @@ BotSystem._reloadInProgress = BotSystem._reloadInProgress or false
 
 function BotSystem.executeReload(opts)
 	opts = opts or {}
+	local source = opts.source or "?"
 	local lines, candidate = {}, nil
 	local outcome = { ok = false, pending = false, phase = "prepare", lines = lines }
 	local function emit(message)
@@ -1085,7 +1118,69 @@ function BotSystem.executeReload(opts)
 		end) end
 		logger.info("[reload:{}] {}", opts.source or "?", message)
 	end
-	if BotSystem._reloadInProgress then return { ok = false, message = "reload already in progress", lines = lines } end
+
+	if BotSystem._reloadInProgress then
+		emit("reload already in progress — ignoring concurrent request")
+		return { ok = false, message = "reload already in progress", lines = lines }
+	end
+
+	-- ABI pre-flight (#58). Reads the ABI marker out of libbot_engine.so WITHOUT dlopen and
+	-- compares it with this canary binary's tag. A .so built from another tree (other headers,
+	-- compiler or flags) is refused here, before a single bot is deactivated, so the running
+	-- engine and population are untouched. The engine's own reload() repeats the check on
+	-- the exact bytes it loads and also keeps the old engine on a mismatch.
+	if Game.botCheckLibrary then
+		local abiOk, abiDetail, canHotReload = Game.botCheckLibrary()
+		if not abiOk and canHotReload == false then
+			-- Windows: the engine is statically linked, so there is nothing to reload. Refuse before
+			-- anything is deactivated; a pass would soft-reset every awake bot and apply nothing.
+			-- (Only `== false`: a binary older than this third return value gives nil.)
+			emit("reload UNAVAILABLE — nothing was touched:")
+			emit("  " .. tostring(abiDetail))
+			logger.warn("[reload:{}] refused, no hot-reload in this build: {}", source, tostring(abiDetail))
+			return { ok = false, message = "reload unavailable: " .. tostring(abiDetail), lines = lines }
+		end
+		if not abiOk then
+			emit("reload REFUSED — libbot_engine.so does not match this canary binary, nothing was touched:")
+			emit("  " .. tostring(abiDetail))
+			emit("  Rebuild canary + libbot_engine.so from the same commit, ship both, and restart.")
+			logger.error("[reload:{}] ABI pre-flight refused: {}", source, tostring(abiDetail))
+			return { ok = false, message = "abi pre-flight refused: " .. tostring(abiDetail), lines = lines }
+		end
+		logger.info("[reload:{}] ABI pre-flight ok ({})", source, tostring(abiDetail))
+	end
+
+	-- BOT_CSV pre-flight. Authored data lives in data/bot/authored/*.csv, and
+	-- Game.botReload() DESTROYS the engine before the new one parses those files —
+	-- so a malformed CSV has nothing to fall back to. It poisons the fresh engine and
+	-- every bot refuses to activate until a human fixes the file.
+	--
+	-- Asking the still-live engine to parse-check first turns that outage into a
+	-- refused reload with the population untouched. Runs BEFORE _reloadInProgress is
+	-- set and before anything is deactivated, so an abort leaves zero residue.
+	--
+	-- Caveat: this validates with the CURRENTLY LOADED .so. If the .so is also
+	-- changing in this deploy, the check uses the old parser — it is a sanity check,
+	-- not a proof. tools/bot_csv/validate.py is the real gate and runs pre-deploy.
+	do
+		local ok, csvResult = pcall(Game.botCommand, "_global", "csvcheck")
+		if ok and type(csvResult) == "string" and csvResult ~= "" then
+			if csvResult:sub(1, 2) ~= "OK" then
+				emit("reload ABORTED — authored CSV failed to parse, nothing was touched:")
+				emit("  " .. csvResult)
+				emit("  Fix the file (or: git checkout -- data/bot/authored) and reload again.")
+				if Game.botDiscardLibraryCheck then Game.botDiscardLibraryCheck() end -- #114: no staged-copy residue
+				return { ok = false, message = "csv pre-flight failed: " .. csvResult, lines = lines }
+			end
+			logger.info("[reload:{}] csv pre-flight {}", source, csvResult)
+		else
+			-- Older .so without csvcheck, or an unexpected return: do not block the
+			-- reload on a missing diagnostic. Say so, so it is visible rather than
+			-- silently skipped.
+			logger.warn("[reload:{}] csv pre-flight unavailable — proceeding without it", source)
+		end
+	end
+
 	BotSystem._reloadInProgress = true
 	local function fail(message)
 		BotSystem._reloadInProgress = false
@@ -1171,6 +1266,8 @@ function BotSystem.executeReload(opts)
 					end
 					scheduler = true
 					db.query("INSERT INTO bot_startup_config (config_key,config_value) VALUES ('debug_active_count','0') ON DUPLICATE KEY UPDATE config_value='0'")
+					-- The fresh engine starts with isolation off; say so explicitly for the journal.
+					emit("debug isolation: " .. tostring(Game.botCommand("_global", "debugisolate off")))
 				elseif type(count) == "number" and count > 0 then
 					for _, entry in ipairs(roster) do
 						if selected[entry.guid] then
@@ -1185,10 +1282,37 @@ function BotSystem.executeReload(opts)
 					end
 					scheduler = false
 					db.query("INSERT INTO bot_startup_config (config_key,config_value) VALUES ('debug_active_count','" .. count .. "') ON DUPLICATE KEY UPDATE config_value='" .. count .. "'")
+					-- Engine-enforced isolation (#124), AFTER the pins so the targets are exempt.
+					emit("debug isolation: " .. tostring(Game.botCommand("_global", "debugisolate on")))
+				elseif next(BotDebugPinned or {}) ~= nil then
+					-- A plain `reload` while debug mode is active ENDS debug mode (#124 review). The fresh
+					-- engine already starts with no pins, isolation OFF and the scheduler ON; drop the Lua
+					-- pins to match, so the hibernation loop stops exempting bots the engine no longer
+					-- pins. A plain reload stays the escape hatch out of debug mode; use `reload debug,<names>`
+					-- to start a new session.
+					local n = 0
+					for _ in pairs(BotDebugPinned) do n = n + 1 end
+					BotDebugPinned = {}
+					Game.botCommand("_global", "debugisolate off")
+					scheduler = true
+					emit("debug mode ENDED by plain reload: " .. n .. " Lua pin(s) cleared, isolation OFF, scheduler ON."
+						.. " Bots despawned during debug mode are offline and are NOT reloaded by the scheduler"
+						.. " (BotStartup loads them only at server start): restart canary to repopulate.")
 				end
 				refresh()
 				for _, entry in ipairs(roster) do BotActive[entry.guid] = entry.active end
 				Game.botCommand("_global", scheduler and "schedule on" or "schedule off")
+				-- Show git commit info so admin knows what version is running (talkaction-only — slow popen)
+				if opts.source == "talkaction" then
+					local handle = io.popen("git log -1 --pretty=format:'%h %s' 2>/dev/null")
+					if handle then
+						local gitInfo = handle:read("*a")
+						handle:close()
+						if gitInfo and gitInfo ~= "" then
+							emit("Rev: " .. gitInfo)
+						end
+					end
+				end
 				outcome.ok, outcome.pending, outcome.phase = true, false, "complete"
 				outcome.message = "reload complete; preserved " .. #roster .. " roster entries"
 				emit(outcome.message)
@@ -1254,10 +1378,10 @@ function BotSystem.pollGlobalCommandQueue()
 			local guid = player:getGuid()
 			local state = BotState[guid]
 			if state then
-				logger.info("[CavebotDebug:" .. botName .. "] Command from queue: " .. cmd)
+				logger.info("[CavebotDebug:{}] Command from queue: {}", botName, cmd)
 				local result = BotSystem.executeCavebotCommand(player, state, cmd)
 				if result then
-					logger.info("[CavebotDebug:" .. botName .. "] " .. result)
+					logger.info("[CavebotDebug:{}] {}", botName, result)
 					BotSystem.castDebug(player, state, "CMD result: " .. result)
 				end
 			end

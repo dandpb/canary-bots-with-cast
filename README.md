@@ -8,8 +8,10 @@ character (including bots) without an account.
 - **Bot players** hunt, travel between cities, chat, trade on the market, own
   houses, form parties, and defend themselves. You choose how many are online
   (0 → ~997).
-- **Cast** lets spectators log in with the account name `@cast` and watch any
-  broadcasting character; bots broadcast automatically and wake on click.
+- **Cast** lets spectators log in with the account name `@cast` and watch any bot;
+  bots broadcast automatically and wake on click. Players stream with upstream
+  Canary's built-in livestream (`!livestream on`), watched through `@livestream`.
+- Speaks **protocol 15.25** (upstream Canary 3.6.1) on the `beta` branch.
 
 ## What's in it
 
@@ -181,9 +183,10 @@ which doubles as the debugging surface:
 ![Cast chat with bot activity log](assets/pics/cast-chat-bot-log.png)
 
 > [!NOTE]
-> **Base version.** This repository is forked from `opentibiabr/canary` at commit
-> **`ded10949d`** (2026-02-19) and adds the bot + cast features on top. Use that
-> commit as the reference point for the underlying Canary version/protocol.
+> **Base version.** The latest release is forked from `opentibiabr/canary` at commit
+> **`ded10949d`** (2026-02-19, protocol 15.00). The `beta` branch merges upstream up to
+> **`666a60f6f`** (2026-11-05, Canary 3.6.1, **protocol 15.25**), with upstream's commits
+> kept as they are, and adds the bot + cast features on top.
 
 ## Tested on
 
@@ -195,65 +198,173 @@ which doubles as the debugging surface:
 | RAM | 8 GB |
 | DB | MySQL / MariaDB |
 | Web | nginx + php-fpm 8.1 + MyAAC |
-| Client | OTClient Redemption (protocol 13+) |
+| Client | OTClient Redemption 4.2 (protocol 15.25; the latest release: 15.00) |
 
 It runs comfortably with a few hundred bots online on this modest spec.
+
+**ARM64 VPS:** the AMD64 release also runs under QEMU user emulation (`qemu-user-static`,
+`platform: linux/amd64`; tested on a 2-vCPU Ubuntu 24.04 VPS, not a native ARM64 build).
+Bot startup paces itself to the server's load, so expect a slower startup there; watch the
+`[BOT_BATCH]` progress lines. Details: `data/scripts/lib/BOT_SYSTEM_DOCS.md` §2.
 
 ---
 
 ## Quick start
 
-> The build toolchain (vcpkg + CMake) is identical to upstream Canary. If you are
-> new to building Canary, follow the official
-> [build guides](https://github.com/opentibiabr/canary/tree/main/docs/building)
-> for the vcpkg/`VCPKG_ROOT` setup first — then build **this** repo (it already
-> contains the bot engine source).
+There are two ways to run it: **use our prebuilt packages** (no compiler needed), or
+**build the server yourself**. Either way you also need a MySQL/MariaDB database and the
+world map, which is not shipped here.
 
-### 1. Build
+> [!IMPORTANT]
+> **`beta` speaks protocol 15.25; the latest release speaks 15.00.**
+> - Client: [OTClient](https://github.com/opentibiabr/otclient) **4.1 or newer** (4.2 recommended).
+>   Older builds lack the 15.25 tactics payload, so the server misreads their fight/chase/secure modes.
+>   Put the 15.25 assets under `data/things/1525/` and set `protocol = 1525` in `init.lua`.
+> - World map: upstream's **v3.6.1** `otservbr.otbm` (the release uses v3.4.0).
+
+### Which download?
+
+| Channel | Where | What it is |
+|---|---|---|
+| **Latest release** (stable) | [Releases → Latest](https://github.com/1LineAtaTime/canary-bots-with-cast/releases/latest) | A versioned, tested package. Use this unless you want the newest changes. |
+| **Beta pre-release** (automatic) | [`ci-beta`](https://github.com/1LineAtaTime/canary-bots-with-cast/releases/tag/ci-beta) | Built automatically from the [`beta`](https://github.com/1LineAtaTime/canary-bots-with-cast/tree/beta) branch, at most once a day and only when `beta` has new commits. Newest fixes and features, **not** manually tested. Always a pre-release, never "Latest". |
+
+Each release's notes list its exact assets and step-by-step commands; the summary below
+applies to both.
+
+---
+
+### Option A — Use our release packages
+
+Pick **one** of the two paths: a fresh install, or upgrading an install you already run.
+
+#### A1. Fresh install
+
+1. Download the binaries for your OS plus the runtime data:
+   - **Linux x64:** `canary` + `libbot_engine.so` (beta: `canary-bots-beta-linux-x64.tar.gz`).
+     Needs glibc ≥ 2.35 and GCC 13's `libstdc++` (Ubuntu 24.04 has it; on Ubuntu 22.04
+     install `libstdc++6` from `ppa:ubuntu-toolchain-r/test`).
+   - **Windows x64:** `canary.exe` (beta: `canary-bots-beta-win64.zip`). The bot engine is
+     linked in: no DLLs, no VC++ redistributable.
+   - **Runtime data** (`data/`, `data-otservbr-global/`, `database/`, `schema.sql`,
+     `config.lua.dist`; beta: `canary-bots-beta-runtime.tar.gz`). Extract it next to the binaries.
+2. Download the world map [`otservbr.otbm`](https://github.com/opentibiabr/canary/releases)
+   from upstream Canary into `data-otservbr-global/world/`: **v3.6.1** for beta
+   ([direct link](https://github.com/opentibiabr/canary/releases/download/v3.6.1/otservbr.otbm)),
+   v3.4.0 for the latest release. (With no map file the server downloads `mapDownloadUrl` itself.)
+3. Create the database:
+   ```bash
+   mysql -u root -p -e "CREATE DATABASE canary DEFAULT CHARACTER SET utf8mb3;"
+   ```
+   - **Beta:** import the ready-made database from `canary-bots-beta-db-fresh.zip`:
+     `mysql -u root -p canary < canary-bots-beta-fresh.sql`
+   - **Versioned release:** import `schema.sql`, then the bot data:
+     `cd database/bots && DB_USER=root DB_PASS=yourpass DB_NAME=canary ./import.sh`
+4. `cp config.lua.dist config.lua`, then set your `mysql*` connection and `ip`.
+5. Start `canary` (`canary.exe` on Windows). The first boot finishes the Lua migrations.
+
+No administrator account is pre-seeded in the bot data. Provision one through the
+deployment's normal registration and the protected procedure in
+[database/bots/README.md](database/bots/README.md#administrator-provisioning-and-rotation).
+
+#### A2. Upgrading an existing install
+
+1. Stop the server and back up the database (`mysqldump`).
+2. Apply the new SQL, in order:
+   - **Beta:** extract `canary-bots-beta-sql.zip` and run `upgrade.sh` (or the files in
+     `upgrade/`, in the order `UPGRADE.md` lists). It upgrades a database from the previous
+     versioned release; the CI checks that the result is identical to a fresh install.
+   - **Versioned release:** run the `database/bots/*.sql` files that are new since your
+     version (see [database/bots/README.md](database/bots/README.md)).
+3. Replace the binaries, `data/` and `data-otservbr-global/`. Keep your `config.lua`
+   (compare it with the new `config.lua.dist` for new keys).
+4. Start the server: it applies any new Lua migration by itself.
+
+**From the 15.00 release (`v2026.09.01`) to the 15.25 beta**, also:
+- The beta `upgrade.sh` re-runs `00_bot_schema.sql` and ends with
+  `91_upstream_1525_schema.sql`: upstream's migrations 56–59 (account indexes,
+  `players.comment`, livestream casters, `players.expert_pvp_mode`), then `db_version = 59`.
+  Run it with the server **stopped**; a 15.25 server on an un-upgraded database fails every
+  player save.
+- Replace the world map with v3.6.1: the server only downloads a map when the file is missing.
+- New `config.lua` keys come from upstream (`dispatcher*`, `monsterCompute*`, `livestream*`, …)
+  and from this fork (`allowPlayerCast`); every key has a default.
+- Update the client to OTClient 4.1+ at `protocol = 1525`, and copy the new
+  `deployment/web/login.php` over your website's copy.
+- There is no way back to 15.00 on the same database: restore your backup to downgrade.
+
+> Never import the fresh-install database over an existing install: it replaces your
+> accounts and characters.
+
+---
+
+### Option B — Build the server yourself
+
+The build toolchain (vcpkg + CMake) is identical to upstream Canary. If you are new to
+building Canary, follow the official
+[build guides](https://github.com/opentibiabr/canary/tree/main/docs/building) for the
+vcpkg/`VCPKG_ROOT` setup first, then build **this** repo (it already contains the bot
+engine source). Use `main` for the latest release, or `beta` for the newest changes.
+
+#### B1. Linux
 
 ```bash
-git clone <this-repo-url> canary-bots
-cd canary-bots
+git clone https://github.com/1LineAtaTime/canary-bots-with-cast.git canary-bots
+cd canary-bots            # git checkout beta   for the newest changes
 cmake --preset linux-release -DTOGGLE_BIN_FOLDER=ON
 cmake --build --preset linux-release -j4
 # Low-RAM machines: build with fewer jobs, e.g.
 #   cmake --build build/linux-release -j2
 ```
 
-Outputs `canary` and `libbot_engine.so` under `build/linux-release/bin/`. Copy
-both next to your server working directory.
+Outputs `canary` and `libbot_engine.so` under `build/linux-release/bin/`. Copy both into
+your server working directory. The release preset uses `-march=native`; to build binaries
+for other machines on the `beta` branch, add `-DCANARY_TARGET_ARCH=x86-64-v2`.
 
-> Prefer not to compile? Prebuilt Linux binaries (`canary` + `libbot_engine.so`)
-> are attached to the GitHub **Releases** for this repo.
+#### B2. Windows (`beta` branch; part of the next release)
 
-### 2. Database
-
-```bash
-mysql -u root -p -e "CREATE DATABASE canary DEFAULT CHARSET=utf8mb3;"
-mysql -u root -p canary < schema.sql
-# Seed the bot account, characters, market prices and housing:
-DB_USER=root DB_PASS=yourpass DB_NAME=canary bash database/bots/import.sh
+```powershell
+cmake --preset windows-release
+cmake --build --preset windows-release
 ```
 
-See [database/bots/README.md](database/bots/README.md) for the manual import
-order and the protected administrator provisioning procedure.
+Builds one `canary.exe` with the bot engine linked in statically. The preset targets the
+VS 2026 toolset (`v145`); with VS 2022, override `VCPKG_PLATFORM_TOOLSET` to `v143` in a
+local `CMakeUserPresets.json` (gitignored) instead of editing the preset. There is no
+`/cavebot reload` on Windows: restart the server instead.
 
-### 3. Configure
+#### B3. Database
+
+- **Fresh install:**
+  ```bash
+  mysql -u root -p -e "CREATE DATABASE canary DEFAULT CHARACTER SET utf8mb3;"
+  mysql -u root -p canary < schema.sql
+  # Seed the bot data (bot account, bots, market, houses, …):
+  cd database/bots && DB_USER=root DB_PASS=yourpass DB_NAME=canary ./import.sh
+  ```
+  See [database/bots/README.md](database/bots/README.md) for the manual import
+  order and the protected administrator provisioning procedure.
+- **Upgrading an existing database:** stop the server, back up, then run the
+  `database/bots/*.sql` files added since the version you built before, in numeric order
+  (the table in [database/bots/README.md](database/bots/README.md) says which ones are
+  safe to re-run). The server applies its own Lua migrations at the next start.
+  Coming from 15.00 (`v2026.09.01` or older): re-run `00_bot_schema.sql`, the new files,
+  then `91_upstream_1525_schema.sql` last (see A2).
+
+#### B4. Configure and run
 
 ```bash
 cp config.lua.dist config.lua
 ```
 
-Edit `config.lua`: set your `mysql*` connection, `ip = "127.0.0.1"` for a local
-install, and the bot keys (see below). Then download the world map
-[`otservbr.otbm`](https://github.com/opentibiabr/canary/releases) from the
-upstream Canary release matching the base version and place it per `mapName`.
+Edit `config.lua`: set your `mysql*` connection, `ip = "127.0.0.1"` for a local install,
+and the bot keys (see below). Download the world map
+[`otservbr.otbm`](https://github.com/opentibiabr/canary/releases) from upstream Canary and
+place it per `mapName`. Then start `canary` (on Linux the `.so` is loaded automatically).
+Connect with OTClient 4.1+ at protocol 15.25 (beta) or 15.00 (latest release), through
+the HTTP login below.
 
-### 4. Run
-
-Start `canary` (the `.so` is loaded automatically). On first boot the migrations
-finish setting up the bot tables. Use an OTClient build and assets compatible with
-protocol 15.00 (`1500`).
+---
 
 **ARM64 VPS using the AMD64 release.** The prebuilt Linux server and bot engine
 tested here are AMD64 binaries. Run both from the same release in an AMD64
@@ -279,18 +390,20 @@ the end, startup reports progress and publishes online visibility when
 `botPlayersShowAsOnline` is enabled. Each bot receives quest access before it can
 hibernate. Persisted-state restoration runs after the final load attempt.
 
-### 5. (Optional) Website + cast + client
+### Optional: website, cast and client
 
-- **Website / cast login:** install [MyAAC](https://github.com/slawkens/myaac)
-  and drop in our cast-aware `deployment/web/login.php` (it intercepts the
-  `@cast` account). See [deployment/client/README.md](deployment/client/README.md)
-  for the OTClient `init.lua` (`Services` / `Servers_init`) settings.
+- **Website / login:** OTClient at protocol 13+ normally logs in over HTTP through
+  `login.php` (the game server's port 7171 is the alternative). Install [MyAAC](https://github.com/slawkens/myaac) and drop in our
+  `deployment/web/login.php`: it serves the normal account login and routes the viewer
+  accounts `@cast` (bot camera) and `@livestream` (players' livestreams). See
+  [deployment/client/README.md](deployment/client/README.md) for the OTClient `init.lua`
+  (`Services` / `Servers_init`) settings, incl. `protocol = 1525` on beta.
 - **World Map page:** `deployment/web/plugins/worldmap/` — a MyAAC plugin that
   adds a live map under *Community* showing where every online bot is, with a
   floor-agnostic overview layer and a per-floor layer. It reads the position
   columns the server already persists, so it costs the game server nothing.
   Install notes: [plugins/worldmap/README.md](deployment/web/plugins/worldmap/README.md).
-- **Client:** [OTClient Redemption](https://github.com/opentibiabr/otclient).
+- **Client:** [OTClient Redemption](https://github.com/opentibiabr/otclient) 4.1 or newer for beta.
 
 ---
 
@@ -318,12 +431,14 @@ Optional GPT-6 Luna party companions (Responses, Decisions, persistent contextua
 | `/party <vocs> [min,max] [teleport]` | Summon bots into your party — e.g. `/party ek,ed 100,500`. They **walk in** to assemble; `teleport` forces instant assembly instead |
 | `/party leave` | Dismiss your party bots (each rolls its next activity from where it stands) |
 | *(client invite)* | Inviting a bot from the game client works too — it accepts after 1.5-4.5s unless it's mid-fight or on a bot party hunt |
-| `/cast on` · `/cast off` | Start / stop broadcasting your character |
+| `!livestream on` · `!livestream off` | Start / stop streaming your character (upstream's livestream; beta) |
+| `/cast on` · `/cast off` | This fork's player cast. On beta only when `allowPlayerCast = true` in `config.lua` (default `false`) |
 | `/house "<name>" owner` | Claim a free bot house (needs no house + enough gold for rent) |
 | `/house "<name>" sub-owner` | Become sub-owner of a bot house |
 | `/house "<name>" release` | Release a house you claimed — the bot reclaims it, furniture restored verbatim |
 
-Spectate: log in with account name **`@cast`** (no password) and pick a character.
+Spectate: log in with account name **`@cast`** (no password) to watch a bot, or
+**`@livestream`** to watch a player's livestream (beta), and pick a character.
 
 Full command list: [BOT_SYSTEM_DOCS.md §12](data/scripts/lib/BOT_SYSTEM_DOCS.md).
 

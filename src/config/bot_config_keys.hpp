@@ -674,3 +674,188 @@
 	   because a shrine walk owns none of the door handling, tile claims,            \
 	   occupancy cap or exit planner that a house visit does. */                     \
 	INT (BOT_HOUSE_SHRINE,                 "botHouseShrine",                15)
+
+// ============================================================================
+// BOT_TEST_HARNESS Phase 2 — server-truth audit stream (NDJSON, epoch-ms).
+//
+// Read by the MAIN-BINARY sink (src/creatures/players/bot/bot_audit_sink.cpp), not by the
+// engine's hot path: the engine only polls the sink's generation counter once per tick and
+// caches a kind bitmask, so every hook costs one load-and-test while this is off.
+//
+// Expanded at the very END of ConfigKey_t (after FORCE_LOGOUT_ON_CONNECTION_LOSS), which
+// shifts no existing ordinal at all — neither a BOT_* key the .so reads nor a core key. The
+// ordinals are past MAGIC_ENUM_RANGE_MAX, so these keys are C++-only (not in Lua configKeys),
+// like FORCE_LOGOUT_ON_CONNECTION_LOSS.
+//
+// config.lua holds the DEFAULTS only. `/cavebot audit on|off|watch|kinds` changes them at
+// runtime in memory (they survive `/cavebot reload`, reset on restart); `/cavebot audit config`
+// re-applies these keys after a `/cavebot reloadconfig`.
+// ============================================================================
+#define BOT_AUDIT_CONFIG_KEYS(INT, BOOL, STR)                                        \
+	/* Master switch. OFF by default: nothing is written and every hook is one load. */ \
+	BOOL(BOT_AUDIT_ENABLED,                "botAuditEnabled",               false)    \
+	/* Relative paths resolve against canary's working directory; the parent          \
+	   directory is created on first write. */                                        \
+	STR (BOT_AUDIT_PATH,                   "botAuditPath",                  "logs/bot_audit.ndjson") \
+	/* Comma list of kinds, or "all": probe,state,wake,hib,walkpause,path,pathout,     \
+	   decide,cmd,census. */                                                          \
+	STR (BOT_AUDIT_KINDS,                  "botAuditKinds",                 "all")    \
+	/* Comma list of bot names whose per-bot kinds are recorded ("" = none). "*" =      \
+	   every bot for the LOW-RATE kinds only (wake,hib,state,decide, pathout            \
+	   osc/stuck/abandoned); probe/path/walkpause/pathout-arrived need explicit names.  \
+	   census and cmd are global and ignore this list. */                              \
+	STR (BOT_AUDIT_WATCH,                  "botAuditWatch",                 "")       \
+	/* Rotation cap: past this the file moves to <path>.1 (one generation kept), so    \
+	   disk use is bounded at ~2x this value. */                                       \
+	INT (BOT_AUDIT_MAX_MB,                 "botAuditMaxMb",                 32)       \
+	/* Per-watched-bot snapshot cadence. */                                           \
+	INT (BOT_AUDIT_PROBE_MS,               "botAuditProbeMs",               500)      \
+	/* Whole-population aggregate cadence (all bots, hibernated included). */         \
+	INT (BOT_AUDIT_CENSUS_SEC,             "botAuditCensusSec",             10)
+
+// ============================================================================
+// BOT_PVP_SANITY (#123) — keep bot PvP proportionate to the threat.
+//
+// Expanded at the very END of ConfigKey_t (after BOT_AUDIT_CONFIG_KEYS), so no existing ordinal
+// moves — neither a BOT_* key the .so reads nor a core key. Like BOT_AUDIT these ordinals are past
+// MAGIC_ENUM_RANGE_MAX, so the keys are C++-only (not in Lua configKeys). Needs a FULL rebuild.
+//
+// The gang raid ("[GANG] formed RAID") summons botGangMinSize attackers onto one exposed victim.
+// The 2026-11-18 baseline saw a 5-bot raid form on a LEVEL-8 white-skulled harness character.
+// Two independent gates, both checked before anything is committed:
+// ============================================================================
+#define BOT_PVP_SANITY_CONFIG_KEYS(INT, BOOL, STR)                                   \
+	/* A victim below this level never draws a raid (0 = no floor). Checked in      \
+	   victim selection, before the odds roll, so it costs nothing. */               \
+	INT (BOT_GANG_MIN_VICTIM_LEVEL,        "botGangMinVictimLevel",         50)       \
+	/* No raid when the strongest seated attacker already outlevels the victim by    \
+	   this factor or more (0 = off). One such bot alone is the Combat Decision      \
+	   spec's "outleveling" case, so five of them is not a fight. Logged as          \
+	   "[GANG] declined RAID ... reason=outleveled". */                              \
+	INT (BOT_GANG_MAX_LEVEL_RATIO,         "botGangMaxLevelRatio",          4)
+
+// ============================================================================
+// BOT_CAMERA (#153, cast C1): the bot camera next to upstream's native livestream.
+//
+// Expanded at the very END of ConfigKey_t (after BOT_PVP_SANITY_CONFIG_KEYS), so no existing
+// ordinal moves. Read by the main binary only (and ALLOW_PLAYER_CAST by Lua). Needs a FULL rebuild.
+// ============================================================================
+#define BOT_CAMERA_CONFIG_KEYS(INT, BOOL, STR)                                    \
+	/* A/B switch for the 15.25 camera bootstrap. false (default): our hand-rolled   \
+	   sendCastViewerInit. true: upstream's livestream client swap -- the bot's      \
+	   client pointer is briefly set to the camera and sendAddCreature(isLogin) runs \
+	   the full 15.25 login sequence. Keep whichever survives P5 (V7). */            \
+	BOOL(BOT_CAMERA_UPSTREAM_BOOTSTRAP,   "botCameraUpstreamBootstrap",  false)   \
+	/* #163: human players may use OUR /cast (true) or not (false, default: they use \
+	   upstream's !livestream). Bots keep the camera either way. Appended LAST, so no \
+	   existing ordinal moves (#154); Lua (cast.lua) reads it through the by-name     \
+	   registration. Also read by player.cpp, protocollogin.cpp, protocolgame.cpp. */ \
+	BOOL(ALLOW_PLAYER_CAST,               "allowPlayerCast",             false)
+
+// ============================================================================
+// #87 sparring (batch 7 combat, bot_spar.cpp). Expanded at the very END of ConfigKey_t
+// (after BOT_CAMERA_CONFIG_KEYS), so no existing ordinal moves. Needs a FULL rebuild.
+// ============================================================================
+#define BOT_SPAR_CONFIG_KEYS(INT, BOOL, STR)                                     \
+	/* #87 sparring (bot_spar.cpp): two awake bots of a similar level outside a      \
+	   depot party up, fight to 30 % HP, heal each other, disband. [SPAR] lines. */   \
+	BOOL(BOT_SPAR_ENABLE,                  "botSparEnable",                 true)     \
+	/* Most pairs sparring at once (live; the virtual twin has its own equal cap). */ \
+	INT (BOT_SPAR_MAX_PAIRS,               "botSparMaxPairs",               1)        \
+	/* Chance per 60 s pairing scan of an eligible bot near a depot. */              \
+	INT (BOT_SPAR_CHANCE_PCT,              "botSparChancePct",              3)        \
+	/* Levels within this % of the higher one may pair. */                          \
+	INT (BOT_SPAR_LEVEL_BAND_PCT,          "botSparLevelBandPct",           20)       \
+	/* A bot that just sparred waits this long before the next spar. */             \
+	INT (BOT_SPAR_COOLDOWN_SEC,            "botSparCooldownSec",            900)      \
+	/* The same two bots do not spar again for this long. */                        \
+	INT (BOT_SPAR_REMATCH_SEC,             "botSparRematchSec",             3600)     \
+	/* csv of town names that spar ("" = every town with a depot POI). */           \
+	STR (BOT_SPAR_TOWNS,                   "botSparTowns",                  "")
+
+// ============================================================================
+// #102 realism (batch 7): bed sleep (#27) and disguised rescue teleports (#104).
+// Expanded at the very END of ConfigKey_t (after BOT_CAMERA_CONFIG_KEYS), so no existing ordinal
+// moves. Read by the .so through livenessCfg_ (bot_poi.cpp). Needs a FULL rebuild.
+// ============================================================================
+#define BOT_REALISM_CONFIG_KEYS(INT, BOOL, STR)                                   \
+	/* #27: % of house visits that end with the bot going to bed when its floor   \
+	   has a free, complete bed: it lies down (stock BedItem::sleep, bot branch)  \
+	   and hibernates on it, the bed shows it as the sleeper, and it wakes on the \
+	   bed after botBedSleepMinSec..MaxSec. 0 = never. */                         \
+	INT (BOT_BED_SLEEP_PCT,                "botBedSleepPct",                10)       \
+	INT (BOT_BED_SLEEP_MIN_SEC,            "botBedSleepMinSec",             900)      \
+	INT (BOT_BED_SLEEP_MAX_SEC,            "botBedSleepMaxSec",             3600)     \
+	/* #104: a rescue teleport (teleport home, to a patrol start, party catch-up)  \
+	   never happens in sight of a real player or cast viewer: the bot walks out   \
+	   of view first, or lands off-screen near the destination. Past              \
+	   botRescueMaxDeferSec it teleports anyway, dressed as a teleport scroll. */  \
+	BOOL(BOT_RESCUE_DISGUISE,              "botRescueDisguise",             true)     \
+	INT (BOT_RESCUE_MAX_DEFER_SEC,         "botRescueMaxDeferSec",          90)
+
+// ============================================================================
+// Batch 7 "learning" keys (#30 passive spawn auto-claim, #96 learned danger zones).
+// Expanded at the very END of ConfigKey_t (after BOT_CAMERA_CONFIG_KEYS), so no existing
+// ordinal moves. Read by the .so (bot_learning.cpp). Needs a FULL rebuild.
+// ============================================================================
+#define BOT_LEARNING_CONFIG_KEYS(INT, BOOL, STR)                                     \
+	/* #30: a real player dwelling in a spawn group's area claims it implicitly */      \
+	BOOL(BOT_SPAWN_AUTOCLAIM_ENABLE,       "botSpawnAutoClaimEnable",       true)       \
+	/* #30: seconds inside the area before the claim (fighting there: 20 s) */          \
+	INT (BOT_SPAWN_AUTOCLAIM_DWELL_SEC,    "botSpawnAutoClaimDwellSec",     60)         \
+	/* #30: no move and no attack for this long releases the claim */                   \
+	INT (BOT_SPAWN_AUTOCLAIM_IDLE_SEC,     "botSpawnAutoClaimIdleSec",      180)        \
+	/* #30: seconds out of the area before the claim releases */                        \
+	INT (BOT_SPAWN_AUTOCLAIM_LEAVE_SEC,    "botSpawnAutoClaimLeaveSec",     60)         \
+	/* #96: record + honour learned hunt-danger zones */                                \
+	BOOL(BOT_DANGER_ZONES_ENABLE,          "botDangerZonesEnable",          true)       \
+	/* #96: HP% at or below which a hunting bot records a near-death */                 \
+	INT (BOT_DANGER_NEAR_DEATH_PCT,        "botDangerNearDeathPct",         20)      \
+	/* #187: awake bots refill mana only by potions (no instant full refills) */     \
+	BOOL(BOT_MANA_POTION_ENABLE,           "botManaPotionEnable",           true)    \
+	/* #187: sorcerers/druids/paladins drink a mana potion below this mana % */      \
+	INT (BOT_MANA_POTION_PCT,              "botManaPotionPct",              70)      \
+	/* #187: knights drink a mana potion below this mana % */                        \
+	INT (BOT_KNIGHT_MANA_POTION_PCT,       "botKnightManaPotionPct",        40)      \
+	/* #187: knights drink a health potion below this HP % (before mana) */          \
+	INT (BOT_KNIGHT_HEALTH_POTION_PCT,     "botKnightHealthPotionPct",      60)      \
+	/* #187: paladins drink a spirit potion (not mana) when HP is also below this % */ \
+	INT (BOT_SPIRIT_POTION_HP_PCT,         "botSpiritPotionHpPct",          70)      \
+	/* #187: random extra delay (ms) on top of the potion exhaust, per drink */      \
+	INT (BOT_POTION_JITTER_MS,             "botPotionJitterMs",             400)     \
+	/* #187: seconds between empty-flask drops (0 = never drop) */                   \
+	INT (BOT_FLASK_DROP_INTERVAL_SEC,      "botFlaskDropIntervalSec",       60)      \
+	/* #187: empties a bot must carry before a drop is worth it */                   \
+	INT (BOT_FLASK_DROP_MIN_COUNT,         "botFlaskDropMinCount",          3)       \
+	/* #187: on wake a hibernated bot regains mana as if this many sec fill it 0->100 */ \
+	INT (BOT_WAKE_MANA_FULL_SEC,           "botWakeManaFullSec",            180)     \
+	/* #187: log [BOT_POTION] for every bot (default: only cast-watched / verbose) */ \
+	BOOL(BOT_POTION_LOG_ALL,               "botPotionLogAll",               false)   \
+	/* #187: attack spells keep this % of the mana pool for heals */                 \
+	INT (BOT_ATTACK_MANA_RESERVE_PCT,     "botAttackManaReservePct",       20)
+
+// ============================================================================
+// Every BOT_* table above, for code that must visit ALL bot keys regardless of where each table
+// is expanded in ConfigKey_t (the order here is NOT the enum order and must not be used as one).
+//
+// Used by the Lua `configKeys` registration (config_functions.cpp, #154): magic_enum only sees
+// ordinals up to MAGIC_ENUM_RANGE_MAX (500, src/pch.hpp), and upstream inserts new core keys
+// mid-enum on every sync, which pushes BOT_* keys past that line and silently drops them from
+// Lua. A new BOT_* table must be added here too, or Lua cannot read its keys.
+// ============================================================================
+#define BOT_ALL_CONFIG_KEY_TABLES(INT, BOOL, STR)    \
+	BOT_NAV_REALISM_CONFIG_KEYS(INT, BOOL, STR)         \
+	BOT_ACTIVITY_CONFIG_KEYS(INT, BOOL, STR)            \
+	BOT_MARKET_CONFIG_KEYS(INT, BOOL, STR)              \
+	BOT_PARTY_TRAIL_CONFIG_KEYS(INT, BOOL, STR)         \
+	BOT_AMBIENT_ROAM_CONFIG_KEYS(INT, BOOL, STR)        \
+	BOT_CORPSE_LOOT_CONFIG_KEYS(INT, BOOL, STR)         \
+	BOT_ACTIVITY_PCT_CONFIG_KEYS(INT, BOOL, STR)        \
+	BOT_LURE_KITE_CONFIG_KEYS(INT, BOOL, STR)           \
+	BOT_SHRINE_CONFIG_KEYS(INT, BOOL, STR)              \
+	BOT_AUDIT_CONFIG_KEYS(INT, BOOL, STR)               \
+	BOT_PVP_SANITY_CONFIG_KEYS(INT, BOOL, STR)          \
+	BOT_CAMERA_CONFIG_KEYS(INT, BOOL, STR)              \
+	BOT_SPAR_CONFIG_KEYS(INT, BOOL, STR)                \
+	BOT_REALISM_CONFIG_KEYS(INT, BOOL, STR)             \
+	BOT_LEARNING_CONFIG_KEYS(INT, BOOL, STR)

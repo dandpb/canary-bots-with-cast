@@ -5,6 +5,15 @@
 C++ unit and integration tests use GoogleTest. Canary also has standalone Lua
 regressions, in-server Lua acceptance tests and isolated Python/Docker fixtures.
 
+### Lua script tests
+
+Standalone Lua tests live in `tests/lua/` and need no build, server or database. Run them
+from the repository root, e.g. `luajit tests/lua/test_bot_startup.lua` (or `lua5.4 ...`).
+`test_bot_startup.lua` drives the real `BotStartup` handler with a fake dispatcher, clock
+and DB: one pending load at a time, slicing and backoff on slow loads and late timers,
+recovery, retries, quest access before hibernation, online visibility, the final
+loaded/planned/failed count, stratified selection and end-of-load scheduling.
+
 ## Interface
 
 - `[CMakeLists.txt]` enables the `canary_ut` and `canary_it` targets with
@@ -36,6 +45,34 @@ ctest --test-dir build/linux-debug/tests/integration --output-on-failure
 ctest --preset linux-debug --output-on-failure
 ```
 
+On Windows, the release test preset can also be used when validating the same build style used by the Windows release test configuration:
+
+```powershell
+cmake --preset windows-release-enabled-tests
+cmake --build --preset windows-release-enabled-tests
+.\build\windows-release-enabled-tests\tests\unit\canary_ut.exe
+.\build\windows-release-enabled-tests\tests\integration\canary_it.exe
+```
+
+### Integration test database
+
+Integration tests use the database configured by `tests/test.env` unless `TEST_ENV_FILE` points to another env file. The default database is `canary_test`, which is intended to be disposable.
+
+When `TEST_DB_ALLOW_RESET=1`, the integration test executable checks schema sentinel columns before connecting. If a sentinel differs from the expected `schema.sql` shape, it drops and recreates the test database, then imports `schema.sql` using the `mysql` client. This reset is only allowed for database names that look like test databases.
+
+Set `TEST_DB_SCHEMA` if the test executable cannot find `schema.sql` through the CMake-provided default path.
+
+Persistent databases are updated through numbered Lua migrations under `data-otservbr-global/migrations`; the test reset path is only for disposable integration databases.
+
+#### Direct executable access
+
+You can also run test executables directly if needed:
+
+```bash
+./build/linux-debug/tests/unit/canary_ut
+./build/linux-debug/tests/integration/canary_it
+```
+
 Use `ctest --preset linux-debug -N` to list discovered tests after building.
 `ctest -R` filters by test name. For a manual build configured with `cmake -B build`,
 use `ctest --test-dir build --output-on-failure` after enabling and building tests.
@@ -47,6 +84,18 @@ Place the file under the corresponding component in `tests/unit/` or
 GoogleTest's `TEST` or `TEST_F`. For existing examples, see
 [bot brain protocol tests](unit/players/bot_brain_protocol_test.cpp) and
 [database transaction tests](integration/database_transaction_it.cpp).
+
+### GoogleTest
+
+Tests are written using GoogleTest. Add new unit test files under `tests/unit` and register them in the nearest `CMakeLists.txt` with `target_sources`.
+
+Basic test example:
+
+```cpp
+TEST(FooTest, DoesBar) {
+	EXPECT_TRUE(true);
+}
+```
 
 ## Continuous integration
 

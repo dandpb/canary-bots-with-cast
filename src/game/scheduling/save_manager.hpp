@@ -81,6 +81,13 @@ private:
 	std::string finalSaveToken_;
 	std::unordered_map<uint32_t, PlayerSave> finalPlayers_;
 
+	/**
+	 * Schedules saving the current online player object.
+	 *
+	 * The weak pointer is intentional: GUID or player runtime ID re-resolution
+	 * can point at a later session for the same character, while the save must
+	 * target the object that requested it or skip if that object is gone.
+	 */
 	void schedulePlayer(std::weak_ptr<Player> player);
 	bool consumeSaveTicket(uint32_t guid, uint64_t ticket);
 	bool doSavePlayer(std::shared_ptr<Player> player, std::optional<uint64_t> ticket = std::nullopt);

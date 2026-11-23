@@ -41,6 +41,15 @@ public:
 	virtual bool getCoins(const uint32_t &id, CoinType coinType, uint32_t &coins) = 0;
 	virtual bool setCoins(const uint32_t &id, CoinType coinType, const uint32_t &amount) = 0;
 	virtual AccountErrors_t transferTransferableCoins(uint32_t senderId, uint32_t receiverId, uint32_t amount) = 0;
+	virtual AccountErrors_t removeCoins(
+		const uint32_t &id,
+		CoinType primaryType,
+		CoinType secondaryType,
+		const uint32_t &amount,
+		const std::string &detail,
+		uint32_t &primaryCoinsRemoved,
+		uint32_t &secondaryCoinsRemoved
+	) = 0;
 	virtual bool registerCoinsTransaction(
 		const uint32_t &id,
 		CoinTransactionType type,
