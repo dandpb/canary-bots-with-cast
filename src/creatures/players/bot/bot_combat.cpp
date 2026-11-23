@@ -2621,7 +2621,7 @@ bool BotEngine::castAoeSpell(BotState& bot, const ResolvedSpell* spell, Directio
 
 	if (hitRealPlayer) {
 		// Never splash a real player with a hunt AOE.
-		return;
+		return false;
 	}
 
 	// Cast via server spell system — handles area damage, effects, cooldowns, mana, everything
