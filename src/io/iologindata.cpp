@@ -382,6 +382,12 @@ uint32_t IOLoginData::getGuidByName(const std::string &name) {
 	return result->getNumber<uint32_t>("id");
 }
 
+void IOLoginData::increaseBankBalance(uint32_t guid, uint64_t bankBalance) {
+	std::ostringstream query;
+	query << "UPDATE `players` SET `balance` = `balance` + " << bankBalance << " WHERE `id` = " << guid;
+	Database::getInstance().executeQuery(query.str());
+}
+
 bool IOLoginData::getGuidByNameEx(uint32_t &guid, bool &specialVip, std::string &name) {
 	Database &db = Database::getInstance();
 
