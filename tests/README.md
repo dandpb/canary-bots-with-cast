@@ -113,10 +113,8 @@ dispatch:
   the headers and the runners provide the rest.
 - `cpp` builds `canary`, `bot_engine` and `canary_ut` with the
   `linux-release-enabled-tests` preset on Ubuntu 22.04/GCC 13 (vcpkg binary
-  cache + ccache) and runs `canary_ut` from the repository root. On pull
-  requests it only runs when the diff touches `src/`, `cmake/`, `tests/unit/`,
-  the CMake/vcpkg files or the workflows themselves; pushes and dispatch
-  always run it.
+  cache + ccache) and runs `canary_ut` from the repository root. It runs on
+  every pull request, push to `main` and manual dispatch.
 
 In-server Lua acceptance and C++ integration tests are not part of CI; they
 need the disposable database and game fixtures described above.
