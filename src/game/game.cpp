@@ -6848,6 +6848,62 @@ namespace {
 	}
 } // namespace
 
+void Game::playerLootNearbyCorpses(const std::shared_ptr<Player> &player, uint16_t radius) {
+	const Position center = player->getPosition();
+	constexpr uint16_t maxCorpses = 50;
+	uint16_t corpses = 0;
+
+	for (int32_t dx = -radius; dx <= radius && corpses < maxCorpses; ++dx) {
+		for (int32_t dy = -radius; dy <= radius && corpses < maxCorpses; ++dy) {
+			const int32_t x = center.x + dx;
+			const int32_t y = center.y + dy;
+			if (x <= 0 || y <= 0 || x > 0xFFFF || y > 0xFFFF || center.z >= MAP_MAX_LAYERS) {
+				continue;
+			}
+
+			const auto &tile = map.getTile(static_cast<uint16_t>(x), static_cast<uint16_t>(y), center.z);
+			if (!tile) {
+				continue;
+			}
+
+			const TileItemVector* itemVector = tile->getItemList();
+			if (!itemVector) {
+				continue;
+			}
+
+			for (const auto &tileItem : *itemVector) {
+				if (!tileItem) {
+					continue;
+				}
+
+				const auto &corpse = tileItem->getContainer();
+				if (!corpse || !corpse->isCorpse() || corpse->hasAttribute(ItemAttribute_t::UNIQUEID)
+				    || corpse->hasAttribute(ItemAttribute_t::ACTIONID)) {
+					continue;
+				}
+
+				if (!corpse->isRewardCorpse() && corpse->getCorpseOwner() != 0
+				    && !player->canOpenCorpse(corpse->getCorpseOwner())) {
+					continue;
+				}
+
+				playerQuickLootCorpse(player, corpse, corpse->getPosition(), false);
+				if (++corpses >= maxCorpses) {
+					break;
+				}
+			}
+		}
+	}
+
+	if (corpses == 0) {
+		return;
+	}
+
+	std::stringstream ss;
+	ss << "You looted " << corpses << " corpse" << (corpses == 1 ? "" : "s") << " nearby.";
+	player->sendTextMessage(MESSAGE_STATUS, ss.str());
+}
+
 void Game::playerLootNearby(uint32_t playerId) {
 	const auto &player = getPlayerByID(playerId);
 	if (!player) {
