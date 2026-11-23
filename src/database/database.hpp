@@ -352,24 +352,9 @@ public:
 	static bool executeWithinTransactionRollbackOnFailure(const Func &callback)
 		requires std::invocable<Func>
 	{
-		DBTransaction transaction;
-		try {
-			if (!transaction.begin()) {
-				g_logger().error("[{}] Failed to begin transaction", __FUNCTION__);
-				return false;
-			}
-
-			if (!callback()) {
-				transaction.rollback();
-				return false;
-			}
-
-			return transaction.commit();
-		} catch (const std::exception &exception) {
-			transaction.rollback();
-			g_logger().error("[{}] Error occurred during transaction, error: {}", __FUNCTION__, exception.what());
-			return false;
-		}
+		// 15.25 DBTransaction is static-only; executeWithOutcome already begins the
+		// transaction, rolls back on a false callback or exception, and commits on success.
+		return executeWithOutcome(callback) == Outcome::Committed;
 	}
 
 private:
