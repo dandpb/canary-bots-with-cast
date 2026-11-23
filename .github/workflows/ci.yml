@@ -118,8 +118,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .vcpkg-bincache
+          # DEBUG_LOG=ON: the connection write-diagnostics unit tests assert that suppressed
+          # write failures still emit a debug-level diagnostic (logWriteError early-returns
+          # without DEBUG_LOG), so the unit suite needs debug logging compiled in.
           cmake --preset linux-release-enabled-tests -DTOGGLE_BIN_FOLDER=ON \
-            -DOPTIONS_ENABLE_SCCACHE=OFF -DOPTIONS_ENABLE_CCACHE=ON
+            -DDEBUG_LOG=ON -DOPTIONS_ENABLE_SCCACHE=OFF -DOPTIONS_ENABLE_CCACHE=ON
 
       - name: Count the vcpkg packages after configure
         id: vcpkg-count-after
