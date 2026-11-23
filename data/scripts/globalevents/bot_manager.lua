@@ -43,7 +43,12 @@ local function selectNearestPopulation(bots, referenceConfig, target)
 	return names
 end
 
--- Initialize access before an earlier batch can hibernate and leave BotPlayers.
+-- Quest/access storages (wagons, shrines, levers, teleports). Applied to each bot right after
+-- Game.loadBotPlayer succeeds, BEFORE an earlier batch can hibernate and leave BotPlayers
+-- (#11/#12 durability, #57): a hibernating bot keeps the same Player object in the hibernation
+-- pool, so its storages must already be set on it here.
+local questAccessCount = 0
+local questAccessFailures = 0
 local botQuestStorages
 local function initializeBotQuestAccess(player)
 	if not botQuestStorages then
@@ -249,6 +254,7 @@ local function initializeBotQuestAccess(player)
 	for key, value in pairs(botQuestStorages) do
 		player:setStorageValue(key, value)
 	end
+	questAccessCount = questAccessCount + 1
 end
 
 -- Startup: load all bot players from database
@@ -419,7 +425,8 @@ function botStartup.onStartup()
 	local batchSize = 50 -- Progress and online visibility updates only.
 	local minDelayMs, maxDelayMs = 100, 1000
 	local nextDelayMs = minDelayMs
-	local loadedCount = 0
+	local loadedCount, failedCount = 0, 0
+	local loadStartedAt = Game.monotonicMs()
 	local function loadNextBot(i, attempt, delay)
 		local name = botNames[i]
 		if not name then return end
@@ -443,13 +450,22 @@ function botStartup.onStartup()
 
 				-- Register death handler
 				player:registerEvent("BotDeath")
-				initializeBotQuestAccess(player)
+				-- Before anything can hibernate it (#57). Protected: an error here (e.g. a renamed
+				-- Storage constant) must not abort the startup -- and would repeat for every bot.
+				local qaOk, qaErr = pcall(initializeBotQuestAccess, player)
+				if not qaOk then
+					questAccessFailures = questAccessFailures + 1
+					if questAccessFailures <= 3 then
+						logger.error("[BotManager] initializeBotQuestAccess failed for '{}': {}", name, tostring(qaErr))
+					end
+				end
 
 				-- Log every 10th bot
 				if i % 10 == 0 or i == #botNames then
 					logger.info("[BotManager] Loaded bot " .. i .. "/" .. #botNames .. ": " .. name)
 				end
 			else
+				failedCount = failedCount + 1
 				logger.warn("[BotManager] Failed to load bot: " .. name)
 			end
 
@@ -483,9 +499,14 @@ function botStartup.onStartup()
 				end
 
 				addEvent(function()
-					-- Quest/access initialization already ran before each loaded bot could hibernate.
-					logger.info("[BotManager] Initialized quest/access storages for " .. loadedCount .. " loaded bots.")
-					logger.info("[BotManager] Loaded " .. loadedCount .. "/" .. #botNames .. " bots as INACTIVE.")
+					-- Quest/access storages are set per bot right after its load (#57).
+					logger.info("[BotManager] Initialized quest/access storages for {} loaded bots.", questAccessCount)
+					if questAccessFailures > 0 then
+						logger.error("[BotManager] initializeBotQuestAccess FAILED on {} bot(s) (first 3 errors logged above)", questAccessFailures)
+					end
+					-- Report what actually loaded, not what was planned.
+					logger.info("[BotManager] All {} of {} bots loaded as INACTIVE ({} failed) in {}s.",
+						loadedCount, #botNames, failedCount, string.format("%.1f", (Game.monotonicMs() - loadStartedAt) / 1000))
 					logger.info("[BotManager] Use '/cavebot <name> active' to activate a bot at your position.")
 
 					-- Check for persisted state restore (500ms after last bot is registered)
@@ -520,7 +541,10 @@ function botStartup.onStartup()
 				logger.info("[BOT_BATCH] completed " .. i .. "/" .. #botNames .. "; loaded=" .. loadedCount)
 			end
 			if i < #botNames then
-				local pressureMs = math.max(started - due, Game.monotonicMs() - started)
+				-- The first event always fires late: onStartup runs inside the server's own startup
+				-- task, which keeps the dispatcher busy until the world is up. That is not pressure.
+				local lateMs = i > 1 and math.max(0, started - due) or 0
+				local pressureMs = math.max(lateMs, Game.monotonicMs() - started)
 				-- Leave four times the measured load cost or scheduling lag for
 				-- other work. Cap the wait so a busy server still makes progress.
 				nextDelayMs = math.max(minDelayMs, math.floor(nextDelayMs / 2), math.min(maxDelayMs, pressureMs * 4))
@@ -581,8 +605,12 @@ function botManager.onThink(interval)
 				end
 				local rv = BotSystem.executeReload(opts)
 				resultText = (rv and rv.message) or "reload returned nil"
+			elseif low == "storages" then
+				resultText = BotStorages.dump(botName)
 			else
-				resultText = Game.botCommand(botName, cmd) or ""
+				-- 3rd arg labels the BOT_TEST_HARNESS `cmd` audit record only.
+				resultText = Game.botCommand(botName, cmd, "queue") or ""
+				-- Reply text is data, not a format string: JSON replies carry braces.
 				logger.info("[BotManager] Command '{}' for '{}': {}", cmd, botName, resultText)
 			end
 

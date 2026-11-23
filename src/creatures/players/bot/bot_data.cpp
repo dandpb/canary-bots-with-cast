@@ -53,6 +53,7 @@ void BotEngine::loadHuntData() {
 	// running the population on nothing.
 	g_logger().info("[BotEngine] Loading authored bot data from {} ...", BOT_AUTHORED_DIR);
 	reloadBotData();
+	loadDangerZones();   // #96 learned danger zones (bot_hunt_danger)
 }
 
 bool BotEngine::prepareAuthoredData(std::string& error) {
@@ -238,12 +239,8 @@ void BotEngine::loadHuntScriptsCsv(std::vector<HuntScript>& out, uint32_t nextSc
 		s.enabled = t.getInt(i, "enabled", 0, 1) != 0;
 		s.isQuest = t.getInt(i, "is_quest", 0, 1) != 0;
 		s.scriptCategory = t.raw(i, "script_category");
-		// Reservation key = lowercased script name — unchanged from the SQL loader (the
-		// spawn_group column was dropped in the per-vocation hunt-route de-dup; see the
-		// long WARNING comment in the pre-CSV bot_data.cpp:70-85 / git history for why
-		// this is NOT one-bot-per-physical-spawn and why that is accepted).
-		s.spawnGroup = s.name;
-		std::transform(s.spawnGroup.begin(), s.spawnGroup.end(), s.spawnGroup.begin(), ::tolower);
+		// Reservation key (spawnGroup) is assigned after waypoints load, from the PHYSICAL
+		// patrol area: assignPhysicalSpawnGroups (#29).
 		all.push_back(std::move(s));
 	}
 
@@ -345,9 +342,109 @@ void BotEngine::loadHuntScriptsCsv(std::vector<HuntScript>& out, uint32_t nextSc
 			out.push_back(std::move(s));
 		}
 	}
+	assignPhysicalSpawnGroups(out);
 	if (!csvQuiet_) {
 		g_logger().info("[BotEngine] Loaded {} hunt scripts with waypoints and targets", out.size());
 	}
+}
+
+// #29 one bot per PHYSICAL spawn. The reservation key used to be the lowercased script
+// name, so "Meriana Gargoyle Cave" and "... Lure", or the three Mutated Humans scripts,
+// each got their own bot on the same tiles. Here every non-quest hunt script's patrol
+// waypoints are bucketed into 8x8 cells per floor; two scripts are merged (union-find)
+// when they share >= SPAWN_GROUP_MIN_CELLS cells AND that is >= SPAWN_GROUP_MIN_FRAC of
+// the smaller script's cells. The fraction stops chaining: a long surface patrol that
+// clips one corner of a cave entrance does not pull a whole city into one group
+// (measured offline on the 223 enabled hunts: no fraction = one 84-script group;
+// 0.5 = 186 groups, largest 11 = the Edron Vampire Crypt / Old Fortress complex).
+// Quests and "traveling" scripts hold no reservation, so they keep their name key.
+// Singletons keep the old name key; merged groups get "geo:<lowest member id>".
+void BotEngine::assignPhysicalSpawnGroups(std::vector<HuntScript>& scripts) {
+	constexpr size_t SPAWN_GROUP_MIN_CELLS = 3;
+	constexpr double SPAWN_GROUP_MIN_FRAC = 0.5;
+	const size_t n = scripts.size();
+	std::vector<std::unordered_set<uint64_t>> cells(n);
+	std::vector<bool> eligible(n, false);
+	for (size_t i = 0; i < n; i++) {
+		auto& s = scripts[i];
+		s.spawnGroup = s.name;
+		std::transform(s.spawnGroup.begin(), s.spawnGroup.end(), s.spawnGroup.begin(), ::tolower);
+		if (s.isQuest || s.scriptCategory != "hunt") {
+			continue;
+		}
+		for (const auto& wp : s.patrolWaypoints) {
+			cells[i].insert((static_cast<uint64_t>(wp.pos.x / 8) << 24) | (static_cast<uint64_t>(wp.pos.y / 8) << 8) | wp.pos.z);
+		}
+		eligible[i] = !cells[i].empty();
+	}
+	std::vector<size_t> parent(n);
+	for (size_t i = 0; i < n; i++) {
+		parent[i] = i;
+	}
+	auto find = [&](size_t x) {
+		while (parent[x] != x) {
+			parent[x] = parent[parent[x]];
+			x = parent[x];
+		}
+		return x;
+	};
+	for (size_t a = 0; a < n; a++) {
+		if (!eligible[a]) {
+			continue;
+		}
+		for (size_t b = a + 1; b < n; b++) {
+			if (!eligible[b]) {
+				continue;
+			}
+			const bool aSmall = cells[a].size() <= cells[b].size();
+			const auto& small = aSmall ? cells[a] : cells[b];
+			const auto& big = aSmall ? cells[b] : cells[a];
+			size_t shared = 0;
+			for (const uint64_t c : small) {
+				shared += big.count(c);
+			}
+			if (shared >= SPAWN_GROUP_MIN_CELLS && static_cast<double>(shared) >= SPAWN_GROUP_MIN_FRAC * static_cast<double>(small.size())) {
+				parent[find(a)] = find(b);
+			}
+		}
+	}
+	std::unordered_map<size_t, std::vector<size_t>> groups;
+	for (size_t i = 0; i < n; i++) {
+		if (eligible[i]) {
+			groups[find(i)].push_back(i);
+		}
+	}
+	std::vector<const std::vector<size_t>*> merged;
+	for (const auto& [root, members] : groups) {
+		if (members.size() < 2) {
+			continue;
+		}
+		uint32_t minId = UINT32_MAX;
+		for (const size_t m : members) {
+			minId = std::min(minId, scripts[m].id);
+		}
+		for (const size_t m : members) {
+			scripts[m].spawnGroup = fmt::format("geo:{}", minId);
+		}
+		merged.push_back(&members);
+	}
+	if (csvQuiet_) {
+		return;
+	}
+	std::sort(merged.begin(), merged.end(), [](const auto* x, const auto* y) { return x->size() > y->size(); });
+	size_t eligibleCount = 0;
+	for (const bool e : eligible) {
+		eligibleCount += e ? 1 : 0;
+	}
+	std::string top;
+	for (size_t g = 0; g < merged.size() && g < 5; g++) {
+		top += fmt::format(" [{}:{}", scripts[(*merged[g])[0]].spawnGroup, merged[g]->size());
+		for (size_t k = 0; k < merged[g]->size() && k < 4; k++) {
+			top += fmt::format(" '{}'", scripts[(*merged[g])[k]].name);
+		}
+		top += merged[g]->size() > 4 ? " ...]" : "]";
+	}
+	g_logger().info("[SPAWN_GROUPS] scripts={} groups={} merged={} largest:{}", eligibleCount, groups.size(), merged.size(), top);
 }
 
 void BotEngine::loadCityPOIsCsv(std::unordered_map<uint32_t, std::vector<BotPOI>>& out) {
@@ -817,12 +914,26 @@ void BotEngine::rebuildFidgetItemPool() {
 	// The shop walk is iterative + depth-capped against malformed datapack childShop nesting.
 	// NpcTypes register at g_npcs().load() (before Game::start) and persist across reload.
 	
+	//
+	// #168 (15.25): upstream added the "Test Server" NPC (data-otservbr-global/npc/test_server.lua),
+	// a gold-currency shop built from items.xml that sells EVERY piece of equipment for 1 gp. It is
+	// not placed on the map, but its NpcType is registered, so medusa shields, cobra hoods and
+	// dwarven legs all passed "0 < buyPrice < max" and the pool tripled (1552 vs ~526 on 15.00).
+	// Two guards: skip that NPC by name (upstream's own price checker special-cases the same
+	// name), and refuse any item some NPC BUYS from players for >= the threshold
+	// (ItemType::sellPrice is the highest NPC buy-back price) -- an item worth that much to an NPC
+	// is not litter whatever a shop lists it for.
 	const uint32_t maxValue = static_cast<uint32_t>(g_configManager().getNumber(BOT_FIDGET_MAX_ITEM_VALUE_GP));
 	safeFidgetItemIds_.clear();
-	std::unordered_set<uint16_t> seen;
+	std::unordered_map<uint16_t, uint32_t> poolPrice;  // itemId -> highest accepted gold shop price
+	uint32_t skippedTestServer = 0, skippedResale = 0;
 	for (const auto& [npcName, npcType] : g_npcs().getNpcTypes()) {
 		if (!npcType || npcType->getCurrencyId() != ITEM_GOLD_COIN) {
 			continue;  // skip token / non-gold traders — their prices aren't in gp
+		}
+		if (strcasecmp(npcType->name.c_str(), "Test Server") == 0 || strcasecmp(npcName.c_str(), "test server") == 0) {
+			++skippedTestServer;
+			continue;
 		}
 		// Iterative walk of the shop tree (top-level blocks + nested childShop menus).
 		std::vector<std::pair<const std::vector<ShopBlock>*, int>> stack;
@@ -837,9 +948,17 @@ void BotEngine::rebuildFidgetItemPool() {
 			for (const auto& sb : *blocks) {
 				if (sb.itemBuyPrice > 0 && sb.itemBuyPrice < maxValue) {
 					const ItemType& it = Item::items.getItemType(sb.itemId);
-					if (it.id != 0 && it.pickupable && it.movable
-					    && seen.insert(sb.itemId).second) {
-						safeFidgetItemIds_.push_back(sb.itemId);
+					if (it.id != 0 && it.pickupable && it.movable) {
+						if (it.sellPrice >= maxValue) {
+							++skippedResale;
+						} else {
+							auto [pit, fresh] = poolPrice.try_emplace(sb.itemId, sb.itemBuyPrice);
+							if (fresh) {
+								safeFidgetItemIds_.push_back(sb.itemId);
+							} else if (sb.itemBuyPrice > pit->second) {
+								pit->second = sb.itemBuyPrice;
+							}
+						}
 					}
 				}
 				if (!sb.childShop.empty()) {
@@ -848,8 +967,28 @@ void BotEngine::rebuildFidgetItemPool() {
 			}
 		}
 	}
+
+	// Boot visibility (#168): pool size, the highest price in it and its 5 dearest items, so a
+	// datapack change that lets equipment in shows up in the journal instead of on the floor.
+	std::vector<std::pair<uint32_t, uint16_t>> byPrice;
+	byPrice.reserve(poolPrice.size());
+	uint32_t poolMax = 0;
+	for (const auto& [id, price] : poolPrice) {
+		byPrice.emplace_back(price, id);
+		poolMax = std::max(poolMax, price);
+	}
+	const size_t topN = std::min<size_t>(5, byPrice.size());
+	std::partial_sort(byPrice.begin(), byPrice.begin() + topN, byPrice.end(),
+		[](const auto& l, const auto& r) { return l.first != r.first ? l.first > r.first : l.second < r.second; });
+	std::string top;
+	for (size_t i = 0; i < topN; ++i) {
+		const ItemType& it = Item::items.getItemType(byPrice[i].second);
+		top += fmt::format("{}{} ({}) {}gp", i ? ", " : "", it.name, byPrice[i].second, byPrice[i].first);
+	}
 	g_logger().info("[BotEngine] Loaded {} gold-NPC-buyable fidget item IDs (max buy price {} gp)",
 		safeFidgetItemIds_.size(), maxValue);
+	g_logger().info("[FIDGET_POOL] size={} poolMaxGp={} limitGp={} skippedTestServerNpc={} skippedResale>=limit={} top5=[{}]",
+		safeFidgetItemIds_.size(), poolMax, maxValue, skippedTestServer, skippedResale, top);
 }
 
 void BotEngine::buildTravelDestinationsCache() {
@@ -1101,10 +1240,13 @@ std::pair<Position, std::string> BotEngine::getTravelPosition(uint32_t townId) c
 // Forward declaration — defined alongside applyBotForgeTiers below; used by the
 // one-shot sanity dump at the end of loadEquipmentData.
 
-void BotEngine::equipBot(BotState& bot) {
+void BotEngine::equipBot(BotState& bot, bool preserveBackpack) {
 	auto player = bot.getPlayer();
 	if (!player) return;
-	const bool preserveBackpack = player->getInventoryItem(CONST_SLOT_BACKPACK) != nullptr;
+
+	// Reload reactivation keeps the bag the bot already carries (loot, produced runes, fish).
+	// Only a bot that HAS a backpack keeps it; a missing one is created as on first activation.
+	const bool keepBag = preserveBackpack && player->getInventoryItem(CONST_SLOT_BACKPACK) != nullptr;
 
 	auto voc = player->getVocation();
 	uint32_t baseVoc = voc ? voc->getBaseId() : 4; // default to paladin if unknown
@@ -1133,8 +1275,8 @@ void BotEngine::equipBot(BotState& bot) {
 	int updated = 0;
 	for (auto& s : slots) {
 		if (s.itemId == 0) continue;
+		if (keepBag && s.slot == CONST_SLOT_BACKPACK) continue; // replacing it destroys the contents
 		auto existing = player->getInventoryItem(s.slot);
-		if (preserveBackpack && s.slot == CONST_SLOT_BACKPACK && existing) continue;
 		if (existing && existing->getID() == s.itemId) continue; // already correct
 
 		// Remove existing item in slot
@@ -1207,9 +1349,17 @@ void BotEngine::equipBot(BotState& bot) {
 		}
 	}
 
-	// Activation must not discard persisted loot or reset training charges. Keep a
-	// loaded backpack and bootstrap one only when the character has none.
-	if (!preserveBackpack) {
+	// Wipe the backpack to clear accumulated junk (quest items like Ewer with Holy
+	// Water from Lion's Rock, looted clutter, etc.) so the seed blocks below produce
+	// a deterministic loadout every activation. Bots use bank balance for shop
+	// purchases (set to 100000 in bot_players_setup.sql), so destroying the bag's
+	// gold/loot is fine. Runes re-seed immediately below (empty() guard now satisfied),
+	// exercise weapons re-seed at max 14400 charges via the per-id findItemOfType guard.
+	// Only fires from activateBot. The reload-reactivate path passes preserveBackpack, so
+	// /cavebot reload no longer empties every bag (#48).
+	// NOT from wakeBot — hibernation preserves the Player object as-is via the
+	// hibernationPool_ fast-path, so the bag persists across proximity/teleport wakes.
+	if (!keepBag) {
 		auto bpExisting = player->getInventoryItem(CONST_SLOT_BACKPACK);
 		if (bpExisting) {
 			g_game().internalRemoveItem(bpExisting);  // destroys container + all sub-items
@@ -1293,9 +1443,11 @@ void BotEngine::equipBot(BotState& bot) {
 		// already at top level (zero new slots), leaving fish, flasks and paladin ammo — 3-4
 		// types against 6 free, each then stacking to 100.
 		//
-		// Only seed a fresh loadout. Retained pilot backpacks already contain their
-		// supplies; adding another bag would duplicate consumables on each activation.
-		if (bpContainer && !preserveBackpack) {
+		// No idempotency guard by id: this whole block runs after the unconditional backpack
+		// wipe. Do NOT "fix" that with findItemOfType(player, 2854, ...) — it would match the
+		// OUTER backpack, since both are the same item. A preserved bag (keepBag) already
+		// holds its supply bag from the activation that built it, so it is not re-added.
+		if (bpContainer && !keepBag) {
 			auto supplyBag = Item::CreateItem(2854, 1);
 			if (supplyBag && g_game().internalAddItem(bpContainer, supplyBag, INDEX_WHEREEVER) == RETURNVALUE_NOERROR) {
 				if (const auto& bag = supplyBag->getContainer()) {

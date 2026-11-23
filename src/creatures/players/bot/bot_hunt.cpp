@@ -55,6 +55,8 @@ bool BotEngine::tryStartHunt(BotState& bot) {
 		}
 		if (isScriptPlayerClaimed(script.id, script.spawnGroup)) continue; // player spawn-claim
 		if (isScriptHuntRepelled(script)) continue; // hunt-flagged player nearby
+		if (dangerWantsParty(script.id)) { dangerAvoidPick_++; continue; } // #96: party-only now
+		if (isScriptDeathAvoided(bot.guid, script)) continue; // #99 death loop: avoided type / death spot
 
 		// Empty targetNames is allowed — bot attacks all monsters during PATROLLING
 
@@ -73,16 +75,29 @@ bool BotEngine::tryStartHunt(BotState& bot) {
 			if (!script.spawnGroup.empty() && activeSpawnGroups_.count(script.spawnGroup)) continue;
 			if (isScriptPlayerClaimed(script.id, script.spawnGroup)) continue; // player spawn-claim
 			if (isScriptHuntRepelled(script)) continue; // hunt-flagged player nearby
+			if (dangerWantsParty(script.id)) { dangerAvoidPick_++; continue; } // #96: party-only now
+			if (isScriptDeathAvoided(bot.guid, script)) continue; // #99
 			// Empty targetNames is allowed — bot attacks all monsters during PATROLLING
 			eligible.push_back(&script);
 		}
 	}
 
-	if (eligible.empty()) return false;
+	if (eligible.empty()) {
+		// BOT_TEST_HARNESS: `decide what=hunt` for a WATCHED bot (twin: virtualTryStartHunt).
+		if (audFor(AUD_DECIDE, bot.guid)) [[unlikely]] {
+			botAudDecide(bot, "hunt", "none", 0, fmt::format("virtual=0 level={} cat={}", level, wantedCategory));
+		}
+		return false;
+	}
 
 	int idx = uniform_random(0, static_cast<int>(eligible.size()) - 1);
 	const HuntScript* selected = eligible[idx];
 	const bool selectedIsQuest = selected->isQuest || selected->scriptCategory == "quest";
+	if (audFor(AUD_DECIDE, bot.guid)) [[unlikely]] {
+		botAudDecide(bot, "hunt", fmt::format("{}:{}", selected->id, selected->name),
+			static_cast<int64_t>(eligible.size()),
+			fmt::format("virtual=0 level={} cat={} town={}", level, wantedCategory, selected->townId));
+	}
 
 	// Reserve (hunts) or stamp the shared-quest cooldown
 	if (selectedIsQuest) {
@@ -272,7 +287,7 @@ void BotEngine::beginHuntPhase(BotState& bot, HuntPhase phase, size_t preChosenP
 				if (player) {
 					Position landing = safeTeleportLanding(bot, entryWp, &script->patrolWaypoints,
 						&entryIdx, "huntStart");
-					BOT_TELEPORT(player, landing, true);
+					BOT_RESCUE_TELEPORT(bot, player, landing, true);
 					bot.currentPos = landing;
 					castLog(bot, fmt::format("TRAVEL_TO: Teleported to patrol entry wp {}/{} ({},{},{})",
 						entryIdx + 1, script->patrolWaypoints.size(), landing.x, landing.y, landing.z));
@@ -850,7 +865,7 @@ void BotEngine::doHuntTravel(BotState& bot) {
 			timeoutEntryIdx = botPatrolEntryIdx(script->patrolWaypoints, *script);
 			Position landing = safeTeleportLanding(bot, script->patrolWaypoints[timeoutEntryIdx].pos,
 				&script->patrolWaypoints, &timeoutEntryIdx, "huntStartTimeout");
-			BOT_TELEPORT(player, landing, true);
+			BOT_RESCUE_TELEPORT(bot, player, landing, true);
 			bot.currentPos = landing;
 			castLogError(bot, fmt::format("TRAVEL_TO: Timeout ({}s), teleported to patrol entry wp {}/{} ({},{},{})",
 				travelMaxMs / 1000, timeoutEntryIdx + 1, script->patrolWaypoints.size(),
@@ -892,7 +907,7 @@ void BotEngine::doHuntTravel(BotState& bot) {
 			if (dist > 30 || bot.currentPos.z != entryWp.z) {
 				Position landing = safeTeleportLanding(bot, entryWp, &script->patrolWaypoints,
 					&entryIdx, "huntStartNoTravel");
-				BOT_TELEPORT(player, landing, true);
+				BOT_RESCUE_TELEPORT(bot, player, landing, true);
 				bot.currentPos = landing;
 				castLog(bot, fmt::format("TRAVEL_TO: Teleported to patrol entry wp {}/{} ({},{},{})",
 					entryIdx + 1, script->patrolWaypoints.size(), landing.x, landing.y, landing.z));
@@ -999,7 +1014,7 @@ void BotEngine::doHuntTravel(BotState& bot) {
 			if (dist > HUNT_PATROL_ENTRY_BRIDGE_DIST || bot.currentPos.z != entryWp.z) {
 				Position landing = safeTeleportLanding(bot, entryWp, &script->patrolWaypoints,
 					&entryIdx, "huntStartAfterTravel");
-				BOT_TELEPORT(player, landing, true);
+				BOT_RESCUE_TELEPORT(bot, player, landing, true);
 				bot.currentPos = landing;
 				castLog(bot, fmt::format("TRAVEL_TO: Teleported to patrol entry wp {}/{} ({},{},{}) ({} tiles away, no walkable entry)",
 					entryIdx + 1, script->patrolWaypoints.size(), landing.x, landing.y, landing.z, dist));
@@ -1704,6 +1719,7 @@ void BotEngine::doHuntPatrol(BotState& bot) {
 		config.zChangeGraceMs = 500;
 		config.enableLookaheadSkip = true;
 		config.enableTeleportStand = true;
+		bot.huntWaypointIdx = dangerSkipPatrolIdx(bot, *script, bot.huntWaypointIdx, false);   // #96 waypoint choice
 		auto result = followWaypoints(bot, script->patrolWaypoints, bot.huntWaypointIdx,
 			bot.huntWaypointSkipCount, config);
 		if (result.aborted) {
@@ -2022,6 +2038,7 @@ void BotEngine::scanAndAttackMonster(BotState& bot) {
 		if (!target || target->isRemoved() || target->getHealth() <= 0) {
 			// Target dead — count kill
 			bot.huntKillCount++;
+			fightProgressKill(bot.guid); // #99: a kill is progress
 			bot.lastKillTime = OTSYS_TIME();
 			// BOT_CORPSE_LOOT: force a census on the very next tick. This is what bounds
 			// adjacent-open latency to ~one tick and catches the corpse of a monster killed
@@ -2058,6 +2075,61 @@ void BotEngine::scanAndAttackMonster(BotState& bot) {
 			bot.huntIgnoredMonsters.clear();
 			s_retreatUntil.erase(bot.guid);
 			player->setAttackedCreature(nullptr);
+			return;
+		}
+
+		// #99 fruitless fight: no target reached a new HP low (and nothing died) for 60 s across the
+		// whole fight. The type is avoided for 30 min (fightProgressTick), and the bot walks out to a
+		// patrol waypoint the pathfinder accepts, >= 10 sqm from the target. If every target type of
+		// the script is now avoided, the hunt itself is fruitless and is aborted.
+		if (fightProgressTick(bot, target, "hunt")) {
+			bot.huntIgnoredMonsters.insert(bot.huntTargetId);
+			bot.huntTargetId = 0;
+			bot.huntChaseFailCount = 0;
+			s_targetHpTracker.erase(bot.guid);
+			s_lastTrackedTargetId.erase(bot.guid);
+			s_retreatUntil.erase(bot.guid);
+			player->setAttackedCreature(nullptr);
+			player->setFollowCreature(nullptr);
+			const HuntScript* sc = nullptr;
+			for (const auto& s : huntScripts_) {
+				if (s.id == bot.huntScriptId) { sc = &s; break; }
+			}
+			bool allAvoided = sc && !sc->targetNames.empty();
+			if (sc) {
+				for (const auto& t : sc->targetNames) {
+					if (!isCreatureTypeAvoided(bot.guid, t)) { allAvoided = false; break; }
+				}
+			}
+			if (allAvoided) {
+				g_logger().info("[FRUITLESS] leave guid={} name='{}' how=abort_hunt hunt={}", bot.guid, bot.name, bot.huntScriptId);
+				abortHunt(bot, "fruitless");
+				return;
+			}
+			if (sc && !sc->patrolWaypoints.empty()) {
+				const Position me = bot.currentPos;
+				auto cheb = [](const Position& a, const Position& b) {
+					return std::max(std::abs(static_cast<int32_t>(a.x) - static_cast<int32_t>(b.x)),
+					                std::abs(static_cast<int32_t>(a.y) - static_cast<int32_t>(b.y)));
+				};
+				std::vector<size_t> cand;
+				for (size_t i = 0; i < sc->patrolWaypoints.size(); i++) {
+					const Position& p = sc->patrolWaypoints[i].pos;
+					if (p.z == me.z && cheb(p, tpos) >= 10 && cheb(p, me) <= PATH_MAX_DIST) cand.push_back(i);
+				}
+				std::sort(cand.begin(), cand.end(), [&](size_t a, size_t b) {
+					return cheb(sc->patrolWaypoints[a].pos, me) < cheb(sc->patrolWaypoints[b].pos, me);
+				});
+				for (size_t k = 0; k < cand.size() && k < 4; k++) {
+					if (goToWithDoors(bot, sc->patrolWaypoints[cand[k]].pos)) {
+						bot.huntWaypointIdx = cand[k];
+						g_logger().info("[FRUITLESS] leave guid={} name='{}' how=waypoint wp={} dist={}", bot.guid,
+							bot.name, cand[k], cheb(sc->patrolWaypoints[cand[k]].pos, me));
+						return;
+					}
+				}
+				g_logger().info("[FRUITLESS] leave guid={} name='{}' how=none candidates={}", bot.guid, bot.name, cand.size());
+			}
 			return;
 		}
 
@@ -2212,6 +2284,8 @@ void BotEngine::scanAndAttackMonster(BotState& bot) {
 
 		uint32_t cid = creature->getID();
 		if (bot.huntIgnoredMonsters.count(cid)) continue;
+		// #99: a type this bot died to twice, or fought fruitlessly, in the last 30 min.
+		if (!s_avoidType.empty() && isCreatureTypeAvoided(bot.guid, creature->getName())) continue;
 
 		// PERF_INVESTIGATION_2026-05-24 Tier 1-C: swap per-creature std::transform
 		// lowercase + == compare for strcasecmp. The target list is pre-lowered at
@@ -2241,6 +2315,12 @@ void BotEngine::scanAndAttackMonster(BotState& bot) {
 			nameMatch = true;
 		}
 		if (!nameMatch) continue;
+		// #96 target choice: a monster inside a learned danger zone is left alone unless it is
+		// already attacking this bot (then it is a fight, not a choice).
+		if (dangerAvoids(bot, script->id, cpos) && creature->getAttackedCreature().get() != player.get()) {
+			dangerAvoidTarget_++;
+			continue;
+		}
 
 		// Verify monster is reachable: walkable path + LOS from destination
 		// clearSight=true ensures FrozenPathingConditionCall checks isSightClear(testPos, targetPos)
@@ -2350,6 +2430,7 @@ bool BotEngine::hasNearbyReachableTargets(BotState& bot) {
 			nameMatch = true;
 		}
 		if (!nameMatch) continue;
+		if (dangerAvoids(bot, script->id, mpos) && creature->getAttackedCreature().get() != player.get()) continue;   // #96, as the scan
 
 		// Verify monster is reachable: walkable path + LOS from destination
 		{
@@ -2488,7 +2569,10 @@ void BotEngine::abortHunt(BotState& bot, const std::string& reason) {
 	bot.huntScriptId = 0; // Clear before recovery route check — prevents stale state in doActivityReroll
 
 	// Try recovery route (except for PK threat — urgent, just teleport)
-	if (reason == "pk_threat" || !findNearestRecoveryRoute(bot)) {
+	// #97: the Nth consecutive abort from the same tile skips the recovery route, which is
+	// exactly the walk that keeps landing the bot back on that tile.
+	const bool abortLoop = noteHuntAbortLoop(bot, player ? player->getPosition() : bot.currentPos, reason, false);
+	if (abortLoop || reason == "pk_threat" || !findNearestRecoveryRoute(bot)) {
 		teleportToTemple(bot);
 	} else {
 		return; // navigating back via recovery route (beginHuntPhase sets s_leavingPhaseStart)
@@ -2505,6 +2589,33 @@ void BotEngine::abortHunt(BotState& bot, const std::string& reason) {
 	bot.hasWalkTarget = false;
 	bot.currentPOI = nullptr;
 	bot.nextRerollTime = OTSYS_TIME() + uniform_random(5, 15) * 1000;
+}
+
+// #97 abort-loop breaker (live abortHunt + the virtual safety-timeout twin in bot_tick.cpp).
+// Only the hunt's own failure reasons count: admin/claim/party evictions and PK flight are
+// not a loop. Returns true exactly once, on the HUNT_ABORT_LOOP_LIMIT-th consecutive abort
+// within HUNT_ABORT_LOOP_RADIUS of the previous one; the streak then restarts at 0.
+bool BotEngine::noteHuntAbortLoop(BotState& bot, const Position& pos, const std::string& reason, bool isVirtual) {
+	static constexpr std::array<std::string_view, 7> counted = {
+		"travel route aborted", "stuck at waypoint", "3 cycles with 0 kills", "safety timeout",
+		"no patrol waypoints", "virtual safety timeout", "forced abort"
+	};
+	if (std::find(counted.begin(), counted.end(), std::string_view(reason)) == counted.end()) {
+		return false;
+	}
+	auto& rec = s_huntAbortLoop[bot.guid];
+	const bool same = rec.count > 0 && rec.pos.z == pos.z
+		&& std::abs(static_cast<int32_t>(rec.pos.x) - static_cast<int32_t>(pos.x)) <= HUNT_ABORT_LOOP_RADIUS
+		&& std::abs(static_cast<int32_t>(rec.pos.y) - static_cast<int32_t>(pos.y)) <= HUNT_ABORT_LOOP_RADIUS;
+	rec.count = same ? rec.count + 1 : 1;
+	rec.pos = pos;
+	if (rec.count < HUNT_ABORT_LOOP_LIMIT) {
+		return false;
+	}
+	g_logger().warn("[ABORTLOOP] guid={} name='{}' count={} tile=({},{},{}) reason='{}' virtual={} town={} -> town reset",
+		bot.guid, bot.name, rec.count, pos.x, pos.y, pos.z, reason, isVirtual ? 1 : 0, bot.townId);
+	s_huntAbortLoop.erase(bot.guid);
+	return true;
 }
 
 void BotEngine::doHuntResupply(BotState& bot) {
@@ -2583,6 +2694,7 @@ void BotEngine::doHuntResupply(BotState& bot) {
 void BotEngine::finishResupplyAndReroll(BotState& bot) {
 	// Reset stuck-loop counters on reroll
 	s_fcConsecutiveFailures.erase(bot.guid);
+	s_huntAbortLoop.erase(bot.guid); // #97: a completed hunt ends the abort streak
 	clearDepotBlacklist(bot.guid);
 	clearLureKiteState(bot.guid); // BOT_LURE_KITE hygiene (see unregisterBot)
 

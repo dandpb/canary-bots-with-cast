@@ -348,6 +348,15 @@ public:
 		}
 	}
 
+	template <typename Func>
+	static bool executeWithinTransactionRollbackOnFailure(const Func &callback)
+		requires std::invocable<Func>
+	{
+		// 15.25 DBTransaction is static-only; executeWithOutcome already begins the
+		// transaction, rolls back on a false callback or exception, and commits on success.
+		return executeWithOutcome(callback) == Outcome::Committed;
+	}
+
 private:
 	static bool prepareReceipt(Database &database, bool &alreadyCommitted);
 	inline static thread_local const ScopedReceipt *receipt_ = nullptr;

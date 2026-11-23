@@ -1,4 +1,5 @@
 local senders = require("gamestore.senders")
+local taskboard = require("gamestore.taskboard")
 local player = {}
 
 local sendStoreBalanceUpdating = senders.sendStoreBalanceUpdating
@@ -16,7 +17,7 @@ local function canBuyOffer(self, offer)
 		offer.type ~= GameStore.OfferTypes.OFFER_TYPE_NAMECHANGE
 		and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_EXPBOOST
 		and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_PREYSLOT
-		and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_HUNTINGSLOT
+		and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_WEEKLY_TASK_EXPANSION
 		and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_PREYBONUS
 		and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_TEMPLE
 		and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_SEXCHANGE
@@ -102,10 +103,14 @@ local function canBuyOffer(self, offer)
 				disabled = 1
 				disabledReason = "You already have charm expansion."
 			end
-		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_HUNTINGSLOT then
-			if self:taskHuntingThirdSlot() then
+		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_WEEKLY_TASK_EXPANSION then
+			local unlocked = taskboard.isWeeklyExpansionUnlocked(self)
+			if unlocked == nil then
 				disabled = 1
-				disabledReason = "You already have 3 slots released."
+				disabledReason = "Task Board is unavailable."
+			elseif unlocked then
+				disabled = 1
+				disabledReason = "You already have the Permanent Weekly Task Expansion."
 			end
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_PREYSLOT then
 			if self:preyThirdSlot() then
@@ -114,8 +119,8 @@ local function canBuyOffer(self, offer)
 			end
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST then
 			local playerKV = self:kv()
-			local purchaseExpCount = tonumber(playerKV:get(GameStore.Kv.expBoostCount)) or 0
-			if purchaseExpCount >= GameStore.ItemLimit.EXPBOOST then
+			local purchaseExpCount = playerKV:get(GameStore.Kv.expBoostCount) or 0
+			if purchaseExpCount == GameStore.ItemLimit.EXPBOOST then
 				disabled = 1
 				disabledReason = "You can't buy XP Boost for today."
 			end
@@ -192,22 +197,20 @@ local function canReceiveStoreItems(self, offerId, offerCount)
 end
 
 local function canRemoveCoins(self, coins)
-	local balance = self:getTibiaCoins()
-	return balance ~= nil and balance >= coins
+	return self:getTibiaCoins() >= coins
 end
 
 local function removeCoinsBalance(self, coins)
-	if not self:removeTibiaCoins(coins) then
-		return false
+	if self:canRemoveCoins(coins) then
+		sendStoreBalanceUpdating(self:getId(), true)
+		return self:removeTibiaCoins(coins) == true
 	end
-	sendStoreBalanceUpdating(self:getId(), true)
-	return true
+
+	return false
 end
 
 local function addCoinsBalance(self, coins, update)
-	if not self:addTibiaCoins(coins) then
-		return false
-	end
+	self:addTibiaCoins(coins)
 	if update then
 		sendStoreBalanceUpdating(self:getId(), true)
 	end
@@ -215,26 +218,32 @@ local function addCoinsBalance(self, coins, update)
 end
 
 local function canRemoveTransferableCoins(self, coins)
-	local balance = self:getTransferableCoins()
-	return balance ~= nil and balance >= coins
+	return self:getTransferableCoins() >= coins
 end
 
 local function removeTransferableCoinsBalance(self, coins)
-	if not self:removeTransferableCoins(coins) then
-		return false
+	if self:canRemoveTransferableCoins(coins) then
+		sendStoreBalanceUpdating(self:getId(), true)
+		return self:removeTransferableCoins(coins) == true
 	end
-	sendStoreBalanceUpdating(self:getId(), true)
-	return true
+
+	return false
 end
 
 local function addTransferableCoinsBalance(self, coins, update)
-	if not self:addTransferableCoins(coins) then
-		return false
-	end
+	self:addTransferableCoins(coins)
 	if update then
 		sendStoreBalanceUpdating(self:getId(), true)
 	end
 	return true
+end
+
+local function removeCombinedCoinsBalance(self, coins)
+	local removed = self:removeTransferableAndTibiaCoins(coins) == true
+	if removed then
+		sendStoreBalanceUpdating(self:getId(), true)
+	end
+	return removed
 end
 
 local function makeCoinTransaction(self, offer, desc)
@@ -246,11 +255,10 @@ local function makeCoinTransaction(self, offer, desc)
 		desc = offer.name
 	end
 
-	local price = offer.price
-	local playerKV, expBoostCount
-	if offer.type == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST then
-		playerKV = self:kv()
-		expBoostCount = tonumber(playerKV:get(GameStore.Kv.expBoostCount)) or 0
+	local isExpBoost = offer.type == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST
+	if isExpBoost then
+		local playerKV = self:kv()
+		local expBoostCount = tonumber(playerKV:get(GameStore.Kv.expBoostCount)) or 0
 		if expBoostCount <= 0 or expBoostCount > 5 then
 			expBoostCount = 1
 		end
@@ -258,20 +266,18 @@ local function makeCoinTransaction(self, offer, desc)
 		if GameStore.ExpBoostValuesCustom then
 			priceTable = GameStore.ExpBoostValuesCustom
 		end
-		price = priceTable[expBoostCount] or priceTable[1]
+		offer.price = priceTable[expBoostCount] or priceTable[1]
+		playerKV:set(GameStore.Kv.expBoostCount, expBoostCount + 1)
 	end
 
-	if offer.coinType == GameStore.CoinType.Coin then
-		op = self:removeCoinsBalance(price)
-	elseif offer.coinType == GameStore.CoinType.Transferable then
-		op = self:removeTransferableCoinsBalance(price)
+	if offer.coinType == GameStore.CoinType.Coin and self:canRemoveCoins(offer.price) then
+		op = self:removeCoinsBalance(offer.price)
+	elseif offer.coinType == GameStore.CoinType.Transferable and self:canPayForOffer(offer.price, offer.coinType) then
+		op = removeCombinedCoinsBalance(self, offer.price)
 	end
 
 	if op then
-		if playerKV then
-			playerKV:set(GameStore.Kv.expBoostCount, expBoostCount + 1)
-		end
-		GameStore.insertHistory(self:getAccountId(), GameStore.HistoryTypes.HISTORY_TYPE_NONE, desc, -price, offer.coinType)
+		GameStore.insertHistory(self:getAccountId(), GameStore.HistoryTypes.HISTORY_TYPE_NONE, desc, offer.price * -1, offer.coinType)
 	end
 
 	return op
@@ -283,7 +289,8 @@ local function canPayForOffer(self, coinsToRemove, coinType)
 	end
 
 	if coinType == GameStore.CoinType.Transferable then
-		return self:canRemoveTransferableCoins(coinsToRemove)
+		-- Transferable coin offers can be paid using transferable and regular coins combined
+		return ((self:getTransferableCoins() or 0) + (self:getTibiaCoins() or 0)) >= coinsToRemove
 	end
 
 	return false

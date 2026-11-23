@@ -40,6 +40,30 @@ local function queueSendStoreAlertToUser(message, delay, playerId, storeErrorCod
 	addPlayerEvent(sendStoreError, delay, playerId, storeErrorCode, message)
 end
 
+local function parseGetOfferDescription(playerId, msg)
+	msg:getU32()
+end
+
+local function parseStoreEvent(playerId, msg)
+	local eventType = msg:getByte()
+	if eventType == 0 or eventType == 3 then
+		msg:getU32()
+	elseif eventType == 1 then
+		msg:getString()
+	elseif eventType == 2 then
+		msg:getByte()
+	end
+end
+
+local function parseRequestStoreOffersTail(oldProtocol, msg)
+	if oldProtocol then
+		return
+	end
+
+	msg:getByte()
+	msg:getByte()
+end
+
 local function onRecvbyte(player, msg, byte)
 	if player:getVocation():getId() == 0 and not GameStore.haveCategoryRook() then
 		player:sendCancelMessage("Store don't have offers for rookgaard citizen.")
@@ -53,7 +77,11 @@ local function onRecvbyte(player, msg, byte)
 
 	local playerId = player:getId()
 
-	if byte == GameStore.RecivedPackets.C_TransferCoins then
+	if byte == GameStore.RecivedPackets.C_GetOfferDescription then
+		parseGetOfferDescription(playerId, msg)
+	elseif byte == GameStore.RecivedPackets.C_StoreEvent then
+		parseStoreEvent(playerId, msg)
+	elseif byte == GameStore.RecivedPackets.C_TransferCoins then
 		parseTransferableCoins(playerId, msg)
 	elseif byte == GameStore.RecivedPackets.C_OpenStore then
 		parseOpenStore(playerId, msg)
@@ -76,40 +104,34 @@ local function parseTransferableCoins(playerId, msg)
 		return false
 	end
 
-	local receiver = msg:getString()
+	local reciver = msg:getString()
 	local amount = msg:getU32()
-	local transferError = GameStore.StoreErrors.STORE_ERROR_TRANSFER
 
-	if receiver:lower() == player:getName():lower() then
-		return addPlayerEvent(sendStoreError, 350, playerId, transferError, "You can't transfer coins to yourself.")
+	if player:getTransferableCoins() < amount then
+		return addPlayerEvent(sendStoreError, 350, playerId, GameStore.StoreErrors.STORE_ERROR_TRANSFER, "You don't have this amount of coins.")
 	end
 
-	local resultId = db.storeQuery("SELECT `account_id` FROM `players` WHERE `name` = " .. db.escapeString(receiver:lower()))
+	if reciver:lower() == player:getName():lower() then
+		return addPlayerEvent(sendStoreError, 350, playerId, GameStore.StoreErrors.STORE_ERROR_TRANSFER, "You can't transfer coins to yourself.")
+	end
+
+	local resultId = db.storeQuery("SELECT `account_id` FROM `players` WHERE `name` = " .. db.escapeString(reciver:lower()) .. "")
 	if not resultId then
-		return addPlayerEvent(sendStoreError, 350, playerId, transferError, "We couldn't find that player.")
+		return addPlayerEvent(sendStoreError, 350, playerId, GameStore.StoreErrors.STORE_ERROR_TRANSFER, "We couldn't find that player.")
 	end
 
 	local accountId = Result.getNumber(resultId, "account_id")
-	Result.free(resultId)
 	if accountId == player:getAccountId() then
-		return addPlayerEvent(sendStoreError, 350, playerId, transferError, "You cannot transfer coin to a character in the same account.")
+		return addPlayerEvent(sendStoreError, 350, playerId, GameStore.StoreErrors.STORE_ERROR_TRANSFER, "You cannot transfer coin to a character in the same account.")
 	end
 
-	local transferred, reason = player:transferTransferableCoins(accountId, amount)
-	if not transferred then
-		local message = "The coin transfer could not be completed."
-		if reason == "insufficient" then
-			message = "You don't have this amount of coins."
-		elseif reason == "uncertain" then
-			message = "The coin transfer could not be confirmed. Check your balance before trying again."
-		end
-		return addPlayerEvent(sendStoreError, 350, playerId, transferError, message)
-	end
-	addPlayerEvent(sendStorePurchaseSuccessful, 550, playerId, "You have transferred " .. amount .. " coins to " .. receiver .. " successfully")
+	db.query("UPDATE `accounts` SET `coins_transferable` = `coins_transferable` + " .. amount .. " WHERE `id` = " .. accountId)
+	player:removeTransferableCoinsBalance(amount)
+	addPlayerEvent(sendStorePurchaseSuccessful, 550, playerId, "You have transfered " .. amount .. " coins to " .. reciver .. " successfully")
 
 	-- Adding history for both receiver/sender
 	GameStore.insertHistory(accountId, GameStore.HistoryTypes.HISTORY_TYPE_NONE, player:getName() .. " transferred you this amount.", amount, GameStore.CoinType.Transferable)
-	GameStore.insertHistory(player:getAccountId(), GameStore.HistoryTypes.HISTORY_TYPE_NONE, "You transferred this amount to " .. receiver, -amount, GameStore.CoinType.Transferable)
+	GameStore.insertHistory(player:getAccountId(), GameStore.HistoryTypes.HISTORY_TYPE_NONE, "You transferred this amount to " .. reciver, -1 * amount, GameStore.CoinType.Transferable)
 	openStore(playerId)
 	player:updateUIExhausted()
 end
@@ -119,7 +141,7 @@ local function parseOpenStore(playerId, msg)
 
 	local category = GameStore.Categories and GameStore.Categories[1] or nil
 	if category then
-		addPlayerEvent(parseRequestStoreOffers, 50, playerId)
+		addPlayerEvent(sendShowStoreOffers, 50, playerId, category)
 	end
 end
 
@@ -140,6 +162,9 @@ local function parseRequestStoreOffers(playerId, msg)
 		end
 	elseif actionType == GameStore.ActionType.OPEN_CATEGORY then
 		local stringParam = msg:getString()
+		if player:getClient().version >= 1525 then
+			msg:getString()
+		end
 		local category = GameStore.getCategoryByName(stringParam)
 		if category then
 			addPlayerEvent(sendShowStoreOffers, 50, playerId, category)
@@ -192,6 +217,7 @@ local function parseRequestStoreOffers(playerId, msg)
 		local searchString = msg:getString()
 		local results = GameStore.fuzzySearchOffer(searchString)
 		if not results or #results == 0 then
+			parseRequestStoreOffersTail(oldProtocol, msg)
 			return addPlayerEvent(sendStoreError, 250, playerId, GameStore.StoreErrors.STORE_ERROR_INFORMATION, 'No results found for "' .. searchString .. '".')
 		end
 
@@ -202,6 +228,7 @@ local function parseRequestStoreOffers(playerId, msg)
 
 		addPlayerEvent(sendShowStoreOffers, 250, playerId, searchResultsCategory)
 	end
+	parseRequestStoreOffersTail(oldProtocol, msg)
 	player:updateUIExhausted()
 end
 
@@ -221,7 +248,9 @@ local function parseBuyStoreOffer(playerId, msg)
 	local id = msg:getU32()
 	local offer = GameStore.getOfferById(id)
 	local productType = msg:getByte()
-	if not player or not offer then
+	local configuredString
+	local configuredByte
+	if not offer then
 		return false
 	end
 
@@ -240,14 +269,16 @@ local function parseBuyStoreOffer(playerId, msg)
 	-- All guarding conditions under which the offer should not be processed must be included here
 	if
 		not table.contains(GameStore.OfferTypes, offer.type) -- we've got an invalid offer type
+		or not player
 		or (player:getVocation():getId() == 0) and (not GameStore.haveOfferRook(id)) -- we don't have such offer
+		or not offer
 		or (offer.type == GameStore.OfferTypes.OFFER_TYPE_NONE) -- offer is disabled
 		or (
 			offer.type ~= GameStore.OfferTypes.OFFER_TYPE_NAMECHANGE
 			and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_EXPBOOST
 			and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_PREYBONUS
 			and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_PREYSLOT
-			and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_HUNTINGSLOT
+			and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_WEEKLY_TASK_EXPANSION
 			and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_TEMPLE
 			and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_SEXCHANGE
 			and offer.type ~= GameStore.OfferTypes.OFFER_TYPE_INSTANT_REWARD_ACCESS
@@ -261,108 +292,104 @@ local function parseBuyStoreOffer(playerId, msg)
 	then
 		return queueSendStoreAlertToUser("This offer is unavailable [1]", 350, playerId, GameStore.StoreErrors.STORE_ERROR_INFORMATION)
 	end
-	local availability = player:canBuyOffer(offer)
-	if availability.disabled == 1 then
-		local reason = availability.disabledReason
-		return queueSendStoreAlertToUser(reason ~= "" and reason or "This offer is unavailable.", 350, playerId)
-	end
-	local ready, failure = GameStore.preflightPurchase(player, offer)
-	if not ready then
-		return queueSendStoreAlertToUser(failure, 350, playerId)
-	end
 
-	local offerPrice = offer.price
-	local boostTier
-	if offer.type == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST then
-		offerPrice, boostTier = helpers.getExpBoostPrice(player)
-	end
+	-- At this point the purchase is assumed to be formatted correctly
+	local purchaseExpCount = playerKV:get(GameStore.Kv.expBoostCount) or 0
+	local offerPrice = offer.type == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST and GameStore.ExpBoostValues[purchaseExpCount] or offer.price
 	local offerCoinType = offer.coinType
 	if offer.type == GameStore.OfferTypes.OFFER_TYPE_NAMECHANGE and player:kv():get("namelock") then
 		offerPrice = 0
-	end
-	if type(offerPrice) ~= "number" or offerPrice < 0 then
-		return queueSendStoreAlertToUser("This offer is unavailable.", 350, playerId)
 	end
 	-- Check if offer can be honored
 	if offerPrice > 0 and not player:canPayForOffer(offerPrice, offerCoinType) then
 		return queueSendStoreAlertToUser("You don't have enough coins. Your purchase has been cancelled.", 250, playerId)
 	end
 
-	local function deliver()
+	-- Use pcall to catch unhandled errors and send an alert to the user because the client expects it at all times; (OTClient will unlock UI)
+	-- Handled errors are thrown to indicate that the purchase has failed;
+	-- Handled errors have a code index and unhandled errors do not
+	local pcallOk, pcallError = pcall(function()
+		if productType == 1 or productType == 2 or productType == 4 then
+			configuredString = msg:getString()
+		elseif productType == 3 then
+			configuredString = msg:getString()
+			configuredByte = msg:getByte()
+		end
+
 		if offer.type == GameStore.OfferTypes.OFFER_TYPE_ITEM or offer.type == GameStore.OfferTypes.OFFER_TYPE_ITEM_UNIQUE then
-			return GameStore.processItemPurchase(player, offer.itemtype, offer.count or 1, offer.movable, offer.setOwner)
+			GameStore.processItemPurchase(player, offer.itemtype, offer.count or 1, offer.movable, offer.setOwner)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_INSTANT_REWARD_ACCESS then
-			return GameStore.processInstantRewardAccess(player, offer.count)
+			GameStore.processInstantRewardAccess(player, offer.count)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_CHARMS then
-			return GameStore.processCharmsPurchase(player)
+			GameStore.processCharmsPurchase(player)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_BLESSINGS then
-			return GameStore.processSingleBlessingPurchase(player, offer.blessid, offer.count)
+			GameStore.processSingleBlessingPurchase(player, offer.blessid, offer.count)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_ALLBLESSINGS then
-			return GameStore.processAllBlessingsPurchase(player, offer.count)
+			GameStore.processAllBlessingsPurchase(player, offer.count)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_PREMIUM then
-			return GameStore.processPremiumPurchase(player, offer.id)
+			GameStore.processPremiumPurchase(player, offer.id)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_STACKABLE then
-			return GameStore.processStackablePurchase(player, offer.itemtype, offer.count, offer.name, offer.movable, offer.setOwner)
+			GameStore.processStackablePurchase(player, offer.itemtype, offer.count, offer.name, offer.movable, offer.setOwner)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_HOUSE or offer.type == GameStore.OfferTypes.OFFER_TYPE_ITEM_BED then
-			return GameStore.processHouseRelatedPurchase(player, offer)
+			GameStore.processHouseRelatedPurchase(player, offer)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_OUTFIT or offer.type == GameStore.OfferTypes.OFFER_TYPE_OUTFIT_ADDON then
-			return GameStore.processOutfitPurchase(player, offer.sexId, offer.addon)
+			GameStore.processOutfitPurchase(player, offer.sexId, offer.addon)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_MOUNT then
-			return GameStore.processMountPurchase(player, offer.id)
+			GameStore.processMountPurchase(player, offer.id)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_NAMECHANGE then
-			local newName = msg:getString()
-			return GameStore.processNameChangePurchase(player, offer, productType, newName)
+			local newName = configuredString or ""
+			GameStore.processNameChangePurchase(player, offer, productType, newName)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_SEXCHANGE then
-			return GameStore.processSexChangePurchase(player)
+			GameStore.processSexChangePurchase(player)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_EXPBOOST then
-			return GameStore.processExpBoostPurchase(player)
-		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_HUNTINGSLOT then
-			return GameStore.processTaskHuntingThirdSlot(player)
+			GameStore.processExpBoostPurchase(player)
+		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_WEEKLY_TASK_EXPANSION then
+			GameStore.processWeeklyTaskExpansion(player)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_PREYSLOT then
-			return GameStore.processPreyThirdSlot(player)
+			GameStore.processPreyThirdSlot(player)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_PREYBONUS then
-			return GameStore.processPreyBonusReroll(player, offer.count)
+			GameStore.processPreyBonusReroll(player, offer.count)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_TEMPLE then
-			return GameStore.processTempleTeleportPurchase(player)
+			GameStore.processTempleTeleportPurchase(player)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_CHARGES then
-			return GameStore.processChargesPurchase(player, offer.itemtype, offer.name, offer.charges, offer.movable, offer.setOwner)
+			GameStore.processChargesPurchase(player, offer.itemtype, offer.name, offer.charges, offer.movable, offer.setOwner)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_HIRELING then
-			local hirelingName = msg:getString()
-			local sex = msg:getByte()
-			return GameStore.processHirelingPurchase(player, offer, productType, hirelingName, sex)
+			local hirelingName = configuredString or ""
+			local sex = configuredByte or 0
+			GameStore.processHirelingPurchase(player, offer, productType, hirelingName, sex)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_HIRELING_NAMECHANGE then
-			local hirelingName = msg:getString()
-			return GameStore.processHirelingChangeNamePurchase(player, offer, productType, hirelingName)
+			local hirelingName = configuredString or ""
+			GameStore.processHirelingChangeNamePurchase(player, offer, productType, hirelingName)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_HIRELING_SEXCHANGE then
-			return GameStore.processHirelingChangeSexPurchase(player, offer)
+			GameStore.processHirelingChangeSexPurchase(player, offer)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_HIRELING_SKILL then
-			return GameStore.processHirelingSkillPurchase(player, offer)
+			GameStore.processHirelingSkillPurchase(player, offer)
 		elseif offer.type == GameStore.OfferTypes.OFFER_TYPE_HIRELING_OUTFIT then
-			return GameStore.processHirelingOutfitPurchase(player, offer)
+			GameStore.processHirelingOutfitPurchase(player, offer)
 		else
 			-- This should never happen by our convention, but just in case the guarding condition is messed up...
 			error({ code = 0, message = "This offer is unavailable [2]" })
 		end
+	end)
+
+	if not pcallOk then
+		local alertMessage = pcallError.code and pcallError.message or "Something went wrong. Your purchase has been cancelled."
+
+		-- unhandled error
+		if not pcallError.code then
+			logger.warn("[parseBuyStoreOffer] - Purchase failed due to an unhandled script error. Stacktrace: {}", pcallError)
+		end
+
+		return queueSendStoreAlertToUser(alertMessage, 500, playerId)
 	end
 
-	if useOfferConfigure(offer.type) == GameStore.ConfigureOffers.SHOW_CONFIGURE then
-		local ok, result = pcall(deliver)
-		if not ok then
-			local message = type(result) == "table" and result.message or "Something went wrong. Your purchase was not confirmed."
-			return queueSendStoreAlertToUser(message, 500, playerId)
-		end
-		if result == false then return false end
-	else
-		if not GameStore.withPaidOrder(player, offer, offerPrice, function()
-			local result = deliver()
-			if result == false then return false end
-			if boostTier then playerKV:set(GameStore.Kv.expBoostCount, boostTier + 1) end
-			if table.contains({ GameStore.OfferTypes.OFFER_TYPE_HOUSE, GameStore.OfferTypes.OFFER_TYPE_EXPBOOST, GameStore.OfferTypes.OFFER_TYPE_PREYBONUS, GameStore.OfferTypes.OFFER_TYPE_BLESSINGS, GameStore.OfferTypes.OFFER_TYPE_ALLBLESSINGS, GameStore.OfferTypes.OFFER_TYPE_INSTANT_REWARD_ACCESS }, offer.type) then
-				insertPlayerTransactionSummary(player, offer)
-			end
-			return result
-	end, offer.name, id) then
-			return false
+	if table.contains({ GameStore.OfferTypes.OFFER_TYPE_HOUSE, GameStore.OfferTypes.OFFER_TYPE_EXPBOOST, GameStore.OfferTypes.OFFER_TYPE_PREYBONUS, GameStore.OfferTypes.OFFER_TYPE_BLESSINGS, GameStore.OfferTypes.OFFER_TYPE_ALLBLESSINGS, GameStore.OfferTypes.OFFER_TYPE_INSTANT_REWARD_ACCESS }, offer.type) then
+		insertPlayerTransactionSummary(player, offer)
+	end
+	local configure = useOfferConfigure(offer.type)
+	if configure ~= GameStore.ConfigureOffers.SHOW_CONFIGURE then
+		if not player:makeCoinTransaction(offer) then
+			return player:showInfoModal("Error", "Purchase transaction error")
 		end
 
 		local message = string.format("You have purchased %s for %d coins.", offer.name, offerPrice)
@@ -382,8 +409,8 @@ local function parseOpenTransactionHistory(playerId, msg)
 	end
 
 	local page = 1
-	GameStore.DefaultValues.DEFAULT_VALUE_ENTRIES_PER_PAGE = msg:getByte()
-	sendStoreTransactionHistory(playerId, page, GameStore.DefaultValues.DEFAULT_VALUE_ENTRIES_PER_PAGE)
+	local entriesPerPage = msg:getByte()
+	sendStoreTransactionHistory(playerId, page, entriesPerPage)
 	player:updateUIExhausted()
 end
 
@@ -394,13 +421,16 @@ local function parseRequestTransactionHistory(playerId, msg)
 	end
 
 	local page = msg:getU32()
-	sendStoreTransactionHistory(playerId, page + 1, GameStore.DefaultValues.DEFAULT_VALUE_ENTRIES_PER_PAGE)
+	local entriesPerPage = msg:getByte()
+	sendStoreTransactionHistory(playerId, page + 1, entriesPerPage)
 	player:updateUIExhausted()
 end
 
 parsing.isItsPacket = isItsPacket
 parsing.fuzzySearchOffer = fuzzySearchOffer
 parsing.onRecvbyte = onRecvbyte
+parsing.parseGetOfferDescription = parseGetOfferDescription
+parsing.parseStoreEvent = parseStoreEvent
 parsing.parseTransferableCoins = parseTransferableCoins
 parsing.parseOpenStore = parseOpenStore
 parsing.parseRequestStoreOffers = parseRequestStoreOffers

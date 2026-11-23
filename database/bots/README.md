@@ -63,20 +63,23 @@ Run the files in this exact order (foreign-key / dependency order):
 
 | # | File | Contents |
 |---|------|----------|
-| 00 | `00_bot_schema.sql` | bot table DDL (`CREATE TABLE IF NOT EXISTS`) |
+| 00 | `00_bot_schema.sql` | all bot table DDL (`CREATE TABLE IF NOT EXISTS`), including the runtime/telemetry tables `bot_active_players`, `bot_commands`, `bot_chat_emissions`, `bot_hub_presence_60s` |
 | 01 | `01_accounts.sql` | bot account |
 | 02 | `02_players.sql` | 997 bot players |
 | 03 | `03_player_storage.sql` | bot storage grants |
 | 11 | `11_bot_market_item_prices.sql` | market price reference (see header) |
 | 14 | `14_houses.sql` | house ownership + metadata (bots own 794 of 993 houses) |
 | 15 | `15_tile_store.sql` | house furniture/items (per-house serialized tile blobs) |
-| 16 | `16_runtime_compatibility.sql` | existing runtime state/config/navigation contracts and safe counter widths |
+| 16 | `16_runtime_compatibility.sql` | runtime tables the engine/Lua write (`bot_state_persistence`, `bot_startup_config`, `bot_nav_events`, `bot_test_commands`) + widens `players.onlinetime` and the `player_charms` counters on databases created from an older `schema.sql`. Safe to re-run. |
+| 23 | `23_bot_onlinetime_reset.sql` | zeroes the bot account's garbage `onlinetime`. Run with canary stopped. |
+| 24 | `24_bot_state_persistence_saved_at.sql` | adds `bot_state_persistence.saved_at`; the engine restores only tasks saved within 24 h. Idempotent. **Must run before** an engine built with it starts. |
+| 25 | `25_bot_hunt_danger.sql` | creates `bot_hunt_danger` (learned hunt-danger zones; also in `00_bot_schema.sql`). Idempotent; safe with canary up. Without it zones are memory-only. |
 
 The numbering has gaps because the files that filled them seeded the old
 hunt/route/equipment tables. Those are CSV now, and the tables are gone.
 
-The automatic importer includes step 16. Existing installations can apply only
-that repeatable repair without importing bot/player rows again; see
+The automatic importer includes steps 16–25. Existing installations can apply only
+those repeatable repairs without importing bot/player rows again; see
 [installation compatibility](../../deployment/INSTALLATION_COMPATIBILITY.md).
 
 Then bump the auto-increment so new registrations don't collide with the seeded
@@ -88,13 +91,24 @@ ALTER TABLE `players`  AUTO_INCREMENT = 66100;
 ```
 
 ## Invariants
-- `[import.sh:FILES]` requires the repository root `schema.sql` to be imported first and must execute the SQL files in strict foreign-key dependency order (`00` -> `01` -> `02` -> `03` -> `11` -> `14` -> `15` -> `16`) on a fresh database (data dumps use plain `INSERT INTO` statements and fail on duplicate primary keys if re-imported).
-- `[import.sh:58]` bumps `accounts` `AUTO_INCREMENT = 65001` and `players` `AUTO_INCREMENT = 66100` so newly registered player accounts and characters never collide with the seeded bot ID space (`account_id = 65000`, player IDs `65001..66004`).
+- `[import.sh:FILES]` requires the repository root `schema.sql` to be imported first and must execute the SQL files in strict foreign-key dependency order (`00` -> `01` -> `02` -> `03` -> `11` -> `14` -> `15` -> `16` -> `23` -> `24` -> `25`) on a fresh database (data dumps use plain `INSERT INTO` statements and fail on duplicate primary keys if re-imported).
+- `[import.sh]` bumps `accounts` `AUTO_INCREMENT = 65001` and `players` `AUTO_INCREMENT = 66100` so newly registered player accounts and characters never collide with the seeded bot ID space (`account_id = 65000`, player IDs `65001..66004`).
 - `[14_houses.sql:houses]` and `[15_tile_store.sql:tile_store]` house IDs are coupled to the bundled `otservbr` map distribution.
 - `[16_runtime_compatibility.sql:player_charms]` and `[16_runtime_compatibility.sql:players]` widen `charm_points`/`max_charm_points` to `INT UNSIGNED` and `players.onlinetime` to `BIGINT UNSIGNED` to prevent integer overflow during migrations and saves.
 
 ## Side Effects
-- `[import.sh:run]` connects to MySQL (`mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME"`) and creates/populates `bot_market_item_prices`, `bot_hunt_script_stats`, `accounts`, `players`, `player_storage`, `houses`, `tile_store`, `bot_state_persistence`, `bot_startup_config`, and `bot_nav_events`, and alters `player_charms`, `players`, and `accounts` auto-increment counters.
+- `[import.sh:run]` connects to MySQL (`mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$DB_NAME"`) and creates/populates `bot_market_item_prices`, `bot_hunt_script_stats`, `accounts`, `players`, `player_storage`, `houses`, `tile_store`, `bot_state_persistence`, `bot_startup_config`, `bot_nav_events`, and `bot_test_commands`, and alters `player_charms`, `players`, and `accounts` auto-increment counters.
+
+## Schema and `db_version`
+
+- The bot schema is **not** a numbered migration. `data-otservbr-global/migrations/` holds
+  upstream's files only, so `db_version` tracks upstream and upstream's own migrations always
+  apply. `tools/fork_delta_check.sh` fails if a fork-owned file appears there (#150).
+- `91_upstream_1525_schema.sql` is a **cutover-only** script, not part of the import above. It
+  reconciles a database last used by the 15.00 bot server (which our old `62.lua` left at
+  `db_version=62`) with upstream's migrations 56-59 and sets `db_version=59`. Run it once, with
+  canary stopped and after a mysqldump, before the 15.25 port binary first starts. It is
+  idempotent.
 
 ## Notes
 

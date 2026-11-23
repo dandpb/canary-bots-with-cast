@@ -203,6 +203,77 @@ bool BotEngine::getRetreatStep(BotState& bot, const Position& threatPos, Directi
 // Self-defense scan (Phase 3)
 // ============================================================================
 
+// The "ignore" decision's one hit-back (#123). An outlevelled attacker (bot >= 2x its level) gets
+// a slap, not an execution:
+//   damage = attacker's CURRENT hp * clamp(attackerLevel / botLevel, 3%, 50%) * U(0.75, 1.25),
+//   capped at (hp - 1) / 2, at least 1.
+// So a level-8 poking a level-500 bot loses ~3% of its health (a visible token), a level-200 poking a
+// level-400 loses up to half -- and nobody ever dies of it: the cap keeps the target alive even if a
+// damage modifier doubled the value, and the hit happens once per engagement (ignoredHitBack).
+// Applied with combatChangeHealth(nullptr, ...), the same no-PvP-check route the engine uses for
+// bot damage (see luaCreatureAddHealth): the bot is the defender here, so no skull is owed, and a
+// non-lethal hit needs no kill attribution. Same PZ / floor / LOS / range gates as castSpell.
+void BotEngine::ignoreHitBack(BotState& bot, const std::shared_ptr<Player>& player, const std::shared_ptr<Creature>& attacker) {
+	if (!player || !attacker) return;
+	// What Combat::canDoCombat would refuse anyway (#123 review): a raw combatChangeHealth skips
+	// those checks, so never touch staff, a ghost, or anyone flagged unattackable.
+	if (attacker->isInGhostMode()) return;
+	if (auto atkPlayer = attacker->getPlayer()) {
+		if ((atkPlayer->getGroup() && atkPlayer->getGroup()->access)
+		    || atkPlayer->hasFlag(PlayerFlags_t::CannotBeAttacked)) {
+			return;
+		}
+	}
+	const Position from = player->getPosition();
+	const Position to = attacker->getPosition();
+	if (from.z != to.z) return;
+	{
+		auto selfTile = g_game().map.getTile(from);
+		auto tgtTile = g_game().map.getTile(to);
+		if ((selfTile && selfTile->hasFlag(TILESTATE_PROTECTIONZONE))
+		    || (tgtTile && tgtTile->hasFlag(TILESTATE_PROTECTIONZONE))) {
+			return;
+		}
+	}
+	const int32_t dist = std::max(std::abs(static_cast<int32_t>(from.x) - static_cast<int32_t>(to.x)),
+	                              std::abs(static_cast<int32_t>(from.y) - static_cast<int32_t>(to.y)));
+	if (dist > RUNE_RANGE || !g_game().map.isSightClear(from, to, true)) return;
+
+	const int32_t hp = attacker->getHealth();
+	if (hp <= 2) return; // nothing non-lethal left to take
+	const int32_t botLevel = std::max<int32_t>(1, player->getLevel());
+	auto ap = attacker->getPlayer();
+	const int32_t atkLevel = ap ? std::max<int32_t>(1, ap->getLevel()) : botLevel / 2;
+	double frac = std::clamp(static_cast<double>(atkLevel) / static_cast<double>(botLevel), 0.03, 0.5);
+	frac *= static_cast<double>(uniform_random(75, 125)) / 100.0;
+	const int32_t cap = (hp - 1) / 2;
+	const int32_t dmg = std::clamp(static_cast<int32_t>(static_cast<double>(hp) * frac), 1, std::max(1, cap));
+
+	// Look like the vocation's ordinary attack: a bolt from a mage, an arrow from a paladin, a plain
+	// hit from a knight (who only lands it from melee range).
+	const uint8_t baseVoc = getBaseVocation(bot.vocationId);
+	CombatType_t type = COMBAT_PHYSICALDAMAGE;
+	if (baseVoc == 4) {
+		if (dist > 1) return;
+	} else if (baseVoc == 3) {
+		g_game().addDistanceEffect(from, to, CONST_ANI_ARROW);
+	} else {
+		g_game().addDistanceEffect(from, to, CONST_ANI_ENERGY);
+		type = COMBAT_ENERGYDAMAGE;
+	}
+	g_game().internalCreatureTurn(player, getDirectionTo(from, to));
+
+	CombatDamage damage;
+	damage.primary.type = type;
+	damage.primary.value = -dmg;
+	g_game().combatChangeHealth(nullptr, attacker, damage);
+	bot.lastAttackTime = OTSYS_TIME();
+	castLog(bot, fmt::format("IGNORE: hit back {} for {} ({}% of {} hp, lv{} vs lv{})",
+		attacker->getName(), dmg, static_cast<int>(frac * 100.0), hp, botLevel, atkLevel));
+	g_logger().info("[PVP_IGNORE_HITBACK] bot='{}' lv{} -> '{}' lv{} dmg={} hp={}->{}",
+		player->getName(), botLevel, attacker->getName(), atkLevel, dmg, hp, attacker->getHealth());
+}
+
 void BotEngine::doSelfDefense(BotState& bot) {
 	auto player = bot.getPlayer();
 	if (!player) return;
@@ -219,11 +290,15 @@ void BotEngine::doSelfDefense(BotState& bot) {
 			bot.ignoredAttackerId = 0;
 			return;
 		}
-		// Hit back once (50% chance)
+		// Hit back once (50% chance) -- the spec's percentages are unchanged. The HIT is not a real
+		// attack spell any more (#123): castSpell picks the bot's best damage option, and an
+		// "ignoring" level-500 bot one-shot the level-8 baseline character 3 times out of 6
+		// deaths, which made "ignore" the deadliest branch. ignoreHitBack scales the damage to
+		// the level gap and can never kill.
 		if (!bot.ignoredHitBack) {
 			bot.ignoredHitBack = true;
 			if (uniform_random(1, 2) == 1) {
-				castSpell(bot, ignored);
+				ignoreHitBack(bot, player, ignored);
 			}
 		}
 		return;
@@ -423,6 +498,16 @@ void BotEngine::doCombat(BotState& bot) {
 			bot.combatHpBaseline = (botHpPct << 16) | (atkHpPct & 0xFFFF);
 			bot.combatStalemateCount = 0;
 		}
+	}
+
+	// #99: no new HP low on the attacker for 60 s -> drop the fight and walk back (exitCombat).
+	if (bot.combatDecision == "fight" && fightProgressTick(bot, attacker, "combat")) {
+		const uint32_t droppedId = attacker->getID();
+		exitCombat(bot);
+		// Treat it as "ignored" from here on, or doSelfDefense re-enters the same fight next tick.
+		bot.ignoredAttackerId = droppedId;
+		bot.ignoredHitBack = true;
+		return;
 	}
 
 	auto tpos = attacker->getPosition();
@@ -679,18 +764,35 @@ void BotEngine::doPKAttack(BotState& bot) {
 	auto player = bot.getPlayer();
 	if (!player) return;
 
+	// #28: a raid member first runs the squad clock (DISENGAGE) and the FOCUS election, which may
+	// move bot.pkTarget onto a defender (or back to the victim) before the validity check below.
+	if (s_gangByGuid.count(bot.guid) > 0 && gangTickSession(bot)) return;
+
 	auto target = g_game().getCreatureByID(bot.pkTarget);
 	if (!target || target->isRemoved() || target->getHealth() <= 0) {
 		castLog(bot, "PK: Target dead or gone");
 		exitPK(bot);
 		return;
 	}
-
-	// Hard max PK duration: 300s (5 minutes)
-	if (OTSYS_TIME() - bot.combatStartTime > 300000) {
-		castLog(bot, "PK END: 5min max duration reached");
+	if (humanPartyPvpBlocked(bot, target, "pk_attack")) { // #91 follow-up: defence only in a human party
 		exitPK(bot);
 		return;
+	}
+
+	// Hard max PK duration (#172): each fight draws its own cap in
+	// [PK_MAX_DURATION_MIN_MS, PK_MAX_DURATION_MAX_MS] instead of a flat 5 min, so fights
+	// do not all end on the same clock. Derived from (guid, combatStartTime): stable for the
+	// whole fight, different per fight, and no per-bot state to keep or clear.
+	{
+		const uint64_t seed = (static_cast<uint64_t>(bot.guid) * 0x9E3779B97F4A7C15ull) ^ static_cast<uint64_t>(bot.combatStartTime);
+		const int64_t fightCapMs = PK_MAX_DURATION_MIN_MS
+			+ static_cast<int64_t>((seed ^ (seed >> 29)) % static_cast<uint64_t>(PK_MAX_DURATION_MAX_MS - PK_MAX_DURATION_MIN_MS + 1));
+		if (OTSYS_TIME() - bot.combatStartTime > fightCapMs) {
+			castLog(bot, fmt::format("PK END: max duration reached ({}s)", fightCapMs / 1000));
+			g_logger().info("[PK_END] guid={} name='{}' reason=max_duration cap={}s", bot.guid, bot.name, fightCapMs / 1000);
+			exitPK(bot);
+			return;
+		}
 	}
 
 	// No-progress timeout (target unreachable, stuck, etc.)
@@ -769,6 +871,16 @@ void BotEngine::doPKAttack(BotState& bot) {
 			exitPK(bot);
 			return;
 		}
+	}
+
+	// #28 / #103: off screen the bot stops reading the target's position and tracks it with exiva.
+	if (pvpHandleLostTarget(bot, player, target)) return;
+
+	// #99: no new HP low on the target for 60 s -> drop the fight (exitPK walks back to the
+	// pre-combat tile along a pathfinder-verified route).
+	if (fightProgressTick(bot, target, "pk")) {
+		exitPK(bot);
+		return;
 	}
 
 	// Leash — extended range for PK commands (30 tiles)
@@ -1460,10 +1572,57 @@ void BotEngine::chaseTarget(BotState& bot, const std::shared_ptr<Creature>& targ
 	}
 }
 
+bool BotEngine::inHumanLedParty(const BotState& bot) const {
+	if (bot.partyHuntId != 0) return false; // autonomous bot-led party hunt
+	if (s_partyLeaderId.count(bot.guid) > 0 || s_rvMember.count(bot.guid) > 0) {
+		// s_partyLeaderId is only written for human-led parties (doPartyFollow); still confirm on the body.
+		if (const auto p = g_game().getPlayerByGUID(bot.guid)) {
+			const auto party = p->getParty();
+			const auto leader = party ? party->getLeader() : nullptr;
+			if (leader) return !leader->isBotPlayer();
+		}
+		return true;
+	}
+	if (const auto p = g_game().getPlayerByGUID(bot.guid)) {
+		const auto party = p->getParty();
+		const auto leader = party ? party->getLeader() : nullptr;
+		return leader && !leader->isBotPlayer();
+	}
+	return false;
+}
+
+// One [PVP_SKIP] line per bot per 5 s.
+static std::unordered_map<uint32_t, int64_t> s_pvpSkipLogMs;
+
+bool BotEngine::humanPartyPvpBlocked(BotState& bot, const std::shared_ptr<Creature>& target, const char* site) {
+	const auto tp = target ? target->getPlayer() : nullptr;
+	if (!tp || !inHumanLedParty(bot)) return false;
+	const auto self = bot.getPlayer();
+	if (!self) return false;
+	const auto party = self->getParty();
+	const auto leader = party ? party->getLeader() : nullptr;
+	// Defence is allowed: the target is attacking this bot, the leader or a partner.
+	if (const auto at = tp->getAttackedCreature()) {
+		if (at == self || (leader && at == leader)) return false;
+		if (const auto ap = at->getPlayer(); ap && self->isPartner(ap)) return false;
+	}
+	if (bot.attackerId != 0 && bot.attackerId == tp->getID()) return false;
+	const int64_t now = OTSYS_TIME();
+	auto& last = s_pvpSkipLogMs[bot.guid];
+	if (now - last >= 5000) {
+		last = now;
+		g_logger().info("[PVP_SKIP] reason=human_party bot='{}' site={} target='{}' leader='{}' state={}",
+			bot.name, site, tp->getName(), leader ? leader->getName() : std::string("?"), botStateName(bot.state));
+	}
+	return true;
+}
+
 void BotEngine::castSpell(BotState& bot, const std::shared_ptr<Creature>& target) {
 	auto player = bot.getPlayer();
 	if (!player || !target) return;
 	botbrain::retainTarget(bot.guid, target);
+	// #91 follow-up: a human-led party member never opens PvP (defence only).
+	if (humanPartyPvpBlocked(bot, target, "castSpell")) return;
 
 	// Same rule as a normal player: you cannot perform a hostile action while standing in a
 	// protection zone, nor against a target standing in one. Gate ALL bot spell/rune attacks on it
@@ -1638,31 +1797,17 @@ void BotEngine::castSpell(BotState& bot, const std::shared_ptr<Creature>& target
 		}
 	}
 
-	// PvP AOE safety: if AOE would hit non-target players/bots, fall back to single-target
-	if (targetIsPlayer && (bestType == AOE_SPELL || bestType == AOE_RUNE)) {
-		bool hasBystander = false;
-		auto playerSpectators = Spectators().find<Player>(bot.currentPos, false, 7, 7, 7, 7);
-		for (const auto& p : playerSpectators) {
-			if (p.get() == player.get()) continue;
-			if (p.get() == target.get()) continue;
-			if (p->getHealth() <= 0) continue;
-			auto ppos = p->getPosition();
-			if (ppos.z != bot.currentPos.z) continue;
-			bool inAoe = false;
-			if (bestType == AOE_SPELL && winnerAoeSpell) {
-				inAoe = spellHits(bot.currentPos, ppos, *winnerAoeSpell, winnerAoeDir);
-			} else if (bestType == AOE_RUNE) {
-				int32_t rdist = std::max(
-					std::abs(static_cast<int32_t>(ppos.x) - static_cast<int32_t>(winnerRunePos.x)),
-					std::abs(static_cast<int32_t>(ppos.y) - static_cast<int32_t>(winnerRunePos.y)));
-				inAoe = (rdist <= 3);
-			}
-			if (inAoe) { hasBystander = true; break; }
-		}
-		if (hasBystander) {
+	// AoE bystander safety. PvP target: no other player/bot may be in the area. Monster target
+	// (#91 follow-up): no real player and no partner of a human-led party — an ED's UE on a rat
+	// beside its level-8 leader killed the leader AND a stranger, disconnecting both and
+	// dissolving the party (b7_control_verbs a4). Fall back to single-target / SD / auto-attack.
+	if (bestType == AOE_SPELL || bestType == AOE_RUNE) {
+		const bool clips = !aoeClipsBystander(bot, bestType == AOE_SPELL ? winnerAoeSpell : nullptr, winnerAoeDir,
+			bestType == AOE_RUNE ? &winnerRunePos : nullptr, target->getID(), targetIsPlayer, "castSpell").empty();
+		if (clips) {
 			if (winnerSingleSpell) {
 				bestType = SINGLE_SPELL;
-			} else if (resolvedSdRune_.runeId > 0 && (baseVoc == 1 || baseVoc == 2)) {
+			} else if (resolvedSdRune_.runeId > 0 && (baseVoc == 1 || baseVoc == 2) && findRuneInBackpack(player, resolvedSdRune_.runeId)) {
 				bestType = SD_RUNE;
 			} else {
 				bestType = NONE;
@@ -1686,7 +1831,7 @@ void BotEngine::castSpell(BotState& bot, const std::shared_ptr<Creature>& target
 					winnerAoeSpell->areaPatternName.empty() ? "?" : winnerAoeSpell->areaPatternName,
 					bestScore), tiles);
 			}
-			castAoeSpell(bot, winnerAoeSpell, winnerAoeDir);
+			castAoeSpell(bot, winnerAoeSpell, winnerAoeDir, target->getID());
 			break;
 		}
 		case AOE_RUNE: {
@@ -1733,7 +1878,14 @@ void BotEngine::castSpell(BotState& bot, const std::shared_ptr<Creature>& target
 			if (instantSpellCheck) {
 				manaCost = instantSpellCheck->getManaCost(player);
 			}
+			// #187: keep a reserve for heals -- an attack never spends the last of the pool.
+			if (!attackManaOk(player, manaCost)) {
+				return;
+			}
 			if (player->getMana() < manaCost) {
+				if (!legacyManaRefill()) {
+					return; // #187: no instant refill -- the potion slot drinks, the cast waits
+				}
 				if (targetIsPlayer) {
 					uint32_t maxMana = player->getMaxMana();
 					uint32_t budget = maxMana * 5 / 2;
@@ -2361,9 +2513,50 @@ const ResolvedSpell* BotEngine::selectAoeSpell(BotState& bot, Direction& outBest
 }
 
 // Cast an AoE spell, applying damage to all valid targets in the area
-void BotEngine::castAoeSpell(BotState& bot, const ResolvedSpell* spell, Direction bestDir) {
+// #91 follow-up: rate-limited [AOE_SPARE] journal line, one per bot per 5 s (castSpell is 2 s-gated,
+// the party AoE path runs every tick). Only this TU touches it.
+static std::unordered_map<uint32_t, int64_t> s_aoeSpareLogMs;
+
+std::string BotEngine::aoeClipsBystander(BotState& bot, const ResolvedSpell* spell, Direction dir,
+	const Position* runeCenter, uint32_t spareId, bool anyPlayer, const char* site) {
+	auto self = bot.getPlayer();
+	if (!self || (!spell && !runeCenter)) return {};
+	const Position me = self->getPosition();
+	const auto party = self->getParty();
+	const auto pLeader = party ? party->getLeader() : nullptr;
+	const bool humanLedParty = pLeader && !pLeader->isBotPlayer();
+	for (const auto& spec : Spectators().find<Player>(me, false, 8, 8, 6, 6)) {
+		const auto p = spec ? spec->getPlayer() : nullptr;
+		if (!p || p.get() == self.get() || p->getID() == spareId) continue;
+		if (p->isRemoved() || p->getHealth() <= 0 || p->isInGhostMode()) continue;
+		if (p->hasFlag(PlayerFlags_t::CannotBeAttacked)) continue; // GMs take no damage
+		const Position pp = p->getPosition();
+		if (pp.z != me.z) continue;
+		if (!anyPlayer && p->isBotPlayer() && !(humanLedParty && self->isPartner(p))) continue;
+		bool in = false;
+		if (spell) {
+			in = spellHits(me, pp, *spell, dir);
+		} else {
+			in = std::max(std::abs(static_cast<int32_t>(pp.x) - static_cast<int32_t>(runeCenter->x)),
+				std::abs(static_cast<int32_t>(pp.y) - static_cast<int32_t>(runeCenter->y))) <= 3;
+		}
+		if (!in) continue;
+		const int64_t now = OTSYS_TIME();
+		auto& last = s_aoeSpareLogMs[bot.guid];
+		if (now - last >= 5000) {
+			last = now;
+			g_logger().info("[AOE_SPARE] bot='{}' site={} aoe='{}' bystander='{}' human={} partner={} pvpTarget={}",
+				bot.name, site, spell ? spell->words : std::string("rune"), p->getName(), p->isBotPlayer() ? 0 : 1,
+				self->isPartner(p) ? 1 : 0, anyPlayer ? 1 : 0);
+		}
+		return p->getName();
+	}
+	return {};
+}
+
+bool BotEngine::castAoeSpell(BotState& bot, const ResolvedSpell* spell, Direction bestDir, uint32_t spareId) {
 	auto player = bot.getPlayer();
-	if (!player || !spell) return;
+	if (!player || !spell) return false;
 
 	// Turn bot to face optimal direction (instant, same tick)
 	g_game().internalCreatureTurn(player, bestDir);
@@ -2372,7 +2565,13 @@ void BotEngine::castAoeSpell(BotState& bot, const ResolvedSpell* spell, Directio
 	const auto& instantSpellAoe = g_spells().getInstantSpell(spell->words);
 	if (instantSpellAoe) {
 		uint32_t manaCost = instantSpellAoe->getManaCost(player);
+		if (!attackManaOk(player, manaCost)) {
+			return false; // #187: heal reserve
+		}
 		if (player->getMana() < manaCost) {
+			if (!legacyManaRefill()) {
+				return false; // #187: no instant refill
+			}
 			// For AoE spells during PvP, check budget
 			if (bot.attackerId > 0 && g_game().getPlayerByID(bot.attackerId) != nullptr) {
 				uint32_t maxMana = player->getMaxMana();
@@ -2382,7 +2581,7 @@ void BotEngine::castAoeSpell(BotState& bot, const ResolvedSpell* spell, Directio
 					g_game().addPlayerMana(player);
 					bot.pvpManaSpent += maxMana;
 				} else {
-					return; // PvP mana budget exceeded
+					return false; // PvP mana budget exceeded
 				}
 			} else {
 				player->mana = player->getMaxMana();
@@ -2394,13 +2593,18 @@ void BotEngine::castAoeSpell(BotState& bot, const ResolvedSpell* spell, Directio
 	// Re-sync position before counting (bot.currentPos may be stale from tick start)
 	bot.currentPos = player->getPosition();
 
+	// Final safety net for every AoE caster (castSpell AND the party reposition path, which never
+	// went through castSpell's bystander check): never clip a real player or a human-led partner.
+	if (const auto atk = player->getAttackedCreature(); spareId == 0 && atk) spareId = atk->getID();
+	if (!aoeClipsBystander(bot, spell, bestDir, nullptr, spareId, false, "castAoe").empty()) return false;
+
 	// Count targets BEFORE casting (spell may kill some — post-cast count would underreport)
 	std::vector<std::shared_ptr<Creature>> preCastTargets;
 	countAoeTargets(bot, spell, bestDir, preCastTargets);
 	int32_t preCastCount = static_cast<int32_t>(preCastTargets.size());
 
 	// Skip cast if no targets at actual position (prevents wasted spells)
-	if (preCastCount == 0) return;
+	if (preCastCount == 0) return false;
 
 	bool hitPlayer = false;
 	bool hitRealPlayer = false;
@@ -2417,7 +2621,7 @@ void BotEngine::castAoeSpell(BotState& bot, const ResolvedSpell* spell, Directio
 
 	if (hitRealPlayer) {
 		// Never splash a real player with a hunt AOE.
-		return;
+		return false;
 	}
 
 	// Cast via server spell system — handles area damage, effects, cooldowns, mana, everything
@@ -2439,7 +2643,9 @@ void BotEngine::castAoeSpell(BotState& bot, const ResolvedSpell* spell, Directio
 			serverPos.x, serverPos.y, serverPos.z,
 			dirToStr(bestDir),
 			spellTargetPos.x, spellTargetPos.y, spellTargetPos.z));
+		return true;
 	}
+	return false;
 }
 
 // ============================================================================
@@ -2561,6 +2767,9 @@ bool BotEngine::executeRune(BotState& bot, const std::shared_ptr<Item>& runeItem
 	// Restore mana if needed (unlimited for PvE hunting)
 	uint32_t manaCost = runeSpell->getMana();
 	if (player->getMana() < manaCost) {
+		if (!legacyManaRefill()) {
+			return false; // #187: no instant refill
+		}
 		player->mana = player->getMaxMana();
 		g_game().addPlayerMana(player);
 	}
@@ -2637,9 +2846,11 @@ bool BotEngine::pvpCastBestHaste(BotState& bot, const std::shared_ptr<Player>& p
 		if (player->hasCondition(CONDITION_SPELLGROUPCOOLDOWN, spell->getGroup())) continue;
 
 		uint32_t manaCost = spell->getManaCost(player);
+		if (!attackManaOk(player, manaCost)) continue; // #187: heal reserve
 		if (player->getMana() < manaCost) {
 			// Haste draws from the same PvP mana budget as damage, but cheaply
 			// (we only charge the spell's cost, not a full refill).
+			if (!legacyManaRefill()) continue; // #187: no instant refill
 			uint32_t budget = player->getMaxMana() * 5 / 2;
 			if (bot.pvpManaSpent >= budget) return false;
 			player->mana = player->getMaxMana();
@@ -2958,8 +3169,19 @@ bool BotEngine::pvpPlaceWallAt(BotState& bot, const Position& tile) {
 // Initiator scan: a bot standing in a PZ tries to recruit nearby idle bots to jump an exposed
 // victim just outside the PZ. Sets up a shared GangSession; members are driven by handleGangStaging.
 void BotEngine::checkGangJump(BotState& bot) {
+	if (inHumanLedParty(bot)) { // #91 follow-up: no self-initiated PvP in a human-led party
+		const int64_t now = OTSYS_TIME();
+		auto& last = s_pvpSkipLogMs[bot.guid];
+		if (now - last >= 30000) {
+			last = now;
+			g_logger().info("[PVP_SKIP] reason=human_party bot='{}' site=gang_jump target='-' state={}", bot.name, botStateName(bot.state));
+		}
+		return;
+	}
 	if (!g_configManager().getBoolean(BOT_GANG_ENABLE)) return;
 	if (bot.state != BotAIState::IDLE) return;
+	// Debug-pinned bots take no self-initiated actions (#124): no raid scouting either.
+	if (s_debugPinned.count(bot.guid) > 0) return;
 	if (s_gangByGuid.count(bot.guid)) return;
 	auto player = bot.getPlayer();
 	if (!player) return;
@@ -3012,14 +3234,21 @@ void BotEngine::checkGangJump(BotState& bot) {
 
 	// Find a victim: an exposed player (or bot) standing just outside a PZ within this initiator's
 	// town. Real players are scanned town-wide (few of them); bots via the local spectator cache.
-	const bool targetPlayers = g_configManager().getBoolean(BOT_GANG_TARGET_PLAYERS);
+	// No-PvP worlds: Canary's combat refuses player-vs-player damage, but a raid would still wall,
+	// paralyze and chase the victim. Real players are never raid targets there, whatever
+	// botGangTargetPlayers says.
+	const bool targetPlayers = g_configManager().getBoolean(BOT_GANG_TARGET_PLAYERS)
+		&& g_game().getWorldType() != WORLD_TYPE_NO_PVP;
 	const int32_t victimBand = static_cast<int32_t>(g_configManager().getNumber(BOT_GANG_VICTIM_BAND));
+	// #123: a trivially weak victim never draws a raid (baseline: 5 bots on a level-8 character).
+	const int32_t minVictimLevel = static_cast<int32_t>(g_configManager().getNumber(BOT_GANG_MIN_VICTIM_LEVEL));
 	auto victimEligible = [&](const std::shared_ptr<Creature>& c) -> bool {
 		if (!c || c->getID() == player->getID()) return false;
 		if (c->isRemoved() || c->getHealth() <= 0) return false;
 		auto vp = c->getPlayer();
 		if (!vp) return false;
 		if (vp->getGroup() && vp->getGroup()->access) return false;
+		if (minVictimLevel > 0 && static_cast<int32_t>(vp->getLevel()) < minVictimLevel) return false;
 		if (gangVictimAlreadyTargeted(c->getID())) return false; // one raid per victim at a time
 		if (gangVictimOnCooldown(vp->getGUID())) return false;   // already jumped recently (cooldown)
 		// Never raid a bot that belongs to somebody's PARTY. Observed live: a five-bot raid formed
@@ -3114,6 +3343,7 @@ void BotEngine::checkGangJump(BotState& bot) {
 		if (!b.active || b.hibernated) continue;
 		if (b.partyHuntId != 0) continue;
 		if (s_gangByGuid.count(b.guid)) continue;
+		if (s_debugPinned.count(b.guid)) continue; // never conscript a debug-pinned bot (#124)
 		if (b.townId != bot.townId) continue; // same town as the initiator
 		if (b.currentPos.z != V.z) continue;  // same floor (walk-in, no cross-z pathing)
 		if (b.state == BotAIState::COMBAT || b.state == BotAIState::PK_ATTACK
@@ -3139,6 +3369,33 @@ void BotEngine::checkGangJump(BotState& bot) {
 		memberGuids.push_back(c.guid);
 	}
 	if (static_cast<int32_t>(memberGuids.size()) < minSize) return; // not enough attackers in range
+
+	// #123: no raid when the victim is no threat. If the strongest chosen attacker already
+	// outlevels the victim by botGangMaxLevelRatio, any one of them could settle it alone (the
+	// Combat Decision spec calls 2x "outleveling"), so a coordinated 5-bot burst is not a fight.
+	// Checked as soon as the members are known -- before the seat search -- and a declined victim
+	// goes on a short cooldown, so later scans neither redo this work nor re-roll for it.
+	if (const int32_t maxRatio = static_cast<int32_t>(g_configManager().getNumber(BOT_GANG_MAX_LEVEL_RATIO));
+	    maxRatio > 0 && victimLevel > 0) {
+		int32_t strongest = 0;
+		for (uint32_t mg : memberGuids) {
+			if (auto mit = guidToIndex_.find(mg); mit != guidToIndex_.end()) {
+				const auto& mb = bots_[mit->second];
+				auto mp = mb.getPlayer();
+				strongest = std::max(strongest, mp ? static_cast<int32_t>(mp->getLevel()) : static_cast<int32_t>(mb.cachedLevel));
+			}
+		}
+		if (strongest >= victimLevel * maxRatio) {
+			constexpr int64_t GANG_DECLINE_COOLDOWN_MS = 5 * 60 * 1000;
+			auto& cd = s_gangVictimCooldown[victim->getPlayer()->getGUID()];
+			cd = std::max(cd, now + GANG_DECLINE_COOLDOWN_MS); // never shortens a real raid cooldown
+			g_logger().info("[GANG] declined RAID victim='{}' lv{} reason=outleveled strongest=lv{} ratio>={} "
+				"size={} (victim skipped for {}s)",
+				victim->getName(), victimLevel, strongest, maxRatio, memberGuids.size(),
+				GANG_DECLINE_COOLDOWN_MS / 1000);
+			return;
+		}
+	}
 
 	const int32_t plannedUnjust = victimSkulled ? 0 : static_cast<int32_t>(memberGuids.size());
 	if (active > 0 && static_cast<int32_t>(skulled + s_gangPlannedUnjustified + plannedUnjust) * 100 > static_cast<int32_t>(active) * 5) {
@@ -3364,6 +3621,66 @@ bool BotEngine::handleGangStaging(BotState& bot) {
 }
 
 // Surround + escape-tile magic-wall maintenance, called from doPKAttack for gang members only.
+namespace {
+	// The bearing the real spell reports (data/scripts/spells/support/find_person.lua), turned into
+	// a unit step. dx/dy = target - caster. Under 5 sqm the spell says "next to you" with no
+	// direction, so the sign of the offset is the best a player could do.
+	void exivaBearing(int32_t dx, int32_t dy, int8_t& ox, int8_t& oy) {
+		auto sgn = [](int32_t v) -> int8_t { return v > 0 ? 1 : (v < 0 ? -1 : 0); };
+		ox = 0;
+		oy = 0;
+		if (std::max(std::abs(dx), std::abs(dy)) < 5) {
+			ox = sgn(dx);
+			oy = sgn(dy);
+			return;
+		}
+		const double t = dx != 0 ? static_cast<double>(dy) / static_cast<double>(dx) : 10.0;
+		if (std::abs(t) < 0.4142) {
+			ox = sgn(dx);
+		} else if (std::abs(t) < 2.4142) {
+			ox = sgn(dx);
+			oy = sgn(dy);
+		} else {
+			oy = sgn(dy);
+		}
+	}
+
+	const char* exivaBand(int32_t dist) {
+		return dist < 5 ? "beside" : dist < 101 ? "close" : dist < 275 ? "far" : "very_far";
+	}
+
+	int32_t hpPctOf(const std::shared_ptr<Creature>& c) {
+		return (c && c->getMaxHealth() > 0) ? c->getHealth() * 100 / c->getMaxHealth() : 100;
+	}
+
+	bool onBotScreen(const Position& me, const Position& p) {
+		return p.z == me.z && std::abs(static_cast<int32_t>(p.x) - static_cast<int32_t>(me.x)) <= 8
+			&& std::abs(static_cast<int32_t>(p.y) - static_cast<int32_t>(me.y)) <= 6;
+	}
+
+	bool onPzTile(const Position& p) {
+		auto t = g_game().map.getTile(p);
+		return t && t->hasFlag(TILESTATE_PROTECTIONZONE);
+	}
+
+	// Open escape tiles around the victim: walkable, unoccupied, not PZ, not a floor change.
+	int32_t gangEscapeOpen(const std::shared_ptr<Player>& walker, const Position& V) {
+		static const int32_t dxA[] = { 0, 1, 0, -1, 1, 1, -1, -1 };
+		static const int32_t dyA[] = { -1, 0, 1, 0, -1, 1, 1, -1 };
+		int32_t open = 0;
+		for (int d = 0; d < 8; d++) {
+			Position W(static_cast<uint16_t>(V.x + dxA[d]), static_cast<uint16_t>(V.y + dyA[d]), V.z);
+			auto t = g_game().map.getTile(W);
+			if (!t) continue;
+			if (t->hasFlag(TILESTATE_PROTECTIONZONE) || t->hasFlag(TILESTATE_FLOORCHANGE)) continue;
+			if (t->getTopVisibleCreature(nullptr) != nullptr) continue;
+			if (!g_game().map.canWalkTo(walker, W)) continue;
+			open++;
+		}
+		return open;
+	}
+}
+
 void BotEngine::maintainGangBox(BotState& bot) {
 	auto sgIt = s_gangByGuid.find(bot.guid);
 	if (sgIt == s_gangByGuid.end()) return;
@@ -3372,11 +3689,23 @@ void BotEngine::maintainGangBox(BotState& bot) {
 	GangSession& sess = seIt->second;
 	auto player = bot.getPlayer();
 	if (!player) return;
-	auto victim = g_game().getCreatureByID(sess.targetId);
+	// #28: the box closes on the elected FOCUS, which starts as the raid victim.
+	auto victim = g_game().getCreatureByID(sess.focusId != 0 ? sess.focusId : sess.targetId);
 	if (!victim || victim->isRemoved() || victim->getHealth() <= 0) return;
 	const Position V = victim->getPosition();
 	if (V.z != bot.currentPos.z) return;
 	int64_t now = OTSYS_TIME();
+
+	// #28 TRAP_TARGET: the target is nearly boxed in (<= 3 open escape tiles) or hurt (<= 60 % HP).
+	// Members then wall the escape tiles nearest-first on a 1.5 s per-bot cooldown instead of the
+	// ordinary per-roll chance, and druids paralyze (gangParalyzeIfFleeing).
+	const int32_t escapeOpen = gangEscapeOpen(player, V);
+	const bool trap = escapeOpen <= 3 || hpPctOf(victim) <= 60;
+	if (trap && !sess.trapLogged) {
+		sess.trapLogged = true;
+		g_logger().info("[GANG] trap session={} target='{}' open={} hp={}%", sess.id, victim->getName(),
+			escapeOpen, hpPctOf(victim));
+	}
 
 	// Reap expired wall claims (frees tiles of dead/stuck claimants).
 	for (auto it = sess.wallClaims.begin(); it != sess.wallClaims.end();) {
@@ -3445,6 +3774,25 @@ void BotEngine::maintainGangBox(BotState& bot) {
 	}
 	if (openTiles.empty()) return;
 
+	if (trap) {
+		const Position me = bot.currentPos;
+		auto cheb = [&](const Position& p) {
+			return std::max(std::abs(static_cast<int32_t>(p.x) - static_cast<int32_t>(me.x)),
+			                std::abs(static_cast<int32_t>(p.y) - static_cast<int32_t>(me.y)));
+		};
+		std::sort(openTiles.begin(), openTiles.end(),
+			[&](const Position& a, const Position& b) { return cheb(a) < cheb(b); });
+		const Position W = openTiles.front();
+		sess.wallClaims[gangPackPos(W)] = { bot.guid, now + 2000 };
+		if (pvpPlaceWallAt(bot, W)) {
+			s_pvpWallCd[bot.guid] = now + GANG_TRAP_WALL_CD_MS;
+			g_logger().info("[GANG] trap-wall session={} guid={} tile=({},{},{}) open={}", sess.id, bot.guid,
+				W.x, W.y, W.z, escapeOpen);
+		}
+		s_gangBoxRollNext[bot.guid] = now + 300;
+		return;
+	}
+
 	int32_t wallPct = static_cast<int32_t>(g_configManager().getNumber(BOT_GANG_WALL_CHANCE_PCT));
 	if (uniform_random(1, 100) > wallPct) {
 		s_gangBoxRollNext[bot.guid] = now + 1000; // throttle only — DO NOT burn the wall cooldown
@@ -3465,17 +3813,21 @@ void BotEngine::gangParalyzeIfFleeing(BotState& bot) {
 	if (seIt == s_gangSessions.end()) return;
 	auto player = bot.getPlayer();
 	if (!player) return;
-	auto victim = g_game().getCreatureByID(seIt->second.targetId);
+	const GangSession& gs = seIt->second;
+	auto victim = g_game().getCreatureByID(gs.focusId != 0 ? gs.focusId : gs.targetId);
 	if (!victim || victim->isRemoved() || victim->getHealth() <= 0) return;
 	const Position V = victim->getPosition();
 	if (V.z != bot.currentPos.z) return;
 
 	// Paralyze when the victim is MOVING (walking/kiting/circling), not only fleeing straight away:
-	// fire if the victim's position changed since this bot's last check.
+	// fire if the victim's position changed since this bot's last check. #28 TRAP_TARGET (the same
+	// trigger as maintainGangBox) paralyzes a trapped, not-yet-paralyzed target whether it moves or not.
 	auto& lastPos = s_gangVictimLastPos[bot.guid];
 	bool moving = (lastPos.x != 0) && !(lastPos == V);
 	lastPos = V;
-	if (!moving) return;
+	const bool trap = (gangEscapeOpen(player, V) <= 3 || hpPctOf(victim) <= 60)
+		&& !victim->hasCondition(CONDITION_PARALYZE);
+	if (!moving && !trap) return;
 
 	int32_t dist = std::max(std::abs(static_cast<int32_t>(bot.currentPos.x) - static_cast<int32_t>(V.x)),
 	                        std::abs(static_cast<int32_t>(bot.currentPos.y) - static_cast<int32_t>(V.y)));
@@ -3490,16 +3842,283 @@ void BotEngine::gangParalyzeIfFleeing(BotState& bot) {
 	if (player->hasCondition(CONDITION_SPELLGROUPCOOLDOWN, rs->getGroup())) return;
 	if (!g_game().map.isSightClear(bot.currentPos, V, true)) return;
 	int32_t pct = static_cast<int32_t>(g_configManager().getNumber(BOT_GANG_PARALYZE_CHANCE_PCT));
-	if (uniform_random(1, 100) > pct) return;
+	if (!trap && uniform_random(1, 100) > pct) return;
 	if (executeRune(bot, rune, V, victim)) {
 		bot.lastPvpAttackTime = OTSYS_TIME();
 		g_logger().info("[GANG] PARALYZE guid={} on moving victim '{}'", bot.guid, victim->getName());
 	}
 }
 
+// ============================================================================
+// #28 / #103: exiva probe chase, FOCUS lock, DISENGAGE
+// ============================================================================
+
+// Off-screen PvP target. Returns true = the tick is consumed (the bot is chasing blind, or gave up
+// and left PK). Rules (issue #28 / #103): the real exiva, 12 s per-bot cooldown, a 250 ms gap across
+// the whole population so bots never exiva in unison, an 18 s window that each exiva which did not
+// lose ground re-opens, 3 strikes, and a floor change instead of a walk when the answer is another
+// floor within 100 sqm. Telemetry: [GANG] exiva lost|cast|reacquired|giveup.
+bool BotEngine::pvpHandleLostTarget(BotState& bot, const std::shared_ptr<Player>& player, const std::shared_ptr<Creature>& target) {
+	const Position tpos = target->getPosition();
+	const Position me = bot.currentPos;
+	const int32_t dx = static_cast<int32_t>(tpos.x) - static_cast<int32_t>(me.x);
+	const int32_t dy = static_cast<int32_t>(tpos.y) - static_cast<int32_t>(me.y);
+	const int32_t dist = std::max(std::abs(dx), std::abs(dy));
+	const int64_t now = OTSYS_TIME();
+	const int gang = s_gangByGuid.count(bot.guid) > 0 ? 1 : 0;
+
+	if (onBotScreen(me, tpos)) {
+		auto it = s_exivaChase.find(bot.guid);
+		if (it != s_exivaChase.end()) {
+			if (it->second.lostSinceMs > 0) {
+				g_logger().info("[GANG] exiva reacquired guid={} name='{}' target='{}' afterMs={} strikes={} gang={}",
+					bot.guid, bot.name, target->getName(), now - it->second.lostSinceMs, it->second.strikes, gang);
+			}
+			s_exivaChase.erase(it);
+		}
+		return false;
+	}
+
+	auto& ex = s_exivaChase[bot.guid];
+	if (ex.lostSinceMs == 0) {
+		ex = ExivaChase {};
+		ex.lostSinceMs = now;
+		ex.lastProgressMs = now;
+		player->setAttackedCreature(nullptr);
+		player->setFollowCreature(nullptr);
+		g_logger().info("[GANG] exiva lost guid={} name='{}' target='{}' dist={} dz={} gang={}",
+			bot.guid, bot.name, target->getName(), dist, static_cast<int>(tpos.z) - static_cast<int>(me.z), gang);
+	}
+
+	const char* giveUp = nullptr;
+	if (ex.strikes >= EXIVA_MAX_STRIKES) giveUp = "strikes";
+	else if (now - ex.lastProgressMs > EXIVA_WINDOW_MS) giveUp = "window";
+	if (giveUp) {
+		g_logger().info("[GANG] exiva giveup guid={} name='{}' target='{}' reason={} lostMs={} strikes={} gang={}",
+			bot.guid, bot.name, target->getName(), giveUp, now - ex.lostSinceMs, ex.strikes, gang);
+		castLog(bot, fmt::format("PK: lost {} ({}), giving up the exiva chase", target->getName(), giveUp));
+		s_exivaChase.erase(bot.guid);
+		exitPK(bot);
+		return true;
+	}
+
+	if (bot.fcState != FloorChangeState::NONE) return true;
+	if (!player->listWalkDir.empty()) return true; // a leg is still being walked
+
+	// One leg of 4-10 steps along a bearing. Verified by the pathfinder (goToWithDoors refuses an
+	// unreachable tile), shortened once before it counts as a failed leg.
+	auto walkLeg = [&](int8_t ox, int8_t oy) -> int32_t {
+		const int32_t steps = uniform_random(4, 10);
+		for (int32_t s : { steps, std::max<int32_t>(5, steps / 2) }) {
+			Position d(static_cast<uint16_t>(static_cast<int32_t>(me.x) + ox * s),
+			           static_cast<uint16_t>(static_cast<int32_t>(me.y) + oy * s), me.z);
+			if (goToWithDoors(bot, d)) return s;
+		}
+		return 0;
+	};
+
+	const bool canCast = now >= ex.nextCastMs && now - s_exivaLastGlobalMs >= EXIVA_GLOBAL_GAP_MS;
+	if (!canCast) {
+		// Cooldown running: keep going the way the last exiva pointed, a bounded number of legs.
+		if ((ex.bearingDx != 0 || ex.bearingDy != 0) && ex.legs < EXIVA_MAX_LEGS) {
+			ex.legs++;
+			if (walkLeg(ex.bearingDx, ex.bearingDy) == 0) ex.legs = EXIVA_MAX_LEGS;
+		}
+		return true;
+	}
+
+	s_exivaLastGlobalMs = now;
+	ex.nextCastMs = now + EXIVA_BOT_COOLDOWN_MS;
+	ex.legs = 0;
+	std::string words = fmt::format("exiva \"{}\"", target->getName());
+	if (g_spells().playerSaySpell(player, words) != TALKACTION_BREAK) {
+		ex.strikes++;
+		ex.nextCastMs = now + 2000; // mana / spell cooldown: try again soon, but it costs a strike
+		g_logger().info("[GANG] exiva cast-failed guid={} name='{}' target='{}' strikes={} gang={}",
+			bot.guid, bot.name, target->getName(), ex.strikes, gang);
+		return true;
+	}
+	player->saySpell(TALKTYPE_SAY, fmt::format("exiva \"{}\"", target->getName()), false);
+
+	// What the spell just told the caster.
+	if (dist >= 275) {
+		ex.strikes = EXIVA_MAX_STRIKES; // "very far": nothing to chase
+	} else if (ex.lastDist < 0 || dist <= ex.lastDist + 2) {
+		ex.lastProgressMs = now; // not losing ground: the window re-opens
+	} else {
+		ex.strikes++;
+	}
+	ex.lastDist = dist;
+
+	if (tpos.z != me.z) {
+		const bool goDown = tpos.z > me.z;
+		if (dist <= EXIVA_FLOOR_RANGE) {
+			startFloorChange(bot, goDown, tpos);
+		} else {
+			ex.strikes++;
+		}
+		g_logger().info("[GANG] exiva cast guid={} name='{}' target='{}' band={} floor={} dist={} strikes={} gang={}",
+			bot.guid, bot.name, target->getName(), exivaBand(dist), goDown ? "down" : "up", dist, ex.strikes, gang);
+		return true;
+	}
+
+	exivaBearing(dx, dy, ex.bearingDx, ex.bearingDy);
+	const int32_t walked = walkLeg(ex.bearingDx, ex.bearingDy);
+	if (walked == 0) ex.strikes++;
+	g_logger().info("[GANG] exiva cast guid={} name='{}' target='{}' band={} bearing={},{} dist={} steps={} strikes={} gang={}",
+		bot.guid, bot.name, target->getName(), exivaBand(dist), ex.bearingDx, ex.bearingDy, dist, walked, ex.strikes, gang);
+	castLog(bot, fmt::format("PK: exiva {} -> {} ({},{}), walking {}", target->getName(), exivaBand(dist),
+		ex.bearingDx, ex.bearingDy, walked));
+	return true;
+}
+
+uint32_t BotEngine::gangFocusOf(uint32_t guid) const {
+	auto sg = s_gangByGuid.find(guid);
+	if (sg == s_gangByGuid.end()) return 0;
+	auto se = s_gangSessions.find(sg->second);
+	if (se == s_gangSessions.end()) return 0;
+	return se->second.focusId != 0 ? se->second.focusId : se->second.targetId;
+}
+
+// Squad clock + FOCUS election for one raid member, run at the top of doPKAttack. Returns true when
+// the raid was disengaged (this bot already left PK).
+//   DISENGAGE: the focus unseen by every member for 20 s, the session over 5 min, or half the squad
+//              below 35 % HP or 8 % mana.            -> [GANG] disengage reason=unseen|session_time|squad_low
+//   FOCUS:     one elected target held 2.2-3.8 s. A switch needs a clearly better candidate: 30+
+//              points lower HP, the current focus stalled (no new HP low for 10 s) or unreachable
+//              (off every screen 3 s), or the candidate hitting a squad mate while the focus is not.
+//              -> [GANG] focus from= to= reason=
+bool BotEngine::gangTickSession(BotState& bot) {
+	auto sg = s_gangByGuid.find(bot.guid);
+	if (sg == s_gangByGuid.end()) return false;
+	auto se = s_gangSessions.find(sg->second);
+	if (se == s_gangSessions.end()) return false;
+	GangSession& s = se->second;
+	if (!s.engaged) return false;
+	const uint32_t sessionId = s.id;
+	const int64_t now = OTSYS_TIME();
+	if (s.startedMs == 0) {
+		s.startedMs = now;
+		s.lastSeenMs = now;
+		s.focusId = s.targetId;
+		s.focusLastHpDropMs = now;
+	}
+
+	auto isMate = [&](const std::shared_ptr<Creature>& c) -> bool {
+		auto p = c ? c->getPlayer() : nullptr;
+		if (!p) return false;
+		auto it = s_gangByGuid.find(p->getGUID());
+		return it != s_gangByGuid.end() && it->second == sessionId;
+	};
+	auto usable = [&](const std::shared_ptr<Creature>& c) -> bool {
+		return c && !c->isRemoved() && c->getHealth() > 0 && !onPzTile(c->getPosition());
+	};
+
+	auto focus = g_game().getCreatureByID(s.focusId != 0 ? s.focusId : s.targetId);
+	if (focus && onBotScreen(bot.currentPos, focus->getPosition())) s.lastSeenMs = now;
+	if (focus && (s.focusLowHp == 0 || focus->getHealth() < s.focusLowHp)) {
+		s.focusLowHp = focus->getHealth();
+		s.focusLastHpDropMs = now;
+	}
+
+	// ---- DISENGAGE
+	const char* reason = nullptr;
+	if (now - s.lastSeenMs > GANG_UNSEEN_DISENGAGE_MS) {
+		reason = "unseen";
+	} else if (now - s.startedMs > GANG_SESSION_MAX_MS) {
+		reason = "session_time";
+	} else {
+		int32_t alive = 0, low = 0;
+		for (const auto& m : s.members) {
+			auto idx = guidToIndex_.find(m.guid);
+			if (idx == guidToIndex_.end()) continue;
+			auto mp = bots_[idx->second].getPlayer();
+			if (!mp || mp->getMaxHealth() <= 0) continue;
+			alive++;
+			const bool lowHp = mp->getHealth() * 100 / mp->getMaxHealth() < 35;
+			const bool lowMana = mp->getMaxMana() > 0 && mp->getMana() * 100 / mp->getMaxMana() < 8;
+			if (lowHp || lowMana) low++;
+		}
+		if (alive > 0 && low * 2 >= alive) reason = "squad_low";
+	}
+	if (reason) {
+		std::vector<uint32_t> guids;
+		for (const auto& m : s.members) guids.push_back(m.guid);
+		g_logger().info("[GANG] disengage session={} reason={} victim={} members={} sessionMs={} unseenMs={}",
+			sessionId, reason, s.targetId, guids.size(), now - s.startedMs, now - s.lastSeenMs);
+		for (uint32_t g : guids) {
+			auto idx = guidToIndex_.find(g);
+			if (idx == guidToIndex_.end()) { leaveGang(g); continue; }
+			BotState& mb = bots_[idx->second];
+			if (mb.state == BotAIState::PK_ATTACK) exitPK(mb);
+			else leaveGang(g);
+		}
+		return true;
+	}
+
+	// ---- FOCUS
+	const uint32_t curId = s.focusId != 0 ? s.focusId : s.targetId;
+	const bool curUsable = usable(focus);
+	if (curUsable && now < s.focusLockUntil) {
+		if (bot.pkTarget != curId) bot.pkTarget = curId;
+		return false;
+	}
+
+	std::shared_ptr<Creature> best;
+	bool bestHitsMate = false;
+	refreshSpectatorCacheIfStale(bot);
+	for (uint32_t pid : bot.cachedPlayerIds) {
+		auto c = g_game().getCreatureByID(pid);
+		if (!usable(c) || isMate(c) || c->getPosition().z != bot.currentPos.z) continue;
+		auto p = c->getPlayer();
+		if (!p || (p->getGroup() && p->getGroup()->access) || p->hasFlag(PlayerFlags_t::CannotBeAttacked)) continue;
+		const bool hitsMate = isMate(c->getAttackedCreature());
+		if (c->getID() != s.targetId && !hitsMate) continue; // only the victim or its defenders
+		if (!best || (hitsMate && !bestHitsMate)
+		    || (hitsMate == bestHitsMate && hpPctOf(c) < hpPctOf(best))) {
+			best = c;
+			bestHitsMate = hitsMate;
+		}
+	}
+
+	const char* why = nullptr;
+	if (!curUsable) {
+		why = "focus_lost";
+	} else if (best && best->getID() != curId) {
+		const bool curHitsMate = isMate(focus->getAttackedCreature());
+		if (hpPctOf(best) <= hpPctOf(focus) - 30) why = "low_hp";
+		else if (now - s.focusLastHpDropMs > 10000) why = "stalled";
+		else if (now - s.lastSeenMs > 3000) why = "unreachable";
+		else if (bestHitsMate && !curHitsMate) why = "hitting_mate";
+	}
+	uint32_t newId = curId;
+	if (why) {
+		if (best) newId = best->getID();
+		else if (!curUsable) newId = s.targetId; // nothing better on screen: back to the victim
+	}
+	if (newId != curId) {
+		g_logger().info("[GANG] focus session={} from={} to={} reason={} hp={}%->{}%",
+			sessionId, curId, newId, why, curUsable ? hpPctOf(focus) : -1,
+			hpPctOf(g_game().getCreatureByID(newId)));
+		s.focusId = newId;
+		auto nf = g_game().getCreatureByID(newId);
+		s.focusLowHp = nf ? nf->getHealth() : 0;
+		s.focusLastHpDropMs = now;
+		s.lastSeenMs = now;
+		s_exivaChase.erase(bot.guid);
+	}
+	s.focusLockUntil = now + uniform_random(2200, 3800);
+	if (s.focusId != 0 && bot.pkTarget != s.focusId) bot.pkTarget = s.focusId;
+	return false;
+}
+
 void BotEngine::doHealing(BotState& bot) {
 	auto player = bot.getPlayer();
 	if (!player) return;
+
+	// #87: while a spar is in its FIGHT phase the bot does not self-heal above the spar floor, or
+	// the 30 % stop line is never reached. The partner heals it in the HEAL phase.
+	if (sparSuppressesHealing(bot)) return;
 
 	int32_t hp = player->getHealth();
 	int32_t maxHp = player->getMaxHealth();
@@ -3558,6 +4177,9 @@ void BotEngine::doHealing(BotState& bot) {
 		// Check mana cost before casting — restore if needed (PvP budgeted, PvE unlimited)
 		uint32_t manaCost = instantSpell->getManaCost(player);
 		if (player->getMana() < manaCost) {
+			if (!legacyManaRefill()) {
+				continue; // #187: no instant refill -- try a cheaper heal
+			}
 			bool inPvP = bot.attackerId > 0 && g_game().getPlayerByID(bot.attackerId) != nullptr;
 			if (inPvP) {
 				uint32_t maxMana = player->getMaxMana();
@@ -3582,8 +4204,11 @@ void BotEngine::doHealing(BotState& bot) {
 			bot.lastHealTime = now;
 			player->saySpell(TALKTYPE_SAY, words, false);
 			const char* mode = dispelOnly ? " (paralysis cure)" : (emergency ? " (emergency)" : "");
-			castLog(bot, fmt::format("HEAL: {} ({}/{}){}", words,
-				player->getHealth(), player->getMaxHealth(), mode));
+			// #125: log the HP the ladder DECIDED on, then the result. The old line printed only
+			// the post-cast HP, so every successful heal read "exura vita (1585/1585)" -- a heal
+			// "at full HP" that was really cast at <= HEAL_THRESHOLD_PCT (75 %) and topped the bot up.
+			castLog(bot, fmt::format("HEAL: {} hp {}->{}/{} (decided at {}%){}", words,
+				hp, player->getHealth(), player->getMaxHealth(), hpPct, mode));
 			return;
 		}
 	}
@@ -3594,6 +4219,7 @@ void BotEngine::exitCombat(BotState& bot) {
 	// re-validate their own gate every tick and self-clear (beginHuntPhase is
 	// explicitly not a funnel). This just keeps stale entries from lingering.
 	clearLureKiteState(bot.guid);
+	fightProgressReset(bot.guid); // #99
 
 	auto player = bot.getPlayer();
 	if (player) {
@@ -3724,6 +4350,8 @@ void BotEngine::exitPK(BotState& bot) {
 	s_gangFleeStreak.erase(bot.guid);
 	s_gangBoxRollNext.erase(bot.guid);
 	s_gangVictimLastPos.erase(bot.guid);
+	s_exivaChase.erase(bot.guid);    // #28/#103
+	fightProgressReset(bot.guid);    // #99
 	leaveGang(bot.guid); // Feature 1: end gang membership when this member's PK ends
 
 	// Adventurer's Stone trip cleanup — PK interrupting a trip should abort it
@@ -3738,6 +4366,19 @@ void BotEngine::exitPK(BotState& bot) {
 }
 
 void BotEngine::checkVigilante(BotState& bot) {
+	if (inHumanLedParty(bot)) { // #91 follow-up: no self-initiated PvP in a human-led party
+		const int64_t now = OTSYS_TIME();
+		auto& last = s_pvpSkipLogMs[bot.guid];
+		if (now - last >= 30000) {
+			last = now;
+			g_logger().info("[PVP_SKIP] reason=human_party bot='{}' site=vigilante target='-' state={}", bot.name, botStateName(bot.state));
+		}
+		return;
+	}
+	// Debug-pinned bots take no self-initiated PvP (#124). Baseline: a pinned debug bot went
+	// IDLE -> PK_ATTACK mid-observation. A pinned bot that is ATTACKED still defends itself —
+	// doSelfDefense runs for every awake state and is deliberately not gated.
+	if (s_debugPinned.count(bot.guid) > 0) return;
 	auto player = bot.getPlayer();
 	if (!player) return;
 
@@ -3870,6 +4511,16 @@ void BotEngine::checkVigilante(BotState& bot) {
 // ============================================================================
 
 void BotEngine::checkRandomPK(BotState& bot) {
+	if (inHumanLedParty(bot)) { // #91 follow-up: no self-initiated PvP in a human-led party
+		const int64_t now = OTSYS_TIME();
+		auto& last = s_pvpSkipLogMs[bot.guid];
+		if (now - last >= 30000) {
+			last = now;
+			g_logger().info("[PVP_SKIP] reason=human_party bot='{}' site=random_pk target='-' state={}", bot.name, botStateName(bot.state));
+		}
+		return;
+	}
+	if (s_debugPinned.count(bot.guid) > 0) return; // pinned: no self-initiated PvP (#124)
 	auto player = bot.getPlayer();
 	if (!player || bot.state != BotAIState::IDLE) return;
 
@@ -3941,6 +4592,8 @@ void BotEngine::checkRandomPK(BotState& bot) {
 		if (!p) continue;
 		if (!p->isBotPlayer()) continue; // never initiate PK against a real player
 		if (p->getGroup() && p->getGroup()->access) continue;
+		// No-PvP worlds: never pick a real player (the damage is refused anyway; the walls are not).
+		if (!p->isBotPlayer() && g_game().getWorldType() == WORLD_TYPE_NO_PVP) continue;
 		if (gangIsRecentAlly(bot.guid, p->getGUID())) continue; // never PK a recent gang-mate
 		auto tpos = creature->getPosition();
 		if (tpos.z != bot.currentPos.z) continue;

@@ -43,6 +43,18 @@ This is a concise operator/user reference. For day-to-day setup see the repo
   the displayed online list / player count.
 - Loading is **stratified** (evenly sampled), not "first N", so any
   `botPlayersOnline` value yields a representative level/vocation/town mix.
+- **Startup pacing is adaptive** (from dandpb's PR #3). One load event is pending at
+  a time: it loads bots for up to 500 ms, then yields. The yield starts at 100 ms and
+  rises to at most 1 s at 4× the measured pressure (a late timer, or a single load
+  over 100 ms), then halves back. 500 bots load in ~55 s after "server online", with
+  no multi-second dispatcher stall. Progress: `[BOT_BATCH] completed N/total`; the
+  end: `All <loaded> of <planned> bots loaded as INACTIVE (<failed> failed)`.
+- **ARM64 VPS:** the release binaries are AMD64. They run under QEMU user emulation
+  (`qemu-user-static` + an enabled `qemu-x86_64` binfmt handler, `platform:
+  linux/amd64` for the game-server container; MariaDB can stay native). This was
+  tested on a 2-vCPU Ubuntu 24.04 ARM64 VPS. It is not a native ARM64 build. Loads
+  are much slower under emulation, so startup backs off toward the 1 s yield and
+  takes noticeably longer. That is expected; watch the `[BOT_BATCH]` lines.
 
 ---
 
@@ -141,6 +153,9 @@ out of the tick loop) and **wake** on demand.
 - Normal: ~50% fight back, ~50% flee.
 - Outleveling the attacker (bot ≥ 2× attacker level, or damage < 5% max HP):
   mostly ignore (~17% fight), often after a token hit, then resume.
+  The token hit (50% of ignores) is never lethal (#123): it takes
+  clamp(attacker level / bot level, 3%..50%) of the attacker's current HP, +-25%,
+  capped at half of it, once per engagement (`[PVP_IGNORE_HITBACK]` in the journal).
 
 **Vigilante** — on first sight of a player-killer, a per-PKer 5% chance the bot
 decides to attack them.
@@ -158,6 +173,60 @@ ambushes targets:
   bots (`botGangOddsVsBot`); higher value = lower chance.
 - `botGangWallChancePct`, `botGangParalyzeChancePct` add wall/paralyze tactics.
 - `botGangRequireObserver` only stages raids when someone can witness them.
+- Proportionality (#123): `botGangMinVictimLevel` (default 50) — no raid on a weaker
+  victim; `botGangMaxLevelRatio` (default 4) — no raid when the strongest seated
+  attacker is already that many times the victim's level (`[GANG] declined RAID ...
+  reason=outleveled`).
+- Squad tactics (#28): one **FOCUS** target per raid, held 2.2–3.8 s; a switch needs a
+  candidate 30+ HP points lower, a stalled (no new HP low 10 s) or unreachable focus, or a
+  defender hitting a squad mate (`[GANG] focus from= to= reason=`). **TRAP_TARGET** when the
+  focus has ≤3 open escape tiles or ≤60 % HP: members wall escape tiles nearest-first on a 1.5 s
+  per-bot cooldown and druids paralyze it (`[GANG] trap`, `[GANG] trap-wall`). **DISENGAGE** when
+  the focus is unseen 20 s, the session passes 5 min, or half the squad is below 35 % HP / 8 %
+  mana (`[GANG] disengage reason=unseen|session_time|squad_low`).
+
+**Mana and potions** (#187, `bot_supply.cpp` `maybeNeedPotion`) — an awake bot's mana never
+jumps to full. It rises only through potions, natural regeneration and spells: in the 200 ms heal
+slot, ahead of `doHealing`, a sorcerer/druid/paladin below `botManaPotionPct` (70) drinks the
+strongest mana potion its level allows (mana / strong 50 / great 80 / ultimate 130, ultimate for
+mages only); a paladin whose HP is also below `botSpiritPotionHpPct` (70) drinks great (80) or
+ultimate (130) spirit instead. A knight drinks its health tier below `botKnightHealthPotionPct`
+(60) — or below 85 % when its mana is under `botKnightManaPotionPct` (40), since exura ico is then
+unpayable — else mana / strong mana below that line. `[BOT_MANA_DEATH]` logs the last mana % of every death. The drink goes through the
+stock `potions.lua` action (real amount, blue sparkle, "Aaaah...", sound, empty flask) and the
+server's potion exhaust, plus 0-`botPotionJitterMs`; the seeded potion is never consumed. A spell,
+rune or heal the bot cannot pay for is skipped, not refilled, and an attack spell never spends the
+pool below `botAttackManaReservePct` (20) so heals stay payable. Every ~`botFlaskDropIntervalSec`
+(60, 0.75-1.25x) a bot carrying `botFlaskDropMinCount` (3) empties drops them at its feet (or an
+adjacent sqm; litter guards: no house, no trash/mailbox/teleport/FC tile, one drop per sqm, i.e. never
+onto empties already lying there; a corpse underfoot is allowed; `[BOT_FLASK_DROP] skip` when no tile fits). A woken
+hibernated bot is credited the mana it would have regenerated unseen (full after
+`botWakeManaFullSec`, 180 s). Journal: `[BOT_POTION]`, `[BOT_FLASK_DROP]` (cast-watched or
+verbose bots, all with `botPotionLogAll`). `botManaPotionEnable=false` restores the old refills.
+
+**Exiva chase** (#28/#103, every PK, not only raids) — once the target is off screen the bot
+stops reading its position: it casts the real `exiva "name"`, turns the bearing into a direction
+and walks 4–10 steps (a couple more legs on the same bearing while the 12 s per-bot cooldown
+runs; 250 ms gap across all bots). An 18 s window, re-opened by every exiva that did not lose
+ground, and 3 strikes end the chase; another floor within 100 sqm means a floor change
+(`[GANG] exiva lost|cast|reacquired|giveup`).
+
+**Fruitless fights and death loops** (#99, `bot_recovery.cpp`) — a fight (hunt, self-defense or
+PK) in which no target reached a new HP low and nothing died for 60 s is dropped
+(`[FRUITLESS] drop`): a monster type is avoided for 30 min and the hunt bot leaves along a
+patrol waypoint the pathfinder accepts (`[FRUITLESS] leave`); a PvP fight walks back to the
+pre-combat tile. Two deaths to the same creature type within 30 min avoid that type for 30 min,
+mark both death spots (hunts patrolling within 10 sqm are skipped, live and virtual) and abort
+the hunt the bot would resume after the respawn (`[DEATHLOOP] record|avoid|abort`).
+
+**Sparring** (#87, `bot_spar.cpp`, `botSpar*`) — two awake bots of a similar level
+(`botSparLevelBandPct`) within 12 sqm of a depot POI form a real party (partners never skull
+each other: `Player::onAttackedCreature` skips the skull/pz block for `isPartner`), trade capped
+hits (4–8 % of max HP, never below 26 %) until one is below 30 %, heal each other back to 90 %
+(exura sio, UH rune, else a UH-sized heal) and disband. Never a real player; per-bot cooldown,
+no rematch for `botSparRematchSec`, at most `botSparMaxPairs` pairs. Hibernated bots simulate it
+as a longer depot dwell. `/cavebot <bot> spar <otherBot>|stop` forces one (the only way for
+pinned bots). Journal: `[SPAR] start|stop|heal|end` (+`virtual=1`).
 
 **Force-logout on connection loss** (`forceLogoutOnConnectionLoss`) — a
 **server-wide** policy (applies to real players too, not just bots): when a
@@ -387,10 +456,14 @@ Bots talk using a large template corpus (`data/bot_chat/phrases.json`).
   or cast viewer is within view, and is throttled per nearby player so bots don't
   spam. `botChatCooldown*`, `botChatMasterChancePct`.
 - **Advertising** runs on the trade channel (`botAdvertisingInterval*`).
-- **Keyword replies** — a nearby/idle bot answers when a player says or PMs a
+- **Keyword replies** — a nearby bot answers when a player says or PMs a
   recognized phrase (price/trade/greeting), after a short "typing" delay; PMs work
-  even for hibernated bots. `botHibernatedChatEnabled` gates channel chat for
-  hibernated bots.
+  even for hibernated bots. Said out loud: the nearest eligible awake bot within
+  earshot (|dx|<=8, |dy|<=6, same floor), a standing (IDLE/DWELLING) bot first, else a WALKING traveller
+  (walk_to_boat / walk_from_boat / arrived, not mid floor-change) which answers from
+  the quick end of the delay; a reply whose speaker left the player's screen is
+  dropped. Every decision logs `[CHAT_REPLY] queued|said|skipped|dropped|none`
+  (always on; #122). `botHibernatedChatEnabled` gates channel chat for hibernated bots.
 - **Anti-repeat / throttle** is entirely in-memory (`botChatAntiRepeatRingSize` +
   time-windowed cross-bot dedup) — no two bots repeat the same line in a window.
 - `botChatVerboseLog` logs each emission to the journal (debugging).
@@ -612,10 +685,35 @@ spliced` line — both unconditional, no verbose mode needed.
 | `/cavebot proximity` | proximity-weighting telemetry |
 | `/cavebot schedule on\|off\|status` | enable/disable the time-of-day population scheduler, or show its current target |
 | `/cavebot reload` | hot-reload the engine (`.so` + data), keeping the current active set |
-| `/cavebot reload debug,<Bot Name>` | isolate ONE named bot — everything else stays hibernated with no tasks |
+| `/cavebot reload debug,<Bot Name>` | isolate ONE named bot — every other bot is despawned and kept out (see below) |
 | `/cavebot reload debug,<Name A>;<Name B>` | isolate several, **semicolon**-separated |
 | `/cavebot reload debug,N` | isolate N **arbitrary** bots (it picks — prefer the name form) |
 | `/cavebot reload debug off` | leave debug mode — see the warning below |
+| `/cavebot debugisolate on\|off\|status` | engine-enforced debug isolation (set by `reload debug,...` itself; `status` shows pinned/active/despawned/refused counts) |
+
+> **What debug mode guarantees (#124).** After `reload debug,<names>`:
+> * **Non-debug bots do not exist.** They are despawned (true offline), and while isolation is on the
+>   engine refuses every path that would bring one back — `activateBot`, `wakeBot`, party
+>   conscription — logging `[DEBUG_ISOLATE] refused <path> ...`. A 1 s engine sweep despawns any
+>   that slip through anyway (`[DEBUG_ISOLATE] despawned ...`; expected to stay at zero). The
+>   population scheduler is off.
+> * **Pinned debug bots take no self-initiated actions**: no activity reroll (no hunts/POIs/travel),
+>   no hibernation, no vigilante / random PK / PK re-engage, no gang raids (neither scouting one nor
+>   being conscripted into one), no 60 s idle-fallback teleport to the temple.
+> * **They still defend themselves.** A pinned bot that is attacked runs the normal self-defense
+>   decision (fight / flee / ignore). Watching the AI react to an attack is a common reason to debug
+>   a bot, and a bot that stands still while being killed would hide exactly that behaviour.
+> * They do whatever the operator commands (`goto`, `hunt`, `pk`, ...).
+> * A plain `/cavebot reload` while debug mode is active ENDS it: pins cleared, isolation off,
+>   scheduler on (it is the escape hatch; start a new session with `reload debug,<names>`). Bots
+>   despawned during the session stay offline until a server restart.
+> * Isolation never runs without a pinned bot: `debugisolate on` is refused while nothing is
+>   pinned, the sweep is a no-op then, and unpinning the last bot (`pin off` / `probe off`) turns
+>   isolation off with a `[DEBUG_ISOLATE] OFF (the last pinned bot was unpinned ...)` warning.
+>   Unpinning one of several pinned bots warns that the sweep will despawn it within 1 s.
+>   `probe on` pins before it wakes, so it works under isolation.
+> * Turning isolation off (command or last unpin) restarts the population scheduler only if
+>   `debugisolate on` was what stopped it; otherwise the line says "scheduler still OFF".
 
 > **`reload debug off` does not repopulate.** It clears the flag and re-activates whatever is still
 > registered, but `BotStartup` — the globalevent that loads bots from the DB — only runs at server
@@ -888,6 +986,67 @@ Two things that bite:
 | `/house "<name>" sub-owner` | become sub-owner of a bot house |
 | `/house "<name>" release` | release a house you claimed (bot reclaims it) |
 
+### Bot command verbs (PM, party chat, control panel) — #91
+Players command bots the way playerbots users do: **PM a bot**, or type in the **party channel**, or
+click the **OTClient panel**. One engine layer (`bot_verb.cpp`) serves all three.
+
+`[#w|#p|#g] [@address[,address]] verb [args]` — e.g. `@ek stay`, `@ed heal me`, `@100-300 follow`,
+`@Sir_Bob invite`, `#p who`. In the party channel a message whose first word is not a verb is ordinary
+chat; with no `@address` every bot in your party answers.
+
+| Address | Matches |
+|---|---|
+| `@all` | everyone (the default) |
+| `@ek` `@knight` `@tank` / `@ed` `@druid` `@heal` / `@ms` `@sorc` / `@rp` `@paladin` / `@dps` | by vocation (dps = ms + rp) |
+| `@100-200`, `@500+`, `@250` | by level band |
+| `@Name`, `@First_Last`, `@Fir` | by name (`_` = space; first name or a 3+ letter prefix) |
+
+Replies go back where the command came from (PM → whisper, party → party channel, panel → panel);
+`#w` / `#p` / `#g` override (guild falls back to whisper if the bot is not in your guild).
+
+**Security ladder** — every refusal says why:
+
+| Rung | Who | Verbs |
+|---|---|---|
+| stranger | anyone | `help` `who` `stats` `lfg` `wts` `invite`/`join` `leave` `summon <ek,ed..> [min,max] [teleport]` |
+| party | a member of the bot's party | `follow` `stay` `attack [name\|my target]` `flee` `come` `heal [me\|name]` `hunt` `loot` `status` |
+| leader | the human who leads the bot's party | `kick` |
+| gm | gamemaster account or access group | `cmd <any /cavebot subcommand>` |
+
+A red/black-skulled player is refused everything ("I don't deal with murderers"). Rate limit: 6
+commands per 10 s per player, then one "slow down".
+
+What the orders do (human-led party members only; erased when the bot leaves the party):
+`stay` holds the tile and fights only what it can reach from it; `follow` clears every order;
+`flee` (20 s) / `come` (8 s) drop the target and stick to the leader; `attack` forces a target
+(without a name: your current target; players only if you are fighting them); `hunt` attacks any
+monster within 6 tiles of the leader when the leader has no target; `heal` (druids) casts exura sio
+now and keeps you first in line for 30 s; `loot` is refused by design (bots never loot while a human
+is in their party); `invite` sends you a real party invite the bot then accepts; `summon` is
+`/party`.
+
+Journal: `[BOT_VERB] from=… src=pm|party|opcode verb=… target=… level=… need=… result=… reply=…`
+for every verb, and `[BOT_VERB] apply bot=… mode=… tgt=… leaderDist=…` (≤ 1 per 5 s per bot) when an
+order changes what a bot does.
+
+### OTClient control panel (`otclient/modules/game_botcontrol`) — #26 / #94
+A floating **Bot Control** window (top-menu bot icon, or `Ctrl+Shift+B`): the bots in your party and
+the bots on your screen with level, HP/MP, AI state and current order; buttons Follow, Stay, Attack
+(my target), Flee, Heal me, Hunt, Invite, Kick, Summon; a reply line. "Only the selected bot" sends
+the order to the selected row instead of `@all`.
+
+**Install** (OTClient 4.2 / OTClient Redemption): copy the folder `otclient/modules/game_botcontrol`
+into the client's `mods/` directory (so `mods/game_botcontrol/game_botcontrol.otmod` exists) and
+restart the client. It autoloads; nothing else to configure.
+
+**Protocol** — ExtendedOpcode **120** (`data/scripts/creaturescripts/bot/bot_control_opcode.lua`).
+Client → server is plain text: `list`, or `cmd <verb text>` (exactly what you would type in party
+chat). Server → client is JSON: `{"t":"list","me","inParty","leader","bots":[{name,guid,cid,voc,
+level,hp,mp,state,order,target,party,dist}]}` and `{"t":"res","verb","ok","text","replies":[{bot,ok,
+msg,result}]}`. The server enables extended opcodes at login for every OTClient
+(`ProtocolGame::sendClientLoginPreamble`), so the stock Tibia client never reaches this handler; the
+security ladder is enforced server-side, never by the panel.
+
 ---
 
 ## 13. Configuration (`config.lua`)
@@ -1014,9 +1173,24 @@ See `config.lua.dist` for inline comments and defaults on every key.
 - **Chat console logging:** `botChatVerboseLog = true` logs every chat line.
 - **DB telemetry:** `botTelemetryEnabled` (default **false**) gates best-effort
   writes to `bot_chat_emissions` (offline dup-rate measurement only — never read
-  by runtime logic). Leave off in production.
+  by runtime logic). Leave off in production. It has been off since 2026-06-22
+  (faaf0d585), which is why that table has no newer rows: config, not breakage.
+  Reply acceptance reads the always-on `[CHAT_REPLY]` journal lines instead.
 - **Perf telemetry:** set the environment variable `BOT_PERF_TELEMETRY=1` to log
   dispatcher/jitter timing. Off unless explicitly set.
+- **Walk desync (#144):** when a queued step fails (a creature on the next tile), the server
+  has already popped that direction and only cancels the walk for a real client. A bot has no
+  client, so its awake tick checks whether it stands where its consumed directions lead. If it
+  does not, but it still stands on the planned line, the same walk is queued again (a bump, no
+  search). This happens at most 3 times per blocked tile, so a creature that moves on is walked
+  past. After that, or when the bot is off the line, the rest of the queue is dropped and the
+  state handler re-plans from the real tile. A bot gets at most 2 such re-plans per 2 s window.
+  The window doubles, up to 16 s, while the re-plans keep happening on the same tile. Over that
+  budget, stock behavior applies. The FC
+  machine, an in-flight walk-pause and stock follow are left alone. Every 60 s the journal logs
+  `[WALK_DESYNC] 60s count= replans= bots= retried= cleared= cooldown= dropped= tracked=`. It also logs
+  up to 20 per-event `[WALK_DESYNC] <bot> at=… expected=…` lines per window. Only awake bots
+  are affected, because a hibernated bot has no walk queue.
 
 ---
 
