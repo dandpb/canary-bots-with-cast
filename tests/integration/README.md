@@ -4,9 +4,10 @@
 Builds the `canary_it` GoogleTest executable, exercising real database transactions, account repositories, event callbacks, game mechanics, and `PlayerStorage` persistence.
 
 ## Interface
-- `[CMakeLists.txt]` — Defines the `canary_it` test target and registers integration sources including `database_transaction_it.cpp`, `account/`, `event_callbacks/`, `game/`, and `player_storage/`.
+- `[CMakeLists.txt]` — Defines the `canary_it` test target and registers integration sources including `database_transaction_it.cpp`, `market_refund_it.cpp`, `store_order_it.cpp`, `account/`, `event_callbacks/`, `game/` (`bank_transfer_it.cpp`, `batch_update_it.cpp`, `events_scheduler_it.cpp`, `forge_it.cpp`, `house_auction_it.cpp`, `imbuements_it.cpp`, `money_it.cpp`), `player_storage/`, and `security/` (`rsa_it.cpp`).
 - `[main.cpp]` / `[test_database.hpp]` / `[test_env.hpp]` — Integration test runner entrypoint and test database/environment helpers.
 - `[database_transaction_it.cpp]` — Checks that a failed callback rolls back earlier statements and a second caller waits for the first transaction to finish.
+- `[market_refund_it.cpp]` / `[store_order_it.cpp]` — Verify market refund persistence/rollback and durable store order reservation, claim, finish, and refund reconciliation.
 
 ## Invariants
 - `canary_it` requires `CANARY_BUILD_TESTS=ON` and connects to MariaDB/MySQL at startup, including when running tests that inject a repository.

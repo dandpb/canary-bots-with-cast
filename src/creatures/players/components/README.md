@@ -1,7 +1,7 @@
 # Player Components
 
 ## Overview
-Gathers modular per-player components (`PlayerAchievement`, `PlayerAttachedEffects`, `PlayerBadge`, `PlayerCyclopedia`, `PlayerForgeHistory`, `PlayerStorage`, `PlayerTitle`, `PlayerVIP`, and the `./wheel` subsystem) that decouple specific feature domains from the core `Player` entity, improving maintainability, readability, and testability.
+Gathers modular per-player components (`PlayerAchievement`, `PlayerAttachedEffects`, `PlayerBadge`, `PlayerCyclopedia`, `PlayerForgeHistory`, `PlayerStorage`, `PlayerTitle`, `PlayerVIP`, `WeaponProficiency`, the `./pvp` subsystem, and the `./wheel` subsystem) that decouple specific feature domains from the core `Player` entity, improving maintainability, readability, and testability.
 
 ## Interface
 - `PlayerAchievement`, `Achievement` (`[player_achievement.hpp:PlayerAchievement]`, `[player_achievement.hpp:Achievement]`, `[player_achievement.cpp:PlayerAchievement]`): Manages unlocked player achievements and points (`add`, `remove`, `isUnlocked`, `getPoints`, `addPoints`, `removePoints`, `loadUnlockedAchievements`, `sendUnlockedSecretAchievements`).
@@ -12,6 +12,8 @@ Gathers modular per-player components (`PlayerAchievement`, `PlayerAttachedEffec
 - `PlayerStorage`, `PlayerStorageRow`, `PlayerStorage::PlayerStorageDelta` (`[player_storage.hpp:PlayerStorage]`, `[player_storage.hpp:PlayerStorageRow]`, `[player_storage.hpp:PlayerStorage::PlayerStorageDelta]`, `[player_storage.cpp:PlayerStorage]`): Thread-safe key-value storage manager with dirty/deleted delta and monotonic revision tracking (`revisions`, `m_nextRevision`, `m_dirtyRevisions`) and reserved range expansion (`ingest`, `add`, `remove`, `has`, `get`, `prepareForPersist`, `delta`, `clearDirty`, `acknowledge`, `upsertKey`).
 - `PlayerTitle`, `Title` (`[player_title.hpp:PlayerTitle]`, `[player_title.hpp:Title]`, `[player_title.cpp:PlayerTitle]`): Evaluates, unlocks, and selects character titles (`isTitleUnlocked`, `manage`, `remove`, `getUnlockedTitles`, `getCurrentTitle`, `setCurrentTitle`, `getCurrentTitleName`, `checkAndUpdateNewTitles`, `loadUnlockedTitles`).
 - `PlayerVIP`, `VIPGroup` (`[player_vip.hpp:PlayerVIP]`, `[player_vip.hpp:VIPGroup]`, `[player_vip.cpp:PlayerVIP]`): Manages VIP buddy entries and custom VIP groups (`add`, `addInternal`, `remove`, `edit`, `notifyStatusChange`, `addGroup`, `editGroup`, `removeGroup`, `getMaxEntries`, `getMaxGroupEntries`).
+- `WeaponProficiency` (`[weapon_proficiency.hpp:WeaponProficiency]`, `[weapon_proficiency.cpp:WeaponProficiency]`): Loads JSON proficiency definitions (`loadFromJson`, `getProficiencies`), persists per-weapon experience and selected perks (`load`, `save`, `saveAll`, `applyPerks`, `addExperience`, `setSelectedPerk`), and applies combat/skill/magic bonuses (`addStat`, `getStat`, `addSkillPercentage`, `getSpecializedMagic`).
+- [pvp](./pvp/README.md): Implements Expert PvP and Retro PvP mode normalization, relation classification, combat/field/walkthrough evaluation, and situational marks (`ExpertPvp`, `PlayerPvp`).
 - [wheel](./wheel/README.md): Implements the Wheel of Destiny progression system, gem Atelier, and modifier strategies (`PlayerWheel`, `PlayerWheelGem`, `WheelModifierContext`).
 
 ## Invariants

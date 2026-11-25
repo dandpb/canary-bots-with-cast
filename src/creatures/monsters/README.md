@@ -1,12 +1,16 @@
 # Monsters
 
 ## Overview
-Implements monster instances (`Monster`), monster type definitions and spell deserialization (`MonsterType`, `MonsterSpell`, `Monsters`), and coordinates with monster spawn zones (`spawns`).
+Implements monster instances (`Monster`), monster type definitions and spell deserialization (`MonsterType`, `MonsterSpell`, `Monsters`), off-thread/cancellable monster AI evaluators (`MonsterPathfinder`, `MonsterCombatIntentionEvaluator`, `MonsterTargetRanker`, `MonsterRelevancePolicy`), and coordinates with monster spawn zones (`spawns`).
 
 ## Interface
-- `Monster` (`[monster.hpp:Monster]`): Concrete `Creature` subclass implementing monster AI, targeting (`searchTarget`, `selectTarget`, `updateTargetList`), pathfinding/pushing (`getNextStep`, `pushItem`, `pushItems`, `pushCreature`, `pushCreatures`), combat (`doAttacking`, `blockHit`, `drainHealth`, `changeHealth`), loot generation (`dropLoot`), Hazard system, SoulPit, and Forge (`configureForgeSystem`, `applyStacks`) mechanics.
+- `Monster`, `Monster::TargetReference`, `Monster::PendingMovementAiRefresh` (`[monster.hpp:Monster]`): Concrete `Creature` subclass implementing monster AI, targeting (`searchTarget`, `selectTarget`, `updateTargetList`), pathfinding/pushing (`getNextStep`, `pushItem`, `pushItems`, `pushCreature`, `pushCreatures`), combat (`doAttacking`, `blockHit`, `drainHealth`, `changeHealth`), loot generation (`dropLoot`), Hazard system, SoulPit, and Forge (`configureForgeSystem`, `applyStacks`) mechanics.
 - `MonsterType`, `MonsterSpell`, `Loot`, `spellBlock_t` (`[monsters.hpp:MonsterType]`, `[monsters.hpp:MonsterSpell]`, `[monsters.hpp:Loot]`, `[monsters.hpp:spellBlock_t]`): Defines static monster properties, immunities, bestiary/bosstiary metadata, loot tables (`loadLoot`), and day/night spawn checks (`canSpawn`).
 - `Monsters` (`[monsters.hpp:Monsters]`, `[monsters.hpp:g_monsters]`): Singleton registry of `MonsterType` definitions (`getMonsterType`, `getMonsterTypeByRaceId`, `tryAddMonsterType`, `deserializeSpell`, `getMonstersByRace`, `getMonstersByBestiaryStars`, `clear`).
+- `MonsterPathfinder`, `MonsterPathTraits`, `MonsterPathRequest`, `MonsterPathStatus`, `MonsterPathResult` (`[monster_pathfinding.hpp:MonsterPathfinder]`, `[monster_pathfinding.cpp:MonsterPathfinder::find]`): Snapshot-backed, `std::stop_token`-cancellable A* pathfinder operating over `NavRegionSnapshot`.
+- `MonsterCombatIntentionEvaluator`, `MonsterCombatSpellGeometry`, `MonsterCombatIntentionRequest`, `MonsterCombatIntentionResult` (`[monster_combat_intention.hpp:MonsterCombatIntentionEvaluator]`, `[monster_combat_intention.cpp:MonsterCombatIntentionEvaluator::evaluate]`): Evaluates geometrically eligible spell indices from immutable position/spell inputs.
+- `MonsterTargetRanker`, `MonsterTargetRankMode`, `MonsterTargetCandidate`, `MonsterTargetRankingRequest`, `MonsterTargetRankingResult` (`[monster_targeting.hpp:MonsterTargetRanker]`, `[monster_targeting.cpp:MonsterTargetRanker::rank]`): Ranks target candidates by `Nearest`, `Health`, or `Damage` with `std::stop_token` cancellation support.
+- `MonsterRelevancePolicy`, `MonsterRelevanceTier`, `MonsterRelevanceSnapshot`, `MonsterRelevanceState` (`[monster_relevance.hpp:MonsterRelevancePolicy]`, `[monster_relevance.cpp:MonsterRelevancePolicy::update]`): Classifies monsters into `Visible` or `Background` relevance tiers with hold hysteresis (`visibleHold`).
 - [spawns](./spawns/README.md): Monster spawn zone definitions and respawn scheduling (`SpawnMonster`, `SpawnsMonster`).
 
 ## Invariants

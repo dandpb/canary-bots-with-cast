@@ -6,6 +6,8 @@ Package implementation for `data/libs/gamestore`, providing component logic and 
 ## Interface
 - `helpers.convertType` (`[helpers.lua:helpers.convertType]`)
 - `helpers.useOfferConfigure` (`[helpers.lua:helpers.useOfferConfigure]`)
+- `orders.withPaidOrder` (`[orders.lua:orders.withPaidOrder]`): Reserves, claims, delivers, finishes, and records history for paid GameStore orders with pending-reconciliation safety.
+- `taskboard.isWeeklyExpansionUnlocked`, `taskboard.unlockWeeklyExpansion` (`[taskboard.lua:taskboard.isWeeklyExpansionUnlocked]`, `[taskboard.lua:taskboard.unlockWeeklyExpansion]`): Bridges GameStore offers to `_G.Taskboard.expansion`.
 
 ## Invariants
 

@@ -5,9 +5,9 @@ Root global datapack (`data-otservbr-global`) containing libraries, database mig
 
 ## Subdirectories & Boundaries
 - [lib](./lib/README.md) - Provides 1 direct files (`lib.lua`..`lib.lua`) and 5 subdirectories under `lib`.
-- [migrations](./migrations/README.md) - Component package under `migrations` containing 57 files (`1.lua`..`9.lua`).
+- [migrations](./migrations/README.md) - Component package under `migrations` containing 61 files (`1.lua`..`9.lua`, up to `64.lua`).
 - [monster](./monster/README.md) - Intermediate blueprint grouping 30 subdirectories under `monster`.
-- [npc](./npc/README.md) - Provides 1027 direct files (`....lua`..`zurak_arena.lua`) and 1 subdirectories under `npc`.
+- [npc](./npc/README.md) - Provides 1036 direct files (`....lua`..`zurak_arena.lua`) and 0 subdirectories under `npc`.
 - [raids](./raids/README.md) - Provides 1 direct files (`raids.xml`..`raids.xml`) and 17 subdirectories under `raids`.
 - [scripts](./scripts/README.md) - Intermediate blueprint grouping 14 subdirectories under `scripts`.
 - [startup](./startup/README.md) - Provides 1 direct files (`startup.lua`..`startup.lua`) and 2 subdirectories under `startup`.
@@ -15,11 +15,11 @@ Root global datapack (`data-otservbr-global`) containing libraries, database mig
 ## Interface
 - `dofile(DATA_DIRECTORY .. "/lib/core/load.lua")` module loader [lib.lua:dofile]
 - `dofile(DATA_DIRECTORY .. "/lib/others/load.lua")` module loader [lib.lua:dofile]
-- Defines 57 script/configuration files (`1.lua` through `9.lua`) [1.lua]
+- Defines 61 script/configuration files (`1.lua` through `9.lua`, up to `64.lua`) [1.lua]
 - `onUpdateDatabase()` [1.lua:onUpdateDatabase]
 - `Game.createMonsterType("Azure Frog")` and `mType:register(monster)` [azure_frog.lua:Game.createMonsterType]
 - `Game.createMonsterType("Bog Frog")` and `mType:register(monster)` [bog_frog.lua:Game.createMonsterType]
-- Defines 1027 script/configuration files (`....lua` through `zurak_arena.lua`) [....lua]
+- Defines 1036 script/configuration files (`....lua` through `zurak_arena.lua`) [....lua]
 - `Game.createNpcType("...")` and `npcType:register(npcConfig)` [....lua:Game.createNpcType]
 - `<raid name="Badger" file="abdendriel/badger.xml">` entry [raids.xml:raid]
 - `<raid name="WarWolf" file="abdendriel/warwolf.xml">` entry [raids.xml:raid]
@@ -28,9 +28,9 @@ Root global datapack (`data-otservbr-global`) containing libraries, database mig
 - `dofile(DATA_DIRECTORY .. "/startup/tables/load.lua")` module loader [startup.lua:dofile]
 - `dofile(DATA_DIRECTORY .. "/startup/others/load.lua")` module loader [startup.lua:dofile]
 - [lib](./lib/README.md) - Provides 1 direct files (`lib.lua`..`lib.lua`) and 5 subdirectories under `lib`.
-- [migrations](./migrations/README.md) - Component package under `migrations` containing 57 files (`1.lua`..`9.lua`).
+- [migrations](./migrations/README.md) - Component package under `migrations` containing 61 files (`1.lua`..`9.lua`, up to `64.lua`).
 - [monster](./monster/README.md) - Intermediate blueprint grouping 30 subdirectories under `monster`.
-- [npc](./npc/README.md) - Provides 1027 direct files (`....lua`..`zurak_arena.lua`) and 1 subdirectories under `npc`.
+- [npc](./npc/README.md) - Provides 1036 direct files (`....lua`..`zurak_arena.lua`) and 0 subdirectories under `npc`.
 - [raids](./raids/README.md) - Provides 1 direct files (`raids.xml`..`raids.xml`) and 17 subdirectories under `raids`.
 - [scripts](./scripts/README.md) - Intermediate blueprint grouping 14 subdirectories under `scripts`.
 - [startup](./startup/README.md) - Provides 1 direct files (`startup.lua`..`startup.lua`) and 2 subdirectories under `startup`.

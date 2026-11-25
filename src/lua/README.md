@@ -14,6 +14,7 @@ Package implementation for `src/lua`, providing component logic and data interfa
 - `ErrorCode_t` (`[lua_definitions.hpp:ErrorCode_t]`)
 - Subdirectory [`./callbacks/README.md`](./callbacks/README.md) - Sub-package for callbacks
 - Subdirectory [`./creature/README.md`](./creature/README.md) - Sub-package for creature
+- Subdirectory [`./docgen/README.md`](./docgen/README.md) - Sub-package for Lua API documentation generation (`LuaApiDocGenerator`, `LuaBindingScanner`)
 - Subdirectory [`./functions/README.md`](./functions/README.md) - Sub-package for functions
 - Subdirectory [`./global/README.md`](./global/README.md) - Sub-package for global
 - Subdirectory [`./modules/README.md`](./modules/README.md) - Sub-package for modules

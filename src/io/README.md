@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `src/io` component implements Canary's binary file loaders (`OTB::Loader`, `FileStream`, `PropStream`, `PropWriteStream`), OTBM map and house persistence (`IOMap`, `IOMapSerialize`), player authentication and checkpoint/transactional persistence (`IOLoginData`), and subsystem data managers (`IOBestiary`, `IOBosstiary`, `IOGuild`, `IOMarket`, `IOPrey`, `IOWheel`, `IPlayerStorageRepository`).
+The `src/io` component implements Canary's binary file loaders (`OTB::Loader`, `FileStream`, `PropStream`, `PropWriteStream`), OTBM map and house persistence (`IOMap`, `IOMapSerialize`), player authentication and checkpoint/transactional persistence (`IOLoginData`), and subsystem data managers (`IOBestiary`, `IOBosstiary`, `IOGuild`, `IOMarket`, `IOPrey`, `IOStoreOrders`, `IOWheel`, `IPlayerStorageRepository`).
 
 ## Interface
 
@@ -11,12 +11,13 @@ The `src/io` component implements Canary's binary file loaders (`OTB::Loader`, `
 - `[io_definitions.hpp:FILELOADER_ERRORS]` / `[io_definitions.hpp:OTBM_AttrTypes_t]` / `[io_definitions.hpp:OTBM_NodeTypes_t]` / `[io_definitions.hpp:OTBM_TileFlag_t]` / `[io_definitions.hpp:MarketStatistics]` — Shared OTBM format enums and market statistics struct.
 - `[iomap.hpp:IOMap]` / `[iomap.hpp:IOMapException]` — OTBM map loader (`loadMap`) and XML loader helpers for monsters, zones, NPCs, and houses (`loadMonsters`, `loadZones`, `loadNpcs`, `loadHouses` and `*Custom` variants).
 - `[iomapserialize.hpp:IOMapSerialize]` — House item and metadata persistence (`loadHouseItems`, `saveHouseItems`, `loadHouseInfo`, `saveHouseInfo`).
-- `[iologindata.hpp:IOLoginData]` / `[iologindata.hpp:PlayerSaveSnapshot]` — Player authentication (`gameWorldAuthentication`), synchronous load/save (`loadPlayerById`, `loadPlayerByName`, `loadPlayer`, `savePlayer`), split dispatcher-capture / SQL-worker persistence (`capturePlayerSave`, `persistPlayerSave`, `acknowledgePlayerSave`), and VIP/bank helpers.
+- `[iologindata.hpp:IOLoginData]` / `[iologindata.hpp:PlayerSaveSnapshot]` — Player authentication (`gameWorldAuthentication`), synchronous load/save (`loadPlayerById`, `loadPlayerByName`, `loadPlayer`, `savePlayer`), split dispatcher-capture / SQL-worker persistence (`capturePlayerSave`, `persistPlayerSave`, `acknowledgePlayerSave`), and VIP/bank helpers (`increaseBankBalance`).
 - `[iobestiary.hpp:IOBestiary]` / `[iobestiary.hpp:Charm]` / `[iobestiary.hpp:g_iobestiary]` — Bestiary kill tracking, charm rune unlocking/assignment, and charm combat parsing (`SoftSingleton` tracked).
 - `[io_bosstiary.hpp:IOBosstiary]` / `[io_bosstiary.hpp:g_ioBosstiary]` — Bosstiary kill tracking, loot bonus calculations, and daily boosted boss selection (`loadBoostedBoss`).
 - `[ioguild.hpp:IOGuild]` — Guild persistence and war list queries (`loadGuild`, `bool saveGuild`, `getGuildIdByName`, `getWarList`).
 - `[iomarket.hpp:IOMarket]` — Market offer CRUD, fee calculation (`feeFor`), transactional fill locking & reconciliation (`lockFillOffer`, `writeFill`, `fillCommitted`, `playerHasPendingFill`, `setPlayerFillPending`), expired offer processing (`checkExpiredOffers`, `processExpiredOffers`), and mutex-protected price statistics (`updateStatistics`, `getStatistics`).
 - `[ioprey.hpp:IOPrey]` / `[ioprey.hpp:PreySlot]` / `[ioprey.hpp:TaskHuntingSlot]` / `[ioprey.hpp:TaskHuntingOption]` / `[ioprey.hpp:g_ioprey]` — Prey and Task Hunting slot state machines, rerolls, and reward options.
+- `[iostoreorders.hpp:IOStoreOrders]` / `[iostoreorders.hpp:IOStoreOrders::Order]` / `[iostoreorders.hpp:IOStoreOrders::Reservation]` / `[iostoreorders.cpp:IOStoreOrders::reserve]` — Store order reservation and lifecycle persistence (`reserve`, `get`, `claim`, `finish`, `resolve`).
 - `[io_wheel.hpp:IOWheel]` / `[io_wheel.hpp:IOWheelBonusData]` — Wheel of Destiny global spell/slot bonus initialization and per-slot vocation bonus functions.
 - `[player_storage_repository.hpp:IPlayerStorageRepository]` / `[player_storage_repository_db.hpp:DbPlayerStorageRepository]` / `[player_storage_repository.hpp:g_playerStorageRepository]` — Player key-value storage repository interface and SQL implementation (`load`, `deleteKeys`, `upsert`).
 - [functions](./functions/README.md): Granular player load (`IOLoginDataLoad`), save (`IOLoginDataSave`), and online-time (`player_persistence::onlineSeconds`) implementation helpers.

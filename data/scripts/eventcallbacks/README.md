@@ -2,6 +2,12 @@
 
 The `EventCallback` system is a way to dynamically bind C++ functions to be triggered by specific events within the game. It's an elegant and flexible way to add custom behavior to various parts of your application.
 
+## Subdirectories & Boundaries
+- `creature`: [`./creature/README.md`](./creature/README.md) - Creature-level event callbacks (`on_area_combat.lua`, `on_combat_taskboard.lua`).
+- `monster`: [`./monster/README.md`](./monster/README.md) - Monster-level event callbacks (`on_drop_loot.lua`, `post_drop_loot.lua`).
+- `party`: [`./party/README.md`](./party/README.md) - Party-level event callbacks (`on_share_experience.lua`).
+- `player`: [`./player/README.md`](./player/README.md) - Player-level event callbacks (`on_look.lua`, `on_kill_taskboard.lua`, `on_login_complete_taskboard.lua`, etc.).
+
 ## Event Callback Types
 
 Event callbacks are available for several categories of game entities, such as `Creature`, `Player`, `Party`, and `Monster`.

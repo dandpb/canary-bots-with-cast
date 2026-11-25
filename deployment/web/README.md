@@ -37,6 +37,7 @@ Provides the Apache/PHP 8.3 MyAAC container image, cast-aware `login.php` HTTP l
 - `[login.php:$action]` — HTTP JSON login endpoint handling `cacheinfo` (including `discord_online` and `playersonline`), `login` (including `@cast` / `@livestream` broadcaster list lookup), and rate-limited password authentication.
 - `[Dockerfile:FROM]` / `[compose.example.yml:services]` — PHP 8.3 Apache container definition with MySQL, GD/image, ZIP, and intl extensions.
 - Subdirectories:
+  - `plugins`: [`./plugins/README.md`](./plugins/README.md) — MyAAC web plugins index.
   - `plugins/worldmap`: [`./plugins/worldmap/README.md`](./plugins/worldmap/README.md) — MyAAC Community World Map plugin.
   - `voxel-explorer`: [`./voxel-explorer/README.md`](./voxel-explorer/README.md) — Interactive 3D/Canvas2D Thais Voxel Explorer app.
 

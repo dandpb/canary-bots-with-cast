@@ -11,7 +11,7 @@ Intermediate blueprint grouping 18 subdirectories under `scripts/actions`.
 - [farmine](./farmine/README.md) - Component package under `scripts/actions/farmine` containing 1 files (`temple_of_equilibrium_vines.lua`..`temple_of_equilibrium_vines.lua`).
 - [kazordoon](./kazordoon/README.md) - Component package under `scripts/actions/kazordoon` containing 4 files (`elevator_lever.lua`..`trap_door.lua`).
 - [mounts](./mounts/README.md) - Component package under `scripts/actions/mounts` containing 1 files (`mounts.lua`..`mounts.lua`).
-- [object](./object/README.md) - Component package under `scripts/actions/object` containing 7 files (`dancingfairy.lua`..`wz789_entrance.lua`).
+- [object](./object/README.md) - Component package under `scripts/actions/object` containing 11 files (`dancingfairy.lua`..`wz789_entrance.lua`).
 - [oramond](./oramond/README.md) - Component package under `scripts/actions/oramond` containing 5 files (`elevator.lua`..`teleport_west.lua`).
 - [other](./other/README.md) - Provides 29 direct files (`baking.lua`..`world_board.lua`) and 1 subdirectories under `scripts/actions/other`.
 - [rookgaard](./rookgaard/README.md) - Provides 4 direct files (`chest.lua`..`sewer_lever.lua`) and 2 subdirectories under `scripts/actions/rookgaard`.
@@ -56,7 +56,7 @@ Intermediate blueprint grouping 18 subdirectories under `scripts/actions`.
 - [farmine](./farmine/README.md) - Component package under `scripts/actions/farmine` containing 1 files (`temple_of_equilibrium_vines.lua`..`temple_of_equilibrium_vines.lua`).
 - [kazordoon](./kazordoon/README.md) - Component package under `scripts/actions/kazordoon` containing 4 files (`elevator_lever.lua`..`trap_door.lua`).
 - [mounts](./mounts/README.md) - Component package under `scripts/actions/mounts` containing 1 files (`mounts.lua`..`mounts.lua`).
-- [object](./object/README.md) - Component package under `scripts/actions/object` containing 7 files (`dancingfairy.lua`..`wz789_entrance.lua`).
+- [object](./object/README.md) - Component package under `scripts/actions/object` containing 11 files (`dancingfairy.lua`..`wz789_entrance.lua`).
 - [oramond](./oramond/README.md) - Component package under `scripts/actions/oramond` containing 5 files (`elevator.lua`..`teleport_west.lua`).
 - [other](./other/README.md) - Provides 29 direct files (`baking.lua`..`world_board.lua`) and 1 subdirectories under `scripts/actions/other`.
 - [rookgaard](./rookgaard/README.md) - Provides 4 direct files (`chest.lua`..`sewer_lever.lua`) and 2 subdirectories under `scripts/actions/rookgaard`.

@@ -5,6 +5,8 @@ Package implementation for `data/scripts/eventcallbacks/player`, providing compo
 
 ## Interface
 - `callback.playerOnBrowseField` (`[on_browse_field.lua:callback.playerOnBrowseField]`)
+- `callback.playerOnKill` (`[on_kill_taskboard.lua:callback.playerOnKill]`): Forwards eligible non-bot, non-reward-boss, bestiary-raced monster kills to `Taskboard`.
+- `callback.playerOnLoginComplete` (`[on_login_complete_taskboard.lua:callback.playerOnLoginComplete]`): Pushes initial `Taskboard` bounty and weekly windows on login for supported, eligible players.
 - `callback.playerOnLook` (`[on_look.lua:callback.playerOnLook]`)
 - `battleListCallback.playerOnLookInBattleList` (`[on_look.lua:battleListCallback.playerOnLookInBattleList]`)
 - `callback.playerOnLookInShop` (`[on_look_in_shop.lua:callback.playerOnLookInShop]`)

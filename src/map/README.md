@@ -14,6 +14,8 @@ Package implementation for `src/map`, providing component logic and data interfa
 - `Tile` (`[map.hpp:Tile]`)
 - `Map` (`[map.hpp:Map]`, `[map.hpp:Map::save]`, `[map.hpp:Map::saveOnce]`)
 - `FindPathParams` (`[map.hpp:FindPathParams]`)
+- `MapDownload::CanaryReleaseTagDiff`, `extractMapDownloadUrl`, `extractCanaryReleaseTag`, `compareCanaryReleaseTags`, `warnIfOutdatedMapDownloadUrl` (`[map_download.hpp:MapDownload::warnIfOutdatedMapDownloadUrl]`, `[map_download.cpp]`): Parses `config.lua` map download URLs and warns when the configured release tag lags behind the current release tag.
+- `NavCellFlag`, `NavCell`, `NavSectorSnapshot`, `NavRegionSnapshot` (`[navigation_snapshot.hpp:NavRegionSnapshot]`, `[navigation_snapshot.cpp]`): Immutable, revision-stamped sector and region snapshots consumed by off-thread monster pathfinding.
 - Subdirectory [`./house/README.md`](./house/README.md) - Sub-package for house
 - Subdirectory [`./utils/README.md`](./utils/README.md) - Sub-package for utils
 

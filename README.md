@@ -68,7 +68,7 @@ character (including bots) without an account.
 - Bots idle at **reward and imbuing shrines**, including shrines standing inside houses.
 
 **Engine & operations**
-- The bot engine is a **modular C++ shared library** — ~53k lines across **21 translation units** (tick, combat, party, hunt, nav, zgraph, waypoint, travel, poi, roam, supply, house, shrine, chat, liveness, debug, command, data, csv, lifecycle) compiled into one `libbot_engine.so`.
+- The bot engine is a **modular C++ shared library** — 27 engine translation units (`bot_engine.cpp`, `bot_tick.cpp`, `bot_combat.cpp`, `bot_debug.cpp`, `bot_data.cpp`, `bot_nav.cpp`, `bot_poi.cpp`, `bot_waypoint.cpp`, `bot_hunt.cpp`, `bot_travel.cpp`, `bot_party.cpp`, `bot_chat.cpp`, `bot_brain.cpp`, `bot_liveness.cpp`, `bot_command.cpp`, `bot_zgraph.cpp`, `bot_supply.cpp`, `bot_house.cpp`, `bot_shrine.cpp`, `bot_roam.cpp`, `bot_csv.cpp`, `bot_csvedit.cpp`, `bot_spar.cpp`, `bot_recovery.cpp`, `bot_realism.cpp`, `bot_learning.cpp`, `bot_verb.cpp`) compiled into `libbot_engine.so` (paired with 3 host-side TUs in the main binary: `bot_engine_loader.cpp`, `bot_audit_sink.cpp`, `bot_host.cpp`).
 - **Hot-reload**: `/cavebot reload` swaps the engine and re-reads all authored data with no server restart.
 - Authored bot data is **CSV in git** (`data/bot/authored/`) — no database round-trip to add a hunt.
 - Deep `/cavebot` command surface, debug mode with a live ASCII heartbeat grid, and a perf-gate harness.
@@ -595,30 +595,32 @@ Canary Bots with Cast is a multi-subsystem MMORPG server emulator that pairs the
 ## Local Interface & Invariants
 - `[CMakeLists.txt:project(canary)]` CMake project `canary` (or `canary-debug` when `CMAKE_BUILD_TYPE STREQUAL "Debug"`) requiring CMake >= 3.22; adds subdirectories `src` and `tests`.
 - `[CMakeLists.txt:OPTIONS_ENABLE_CCACHE]`, `[CMakeLists.txt:OPTIONS_ENABLE_SCCACHE]`, `[CMakeLists.txt:OPTIONS_ENABLE_IPO]`, `[CMakeLists.txt:CANARY_TARGET_ARCH]` (default `"native"`, consumed by `cmake/modules/CanaryLib.cmake` via `-march=${CANARY_TARGET_ARCH}`), `[CMakeLists.txt:FEATURE_METRICS]`, `[CMakeLists.txt:CANARY_BUILD_SERVER]`, `[CMakeLists.txt:CANARY_BUILD_TESTS]`.
-- `[vcpkg.json:name]` vcpkg manifest declaring dependencies (abseil, argon2, asio, bext-di, bext-ut, curl, eventpp, gtest, libmariadb, luajit, magic-enum, mio, parallel-hashmap, protobuf, pugixml, spdlog, zlib, bshoshany-thread-pool, atomic-queue, nlohmann-json, openssl).
+- `[vcpkg.json:name]` vcpkg manifest declaring dependencies (`abseil`, `argon2`, `asio`, `bext-di`, `curl`, `eventpp`, `libmariadb`, `luajit`, `magic-enum`, `mio`, `parallel-hashmap`, `protobuf`, `pugixml`, `spdlog`, `zlib`, `bshoshany-thread-pool`, `atomic-queue`, `nlohmann-json`, `mbedtls`, plus optional `tests` (`gtest`) and `metrics` (`opentelemetry-cpp`) features).
 - `[recompile.sh:main]` Build script entry point accepting positional args `VCPKG_PATH` ($1) and `BUILD_TYPE` ($2).
 - `[start.sh:BIN_PATH]` Server runner script accepting optional binary path ($1, default `./canary`).
 - `[start_gdb.sh:gdb]` GDB server runner loop invoking `./canary` with `--batch -return-child-result --command=gdb_debug`.
 - `[schema.sql:server_config]`, `[schema.sql:accounts]`, `[schema.sql:players]`, `[schema.sql:guilds]`, `[schema.sql:houses]`, `[schema.sql:market_offers]`, `[schema.sql:kv_store]`, `[schema.sql:cast_broadcasters]`.
-- `[config.lua.dist:botPlayersOnline]` Configuration globals (241 `bot*` keys plus trailing Solo Casual preset overrides) for bot population, Table A/B/C odds, navigation jitter, roaming, market acceptance, and combat.
+- `[config.lua.dist:botPlayersOnline]` Configuration globals (274 unique `bot*` keys plus trailing Solo Casual preset overrides) for bot population, Table A/B/C odds, navigation jitter, roaming, market acceptance, audit, sparring, realism, learning, and combat.
 
 ## Subdirectories & System Boundaries
-- `cmake`: [`./cmake/modules/README.md`](./cmake/modules/README.md) - CMake build configuration modules including `CanaryLib.cmake` (`CANARY_TARGET_ARCH`) and dependency finders.
+- `cmake`: [`./cmake/README.md`](./cmake/README.md) - CMake build scripts, ABI tag/symbol checks, triplets, and configuration modules (`./cmake/modules/README.md`).
 - `src`: [`./src/README.md`](./src/README.md) - Core C++ game server implementation and hot-reloadable `libbot_engine.so` AI engine.
 - `data`: [`./data/README.md`](./data/README.md) - Datapack scripts, experience stages, bot system orchestration, chat channels, and global event handlers.
-- `data-canary`: [`./data-canary/README.md`](./data-canary/README.md) - Canary core script datapack (actions, movements, creaturescripts, spells).
+- `data-canary`: [`./data-canary/README.md`](./data-canary/README.md) - Canary core script datapack (actions, movements, creaturescripts, spells, migrations).
 - `data-otservbr-global`: [`./data-otservbr-global/README.md`](./data-otservbr-global/README.md) - Global datapack including monsters, NPCs, raids, quests, world changes, and startup map tables.
 - `database`: [`./database/README.md`](./database/README.md) - Database schema migrations, table definitions, and initial bot population seeding.
-- `deployment`: [`./deployment/README.md`](./deployment/README.md) - Deployment infrastructure, web cast login, Thais Voxel Explorer, browser websocket client, core-QA/B1 fixtures, WSL stack, and AI brain companions.
-- `docker`: [`./docker/README.md`](./docker/README.md) - Docker container orchestration, generic/ARM64 Dockerfiles, environment configs, and runtime health checks.
-- `docs`: [`./docs/README.md`](./docs/README.md) - Architecture documents, design specifications, and maintenance scripts.
+- `deployment`: [`./deployment/README.md`](./deployment/README.md) - Deployment infrastructure, web cast login, Thais Voxel Explorer, browser websocket client, core-QA/B1 fixtures, WSL stack, Windows status tools, and AI brain companions.
+- `docker`: [`./docker/README.md`](./docker/README.md) - Docker container orchestration, generic/ARM64 Dockerfiles, quickstart launchers/MyAAC, environment configs, and runtime health checks.
+- `docs`: [`./docs/README.md`](./docs/README.md) - Architecture documents, system contracts, design specifications, and maintenance scripts.
+- `metrics`: [`./metrics/README.md`](./metrics/README.md) - Prometheus and Grafana observability dashboards and OpenTelemetry metrics setup.
+- `otclient`: [`./otclient/README.md`](./otclient/README.md) - Shipped OTClient modules (`game_botcontrol`) for player-facing bot control.
 - `tests`: [`./tests/README.md`](./tests/README.md) - C++ GoogleTest unit and integration suites, Lua regression tests, and isolated QA fixtures.
-- `tools`: [`./tools/README.md`](./tools/README.md) - Bot CSV authoring tools, population generators, cavebot importer, and test harnesses.
+- `tools`: [`./tools/README.md`](./tools/README.md) - Bot CSV authoring tools, population generators, cavebot importer, content reference auditor, and test harnesses.
 
 ## Global Invariants
 - `[CMakeLists.txt:cmake_minimum_required]` CMake version must be >= 3.22 (`FATAL_ERROR`).
 - `[CMakeLists.txt:CMAKE_CXX_FLAGS]` On non-MSVC x86_64/AMD64 builds, `-march=x86-64 -mtune=generic -mno-avx -mno-sse4` is enforced to disable AVX/SSE4 for commodity CPU compatibility.
-- `[schema.sql:server_config]` Initial database schema version is seeded as `('db_version', '56')`.
+- `[schema.sql:server_config]` Initial database schema version is seeded as `('db_version', '59')`.
 - `[config.lua.dist:botActivityDwell]` Table A percentages (`botActivityDwell` + `botActivityPoi` + `botActivityHunt` + `botActivityParty` + `botActivityTravel`) must sum to 100.
 - `[config.lua.dist:botPoiDepot]` Table B percentages (`botPoiDepot`..`botPoiImbuingShrine`) must sum to 100.
 - `[config.lua.dist:botHouseIdle]` Table C percentages (`botHouseIdle`..`botHouseShrine`) must sum to 100.
@@ -628,7 +630,7 @@ Canary Bots with Cast is a multi-subsystem MMORPG server emulator that pairs the
 ## Global Side Effects
 - `[recompile.sh:build_canary]` Runs the CMake configure and build. The Linux release commands above set `TOGGLE_BIN_FOLDER=ON` to place `canary` and `libbot_engine.so` under `build/linux-release/bin/`.
 - `[start.sh:logs]` Runs `$BIN_PATH` in an infinite restart loop, logging timestamped stdout/stderr to `logs/`.
-- `[schema.sql:players]` Creates 42 database tables and triggers, cascading player and account state mutations.
+- `[schema.sql:players]` Creates 50 database tables and triggers, cascading player and account state mutations.
 - `[src/creatures/players/bot]` Ticks active bots every 100 ms, generating real in-game creature movements, attacks, chat messages, and market transactions.
 
 ## System Verification

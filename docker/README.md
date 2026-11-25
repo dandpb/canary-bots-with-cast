@@ -1,16 +1,18 @@
 # Docker Configuration & Container Definitions (`docker`)
 
 ## Overview
-Contains Dockerfiles (`Dockerfile.x86`, `Dockerfile.arm`, `Dockerfile.dev`), `docker-compose.yml`, the Lua configuration mutator script (`config.sh`), and container startup/seed scripts (`./data`).
+Contains Dockerfiles (`Dockerfile.x86`, `Dockerfile.arm`, `Dockerfile.dev`), `docker-compose.yml`, quickstart launcher scripts (`up.sh`, `up.ps1`), the Lua configuration mutator script (`config.sh`), quickstart MyAAC image (`./quickstart/myaac`), and container startup/seed scripts (`./data`).
 
 ## Interface
 - `[Dockerfile.x86:build]` / `[Dockerfile.arm:build]` / `[Dockerfile.dev:build]` / `[docker-compose.yml:services]` — Multi-stage container builds packaging `/canary/canary`, `/canary/libbot_engine.so`, and `/canary/database/bots` alongside datapacks and `schema.sql`.
+- `[up.sh]` / `[up.ps1]` — POSIX shell and PowerShell quickstart launchers that verify Docker/Compose, initialize `docker/.env` from `.env.dist`, and start the Compose quickstart stack (supporting `--NoBuild`/`NO_BUILD`, `--SkipCleanup`/`SKIP_CLEANUP`, and `--Lan`/`LAN`).
 - `[config.sh:substitute_lua_variable]` — `substitute_lua_variable(variable_name, new_value)` rewrites `variable_name = ...` assignments in `$lua_file` (preserving unquoted booleans/integers and quoting strings).
 - `[config.sh:get_named_arg]` — `get_named_arg(arg_name, "$@")` extracts `--file` (default `"config.lua"`) and `--env` (default `".env"`) CLI arguments.
 - `[config.sh:verify_file]` — `verify_file(path, label)` verifies that the target `.env` and `.lua` files exist before processing.
 - Environment key mappings (`[config.sh:59]`): maps `MYSQL_HOST` -> `mysqlHost`, `MYSQL_DBNAME` -> `mysqlDatabase`, `MYSQL_USER` -> `mysqlUser`, `MYSQL_PASS` -> `mysqlPass`, `SERVER_NAME` -> `serverName`, `SERVER_IP` -> `ip`, `SERVER_PORT` -> `gameProtocolPort`, and passes through any other non-comment key in `$env_file` or positional key/value pairs (`[config.sh:89]`).
 - Subdirectories:
   - `data`: [`./data/README.md`](./data/README.md) — Container startup entrypoint (`start.sh`) and test account/player SQL seeds.
+  - `quickstart/myaac`: [`./quickstart/myaac/README.md`](./quickstart/myaac/README.md) — Quickstart MyAAC 2.x website/admin container build and bootstrap scripts.
 - Additional documentation: [`./DOCKER.md`](./DOCKER.md).
 
 ## Invariants

@@ -8,7 +8,7 @@ Implements [issue #1](https://github.com/dandpb/canary-bots-with-cast/issues/1) 
 
 The C++ engine owns gameplay and projects live observations. The default direct OpenAI configuration calls GPT-6 Luna: Decisions selects an offered action; Responses interprets Portuguese requests and proposes objectives. The optional `provider: "litellm"` configuration uses explicit gateway routes (`gateway` and optional split `responses_gateway`, with `decision_api: "decisions" | "responses"` and `reasoning: true | false`), supporting OpenAI, Gemini, and Gemini Decision 1 via the [gateway profiles](gateway/README.md). Neither path receives administrative commands or database credentials. Movement, attacks, cooldowns and emergency healing remain local.
 
-Subpackages: [`src/canary_brain/README.md`](src/canary_brain/README.md) (Python worker, replay/visual-replay CLI, supervision & reward-aware hiatus), [`gateway/README.md`](gateway/README.md) (LiteLLM & Gemini Decisions Docker/config templates), and [`tools/README.md`](tools/README.md) (M5 qualification, smoke runners, and Jev experiments).
+Subpackages: [`src/README.md`](src/README.md) / [`src/canary_brain/README.md`](src/canary_brain/README.md) (Python worker, replay/visual-replay CLI, supervision & reward-aware hiatus), [`gateway/README.md`](gateway/README.md) (LiteLLM & Gemini Decisions Docker/config templates), [`tools/README.md`](tools/README.md) (M5 qualification, smoke runners, and Jev experiments), and [`evidence/README.md`](evidence/README.md) (archived M5 and qualification evidence runs).
 
 ## Playing
 

@@ -14,6 +14,9 @@ Package implementation for `data/scripts/lib`, providing component logic and dat
 - `BotHouseClaim.restore` (`[bot_house_claim.lua:BotHouseClaim.restore]`)
 - `BotHuntData.loadAll` (`[bot_hunting_data.lua:BotHuntData.loadAll]`)
 - `BotHuntData._loadScripts` (`[bot_hunting_data.lua:BotHuntData._loadScripts]`)
+- `BotDeathDrop` (`[bot_death_drop.lua:BotDeathDrop]`): Level-gated loot table for bots killed by real players (invoked from `bot_death.lua`, dropping nothing in PvP zones or on non-player kills).
+- `BotStorages` (`[bot_storages.lua:BotStorages]`): Lazy CSV loader (`data/bot/authored/bot_storages.csv`) unlocking level- and vocation-gated quest/access storages for loaded bots.
+- `createProficiencyCatalyst(itemId, experience)` (`[proficiency_helper.lua:createProficiencyCatalyst]`): Shared `Action` factory registering weapon proficiency catalyst items.
 
 ## Invariants
 - None

@@ -1,10 +1,10 @@
 # Migrations
 
 ## Overview
-Component package under `migrations` containing 57 files (`1.lua`..`9.lua`).
+Component package under `migrations` containing 61 files (`1.lua`..`9.lua`, up to `64.lua`).
 
 ## Interface
-- Defines 57 script/configuration files (`1.lua` through `9.lua`) [1.lua]
+- Defines 61 script/configuration files (`1.lua` through `9.lua`, including `56.lua`–`61.lua`, `63.lua`, `64.lua`) [1.lua]
 - `onUpdateDatabase()` [1.lua:onUpdateDatabase]
 - `onUpdateDatabase()` [10.lua:onUpdateDatabase]
 - `onUpdateDatabase()` [11.lua:onUpdateDatabase]

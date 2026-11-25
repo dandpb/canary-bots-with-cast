@@ -11,7 +11,7 @@ Implements the financial transaction abstraction (`Bank` and `Bankable`) for pla
 - `Bank::debit` and `Bank::withdraw` require `hasBalance(amount)` (`balance() >= amount`) to succeed before deducting funds (`[bank.cpp:Bank::debit]`, `[bank.cpp:Bank::withdraw]`).
 - `Bank::transferTo` rejects transfers to sample/system character names in `deniedNames` (`accountmanager`, `rooksample`, `druidsample`, `sorcerersample`, `knightsample`, `paladinsample`) (`[bank.cpp:deniedNames]`, `[bank.cpp:Bank::transferTo]`).
 - `Bank::transferTo` forbids cross-tier town transfers where one player's town ID is below `MIN_TOWN_ID_TO_BANK_TRANSFER_FROM_MAIN` (e.g., Dawnport/Rookgaard) and the other's is at or above it (`[bank.cpp:Bank::transferTo]`).
-- A transfer commits both balances in one transaction before publishing either balance in memory. An uncertain commit fences both participants until the receipt can be checked. Lua retains its success boolean and returns a second pending boolean (`[bank.cpp:Bank::transferTo]`, `[bank_functions.cpp:BankFunctions::luaBankTransfer]`).
+- A transfer commits both balances in one transaction before publishing either balance in memory. An uncertain commit fences both participants until the receipt can be checked. Lua retains its success boolean and returns a second pending boolean (`[bank.cpp:Bank::transferTo]`, `BankFunctions::luaBankTransfer` in `src/lua/functions/core/game/bank_functions.cpp`).
 
 ## Side Effects
 - Mutates `Bankable` balances via `setBankBalance` and adds/removes physical currency items on players via `g_game().addMoney` and `g_game().removeMoney` (`[bank.cpp:Bank::balance]`, `[bank.cpp:Bank::withdraw]`, `[bank.cpp:Bank::deposit]`).

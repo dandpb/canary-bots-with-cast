@@ -1,7 +1,7 @@
 # Object
 
 ## Overview
-Component package under `scripts/actions/object` containing 7 files (`dancingfairy.lua`..`wz789_entrance.lua`).
+Component package under `scripts/actions/object` containing 11 files (`dancingfairy.lua`..`wz789_entrance.lua`).
 
 ## Interface
 - `dancingfairy.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [dancingfairy.lua:dancingfairy.onUse]
@@ -10,15 +10,21 @@ Component package under `scripts/actions/object` containing 7 files (`dancingfai
 - `moveEvent.onStepIn(creature, item, position, fromPosition)` [deathlings_entrance.lua:moveEvent.onStepIn]
 - `MoveEvent()` assigned to `moveEvent` [deathlings_entrance.lua:moveEvent]
 - `MoveEvent()` registration [deathlings_entrance.lua:MoveEvent]
+- `etcher.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [etcher.lua:etcher.onUse]
+- `Action()` assigned to `etcher` [etcher.lua:etcher]
 - `goldenOutfitDisplay.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [golden_outfit_display.lua:goldenOutfitDisplay.onUse]
 - `Action()` assigned to `goldenOutfitDisplay` [golden_outfit_display.lua:goldenOutfitDisplay]
 - `Action()` registration [golden_outfit_display.lua:Action]
+- `createProficiencyCatalyst(51589, 100000)` [greater_proficiency_catalyst.lua:createProficiencyCatalyst]
+- `imbuement.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [imbuement_scrolls.lua:imbuement.onUse]
+- `Action()` assigned to `imbuement` [imbuement_scrolls.lua:imbuement]
 - `imbuement.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [imbuement_shrine.lua:imbuement.onUse]
 - `Action()` assigned to `imbuement` [imbuement_shrine.lua:imbuement]
 - `Action()` registration [imbuement_shrine.lua:Action]
 - `moonlightCrystals.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [moonlight_crystals.lua:moonlightCrystals.onUse]
 - `Action()` assigned to `moonlightCrystals` [moonlight_crystals.lua:moonlightCrystals]
 - `Action()` registration [moonlight_crystals.lua:Action]
+- `createProficiencyCatalyst(51588, 25000)` [proficiency_catalyst.lua:createProficiencyCatalyst]
 - `cobraBastion.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [rope_down.lua:cobraBastion.onUse]
 - `oskayaat.onUse(player, item, fromPosition, target, toPosition, isHotkey)` [rope_down.lua:oskayaat.onUse]
 - `Action()` assigned to `cobraBastion` [rope_down.lua:cobraBastion]

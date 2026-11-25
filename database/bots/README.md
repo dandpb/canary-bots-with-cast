@@ -22,6 +22,10 @@ reference, and bot house ownership + furniture.
 - `[14_houses.sql:houses]` — Seeds house ownership and metadata (bots own 794 of 993 houses).
 - `[15_tile_store.sql:tile_store]` — Seeds serialized house furniture/item tile blobs.
 - `[16_runtime_compatibility.sql:bot_state_persistence]`, `[16_runtime_compatibility.sql:bot_startup_config]`, `[16_runtime_compatibility.sql:bot_nav_events]`, `[16_runtime_compatibility.sql:player_charms]`, `[16_runtime_compatibility.sql:players]` — Runtime state/config/navigation table DDL and column width widens (`charm_points`, `max_charm_points`, `onlinetime`).
+- `[23_bot_onlinetime_reset.sql:players]` — Resets bot account (`account_id = 65000`) `onlinetime` values.
+- `[24_bot_state_persistence_saved_at.sql:bot_state_persistence]` — Adds `saved_at` column to `bot_state_persistence` for 24h restore window filtering.
+- `[25_bot_hunt_danger.sql:bot_hunt_danger]` — Creates `bot_hunt_danger` table for learned hunt-danger zones.
+- `[91_upstream_1525_schema.sql:server_config]` — Idempotent cutover reconciliation aligning a 15.00 bot database (`db_version=62`) with upstream 15.25 migrations (`56`–`59`).
 
 ## Prerequisites
 

@@ -190,3 +190,9 @@ storage roots, safety limits, severities, the baseline path, and the
 All schemas are strict: unknown object properties are rejected. When changing
 an artifact shape, update its schema, tests, readers, and `schemaVersion`
 together.
+
+## Package Modules & Invariants (EGM Contract)
+
+- **Interface**: `[cli.py:main]` / `[__main__.py]` / `[__init__.py]` (`scan`, `validate`, `validate-schemas`), `[config.py]` (`config.json` loader), `[workspace.py]` (deterministic repo-relative file discovery), `[extractors.py]` & `[lua_lexer.py]` (protobuf/XML/Lua extraction), `[models.py]`, `[rules.py]`, `[runner.py]`, `[schema_tools.py]`, and strict JSON Schemas under `schemas/` + unit tests under `tests/`.
+- **Invariants**: `artifactRoot` defaults to `artifacts`, rejecting output paths outside it with exit code `2`; incomplete scans take precedence over finding gates (`exit 3`); operational `scan.*` diagnostics cannot be waived in `baseline.json`.
+- **Side Effects**: Reads repository datapacks/configs and writes `project-index.json`, `symbol-registry.json`, `reference-report.json`, and `summary.md` atomically inside the configured `artifactRoot`.

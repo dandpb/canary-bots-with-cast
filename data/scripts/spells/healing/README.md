@@ -1,7 +1,7 @@
 # healing
 
 ## Overview
-Package implementation for `data/scripts/spells/healing`, providing component logic and data interfaces for healing.
+Package implementation for `data/scripts/spells/healing`, providing 28 healing spell scripts (`bruise_bane.lua`..`wound_cleansing.lua`, including Monk healing spells and `practise_healing.lua`).
 
 ## Interface
 - `onGetFormulaValues` (`[bruise_bane.lua:onGetFormulaValues]`)
@@ -14,7 +14,7 @@ Package implementation for `data/scripts/spells/healing`, providing component lo
 - `onGetFormulaValues` (`[divine_healing.lua:onGetFormulaValues]`)
 - `spell.onCastSpell` (`[divine_healing.lua:spell.onCastSpell]`)
 - `onGetFormulaValues` (`[fair_wound_cleansing.lua:onGetFormulaValues]`)
-- Subdirectory [`./monk/README.md`](./monk/README.md) - Sub-package for monk
+- Additional healing & Monk spells (`[mass_spirit_mend.lua]`, `[practise_healing.lua]`, `[restore_balance.lua]`, `[spirit_mend.lua]`, and remaining `*.lua` spell files).
 
 ## Invariants
 - None

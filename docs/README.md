@@ -17,6 +17,9 @@ references in the surrounding subdirectories:
 | [`operations.md`](operations.md)          | Deployment, monitoring, security, backups and production operations  |
 | [`building/recompile.md`](building/recompile.md) | Linux recompilation, executable history, crash analysis and WSL validation |
 | [`hardware-sizing.md`](hardware-sizing.md) | RAM/CPU estimates, player activity and hardware capacity planning |
+| [`crypto-backend-evaluation.md`](crypto-backend-evaluation.md) | Cryptographic backend evaluation notes |
+| [`release.md`](release.md) | Release process and packaging checklist |
+| [`systems/README.md`](systems/README.md) | System contracts index (content auditor, 15.25 compatibility, multiprotocol, Lua API docgen, taskboard, livestream, performance-lifetime) |
 | [`systems/content-reference-auditor.md`](systems/content-reference-auditor.md) | Profile-aware gameplay content and identifier auditing |
 
 ---
@@ -279,7 +282,7 @@ Before contributing:
 # Fork documentation (bots-with-cast)
 
 * [Design notes](design/) — bot engine architecture and operational design notes:
-  `fixture-persistence-witness.md`, `native-admission-stage.md`,
+  `bot-guia-de-thais.md`, `fixture-persistence-witness.md`, `native-admission-stage.md`,
   `native-admission-validation.md`, `native-supervised-harness-interface.md`.
 * [Python maintenance scripts](python-scripts/README.md) — standalone utilities for
   batch-refactoring Lua monster callbacks and C++ `LuaScriptInterface` / `#include` conventions.

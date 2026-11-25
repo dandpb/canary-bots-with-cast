@@ -43,3 +43,7 @@ local query = [[
 db.execute(query)  -- This function executes the given SQL query on the database.
 
 -- Note: Ensure that queries are validated to avoid errors during the migration process.
+```
+
+## Current Migration Scripts
+- `64.lua`: Active migration script in `data-canary/migrations` (`onUpdateDatabase()`).

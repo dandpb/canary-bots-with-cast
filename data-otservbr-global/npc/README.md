@@ -1,10 +1,10 @@
 # Npc
 
 ## Overview
-Provides 1027 direct files (`....lua`..`zurak_arena.lua`) and 1 subdirectories under `npc`.
+Provides 1036 direct files (`....lua`..`zurak_arena.lua`, including `augustin.lua`, `test_server.lua`, and the 7 Blue Valley NPCs moved from `blue_valley/`) and 0 subdirectories under `npc`.
 
 ## Interface
-- Defines 1027 script/configuration files (`....lua` through `zurak_arena.lua`) [....lua]
+- Defines 1036 script/configuration files (`....lua` through `zurak_arena.lua`) [....lua]
 - `Game.createNpcType("...")` and `npcType:register(npcConfig)` [....lua:Game.createNpcType]
 - `npcType.onThink` handler [....lua:npcType.onThink]
 - `npcType.onAppear` handler [....lua:npcType.onAppear]
@@ -29,7 +29,6 @@ Provides 1027 direct files (`....lua`..`zurak_arena.lua`) and 1 subdirectories u
 - `Game.createNpcType("A Beggar")` and `npcType:register(npcConfig)` [a_beggar.lua:Game.createNpcType]
 - `npcType.onThink` handler [a_beggar.lua:npcType.onThink]
 - `npcType.onAppear` handler [a_beggar.lua:npcType.onAppear]
-- [blue_valley](./blue_valley/README.md) - Component package under `npc/blue_valley` containing 7 files (`bodh_the_kan.lua`..`saih_the_guardian.lua`).
 
 ## Invariants
 - `npcConfig.flags.floorchange` and `npcConfig.health`/`npcConfig.maxHealth` bound NPC movement and vitals [....lua:npcConfig.flags]

@@ -1,9 +1,10 @@
 # support
 
 ## Overview
-Package implementation for `data/scripts/spells/support`, providing component logic and data interfaces for support.
+Package implementation for `data/scripts/spells/support`, providing 39 support spell scripts (`avatar_of_balance.lua`..`virtue_of_sustain.lua`, including Monk support spells moved from `monk/`).
 
 ## Interface
+- `spell.onCastSpell` (`[avatar_of_balance.lua:spell.onCastSpell]`)
 - `spell.onCastSpell` (`[avatar_of_light.lua:spell.onCastSpell]`)
 - `spell.onCastSpell` (`[avatar_of_nature.lua:spell.onCastSpell]`)
 - `spell.onCastSpell` (`[avatar_of_steel.lua:spell.onCastSpell]`)
@@ -14,7 +15,7 @@ Package implementation for `data/scripts/spells/support`, providing component lo
 - `onTargetCreature` (`[challenge.lua:onTargetCreature]`)
 - `spell.onCastSpell` (`[challenge.lua:spell.onCastSpell]`)
 - `spell.onCastSpell` (`[charge.lua:spell.onCastSpell]`)
-- Subdirectory [`./monk/README.md`](./monk/README.md) - Sub-package for monk
+- Additional Monk & support spells (`[balanced_brawl.lua]`, `[focus_harmony.lua]`, `[focus_serenity.lua]`, `[mentor_other.lua]`, `[virtue_of_harmony.lua]`, `[virtue_of_justice.lua]`, `[virtue_of_sustain.lua]`, and remaining `*.lua` spell files).
 
 ## Invariants
 - None

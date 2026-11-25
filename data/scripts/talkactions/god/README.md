@@ -11,9 +11,10 @@ Package implementation for `data/scripts/talkactions/god`, providing component l
 - `talkaction.onSay` (`[add_bosstiary_kills.lua:talkaction.onSay]`)
 - `talkaction.onSay` (`[add_condition.lua:talkaction.onSay]`)
 - `addMoney.onSay` (`[add_money.lua:addMoney.onSay]`)
-- `addmount.onSay` (`[add_mount.lua:addmount.onSay]`)
+- `addMount.onSay` / `addmount.onSay` (`[add_mount.lua:addmount.onSay]`)
 - `addSkill.onSay` (`[add_skill.lua:addSkill.onSay]`)
 - `attributes.onSay` (`[attributes.lua:attributes.onSay]`)
+- Additional god commands (`[add_item_to_rewardchest.lua:addReward.onSay]` `/addreward`, `[createitemtest.lua]` `/createloot`, `[manage_task_board.lua]`, `[protocol_probe.lua]` `/protocolprobe` / `/probeopcode` + `protocol_probe.example.json`, `[reward_bags.lua:rewardBagTest.onSay]` `/rewardbag`, `[store_order.lua:storeOrder.onSay]` `/storeorder`, `[weapon_proficiency.lua:weaponProficiency.onSay]` `/proficiency`).
 
 ## Invariants
 - None

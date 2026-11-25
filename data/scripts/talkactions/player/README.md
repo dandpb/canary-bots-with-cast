@@ -14,6 +14,7 @@ Package implementation for `data/scripts/talkactions/player`, providing componen
 - `houseCmd.onSay` (`[bot_house.lua:houseCmd.onSay]`)
 - `botParty.onSay` (`[bot_party.lua:botParty.onSay]`)
 - `talk.onSay` (`[brain.lua:talk.onSay]`)
+- `!livestream` (`[livestream_system.lua]`): Player livestream management talkaction (`on`, `off`, `desc`, `password`, `kick`, `ban`, `unban`, `bans`, `mute`, `unmute`, `mutes`, `show`, `status`).
 
 ## Invariants
 - None

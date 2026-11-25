@@ -14,8 +14,10 @@ driven by `*.steps` scenarios; the server journal is tailed and joined to what t
 | `setup_client.py` | builds the harness OTClient copy from the installed client |
 | `winproc.py` | `popen_kw()`: every harness subprocess (ssh.exe, mysql.exe, python, git, OTClient) is created with `CREATE_NO_WINDOW` + explicit stdin, so no console window ever pops up |
 | `otc_overlay/edits.json` | the harness edits to the stock client (init.lua, mods.otmod), applied by setup_client.py; includes audio OFF from the first frame |
-| `otc_mod/harness_ctl/` | OTClient mod: `ctl.lua` streams client events, executes hub verbs, hides the window; `perceive.lua` = perception parity (effects, missiles, texts, creatures, own UI state) |
-| `scenarios/` | your own `*.steps` scenarios (not tracked; see `scenarios/README.md`); `example_smoke.steps` is the starting point |
+| `otc_mod/harness_ctl/` | [`./otc_mod/harness_ctl/README.md`](./otc_mod/harness_ctl/README.md) — OTClient mod: `ctl.lua` streams client events, executes hub verbs, hides the window; `perceive.lua` = perception parity |
+| `scenarios/` | [`./scenarios/README.md`](./scenarios/README.md) — your own `*.steps` scenarios (not tracked); `example_smoke.steps` is the starting point |
+| `replay.py` | offline replay of `@srv expect` / `@srv expect-none` filters against an existing run directory (`server.ndjson`, `audit.pc.ndjson`, `cli-*.ndjson`) |
+| `gen_town_tour.py` / `town_tour_report.py` / `town_tour_delta.py` | generates the DB-driven GM town-tour `.steps` scenario, summarizes per-town census/engine perf tables, and diffs two `town_tour.json` runs |
 | `baseline_metrics.py` / `compare.py` | Phase 3 lean baseline: per-scenario metrics JSON from a run dir (`baselines/<date>/B#.json`), and a per-metric old/new/delta diff of two baseline dirs |
 | `test_watch.py` | unit tests: CRASH/SLOW detectors, watcher end-to-end on a fake server, steps parser, audit parsing/filters/census |
 | `harness.json` | non-secret config (server, ports, client dir, player chars, watch thresholds, `audit_path`) |
